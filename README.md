@@ -36,6 +36,23 @@ Controls:
 The image is always scaled by a whole number with nearest-neighbour filtering.
 Unused screen space is letterboxed.
 
+## Capture a screenshot
+
+Render a PNG directly from the CPU-side framebuffer without opening a window:
+
+```sh
+./build/proteus --screenshot build/proteus.png --time 48
+```
+
+By default, `--time` addresses the complete visual timeline. Add `--scene` to select a scene and
+interpret the time relative to its start:
+
+```sh
+./build/proteus --screenshot build/cube.png --scene cube --time 2.5
+```
+
+Screenshot mode also accepts `--resolution` and defaults to 320x200.
+
 The profiler keeps a rolling 240-frame history (about four seconds at 60 FPS) and
 graphs total frame wall time, CPU scene generation plus texture upload, and
 presentation time (including any vertical-sync wait). It also reports rolling
@@ -98,7 +115,7 @@ The virtual framebuffer defaults to 320x200. Resolution is intentionally not an
 architectural decision: try all three shapes while the demo runs.
 
 The visuals follow the eight-pattern music loop. Two patterns each are given to
-the starfield, fire, and plasma. The final two introduce a rotating triangle,
+the starfield, fire, and plasma. The final two introduce a rotating, shaded cube,
 transformed, projected, and rasterized entirely in the CPU-side virtual framebuffer.
 
 ## Editor setup

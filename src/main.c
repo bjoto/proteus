@@ -21,7 +21,7 @@ typedef enum {
     SCENE_STARSCROLL,
     SCENE_PLASMA,
     SCENE_FIRE,
-    SCENE_TRIANGLE,
+    SCENE_CUBE,
 } SceneId;
 
 typedef struct {
@@ -94,14 +94,17 @@ typedef struct {
 } ProfilerSnapshot;
 
 typedef struct {
-    bool enabled;
+    bool profile_enabled;
     bool visible;
     bool show_help;
+    bool screenshot_scene_selected;
     SceneId scene_id;
     int frames;
     int warmup_frames;
     int size_index;
-} ProfileOptions;
+    const char *screenshot_path;
+    float screenshot_time;
+} ProgramOptions;
 
 static const VirtualSize VIRTUAL_SIZES[] = {
     { 320, 180 },
@@ -115,7 +118,7 @@ static const Scene SCENES[] = {
     { SCENE_STARSCROLL, PATTERN_DURATION * 2.0f },
     { SCENE_FIRE, PATTERN_DURATION * 2.0f },
     { SCENE_PLASMA, PATTERN_DURATION * 2.0f },
-    { SCENE_TRIANGLE, PATTERN_DURATION * 2.0f },
+    { SCENE_CUBE, PATTERN_DURATION * 2.0f },
 };
 
 static const char *scene_name(SceneId id)
@@ -127,8 +130,8 @@ static const char *scene_name(SceneId id)
         return "plasma";
     case SCENE_FIRE:
         return "fire";
-    case SCENE_TRIANGLE:
-        return "triangle";
+    case SCENE_CUBE:
+        return "cube";
     }
     return "unknown";
 }
@@ -163,6 +166,16 @@ static bool parse_count(const char *text, int minimum, int *value)
     return true;
 }
 
+static bool parse_time(const char *text, float *value)
+{
+    char *end = NULL;
+    float parsed = strtof(text, &end);
+    if (text[0] == '\0' || *end != '\0' || !isfinite(parsed) || parsed < 0.0f)
+        return false;
+    *value = parsed;
+    return true;
+}
+
 static int resolution_index(const char *text)
 {
     for (size_t i = 0; i < sizeof(VIRTUAL_SIZES) / sizeof(VIRTUAL_SIZES[0]); ++i) {
@@ -178,37 +191,61 @@ static int resolution_index(const char *text)
 static void print_usage(const char *program)
 {
     printf("Usage: %s [--profile SCENE [options]]\n", program);
-    printf("Scenes: starscroll, fire, plasma, triangle\n");
+    printf("       %s --screenshot FILE [--time SECONDS] [--scene SCENE] [options]\n", program);
+    printf("Scenes: starscroll, fire, plasma, cube\n");
     printf("Profile options:\n");
     printf("  --frames N              measured frames (default: 600)\n");
     printf("  --warmup N              unmeasured warm-up frames (default: 60)\n");
     printf("  --resolution WIDTHxHEIGHT (default: 320x200)\n");
     printf("  --visible               include upload/presentation using a visible window\n");
+    printf("Screenshot options:\n");
+    printf("  --time SECONDS          global or scene-local time (default: 0)\n");
+    printf("  --scene SCENE           capture one scene instead of the global timeline\n");
+    printf("  --resolution WIDTHxHEIGHT (default: 320x200)\n");
 }
 
-static bool parse_options(int argc, char **argv, ProfileOptions *options)
+static bool parse_options(int argc, char **argv, ProgramOptions *options)
 {
-    *options = (ProfileOptions) {
+    *options = (ProgramOptions) {
         .scene_id = SCENE_STARSCROLL,
         .frames = 600,
         .warmup_frames = 60,
         .size_index = 1,
     };
+    bool profile_only_option = false;
+    bool screenshot_only_option = false;
     for (int i = 1; i < argc; ++i) {
         if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
             options->show_help = true;
         } else if (strcmp(argv[i], "--profile") == 0 && i + 1 < argc) {
-            options->enabled = true;
+            options->profile_enabled = true;
+            if (!parse_scene_id(argv[++i], &options->scene_id)) {
+                fprintf(stderr, "Unknown scene: %s\n", argv[i]);
+                return false;
+            }
+        } else if (strcmp(argv[i], "--screenshot") == 0 && i + 1 < argc) {
+            options->screenshot_path = argv[++i];
+        } else if (strcmp(argv[i], "--time") == 0 && i + 1 < argc) {
+            screenshot_only_option = true;
+            if (!parse_time(argv[++i], &options->screenshot_time)) {
+                fprintf(stderr, "Invalid screenshot time: %s\n", argv[i]);
+                return false;
+            }
+        } else if (strcmp(argv[i], "--scene") == 0 && i + 1 < argc) {
+            screenshot_only_option = true;
+            options->screenshot_scene_selected = true;
             if (!parse_scene_id(argv[++i], &options->scene_id)) {
                 fprintf(stderr, "Unknown scene: %s\n", argv[i]);
                 return false;
             }
         } else if (strcmp(argv[i], "--frames") == 0 && i + 1 < argc) {
+            profile_only_option = true;
             if (!parse_count(argv[++i], 1, &options->frames)) {
                 fprintf(stderr, "Invalid frame count: %s\n", argv[i]);
                 return false;
             }
         } else if (strcmp(argv[i], "--warmup") == 0 && i + 1 < argc) {
+            profile_only_option = true;
             if (!parse_count(argv[++i], 0, &options->warmup_frames)) {
                 fprintf(stderr, "Invalid warm-up count: %s\n", argv[i]);
                 return false;
@@ -220,14 +257,28 @@ static bool parse_options(int argc, char **argv, ProfileOptions *options)
                 return false;
             }
         } else if (strcmp(argv[i], "--visible") == 0) {
+            profile_only_option = true;
             options->visible = true;
         } else {
             fprintf(stderr, "Unknown or incomplete option: %s\n", argv[i]);
             return false;
         }
     }
-    if (!options->enabled && argc > 1 && !options->show_help) {
-        fprintf(stderr, "Profiling options require --profile SCENE\n");
+    if (options->profile_enabled && options->screenshot_path != NULL) {
+        fprintf(stderr, "Choose either --profile or --screenshot\n");
+        return false;
+    }
+    if (profile_only_option && !options->profile_enabled) {
+        fprintf(stderr, "--frames, --warmup, and --visible require --profile SCENE\n");
+        return false;
+    }
+    if (screenshot_only_option && options->screenshot_path == NULL) {
+        fprintf(stderr, "--time and --scene require --screenshot FILE\n");
+        return false;
+    }
+    if (!options->profile_enabled && options->screenshot_path == NULL && argc > 1
+        && !options->show_help) {
+        fprintf(stderr, "Options require --profile SCENE or --screenshot FILE\n");
         return false;
     }
     return true;
@@ -514,7 +565,7 @@ static void draw_fire(Color *pixels, VirtualSize size, float time, float beat)
     }
 }
 
-static Vec3 rotate_triangle_vertex(Vec3 vertex, float yaw, float pitch)
+static Vec3 rotate_vertex(Vec3 vertex, float yaw, float pitch, float roll)
 {
     float yaw_sine = sinf(yaw);
     float yaw_cosine = cosf(yaw);
@@ -525,14 +576,21 @@ static Vec3 rotate_triangle_vertex(Vec3 vertex, float yaw, float pitch)
         vertex.y,
         -vertex.x * yaw_sine + vertex.z * yaw_cosine,
     };
-    return (Vec3) {
+    Vec3 pitched = {
         yawed.x,
         yawed.y * pitch_cosine - yawed.z * pitch_sine,
         yawed.y * pitch_sine + yawed.z * pitch_cosine,
     };
+    float roll_sine = sinf(roll);
+    float roll_cosine = cosf(roll);
+    return (Vec3) {
+        pitched.x * roll_cosine - pitched.y * roll_sine,
+        pitched.x * roll_sine + pitched.y * roll_cosine,
+        pitched.z,
+    };
 }
 
-static ScreenVertex project_triangle_vertex(Vec3 vertex, Color color, VirtualSize size)
+static ScreenVertex project_vertex(Vec3 vertex, Color color, VirtualSize size)
 {
     float focal_length = (float)(size.width < size.height ? size.width : size.height) * 1.35f;
     return (ScreenVertex) {
@@ -585,17 +643,41 @@ static void rasterize_triangle(
     }
 }
 
-static void draw_triangle_3d(Color *pixels, VirtualSize size, float time)
+typedef struct {
+    int vertices[4];
+    Color color;
+    float depth;
+} CubeFace;
+
+static Color shade_color(Color color, float brightness)
+{
+    return (Color) {
+        (unsigned char)((float)color.r * brightness),
+        (unsigned char)((float)color.g * brightness),
+        (unsigned char)((float)color.b * brightness),
+        255,
+    };
+}
+
+static void draw_cube(Color *pixels, VirtualSize size, float time)
 {
     const Vec3 model_vertices[] = {
-        { -1.0f, -0.75f, 0.0f },
-        { 1.0f, -0.75f, 0.0f },
-        { 0.0f, 1.0f, 0.0f },
+        { -1.0f, -1.0f, -1.0f },
+        { 1.0f, -1.0f, -1.0f },
+        { 1.0f, 1.0f, -1.0f },
+        { -1.0f, 1.0f, -1.0f },
+        { -1.0f, -1.0f, 1.0f },
+        { 1.0f, -1.0f, 1.0f },
+        { 1.0f, 1.0f, 1.0f },
+        { -1.0f, 1.0f, 1.0f },
     };
-    const Color vertex_colors[] = {
-        { 255, 45, 190, 255 },
-        { 25, 220, 255, 255 },
-        { 245, 255, 110, 255 },
+    CubeFace faces[] = {
+        { { 0, 1, 2, 3 }, { 255, 45, 190, 255 }, 0.0f },
+        { { 5, 4, 7, 6 }, { 35, 100, 255, 255 }, 0.0f },
+        { { 4, 0, 3, 7 }, { 25, 220, 255, 255 }, 0.0f },
+        { { 1, 5, 6, 2 }, { 255, 105, 35, 255 }, 0.0f },
+        { { 3, 2, 6, 7 }, { 245, 255, 110, 255 }, 0.0f },
+        { { 4, 5, 1, 0 }, { 135, 75, 255, 255 }, 0.0f },
     };
 
     for (int y = 0; y < size.height; ++y) {
@@ -604,22 +686,72 @@ static void draw_triangle_3d(Color *pixels, VirtualSize size, float time)
             pixels[y * size.width + x] = (Color) { 2, 4, blue, 255 };
     }
 
-    ScreenVertex projected[3];
-    for (int i = 0; i < 3; ++i) {
-        Vec3 transformed
-            = rotate_triangle_vertex(model_vertices[i], time * 0.72f, sinf(time * 0.37f) * 0.42f);
-        transformed.z += 3.4f;
-        projected[i] = project_triangle_vertex(transformed, vertex_colors[i], size);
+    Vec3 transformed[8];
+    ScreenVertex projected[8];
+    float yaw = time * 0.72f;
+    float pitch = time * 0.47f + 0.38f;
+    float roll = sinf(time * 0.31f) * 0.22f;
+    for (int i = 0; i < 8; ++i) {
+        transformed[i] = rotate_vertex(model_vertices[i], yaw, pitch, roll);
+        transformed[i].z += 4.5f;
+        projected[i] = project_vertex(transformed[i], WHITE, size);
     }
 
-    rasterize_triangle(pixels, size, projected[0], projected[1], projected[2]);
-    Color edge_color = { 225, 245, 255, 255 };
-    draw_line(pixels, size, (int)projected[0].x, (int)projected[0].y, (int)projected[1].x,
-        (int)projected[1].y, edge_color);
-    draw_line(pixels, size, (int)projected[1].x, (int)projected[1].y, (int)projected[2].x,
-        (int)projected[2].y, edge_color);
-    draw_line(pixels, size, (int)projected[2].x, (int)projected[2].y, (int)projected[0].x,
-        (int)projected[0].y, edge_color);
+    for (int face = 0; face < 6; ++face) {
+        faces[face].depth = 0.0f;
+        for (int corner = 0; corner < 4; ++corner)
+            faces[face].depth += transformed[faces[face].vertices[corner]].z;
+    }
+    for (int i = 1; i < 6; ++i) {
+        CubeFace face = faces[i];
+        int position = i;
+        while (position > 0 && faces[position - 1].depth < face.depth) {
+            faces[position] = faces[position - 1];
+            --position;
+        }
+        faces[position] = face;
+    }
+
+    const Vec3 light = { -0.36f, 0.48f, -0.80f };
+    const Color edge_color = { 225, 245, 255, 255 };
+    for (int face = 0; face < 6; ++face) {
+        int a = faces[face].vertices[0];
+        int b = faces[face].vertices[1];
+        int c = faces[face].vertices[2];
+        int d = faces[face].vertices[3];
+        if (triangle_edge(projected[a], projected[b], projected[c].x, projected[c].y) <= 0.0f)
+            continue;
+
+        Vec3 side_ab = {
+            transformed[b].x - transformed[a].x,
+            transformed[b].y - transformed[a].y,
+            transformed[b].z - transformed[a].z,
+        };
+        Vec3 side_ac = {
+            transformed[c].x - transformed[a].x,
+            transformed[c].y - transformed[a].y,
+            transformed[c].z - transformed[a].z,
+        };
+        Vec3 normal = {
+            side_ab.y * side_ac.z - side_ab.z * side_ac.y,
+            side_ab.z * side_ac.x - side_ab.x * side_ac.z,
+            side_ab.x * side_ac.y - side_ab.y * side_ac.x,
+        };
+        float light_amount = (normal.x * light.x + normal.y * light.y + normal.z * light.z) * 0.25f;
+        float brightness = 0.38f + 0.62f * fmaxf(0.0f, light_amount);
+        Color color = shade_color(faces[face].color, brightness);
+        ScreenVertex corners[] = { projected[a], projected[b], projected[c], projected[d] };
+        for (int corner = 0; corner < 4; ++corner)
+            corners[corner].color = color;
+
+        rasterize_triangle(pixels, size, corners[0], corners[1], corners[2]);
+        rasterize_triangle(pixels, size, corners[0], corners[2], corners[3]);
+        for (int corner = 0; corner < 4; ++corner) {
+            ScreenVertex start = corners[corner];
+            ScreenVertex end = corners[(corner + 1) % 4];
+            draw_line(pixels, size, (int)start.x, (int)start.y, (int)end.x, (int)end.y, edge_color);
+        }
+    }
 }
 
 static SceneFrame scene_at(float time)
@@ -655,8 +787,8 @@ static void draw_scene(
     case SCENE_FIRE:
         draw_fire(pixels, size, timeline_time, beat);
         break;
-    case SCENE_TRIANGLE:
-        draw_triangle_3d(pixels, size, scene.time);
+    case SCENE_CUBE:
+        draw_cube(pixels, size, scene.time);
         break;
     }
 }
@@ -828,7 +960,55 @@ static uint64_t framebuffer_checksum(const Color *pixels, size_t pixel_count)
     return checksum;
 }
 
-static int run_profile(ProfileOptions options)
+static int run_screenshot(ProgramOptions options)
+{
+    VirtualSize size = VIRTUAL_SIZES[options.size_index];
+    size_t pixel_count = (size_t)size.width * (size_t)size.height;
+    Color *pixels = malloc(pixel_count * sizeof(*pixels));
+    if (pixels == NULL) {
+        fprintf(stderr, "Unable to allocate the screenshot framebuffer\n");
+        return 1;
+    }
+
+    SceneFrame scene;
+    if (options.screenshot_scene_selected) {
+        float duration = scene_duration(options.scene_id);
+        float local_time = fmodf(options.screenshot_time, duration);
+        scene = (SceneFrame) {
+            .id = options.scene_id,
+            .time = local_time,
+            .progress = local_time / duration,
+        };
+    } else {
+        scene = scene_at(options.screenshot_time);
+    }
+    float beat = options.screenshot_time * 125.0f / 60.0f;
+    draw_scene(pixels, size, scene, options.screenshot_time, beat);
+
+    Image image = {
+        .data = pixels,
+        .width = size.width,
+        .height = size.height,
+        .mipmaps = 1,
+        .format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8,
+    };
+    SetTraceLogLevel(LOG_WARNING);
+    bool exported = ExportImage(image, options.screenshot_path);
+    free(pixels);
+    if (!exported) {
+        fprintf(stderr, "Unable to export screenshot: %s\n", options.screenshot_path);
+        return 1;
+    }
+
+    printf("screenshot=%s\n", options.screenshot_path);
+    printf("scene=%s\n", scene_name(scene.id));
+    printf("scene_time=%.3f\n", scene.time);
+    printf("timeline_time=%.3f\n", options.screenshot_time);
+    printf("resolution=%dx%d\n", size.width, size.height);
+    return 0;
+}
+
+static int run_profile(ProgramOptions options)
 {
     VirtualSize size = VIRTUAL_SIZES[options.size_index];
     Texture2D framebuffer = { 0 };
@@ -949,19 +1129,21 @@ static int run_profile(ProfileOptions options)
 
 int main(int argc, char **argv)
 {
-    ProfileOptions profile_options;
-    if (!parse_options(argc, argv, &profile_options)) {
+    ProgramOptions options;
+    if (!parse_options(argc, argv, &options)) {
         print_usage(argv[0]);
         return 2;
     }
-    if (profile_options.show_help) {
+    if (options.show_help) {
         print_usage(argv[0]);
         return 0;
     }
 
     initialize_noise_table();
-    if (profile_options.enabled)
-        return run_profile(profile_options);
+    if (options.profile_enabled)
+        return run_profile(options);
+    if (options.screenshot_path != NULL)
+        return run_screenshot(options);
 
     int size_index = 1; // 320x200: change live with keys 1, 2, and 3.
     VirtualSize size = VIRTUAL_SIZES[size_index];

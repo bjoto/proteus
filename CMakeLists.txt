@@ -45,3 +45,10 @@ add_test(NAME fire_profile_report
 set_tests_properties(fire_profile_report PROPERTIES
   PASS_REGULAR_EXPRESSION "proteus_profile_end=1"
 )
+add_test(NAME cube_screenshot
+  COMMAND proteus --screenshot ${CMAKE_CURRENT_BINARY_DIR}/cube-screenshot.png
+          --scene cube --time 1.5
+)
+set_tests_properties(cube_screenshot PROPERTIES
+  PASS_REGULAR_EXPRESSION "scene=cube"
+)
