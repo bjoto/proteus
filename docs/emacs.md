@@ -62,7 +62,7 @@ grammar was not installed when this guide was written.
 
 ## Configure C and Eglot
 
-Add this to `~/.emacs.d/init` alongside the corresponding Maldives setup:
+Add this to `~/.emacs.d/init`:
 
 ```elisp
 (use-package treesit
