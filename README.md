@@ -51,6 +51,10 @@ first editing session.
 The virtual framebuffer defaults to 320x200. Resolution is intentionally not an
 architectural decision: try all three shapes while the demo runs.
 
+The visuals follow the eight-pattern music loop. A starfield opens the first
+pattern while its camera turns from looking down to looking forward; the plasma
+scene runs for the remaining seven patterns.
+
 ## Editor setup
 
 See the [Emacs development guide](docs/emacs.md) for `c-ts-mode`, Eglot,
