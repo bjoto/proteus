@@ -31,6 +31,24 @@ Run the demo from the repository root so its relative asset paths resolve:
 ./build/proteus
 ```
 
+For deterministic visual verification, render and inspect representative frames without opening a
+window. Without `--scene`, `--time` addresses the complete timeline; with `--scene`, it is local to
+that scene. `--resolution` is optional and defaults to 320x200.
+
+```sh
+./build/proteus --screenshot build/timeline.png --time 48
+./build/proteus --screenshot build/cube.png --scene cube --time 2.5 --resolution 320x240
+```
+
+On macOS, deeper CPU profiling can use Xcode's Instruments command-line tools when full Xcode is the
+active developer directory. For example, record a Time Profiler trace against a long deterministic
+scene run:
+
+```sh
+xcrun xctrace record --template 'Time Profiler' --output build/cube.trace \
+  --launch -- ./build/proteus --profile cube --frames 100000
+```
+
 ## Conventions
 
 - Format C with the checked-in `.clang-format`; use four spaces and keep lines near 100 columns.
@@ -47,5 +65,7 @@ Run the demo from the repository root so its relative asset paths resolve:
 
 ## Before handing off
 
-Run the build and CTest command above. Add a manual demo check when runtime visuals, input, windowing,
-audio playback, or asset loading changed. Report anything you could not verify.
+Run the build and CTest command above. Capture and inspect representative frames when visual effects
+change. Add a manual demo check when motion, input, windowing, audio playback, or asset loading
+changed. Use Xcode Instruments when performance or runtime behavior warrants deeper investigation.
+Report anything you could not verify.
