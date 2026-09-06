@@ -17,13 +17,13 @@ typedef struct {
     bool profile_enabled;
     bool visible;
     bool show_help;
-    bool screenshot_scene_selected;
+    bool scene_selected;
     SceneId scene_id;
     int frames;
     int warmup_frames;
     int size_index;
     const char *screenshot_path;
-    float screenshot_time;
+    float start_time;
 } ProgramOptions;
 
 typedef struct {
@@ -97,7 +97,8 @@ static int resolution_index(const char *text)
 
 static void print_usage(const char *program)
 {
-    printf("Usage: %s [--profile SCENE [options]]\n", program);
+    printf("Usage: %s [--time SECONDS] [--scene SCENE] [--resolution WIDTHxHEIGHT]\n", program);
+    printf("       %s [--profile SCENE [options]]\n", program);
     printf("       %s --screenshot FILE [--time SECONDS] [--scene SCENE] [options]\n", program);
     printf("Scenes: starscroll, fire, plasma, cube\n");
     printf("Profile options:\n");
@@ -105,9 +106,9 @@ static void print_usage(const char *program)
     printf("  --warmup N              unmeasured warm-up frames (default: 60)\n");
     printf("  --resolution WIDTHxHEIGHT (default: 320x200)\n");
     printf("  --visible               include upload/presentation using a visible window\n");
-    printf("Screenshot options:\n");
-    printf("  --time SECONDS          global or scene-local time (default: 0)\n");
-    printf("  --scene SCENE           capture one scene instead of the global timeline\n");
+    printf("Timeline options:\n");
+    printf("  --time SECONDS          start at a global or scene-local time (default: 0)\n");
+    printf("  --scene SCENE           select a scene and interpret --time relative to it\n");
     printf("  --resolution WIDTHxHEIGHT (default: 320x200)\n");
 }
 
@@ -120,7 +121,7 @@ static bool parse_options(int argc, char **argv, ProgramOptions *options)
         .size_index = 1,
     };
     bool profile_only_option = false;
-    bool screenshot_only_option = false;
+    bool timeline_option = false;
     for (int i = 1; i < argc; ++i) {
         if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
             options->show_help = true;
@@ -133,14 +134,14 @@ static bool parse_options(int argc, char **argv, ProgramOptions *options)
         } else if (strcmp(argv[i], "--screenshot") == 0 && i + 1 < argc) {
             options->screenshot_path = argv[++i];
         } else if (strcmp(argv[i], "--time") == 0 && i + 1 < argc) {
-            screenshot_only_option = true;
-            if (!parse_time(argv[++i], &options->screenshot_time)) {
-                fprintf(stderr, "Invalid screenshot time: %s\n", argv[i]);
+            timeline_option = true;
+            if (!parse_time(argv[++i], &options->start_time)) {
+                fprintf(stderr, "Invalid start time: %s\n", argv[i]);
                 return false;
             }
         } else if (strcmp(argv[i], "--scene") == 0 && i + 1 < argc) {
-            screenshot_only_option = true;
-            options->screenshot_scene_selected = true;
+            timeline_option = true;
+            options->scene_selected = true;
             if (!scene_parse(argv[++i], &options->scene_id)) {
                 fprintf(stderr, "Unknown scene: %s\n", argv[i]);
                 return false;
@@ -179,16 +180,20 @@ static bool parse_options(int argc, char **argv, ProgramOptions *options)
         fprintf(stderr, "--frames, --warmup, and --visible require --profile SCENE\n");
         return false;
     }
-    if (screenshot_only_option && options->screenshot_path == NULL) {
-        fprintf(stderr, "--time and --scene require --screenshot FILE\n");
-        return false;
-    }
-    if (!options->profile_enabled && options->screenshot_path == NULL && argc > 1
-        && !options->show_help) {
-        fprintf(stderr, "Options require --profile SCENE or --screenshot FILE\n");
+    if (timeline_option && options->profile_enabled) {
+        fprintf(stderr, "--time and --scene cannot be used with --profile SCENE\n");
         return false;
     }
     return true;
+}
+
+static float requested_timeline_time(ProgramOptions options)
+{
+    if (!options.scene_selected)
+        return options.start_time;
+
+    float local_time = fmodf(options.start_time, scene_duration(options.scene_id));
+    return scene_start_time(options.scene_id) + local_time;
 }
 
 static Rectangle integer_scaled_destination(int screen_width, int screen_height, VirtualSize size)
@@ -218,20 +223,10 @@ static int run_screenshot(ProgramOptions options)
         return 1;
     }
 
-    SceneFrame scene;
-    if (options.screenshot_scene_selected) {
-        float duration = scene_duration(options.scene_id);
-        float local_time = fmodf(options.screenshot_time, duration);
-        scene = (SceneFrame) {
-            .id = options.scene_id,
-            .time = local_time,
-            .progress = local_time / duration,
-        };
-    } else {
-        scene = scene_at(options.screenshot_time);
-    }
-    float beat = options.screenshot_time * 125.0f / 60.0f;
-    scene_draw(pixels, size, scene, options.screenshot_time, beat);
+    float timeline_time = requested_timeline_time(options);
+    SceneFrame scene = scene_at(timeline_time);
+    float beat = timeline_time * 125.0f / 60.0f;
+    scene_draw(pixels, size, scene, timeline_time, beat);
 
     Image image = {
         .data = pixels,
@@ -251,7 +246,7 @@ static int run_screenshot(ProgramOptions options)
     printf("screenshot=%s\n", options.screenshot_path);
     printf("scene=%s\n", scene_name(scene.id));
     printf("scene_time=%.3f\n", scene.time);
-    printf("timeline_time=%.3f\n", options.screenshot_time);
+    printf("timeline_time=%.3f\n", timeline_time);
     printf("resolution=%dx%d\n", size.width, size.height);
     return 0;
 }
@@ -393,8 +388,9 @@ int main(int argc, char **argv)
     if (options.screenshot_path != NULL)
         return run_screenshot(options);
 
-    int size_index = 1; // 320x200: change live with keys 1, 2, and 3.
+    int size_index = options.size_index;
     VirtualSize size = VIRTUAL_SIZES[size_index];
+    float timeline_start = requested_timeline_time(options);
 
     SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT | FLAG_WINDOW_HIGHDPI);
     InitWindow(1280, 800, "Proteus");
@@ -418,6 +414,7 @@ int main(int argc, char **argv)
         if (music_ready) {
             music.looping = true;
             PlayMusicStream(music);
+            SeekMusicStream(music, fmodf(timeline_start, scene_timeline_duration()));
         }
     }
     // XM playback position advances by decoded audio buffers, so use a monotonic
@@ -469,7 +466,7 @@ int main(int argc, char **argv)
 
         if (music_ready)
             UpdateMusicStream(music);
-        float time = (float)(GetTime() - animation_start_time);
+        float time = timeline_start + (float)(GetTime() - animation_start_time);
         float beat = time * 125.0f / 60.0f;
         SceneFrame scene = scene_at(time);
         double scene_started_at = GetTime();

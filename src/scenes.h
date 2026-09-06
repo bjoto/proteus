@@ -27,6 +27,8 @@ typedef struct {
 void scenes_initialize(void);
 const char *scene_name(SceneId id);
 float scene_duration(SceneId id);
+float scene_start_time(SceneId id);
+float scene_timeline_duration(void);
 bool scene_parse(const char *name, SceneId *id);
 SceneFrame scene_at(float time);
 void scene_draw(Color *pixels, VirtualSize size, SceneFrame scene, float timeline_time, float beat);

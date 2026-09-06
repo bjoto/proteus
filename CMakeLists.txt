@@ -54,7 +54,14 @@ add_test(NAME cube_screenshot
           --scene cube --time 1.5
 )
 set_tests_properties(cube_screenshot PROPERTIES
-  PASS_REGULAR_EXPRESSION "scene=cube"
+  PASS_REGULAR_EXPRESSION "timeline_time=47.580"
+)
+
+add_test(NAME interactive_timeline_options
+  COMMAND proteus --scene cube --time 2.5 --help
+)
+set_tests_properties(interactive_timeline_options PROPERTIES
+  PASS_REGULAR_EXPRESSION "Usage:"
 )
 
 set(starscroll_checksum e7e36b86f9776e7d)

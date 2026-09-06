@@ -24,6 +24,16 @@ ctest --test-dir build
 ./build/proteus
 ```
 
+Start at a global timeline position, or select a scene and use a scene-local time:
+
+```sh
+./build/proteus --time 30
+./build/proteus --scene cube --time 2.5
+```
+
+The music seeks with the visuals so their timing remains synchronized. These options have the same
+meaning in interactive and screenshot modes.
+
 Controls:
 
 - `1`: 320x180

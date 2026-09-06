@@ -67,6 +67,25 @@ float scene_duration(SceneId id)
     return 0.0f;
 }
 
+float scene_start_time(SceneId id)
+{
+    float start_time = 0.0f;
+    for (size_t i = 0; i < sizeof(SCENES) / sizeof(SCENES[0]); ++i) {
+        if (SCENES[i].id == id)
+            return start_time;
+        start_time += SCENES[i].duration;
+    }
+    return 0.0f;
+}
+
+float scene_timeline_duration(void)
+{
+    float duration = 0.0f;
+    for (size_t i = 0; i < sizeof(SCENES) / sizeof(SCENES[0]); ++i)
+        duration += SCENES[i].duration;
+    return duration;
+}
+
 bool scene_parse(const char *name, SceneId *id)
 {
     for (size_t i = 0; i < sizeof(SCENES) / sizeof(SCENES[0]); ++i) {
@@ -515,11 +534,7 @@ static void draw_cube(Color *pixels, VirtualSize size, float time)
 
 SceneFrame scene_at(float time)
 {
-    float total_duration = 0.0f;
-    for (size_t i = 0; i < sizeof(SCENES) / sizeof(SCENES[0]); ++i)
-        total_duration += SCENES[i].duration;
-
-    float loop_time = fmodf(time, total_duration);
+    float loop_time = fmodf(time, scene_timeline_duration());
     for (size_t i = 0; i < sizeof(SCENES) / sizeof(SCENES[0]); ++i) {
         if (loop_time < SCENES[i].duration) {
             return (SceneFrame) {
