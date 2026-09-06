@@ -68,7 +68,9 @@ graphs total frame wall time, CPU scene generation plus texture upload, and
 presentation time (including any vertical-sync wait). It also reports rolling
 min/average/95th-percentile/max timing, the active scene, display dimensions,
 framebuffer traffic, and audio position. Samples and the graph update every frame,
-while the numeric readout refreshes four times per second so it remains readable.
+while the numeric readout refreshes four times per second so it remains readable. The profiler also
+shows smoothed sub-bass, bass, low-mid, mid, presence, and high-frequency levels, plus overall level
+and onset strength from the live XM output.
 
 ## Repeatable scene profiling
 

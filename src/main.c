@@ -1,3 +1,4 @@
+#include "audio_spectrum.h"
 #include "profiler.h"
 #include "raylib.h"
 #include "scenes.h"
@@ -409,6 +410,7 @@ int main(int argc, char **argv)
 
     Music music = { 0 };
     bool music_ready = false;
+    bool spectrum_attached = false;
     if (FileExists("assets/music/starter.xm")) {
         music = LoadMusicStream("assets/music/starter.xm");
         music_ready = IsMusicValid(music);
@@ -417,6 +419,9 @@ int main(int argc, char **argv)
             float music_start = fmodf(timeline_start, scene_timeline_duration());
             if (!xm_music_start_at(music, music_start))
                 TraceLog(LOG_WARNING, "Unable to seek XM music to %.3f seconds", music_start);
+            spectrum_attached = audio_spectrum_attach(music.stream);
+            if (!spectrum_attached)
+                TraceLog(LOG_WARNING, "Unable to attach the audio spectrum analyzer");
             PlayMusicStream(music);
         }
     }
@@ -430,6 +435,7 @@ int main(int argc, char **argv)
     bool profiler_visible = false;
     Profiler profiler = { 0 };
     ProfilerSnapshot snapshot = { 0 };
+    AudioSpectrum spectrum = { 0 };
     double next_snapshot_time = 0.0;
 
     while (!WindowShouldClose()) {
@@ -469,6 +475,8 @@ int main(int argc, char **argv)
 
         if (music_ready)
             UpdateMusicStream(music);
+        if (spectrum_attached)
+            audio_spectrum_update(&spectrum, GetFrameTime());
         float time = timeline_start + (float)(GetTime() - animation_start_time);
         float beat = time * 125.0f / 60.0f;
         SceneFrame scene = scene_at(time);
@@ -482,8 +490,8 @@ int main(int argc, char **argv)
         Rectangle destination = integer_scaled_destination(screen_width, screen_height, size);
         Rectangle source = { 0, 0, (float)size.width, (float)size.height };
         if (current_frame_started_at >= next_snapshot_time) {
-            snapshot
-                = profiler_snapshot(&profiler, scene, time, size, destination, music_ready, music);
+            snapshot = profiler_snapshot(
+                &profiler, scene, time, size, destination, music_ready, music, spectrum);
             next_snapshot_time = current_frame_started_at + 0.25;
         }
 
@@ -501,6 +509,8 @@ int main(int argc, char **argv)
         completed_frame = true;
     }
 
+    if (spectrum_attached)
+        audio_spectrum_detach(music.stream);
     if (music_ready)
         UnloadMusicStream(music);
     virtual_framebuffer_destroy(&framebuffer);

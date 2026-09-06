@@ -47,12 +47,13 @@ void profiler_add(Profiler *profiler, float frame_ms, float scene_ms, float pres
 }
 
 ProfilerSnapshot profiler_snapshot(const Profiler *profiler, SceneFrame scene, float timeline_time,
-    VirtualSize size, Rectangle destination, bool music_ready, Music music)
+    VirtualSize size, Rectangle destination, bool music_ready, Music music, AudioSpectrum spectrum)
 {
     ProfilerSnapshot snapshot = {
         .frame = profile_stats(profiler->frame_ms, profiler->next, profiler->count),
         .scene_cost = profile_stats(profiler->scene_ms, profiler->next, profiler->count),
         .present = profile_stats(profiler->present_ms, profiler->next, profiler->count),
+        .spectrum = spectrum,
         .scene = scene,
         .timeline_time = timeline_time,
         .music_played = music_ready ? GetMusicTimePlayed(music) : 0.0f,
@@ -133,8 +134,8 @@ void profiler_draw(const Profiler *profiler, const ProfilerSnapshot *snapshot, V
 {
     const int x = 12;
     const int y = 12;
-    const int width = 570;
-    const int height = 318;
+    const int width = 680;
+    const int height = 337;
     DrawRectangle(x, y, width, height, (Color) { 2, 5, 10, 225 });
     DrawRectangleLines(x, y, width, height, (Color) { 150, 175, 195, 255 });
     DrawText("PROFILER [F3]", x + 10, y + 8, 18, RAYWHITE);
@@ -170,12 +171,22 @@ void profiler_draw(const Profiler *profiler, const ProfilerSnapshot *snapshot, V
                  snapshot->music_playing ? "playing" : "off", snapshot->music_played,
                  snapshot->music_length),
         x + 10, y + 147, 14, RAYWHITE);
+    DrawText(TextFormat("bands sub %.2f  bass %.2f  low %.2f  mid %.2f  pres %.2f  high %.2f  "
+                        "level %.2f  onset %.2f",
+                 snapshot->spectrum.bands[AUDIO_SPECTRUM_SUB_BASS],
+                 snapshot->spectrum.bands[AUDIO_SPECTRUM_BASS],
+                 snapshot->spectrum.bands[AUDIO_SPECTRUM_LOW_MID],
+                 snapshot->spectrum.bands[AUDIO_SPECTRUM_MID],
+                 snapshot->spectrum.bands[AUDIO_SPECTRUM_PRESENCE],
+                 snapshot->spectrum.bands[AUDIO_SPECTRUM_HIGH], snapshot->spectrum.overall,
+                 snapshot->spectrum.onset),
+        x + 10, y + 166, 14, (Color) { 220, 150, 255, 255 });
     DrawText("rolling 240 frames:  frame wall     scene CPU+upload     present/vsync", x + 10,
-        y + 168, 13, LIGHTGRAY);
-    DrawRectangle(x + 111, y + 172, 12, 2, (Color) { 255, 210, 70, 255 });
-    DrawRectangle(x + 241, y + 172, 12, 2, (Color) { 80, 245, 135, 255 });
-    DrawRectangle(x + 392, y + 172, 12, 2, (Color) { 80, 190, 255, 255 });
-    draw_profiler_graph(profiler, (Rectangle) { x + 10, y + 187, width - 20, 120 });
+        y + 187, 13, LIGHTGRAY);
+    DrawRectangle(x + 111, y + 191, 12, 2, (Color) { 255, 210, 70, 255 });
+    DrawRectangle(x + 241, y + 191, 12, 2, (Color) { 80, 245, 135, 255 });
+    DrawRectangle(x + 392, y + 191, 12, 2, (Color) { 80, 190, 255, 255 });
+    draw_profiler_graph(profiler, (Rectangle) { x + 10, y + 206, width - 20, 120 });
 }
 
 ProfileStats profile_stats_linear(float *samples, int count)

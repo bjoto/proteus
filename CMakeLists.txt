@@ -17,6 +17,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(raylib)
 
 add_executable(proteus
+  src/audio_spectrum.c
   src/main.c
   src/profiler.c
   src/scenes.c
@@ -47,9 +48,24 @@ if(NOT MSVC)
   target_link_libraries(validate_xm PRIVATE m)
 endif()
 
+add_executable(validate_audio_spectrum
+  tools/validate_audio_spectrum.c
+  src/audio_spectrum.c
+)
+target_include_directories(validate_audio_spectrum PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+target_link_libraries(validate_audio_spectrum PRIVATE raylib)
+target_compile_options(validate_audio_spectrum PRIVATE
+  $<$<C_COMPILER_ID:AppleClang,Clang,GNU>:-Wall;-Wextra;-Wpedantic>
+)
+
 enable_testing()
 add_test(NAME starter_xm_is_valid
   COMMAND validate_xm ${CMAKE_CURRENT_SOURCE_DIR}/assets/music/starter.xm
+)
+add_test(NAME audio_spectrum_is_valid
+  COMMAND validate_audio_spectrum
 )
 add_test(NAME fire_profile_report
   COMMAND proteus --profile fire --frames 10 --warmup 2

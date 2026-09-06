@@ -1,6 +1,7 @@
 #ifndef PROTEUS_PROFILER_H
 #define PROTEUS_PROFILER_H
 
+#include "audio_spectrum.h"
 #include "scenes.h"
 
 #include <stdint.h>
@@ -29,6 +30,7 @@ typedef struct {
     ProfileStats frame;
     ProfileStats scene_cost;
     ProfileStats present;
+    AudioSpectrum spectrum;
     SceneFrame scene;
     float timeline_time;
     float observed_fps;
@@ -48,7 +50,7 @@ typedef struct {
 
 void profiler_add(Profiler *profiler, float frame_ms, float scene_ms, float present_ms);
 ProfilerSnapshot profiler_snapshot(const Profiler *profiler, SceneFrame scene, float timeline_time,
-    VirtualSize size, Rectangle destination, bool music_ready, Music music);
+    VirtualSize size, Rectangle destination, bool music_ready, Music music, AudioSpectrum spectrum);
 void profiler_draw(const Profiler *profiler, const ProfilerSnapshot *snapshot, VirtualSize size);
 ProfileStats profile_stats_linear(float *samples, int count);
 void profile_stats_print(const char *name, ProfileStats stats);

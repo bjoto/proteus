@@ -11,6 +11,7 @@ iterating on effects, timing, audio, and presentation.
 - `src/main.c`: command-line modes, application loop, virtual framebuffer, and presentation.
 - `src/scenes.c`: scene timing and software-rendered visual effects.
 - `src/profiler.c`: runtime profiling statistics, reports, and overlay.
+- `src/audio_spectrum.c`: PCM capture, FFT analysis, and smoothed frequency-band levels.
 - `src/xm_audio.c`: XM-specific playback helpers layered over raylib's bundled decoder.
 - `assets/music/`: XM music played by the demo.
 - `assets/samples/`: source WAV samples for tracker editing.
