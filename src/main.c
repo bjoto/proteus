@@ -1,6 +1,7 @@
 #include "profiler.h"
 #include "raylib.h"
 #include "scenes.h"
+#include "xm_audio.h"
 
 #include <limits.h>
 #include <math.h>
@@ -413,8 +414,10 @@ int main(int argc, char **argv)
         music_ready = IsMusicValid(music);
         if (music_ready) {
             music.looping = true;
+            float music_start = fmodf(timeline_start, scene_timeline_duration());
+            if (!xm_music_start_at(music, music_start))
+                TraceLog(LOG_WARNING, "Unable to seek XM music to %.3f seconds", music_start);
             PlayMusicStream(music);
-            SeekMusicStream(music, fmodf(timeline_start, scene_timeline_duration()));
         }
     }
     // XM playback position advances by decoded audio buffers, so use a monotonic

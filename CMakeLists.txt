@@ -20,6 +20,7 @@ add_executable(proteus
   src/main.c
   src/profiler.c
   src/scenes.c
+  src/xm_audio.c
 )
 target_link_libraries(proteus PRIVATE raylib)
 target_compile_definitions(proteus PRIVATE PROTEUS_BUILD_TYPE="$<CONFIG>")
@@ -33,8 +34,15 @@ add_custom_command(TARGET proteus POST_BUILD
           $<TARGET_FILE_DIR:proteus>/assets
 )
 
-add_executable(validate_xm tools/validate_xm.c)
-target_include_directories(validate_xm PRIVATE ${raylib_SOURCE_DIR}/src/external)
+add_executable(validate_xm
+  tools/validate_xm.c
+  src/xm_audio.c
+)
+target_include_directories(validate_xm PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/src
+  ${raylib_SOURCE_DIR}/src
+  ${raylib_SOURCE_DIR}/src/external
+)
 if(NOT MSVC)
   target_link_libraries(validate_xm PRIVATE m)
 endif()
