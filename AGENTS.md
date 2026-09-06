@@ -8,7 +8,9 @@ iterating on effects, timing, audio, and presentation.
 
 ## Layout
 
-- `src/main.c`: application loop, virtual framebuffer, scene timing, and visual effects.
+- `src/main.c`: command-line modes, application loop, virtual framebuffer, and presentation.
+- `src/scenes.c`: scene timing and software-rendered visual effects.
+- `src/profiler.c`: runtime profiling statistics, reports, and overlay.
 - `assets/music/`: XM music played by the demo.
 - `assets/samples/`: source WAV samples for tracker editing.
 - `tools/generate_audio.py`: deterministic generator for the starter samples and XM.

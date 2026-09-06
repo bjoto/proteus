@@ -16,7 +16,11 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(raylib)
 
-add_executable(proteus src/main.c)
+add_executable(proteus
+  src/main.c
+  src/profiler.c
+  src/scenes.c
+)
 target_link_libraries(proteus PRIVATE raylib)
 target_compile_definitions(proteus PRIVATE PROTEUS_BUILD_TYPE="$<CONFIG>")
 target_compile_options(proteus PRIVATE
@@ -52,3 +56,16 @@ add_test(NAME cube_screenshot
 set_tests_properties(cube_screenshot PROPERTIES
   PASS_REGULAR_EXPRESSION "scene=cube"
 )
+
+set(starscroll_checksum e7e36b86f9776e7d)
+set(fire_checksum fd61ac9ce25e71a6)
+set(plasma_checksum cac9c63d222163d3)
+set(cube_checksum 4d9cdff383c9fd17)
+foreach(scene starscroll fire plasma cube)
+  add_test(NAME ${scene}_render_checksum
+    COMMAND proteus --profile ${scene} --frames 1 --warmup 0
+  )
+  set_tests_properties(${scene}_render_checksum PROPERTIES
+    PASS_REGULAR_EXPRESSION "final_framebuffer_checksum=${${scene}_checksum}"
+  )
+endforeach()
