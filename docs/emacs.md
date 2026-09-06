@@ -34,7 +34,11 @@ Homebrew to both `PATH` and Emacs's executable search path in your init file:
 
 Restart Emacs after changing `PATH`, or evaluate both forms with `C-x C-e`.
 
-## Install the C tree-sitter grammar
+## Install the C and C++ tree-sitter grammars
+
+Emacs implements `c-ts-mode` and `c++-ts-mode` in the same library. In Emacs 30,
+loading that library probes both grammars even for a `.c` file. Install both to
+avoid a long warning about the unavailable `cpp` grammar.
 
 Evaluate this expression in Emacs:
 
@@ -42,23 +46,25 @@ Evaluate this expression in Emacs:
 (progn
   (require 'treesit)
   (add-to-list 'treesit-language-source-alist
-               '(c "https://github.com/tree-sitter/tree-sitter-c")))
+               '(c "https://github.com/tree-sitter/tree-sitter-c"))
+  (add-to-list 'treesit-language-source-alist
+               '(cpp "https://github.com/tree-sitter/tree-sitter-cpp")))
 ```
 
-Then run:
+Then run both installation commands:
 
 ```text
 M-x treesit-install-language-grammar RET c RET
+M-x treesit-install-language-grammar RET cpp RET
 ```
 
 Verify the installation by evaluating:
 
 ```elisp
-(treesit-language-available-p 'c)
+(mapcar #'treesit-language-available-p '(c cpp))
 ```
 
-The result should be `t`. On this Mac, Emacs has tree-sitter support but the C
-grammar was not installed when this guide was written.
+The result should be `(t t)`.
 
 ## Configure C and Eglot
 
@@ -69,7 +75,9 @@ Add this to `~/.emacs.d/init`:
   :ensure nil
   :config
   (add-to-list 'treesit-language-source-alist
-               '(c "https://github.com/tree-sitter/tree-sitter-c")))
+               '(c "https://github.com/tree-sitter/tree-sitter-c"))
+  (add-to-list 'treesit-language-source-alist
+               '(cpp "https://github.com/tree-sitter/tree-sitter-cpp")))
 
 (use-package c-ts-mode
   :ensure nil
@@ -91,6 +99,11 @@ managed. If the file was already open, run `M-x normal-mode` in its buffer.
 
 Eglot already knows that `clangd` serves `c-ts-mode`; no server mapping is
 needed in the configuration.
+
+If Emacs reports that the grammar for `cpp` is unavailable even though you only
+opened C source, install the `cpp` grammar as described above. This comes from
+loading Emacs's shared C/C++ tree-sitter implementation; it does not mean the
+file was classified as C++.
 
 ## Give clangd the real build flags
 
