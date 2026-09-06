@@ -52,9 +52,13 @@ enum {
     PROFILER_HISTORY_COUNT = 240,
     NOISE_TABLE_SIZE = 128,
     NOISE_TABLE_MASK = NOISE_TABLE_SIZE - 1,
+    FIRE_BLOCK_SIZE = 1,
+    FIRE_PALETTE_SIZE = 256,
+    FIRE_SAMPLE_STEP = 2,
 };
 
 static float noise_table[NOISE_TABLE_SIZE * NOISE_TABLE_SIZE];
+static Color fire_palette_table[FIRE_PALETTE_SIZE];
 
 typedef struct {
     float frame_ms[PROFILER_HISTORY_COUNT];
@@ -547,21 +551,53 @@ static Color fire_palette(float heat)
         (unsigned char)(35.0f + 190.0f * amount), 255 };
 }
 
+static void initialize_fire_palette(void)
+{
+    for (int i = 0; i < FIRE_PALETTE_SIZE; ++i)
+        fire_palette_table[i] = fire_palette((float)i / (float)(FIRE_PALETTE_SIZE - 1));
+}
+
+static Color average_color(Color left, Color right)
+{
+    return (Color) { (unsigned char)(((int)left.r + (int)right.r) / 2),
+        (unsigned char)(((int)left.g + (int)right.g) / 2),
+        (unsigned char)(((int)left.b + (int)right.b) / 2), 255 };
+}
+
 static void draw_fire(Color *pixels, VirtualSize size, float time, float beat)
 {
+    const float inverse_width = 1.0f / (float)size.width;
+    const float inverse_height = 1.0f / (float)size.height;
     float pulse = 0.03f * sinf(beat * 3.14159265f);
-    for (int y = 0; y < size.height; ++y) {
-        float height = (float)(size.height - 1 - y) / (float)size.height;
+    for (int y = 0; y < size.height; y += FIRE_SAMPLE_STEP) {
+        float height = (float)(size.height - 1 - y) * inverse_height;
         float drift = 0.07f * sinf(height * 13.0f - time * 1.8f);
-        for (int x = 0; x < size.width; ++x) {
-            float fx = (float)x / (float)size.width;
+        Color *row = pixels + y * size.width;
+        for (int x = 0; x < size.width; x += FIRE_SAMPLE_STEP) {
+            float fx = (float)x * inverse_width;
             float billow = fire_noise(fx * 7.0f + drift, height * 6.0f - time * 1.9f);
             float detail = value_noise(fx * 31.0f - time * 0.35f, height * 18.0f - time * 4.3f);
             float edge = 0.72f - height + (billow - 0.5f) * 0.62f + pulse;
             float flame = clamp01(edge * 5.0f);
             float heat = flame * clamp01(1.16f - height * 1.28f + (detail - 0.5f) * 0.25f);
-            pixels[y * size.width + x] = fire_palette(heat);
+            row[x] = fire_palette_table[(int)(heat * (float)(FIRE_PALETTE_SIZE - 1))];
         }
+    }
+
+    for (int y = 0; y < size.height; y += FIRE_SAMPLE_STEP) {
+        Color *row = pixels + y * size.width;
+        for (int x = FIRE_BLOCK_SIZE; x < size.width; x += FIRE_SAMPLE_STEP) {
+            Color right = x + 1 < size.width ? row[x + 1] : row[x - 1];
+            row[x] = average_color(row[x - 1], right);
+        }
+    }
+
+    for (int y = FIRE_BLOCK_SIZE; y < size.height; y += FIRE_SAMPLE_STEP) {
+        Color *row = pixels + y * size.width;
+        Color *top = row - size.width;
+        Color *bottom = y + 1 < size.height ? row + size.width : top;
+        for (int x = 0; x < size.width; ++x)
+            row[x] = average_color(top[x], bottom[x]);
     }
 }
 
@@ -1140,6 +1176,7 @@ int main(int argc, char **argv)
     }
 
     initialize_noise_table();
+    initialize_fire_palette();
     if (options.profile_enabled)
         return run_profile(options);
     if (options.screenshot_path != NULL)
