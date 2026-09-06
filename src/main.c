@@ -54,7 +54,7 @@ enum {
     NOISE_TABLE_MASK = NOISE_TABLE_SIZE - 1,
 };
 
-static uint8_t noise_table[NOISE_TABLE_SIZE * NOISE_TABLE_SIZE];
+static float noise_table[NOISE_TABLE_SIZE * NOISE_TABLE_SIZE];
 
 typedef struct {
     float frame_ms[PROFILER_HISTORY_COUNT];
@@ -323,16 +323,10 @@ static void initialize_noise_table(void)
     for (int y = 0; y < NOISE_TABLE_SIZE; ++y) {
         for (int x = 0; x < NOISE_TABLE_SIZE; ++x) {
             uint32_t seed = (uint32_t)x * 0x1f123bb5u ^ (uint32_t)y * 0x5f356495u;
-            noise_table[y * NOISE_TABLE_SIZE + x] = (uint8_t)(hash_u32(seed) & UINT8_MAX);
+            uint8_t sample = (uint8_t)(hash_u32(seed) & UINT8_MAX);
+            noise_table[y * NOISE_TABLE_SIZE + x] = (float)sample / (float)UINT8_MAX;
         }
     }
-}
-
-static float noise_sample(int x, int y)
-{
-    int wrapped_x = (int)((uint32_t)x & NOISE_TABLE_MASK);
-    int wrapped_y = (int)((uint32_t)y & NOISE_TABLE_MASK);
-    return (float)noise_table[wrapped_y * NOISE_TABLE_SIZE + wrapped_x] / (float)UINT8_MAX;
 }
 
 static float value_noise(float x, float y)
@@ -341,8 +335,14 @@ static float value_noise(float x, float y)
     int iy = (int)floorf(y);
     float fx = smoothstep(x - (float)ix);
     float fy = smoothstep(y - (float)iy);
-    float top = noise_sample(ix, iy) * (1.0f - fx) + noise_sample(ix + 1, iy) * fx;
-    float bottom = noise_sample(ix, iy + 1) * (1.0f - fx) + noise_sample(ix + 1, iy + 1) * fx;
+    int x0 = (int)((uint32_t)ix & NOISE_TABLE_MASK);
+    int x1 = (x0 + 1) & NOISE_TABLE_MASK;
+    int y0 = (int)((uint32_t)iy & NOISE_TABLE_MASK);
+    int y1 = (y0 + 1) & NOISE_TABLE_MASK;
+    int top_row = y0 * NOISE_TABLE_SIZE;
+    int bottom_row = y1 * NOISE_TABLE_SIZE;
+    float top = noise_table[top_row + x0] * (1.0f - fx) + noise_table[top_row + x1] * fx;
+    float bottom = noise_table[bottom_row + x0] * (1.0f - fx) + noise_table[bottom_row + x1] * fx;
     return top * (1.0f - fy) + bottom * fy;
 }
 
