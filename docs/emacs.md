@@ -125,34 +125,60 @@ already below the ignored `build` directory.
 
 ## Build and run from Emacs
 
-The repository's `.dir-locals.el` gives `M-x compile` this default command:
+Save the current buffer with `C-x C-s`, then use:
+
+```text
+C-x p c
+```
+
+This runs `project-compile` (`M-x project-compile`). It finds the project root
+through Git and starts compilation there, so it works when the current buffer
+is `src/main.c` and its working directory is `src/`. Accept the command with
+`RET`:
 
 ```sh
 cmake --build build -j 8 && ctest --test-dir build --output-on-failure
 ```
 
-Accept it with `RET`. After the first invocation, `M-x recompile` reruns it.
-Compilation mode recognizes Clang errors and warnings, so `M-g n` and `M-g p`
-move between source locations.
+That default comes from the repository's `.dir-locals.el`. Avoid plain
+`M-x compile` from a subdirectory: it uses that buffer's `default-directory`
+and would look for `src/build` rather than the project's top-level `build`
+directory.
+
+After the first build, `M-x recompile` reruns the same command from the same
+project directory. You can also switch to the `*compilation*` buffer and press
+`g`. Compilation mode recognizes Clang errors and warnings, so `M-g n` and
+`M-g p` move between source locations.
 
 The current test validates that the generated XM can be parsed and rendered by
 the same XM replay library raylib uses. It is deliberately quick enough to run
 after every build.
 
-To build and immediately run the demo, edit the command in the minibuffer to:
+To build and immediately run the demo, use `C-x p c`, edit the command in the
+minibuffer to the following, and press `RET`:
 
 ```sh
 cmake --build build -j 8 && ./build/proteus
 ```
 
 Because the demo opens a native window, stop it with `Esc`, not by killing its
-compilation buffer.
+compilation buffer. The next `M-x recompile` repeats the build-and-run command;
+use `C-x p c` again when you want to switch back to the build-and-test command.
 
 ## Formatting
 
 The checked-in `.clang-format` uses a compact WebKit-derived C style: four-space
 indentation, function braces on the following line, attached control-statement
-braces, and a 100-column limit.
+braces, no hard tabs, and a 100-column limit. The checked-in `.dir-locals.el`
+also sets `c-ts-mode` to its BSD-style indentation rules with a four-space
+offset. Classic `c-mode` gets the same four-space offset as a fallback.
+
+After changing branches or pulling changes to `.dir-locals.el`, reopen the file
+or run `M-x normal-mode` so Emacs reloads the project settings. In a C buffer,
+`M-: c-ts-mode-indent-offset RET` should then display `4` (or use
+`c-basic-offset` if the buffer uses classic `c-mode`). Emacs indentation handles
+new lines while clang-format remains the final authority for complete-file
+layout.
 
 Format the current buffer through clangd with:
 

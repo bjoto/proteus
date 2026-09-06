@@ -1,1 +1,7 @@
-((nil . ((compile-command . "cmake --build build -j 8 && ctest --test-dir build --output-on-failure"))))
+((nil . ((compile-command . "cmake --build build -j 8 && ctest --test-dir build --output-on-failure")
+         (indent-tabs-mode . nil)
+         (tab-width . 4)
+         (fill-column . 100)))
+ (c-mode . ((c-basic-offset . 4)))
+ (c-ts-mode . ((c-ts-mode-indent-style . bsd)
+               (c-ts-mode-indent-offset . 4))))

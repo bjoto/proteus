@@ -29,11 +29,57 @@ Controls:
 - `1`: 320x180
 - `2`: 320x200
 - `3`: 320x240
+- `F3`: toggle the debug profiler overlay
 - `F11`: toggle fullscreen
 - `Esc`: quit
 
 The image is always scaled by a whole number with nearest-neighbour filtering.
 Unused screen space is letterboxed.
+
+The profiler keeps a rolling 240-frame history (about four seconds at 60 FPS) and
+graphs total frame wall time, CPU scene generation plus texture upload, and
+presentation time (including any vertical-sync wait). It also reports rolling
+min/average/95th-percentile/max timing, the active scene, display dimensions,
+framebuffer traffic, and audio position. Samples and the graph update every frame,
+while the numeric readout refreshes four times per second so it remains readable.
+
+## Repeatable scene profiling
+
+Run one scene against a deterministic 60 FPS timeline and print a machine-readable
+key/value report:
+
+```sh
+./build/proteus --profile fire
+```
+
+The default run is headless and measures 600 frames after 60 warm-up frames. Use
+`--frames`, `--warmup`, and `--resolution` to change the workload. For example:
+
+```sh
+./build/proteus --profile plasma --frames 1200 --warmup 120 --resolution 320x240
+```
+
+Add `--visible` to create a graphics context and include texture-upload and presentation
+timings. Without it, those report fields are zero and the run isolates CPU scene generation.
+The report includes its build type and a final-framebuffer checksum so automated comparisons
+can reject mismatched builds or unintended visual changes. Run `./build/proteus --help` for
+the complete interface.
+
+For function-level CPU sampling on macOS, the built-in `sample` command can attach to a
+longer headless run. Start the sampler in one terminal, then the workload in another:
+
+```sh
+sample -wait proteus 10 1 -file build/fire.sample.txt
+./build/proteus --profile fire --frames 100000
+```
+
+With full Xcode selected as the active developer directory, Instruments can instead record
+a Time Profiler trace directly:
+
+```sh
+xcrun xctrace record --template 'Time Profiler' --output build/fire.trace \
+  --launch -- ./build/proteus --profile fire --frames 100000
+```
 
 ## Editing the music
 
@@ -51,9 +97,9 @@ first editing session.
 The virtual framebuffer defaults to 320x200. Resolution is intentionally not an
 architectural decision: try all three shapes while the demo runs.
 
-The visuals follow the eight-pattern music loop. A starfield opens the first
-pattern while its camera turns from looking down to looking forward; the plasma
-scene runs for the remaining seven patterns.
+The visuals follow the eight-pattern music loop. Two patterns each are given to
+the starfield, fire, and plasma. The final two introduce a rotating triangle,
+transformed, projected, and rasterized entirely in the CPU-side virtual framebuffer.
 
 ## Editor setup
 
