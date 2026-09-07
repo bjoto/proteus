@@ -1,0 +1,205 @@
+#include "renderer3d.h"
+
+#include "raymath.h"
+
+#include <math.h>
+#include <stdint.h>
+#include <stdlib.h>
+
+typedef struct {
+    float x, y, inverse_z;
+} ProjectedVertex;
+
+bool renderer3d_begin(
+    Renderer3D *r, Color *pixels, int width, int height, View3D camera, Vector3 light_direction)
+{
+    Vector3 forward = Vector3Subtract(camera.target, camera.position);
+    Vector3 right = Vector3CrossProduct(camera.up, forward);
+    if (!pixels || width <= 0 || height <= 0 || !(camera.near_plane > 0.0f)
+        || !(camera.far_plane > camera.near_plane)
+        || !(camera.vertical_fov > 0.0f && camera.vertical_fov < PI)
+        || !(Vector3Length(forward) > 0.0001f) || !(Vector3Length(right) > 0.0001f))
+        return false;
+    if ((size_t)width > SIZE_MAX / (size_t)height / sizeof(*r->depth))
+        return false;
+    size_t count = (size_t)width * (size_t)height;
+    if (count > r->capacity) {
+        float *depth = realloc(r->depth, count * sizeof(*depth));
+        if (!depth)
+            return false;
+        r->depth = depth;
+        r->capacity = count;
+    }
+    r->pixels = pixels;
+    r->width = width;
+    r->height = height;
+    r->camera = camera;
+    r->forward = Vector3Normalize(forward);
+    r->right = Vector3Normalize(right);
+    r->up = Vector3CrossProduct(r->forward, r->right);
+    r->light_direction = Vector3Normalize(light_direction);
+    r->focal_length = (float)height * 0.5f / tanf(camera.vertical_fov * 0.5f);
+    for (size_t i = 0; i < count; ++i)
+        r->depth[i] = 0.0f;
+    return true;
+}
+
+void renderer3d_destroy(Renderer3D *r)
+{
+    free(r->depth);
+    *r = (Renderer3D) { 0 };
+}
+
+static Vector3 world_to_view(const Renderer3D *r, Vector3 world)
+{
+    Vector3 relative = Vector3Subtract(world, r->camera.position);
+    return (Vector3) { Vector3DotProduct(relative, r->right), Vector3DotProduct(relative, r->up),
+        Vector3DotProduct(relative, r->forward) };
+}
+
+static float plane_distance(const Renderer3D *r, Vector3 v, int plane)
+{
+    float half_width = (float)r->width * 0.5f / r->focal_length;
+    float half_height = (float)r->height * 0.5f / r->focal_length;
+    switch (plane) {
+    case 0:
+        return v.z - r->camera.near_plane;
+    case 1:
+        return r->camera.far_plane - v.z;
+    case 2:
+        return v.z * half_width + v.x;
+    case 3:
+        return v.z * half_width - v.x;
+    case 4:
+        return v.z * half_height + v.y;
+    default:
+        return v.z * half_height - v.y;
+    }
+}
+
+// Sutherland-Hodgman clipping before projection keeps near-camera and offscreen geometry safe.
+// A triangle gains at most one vertex per plane: nine vertices after all six planes.
+static int clip_polygon(
+    const Renderer3D *r, const Vector3 *input, int count, Vector3 *output, int plane)
+{
+    int result = 0;
+    Vector3 previous = input[count - 1];
+    float previous_distance = plane_distance(r, previous, plane);
+    for (int i = 0; i < count; ++i) {
+        Vector3 current = input[i];
+        float distance = plane_distance(r, current, plane);
+        if ((distance >= 0.0f) != (previous_distance >= 0.0f)) {
+            float t = previous_distance / (previous_distance - distance);
+            output[result++] = Vector3Lerp(previous, current, t);
+        }
+        if (distance >= 0.0f)
+            output[result++] = current;
+        previous = current;
+        previous_distance = distance;
+    }
+    return result;
+}
+
+static ProjectedVertex project(const Renderer3D *r, Vector3 v)
+{
+    float inverse_z = 1.0f / v.z;
+    return (ProjectedVertex) { (float)r->width * 0.5f + v.x * r->focal_length * inverse_z,
+        (float)r->height * 0.5f - v.y * r->focal_length * inverse_z, inverse_z };
+}
+
+static float edge(ProjectedVertex a, ProjectedVertex b, float x, float y)
+{
+    return (x - a.x) * (b.y - a.y) - (y - a.y) * (b.x - a.x);
+}
+
+static void rasterize(Renderer3D *r, Vector3 va, Vector3 vb, Vector3 vc, Color color)
+{
+    ProjectedVertex a = project(r, va), b = project(r, vb), c = project(r, vc);
+    float area = edge(a, b, c.x, c.y);
+    if (fabsf(area) < 0.0001f)
+        return;
+    int min_x = (int)fmaxf(0, floorf(fminf(a.x, fminf(b.x, c.x))));
+    int max_x = (int)fminf((float)r->width - 1, ceilf(fmaxf(a.x, fmaxf(b.x, c.x))));
+    int min_y = (int)fmaxf(0, floorf(fminf(a.y, fminf(b.y, c.y))));
+    int max_y = (int)fminf((float)r->height - 1, ceilf(fmaxf(a.y, fmaxf(b.y, c.y))));
+    for (int y = min_y; y <= max_y; ++y) {
+        for (int x = min_x; x <= max_x; ++x) {
+            float px = (float)x + 0.5f, py = (float)y + 0.5f;
+            float wa = edge(b, c, px, py) / area;
+            float wb = edge(c, a, px, py) / area;
+            float wc = edge(a, b, px, py) / area;
+            if (wa < 0 || wb < 0 || wc < 0)
+                continue;
+            // Reciprocal view depth is linear in screen space; view depth itself is not.
+            float inverse_z = wa * a.inverse_z + wb * b.inverse_z + wc * c.inverse_z;
+            size_t index = (size_t)y * (size_t)r->width + (size_t)x;
+            if (inverse_z > r->depth[index]) {
+                r->depth[index] = inverse_z;
+                r->pixels[index] = color;
+            }
+        }
+    }
+}
+
+void renderer3d_draw_mesh(Renderer3D *r, const Mesh3D *mesh, Transform3D transform)
+{
+    Matrix rotation = MatrixRotateXYZ(transform.rotation);
+    for (size_t i = 0; i < mesh->triangle_count; ++i) {
+        const Triangle3D *triangle = &mesh->triangles[i];
+        Vector3 world[3];
+        for (int j = 0; j < 3; ++j) {
+            Vector3 scaled
+                = Vector3Multiply(mesh->vertices[triangle->vertices[j]], transform.scale);
+            world[j] = Vector3Add(Vector3Transform(scaled, rotation), transform.position);
+        }
+        // Deriving the normal after transforming also handles nonuniform building scales.
+        Vector3 normal = Vector3Normalize(Vector3CrossProduct(
+            Vector3Subtract(world[1], world[0]), Vector3Subtract(world[2], world[0])));
+        if (Vector3DotProduct(normal, Vector3Subtract(r->camera.position, world[0])) <= 0)
+            continue;
+        float brightness = 0.30f + 0.70f * fmaxf(0, Vector3DotProduct(normal, r->light_direction));
+        Color color = { (unsigned char)(triangle->color.r * brightness),
+            (unsigned char)(triangle->color.g * brightness),
+            (unsigned char)(triangle->color.b * brightness), 255 };
+        Vector3 buffers[2][12];
+        for (int j = 0; j < 3; ++j)
+            buffers[0][j] = world_to_view(r, world[j]);
+        int count = 3, source = 0;
+        for (int plane = 0; plane < 6 && count >= 3; ++plane) {
+            count = clip_polygon(r, buffers[source], count, buffers[1 - source], plane);
+            source = 1 - source;
+        }
+        for (int j = 1; j + 1 < count; ++j)
+            rasterize(r, buffers[source][0], buffers[source][j], buffers[source][j + 1], color);
+    }
+}
+
+void renderer3d_draw_box(Renderer3D *r, Transform3D transform, Color color)
+{
+    static const Vector3 vertices[] = {
+        { -0.5f, -0.5f, -0.5f },
+        { 0.5f, -0.5f, -0.5f },
+        { 0.5f, 0.5f, -0.5f },
+        { -0.5f, 0.5f, -0.5f },
+        { -0.5f, -0.5f, 0.5f },
+        { 0.5f, -0.5f, 0.5f },
+        { 0.5f, 0.5f, 0.5f },
+        { -0.5f, 0.5f, 0.5f },
+    };
+    Triangle3D triangles[] = {
+        { { 0, 2, 1 }, color },
+        { { 0, 3, 2 }, color },
+        { { 5, 7, 4 }, color },
+        { { 5, 6, 7 }, color },
+        { { 4, 3, 0 }, color },
+        { { 4, 7, 3 }, color },
+        { { 1, 6, 5 }, color },
+        { { 1, 2, 6 }, color },
+        { { 3, 6, 2 }, color },
+        { { 3, 7, 6 }, color },
+        { { 4, 1, 5 }, color },
+        { { 4, 0, 1 }, color },
+    };
+    Mesh3D mesh = { vertices, triangles, sizeof(triangles) / sizeof(triangles[0]) };
+    renderer3d_draw_mesh(r, &mesh, transform);
+}

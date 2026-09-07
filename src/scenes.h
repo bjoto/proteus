@@ -25,6 +25,7 @@ typedef struct {
 } SceneFrame;
 
 void scenes_initialize(void);
+void scenes_shutdown(void);
 const char *scene_name(SceneId id);
 float scene_duration(SceneId id);
 float scene_start_time(SceneId id);

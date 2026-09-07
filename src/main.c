@@ -385,6 +385,7 @@ int main(int argc, char **argv)
     }
 
     scenes_initialize();
+    atexit(scenes_shutdown);
     if (options.profile_enabled)
         return run_profile(options);
     if (options.screenshot_path != NULL)

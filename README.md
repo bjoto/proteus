@@ -127,8 +127,10 @@ The virtual framebuffer defaults to 320x200. Resolution is intentionally not an
 architectural decision: try all three shapes while the demo runs.
 
 The visuals follow the eight-pattern music loop. Two patterns each are given to
-the starfield, fire, and plasma. The final two introduce a rotating, shaded cube,
-transformed, projected, and rasterized entirely in the CPU-side virtual framebuffer.
+the starfield, fire, and plasma. The final two introduce a 3D blockout: a rotating cube
+above a plinth, a street, and simple buildings viewed by an orbiting camera. All geometry
+is transformed, clipped, depth-tested, and rasterized in the CPU-side virtual framebuffer.
+This is the foundation for a future city fly-by; see [the 3D renderer notes](docs/3D.md).
 
 ## Editor setup
 

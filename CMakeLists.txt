@@ -20,6 +20,7 @@ add_executable(proteus
   src/audio_spectrum.c
   src/main.c
   src/profiler.c
+  src/renderer3d.c
   src/scenes.c
   src/xm_audio.c
 )
@@ -61,6 +62,13 @@ target_compile_options(validate_audio_spectrum PRIVATE
 )
 
 enable_testing()
+add_executable(validate_renderer3d tools/validate_renderer3d.c src/renderer3d.c)
+target_include_directories(validate_renderer3d PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(validate_renderer3d PRIVATE raylib)
+target_compile_options(validate_renderer3d PRIVATE
+  $<$<C_COMPILER_ID:AppleClang,Clang,GNU>:-Wall;-Wextra;-Wpedantic>
+)
+add_test(NAME renderer3d_is_valid COMMAND validate_renderer3d)
 add_test(NAME starter_xm_is_valid
   COMMAND validate_xm ${CMAKE_CURRENT_SOURCE_DIR}/assets/music/starter.xm
 )
@@ -91,7 +99,7 @@ set_tests_properties(interactive_timeline_options PROPERTIES
 set(starscroll_checksum e7e36b86f9776e7d)
 set(fire_checksum fd61ac9ce25e71a6)
 set(plasma_checksum cac9c63d222163d3)
-set(cube_checksum 4d9cdff383c9fd17)
+set(cube_checksum a3519c734d31a9dc)
 foreach(scene starscroll fire plasma cube)
   add_test(NAME ${scene}_render_checksum
     COMMAND proteus --profile ${scene} --frames 1 --warmup 0
