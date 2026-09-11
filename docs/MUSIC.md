@@ -46,14 +46,59 @@ for example `proteus-theme.xm`, and update the filename in `src/main.c`.
 
 ## Making new samples without a sample library
 
-The functions in `tools/generate_audio.py` are deliberately small. Useful
-parameters to change are:
+Run `python3 tools/generate_audio.py` from the repository root. It uses only the
+Python standard library. Check sample encoding with
+`python3 -m unittest discover -s tools -p 'test_generate_audio.py'`, then run
+`ctest --test-dir build --output-on-failure` to check playback through the XM decoder.
 
-- exponential decay: larger numbers make a shorter, tighter sound;
-- oscillator frequency: changes pitch;
-- mixtures of sine and saw waves: changes timbre;
-- the fixed random seed: creates a different but repeatable noise texture.
+The drums in `make_drums()` are synthesized at 44.1 kHz and stored as 16-bit mono
+PCM in both the WAVs and XM. Each has its own fixed noise seed:
 
-This gives the production its own sound rather than making it dependent on an
-unknown sample pack. We can add richer instruments, loops, or recorded samples
-once the musical direction is clearer.
+- Kick: an exponential pitch sweep from 155 Hz to 49 Hz, a short second harmonic,
+  soft saturation, and a filtered noise beater transient. Sweep time controls the
+  punch; body decay controls the weight and length.
+- Snare: two decaying drum-body modes plus bandpass-filtered wire noise and a short
+  snap. Body/noise balance controls the tone; wire decay controls the rattle.
+- Closed hi-hat: six inharmonic sine partials mixed with filtered noise, with a
+  fast attack and two short decays. Filter frequency controls brightness and the
+  slower decay controls how tightly the hat closes.
+
+`finish_sample()` removes subsonic DC, fades the sample boundaries, and sets a
+separate peak level for each instrument with headroom. XM tuning preserves the
+drums' intended playback rate at C-4; its finite tuning resolution introduces a
+small rounding error.
+
+The bass in `make_bass()` also uses 44.1 kHz/16-bit mono PCM. A finite mix of 24
+saw/pulse-like harmonics gives it a bright pluck, with a brightness cutoff falling
+from 1800 Hz towards 260 Hz over a 65 ms decay. A separate fundamental decays more
+slowly to retain low-end weight. The 2.5 ms attack and 45 ms tail fade soften the
+sample boundaries. Change the harmonic weights for the tone, cutoff and its decay
+for the pluck, or body decay for a longer bass. These times describe the source
+sample; lower tracker notes stretch it during playback.
+
+The lead/chord instrument in `make_synth()` is a 44.1 kHz/16-bit pluck with three
+saw-like voices: a strong centre voice and two quieter voices detuned by ±5 cents.
+Twenty harmonics per voice keep the spectrum controlled when the melody plays
+high notes. Brightness falls from 2600 Hz towards 650 Hz with an 85 ms decay;
+the amplitude decays over 160 ms. A 4 ms attack and 60 ms tail fade smooth the
+boundaries of the 440 ms source sample. Detuning and voice gains control thickness;
+the cutoff and harmonic weights control how sharply chords and lead cut through.
+Higher tracker notes shorten the source envelope during playback.
+
+Both melodic fundamentals compensate for the old samples' approximate XM tuning
+so the existing bass line, chords, and lead keep their audible pitch. All five
+instruments now use 44.1 kHz/16-bit PCM. Instrument slots, patterns, volumes, and
+125 BPM/speed-6 timing are unchanged.
+
+Audition `assets/samples/kick.wav`, `snare.wav`, and `hat.wav` individually, then
+listen to `./build/proteus --time 7.68` for the drums with bass and the later full
+arrangement. To compare revisions, keep a copy of the previous XM before
+regenerating, and solo channels 1–3 in FastTracker II Clone.
+
+For the bass, audition `assets/samples/bass.wav`, then solo channel 4 in the
+tracker and listen with the drums at 7.68 seconds and the chords at 15.36 seconds.
+
+For the synth, audition `assets/samples/synth.wav`, then listen to
+`./build/proteus --time 15.36` for chords and `./build/proteus --time 23.04` for
+the full arrangement with melody. Solo channels 5–7 for the chord voicing or
+channel 8 for the lead in FastTracker II Clone.

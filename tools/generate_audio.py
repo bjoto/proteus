@@ -7,57 +7,179 @@ import math
 import random
 import struct
 import wave
+from dataclasses import dataclass
 from pathlib import Path
 
-RATE = 16_000
+LEGACY_RATE = 16_000
+DRUM_RATE = 44_100
+MELODIC_FREQUENCY = 130.81 * (8363 * 2 ** (11 / 12)) / LEGACY_RATE
 ROOT = Path(__file__).resolve().parents[1]
 SAMPLE_DIR = ROOT / "assets" / "samples"
 MUSIC_DIR = ROOT / "assets" / "music"
 
 
-def clamp(value: float) -> int:
-    return max(-127, min(127, round(value * 127)))
+@dataclass
+class Sample:
+    pcm: list[int]
+    rate: int = 44_100
+    bits: int = 16
 
 
-def make_samples() -> dict[str, list[int]]:
-    rng = random.Random(0x50524F54)
-
-    def synth(seconds: float, fn) -> list[int]:
-        return [clamp(fn(i / RATE, i)) for i in range(int(seconds * RATE))]
-
-    kick = synth(0.38, lambda t, _:
-        math.sin(2*math.pi*(92*t - 62*t*t))*math.exp(-11*t))
-    snare = synth(0.28, lambda t, i:
-        (0.78*rng.uniform(-1, 1) + 0.22*math.sin(2*math.pi*185*t))
-        * math.exp(-15*t) * (1 if i % 2 else 0.92))
-    hat = synth(0.075, lambda t, _:
-        rng.uniform(-1, 1)*math.exp(-48*t))
-    bass = synth(0.48, lambda t, _:
-        (0.72*math.sin(2*math.pi*130.81*t) +
-         0.20*math.sin(2*math.pi*261.62*t))*math.exp(-3.2*t))
-    lead = synth(0.34, lambda t, _:
-        ((2*((130.81*t) % 1)-1)*0.55 + math.sin(2*math.pi*130.81*t)*0.25)
-        * math.exp(-4.0*t))
-    return {"kick": kick, "snare": snare, "hat": hat, "bass": bass, "synth": lead}
+def bandpass(values: list[float], frequency: float, q: float) -> list[float]:
+    """Two-pole, unity-peak bandpass at DRUM_RATE; fresh state for each hit."""
+    omega = math.tau * frequency / DRUM_RATE
+    alpha = math.sin(omega) / (2 * q)
+    b0 = alpha / (1 + alpha)
+    a1 = -2 * math.cos(omega) / (1 + alpha)
+    a2 = (1 - alpha) / (1 + alpha)
+    x1 = x2 = y1 = y2 = 0.0
+    out = []
+    for x in values:
+        y = b0 * (x - x2) - a1 * y1 - a2 * y2
+        out.append(y)
+        x2, x1, y2, y1 = x1, x, y1, y
+    return out
 
 
-def write_wav(path: Path, samples: list[int]) -> None:
+def finish_sample(values: list[float], peak: float, rate: int,
+                  attack_seconds: float = 0.0004,
+                  release_seconds: float = 0.012) -> Sample:
+    """Remove subsonic DC, fade boundaries, and set headroom before 16-bit export."""
+    pole = math.exp(-math.tau * 12 / rate)
+    previous = state = 0.0
+    cleaned = []
+    for i, value in enumerate(values):
+        state = value - previous + pole * state
+        previous = value
+        attack = min(1.0, i / (attack_seconds * rate))
+        release = min(1.0, (len(values) - 1 - i) / (release_seconds * rate))
+        cleaned.append(state * attack * release)
+    gain = peak * 32767 / max(abs(value) for value in cleaned)
+    return Sample([round(value * gain) for value in cleaned], rate, 16)
+
+
+def make_drums() -> dict[str, Sample]:
+    # Independent seeds keep edits to one instrument from changing the others.
+    def noise(seconds: float, seed: int) -> list[float]:
+        rng = random.Random(seed)
+        return [rng.uniform(-1, 1) for _ in range(round(seconds * DRUM_RATE))]
+
+    beater = bandpass(noise(0.5, 0x4B49434B), 3200, 0.8)
+    kick = []
+    for i, click in enumerate(beater):
+        t = i / DRUM_RATE
+        # Integrated exponential sweep: 155 Hz at impact, settling to 49 Hz.
+        phase = math.tau * (49 * t + 106 * 0.022 * (1 - math.exp(-t / 0.022)))
+        body = math.sin(phase) * math.exp(-t / 0.115)
+        body += 0.16 * math.sin(2 * phase) * math.exp(-t / 0.045)
+        kick.append(0.88 * math.tanh(1.35 * body)
+                    + 0.22 * click * math.exp(-t / 0.007))
+
+    snare_noise = noise(0.34, 0x534E4152)
+    wires = bandpass(snare_noise, 5200, 0.65)
+    snap = bandpass(snare_noise, 1800, 0.9)
+    snare = []
+    for i, wire in enumerate(wires):
+        t = i / DRUM_RATE
+        phase = math.tau * (185 * t + 45 * 0.012 * (1 - math.exp(-t / 0.012)))
+        body = 0.48 * math.sin(phase) * math.exp(-t / 0.045)
+        body += 0.24 * math.sin(math.tau * 330 * t) * math.exp(-t / 0.028)
+        envelope = (1 - math.exp(-t / 0.001)) * math.exp(-t / 0.065)
+        snare.append(body + 1.15 * wire * envelope
+                     + 0.22 * snap[i] * math.exp(-t / 0.009))
+
+    hat_noise = noise(0.105, 0x484154)
+    # Inharmonic sine partials give a metallic texture without aliased square waves.
+    partials = (3617, 4523, 5789, 7021, 8863, 11173)
+    metal = [sum(math.sin(math.tau * frequency * i / DRUM_RATE + j * 0.7)
+                 for j, frequency in enumerate(partials)) / len(partials)
+             for i in range(len(hat_noise))]
+    shimmer = bandpass([0.65 * n + 0.35 * m for n, m in zip(hat_noise, metal)],
+                       8500, 0.75)
+    hat = []
+    for i, value in enumerate(shimmer):
+        t = i / DRUM_RATE
+        envelope = 0.75 * math.exp(-t / 0.012) + 0.25 * math.exp(-t / 0.028)
+        hat.append(value * envelope)
+
+    return {"kick": finish_sample(kick, 0.90, DRUM_RATE),
+            "snare": finish_sample(snare, 0.82, DRUM_RATE),
+            "hat": finish_sample(hat, 0.58, DRUM_RATE)}
+
+
+def make_bass() -> Sample:
+    """A plucked, harmonic-rich bass with a stable fundamental and closing brightness."""
+    rate = 44_100
+    # Match the old bass's audible pitch: its 16 kHz PCM used relative note +11
+    # without finetuning. The new sample instead plays at its actual sample rate.
+    frequency = MELODIC_FREQUENCY
+    values = []
+    for i in range(round(0.48 * rate)):
+        t = i / rate
+        phase = math.tau * frequency * t
+        cutoff = 260 + 1540 * math.exp(-t / 0.065)
+        tone = 0.0
+        # Finite saw/pulse-like harmonic mix; no discontinuous oscillators.
+        # All 24 partials remain well below Nyquist, even at the highest bass note.
+        for harmonic in range(1, 25):
+            weight = (0.65 + (0.35 if harmonic % 2 else 0.0)) / harmonic
+            brightness = 1 / math.sqrt(1 + (harmonic * frequency / cutoff) ** 4)
+            tone += weight * brightness * math.cos(harmonic * phase)
+        body = 0.35 * math.cos(phase) * math.exp(-t / 0.18)
+        values.append(0.65 * tone * math.exp(-t / 0.105) + body)
+    return finish_sample(values, 0.82, rate, attack_seconds=0.0025,
+                         release_seconds=0.045)
+
+
+def make_synth() -> Sample:
+    """A gently detuned, bright pluck shared by the chord stabs and melody."""
+    rate = 44_100
+    # Keep the centre voice strongest so chords retain clear pitch and definition.
+    voices = ((1.0, 0.6), (2 ** (-5 / 1200), 0.2), (2 ** (5 / 1200), 0.2))
+    values = []
+    for i in range(round(0.44 * rate)):
+        t = i / rate
+        cutoff = 650 + 1950 * math.exp(-t / 0.085)
+        tone = 0.0
+        # A finite saw-like spectrum avoids the old ramp oscillator's hard edges.
+        # Twenty partials leave headroom below Nyquist at the arrangement's high notes.
+        for ratio, gain in voices:
+            frequency = MELODIC_FREQUENCY * ratio
+            phase = math.tau * frequency * t
+            for harmonic in range(1, 21):
+                weight = 1 / harmonic ** 1.15
+                brightness = 1 / math.sqrt(1 + (harmonic * frequency / cutoff) ** 4)
+                tone += gain * weight * brightness * math.cos(harmonic * phase)
+        values.append(tone * math.exp(-t / 0.16))
+    return finish_sample(values, 0.68, rate, attack_seconds=0.004,
+                         release_seconds=0.060)
+
+
+def make_samples() -> dict[str, Sample]:
+    return {**make_drums(), "bass": make_bass(), "synth": make_synth()}
+
+
+def write_wav(path: Path, sample: Sample) -> None:
     with wave.open(str(path), "wb") as out:
         out.setnchannels(1)
-        out.setsampwidth(1)
-        out.setframerate(RATE)
-        out.writeframes(bytes(sample + 128 for sample in samples))
+        out.setsampwidth(sample.bits // 8)
+        out.setframerate(sample.rate)
+        if sample.bits == 16:
+            out.writeframes(struct.pack(f"<{len(sample.pcm)}h", *sample.pcm))
+        else:
+            out.writeframes(bytes(value + 128 for value in sample.pcm))
 
 
 def fixed(text: str, length: int) -> bytes:
     return text.encode("ascii")[:length].ljust(length, b"\0")
 
 
-def delta_encode(samples: list[int]) -> bytes:
+def delta_encode(samples: list[int], bits: int = 8) -> bytes:
     previous = 0
     encoded = bytearray()
     for sample in samples:
-        encoded.append((sample - previous) & 0xFF)
+        delta = (sample - previous) & ((1 << bits) - 1)
+        encoded.extend(delta.to_bytes(bits // 8, "little"))
         previous = sample
     return bytes(encoded)
 
@@ -101,7 +223,7 @@ def pattern(index: int, channels: int = 8, rows: int = 64) -> bytes:
     return struct.pack("<IBHH", 9, 0, rows, len(data)) + data
 
 
-def instrument(name: str, samples: list[int]) -> bytes:
+def instrument(name: str, sample: Sample) -> bytes:
     header = bytearray()
     header += struct.pack("<I", 263)
     header += fixed(name, 22) + b"\0" + struct.pack("<H", 1)
@@ -113,15 +235,20 @@ def instrument(name: str, samples: list[int]) -> bytes:
     header += bytes(20)                         # FT2 reserved bytes
     assert len(header) == 263
 
+    # XM expresses C-4 playback rate as a relative note plus 1/128-semitone tuning.
+    tuning = round(12 * 128 * math.log2(sample.rate / 8363))
+    relative = (tuning + 64) // 128
+    fine = tuning - relative * 128
     sample_header = struct.pack(
         "<IIIBbBBbB22s",
-        len(samples), 0, 0, 56, 0, 0, 128, 11, 0, fixed(name, 22)
+        len(sample.pcm) * (sample.bits // 8), 0, 0, 56, fine,
+        0x10 if sample.bits == 16 else 0, 128, relative, 0, fixed(name, 22)
     )
     assert len(sample_header) == 40
-    return bytes(header) + sample_header + delta_encode(samples)
+    return bytes(header) + sample_header + delta_encode(sample.pcm, sample.bits)
 
 
-def write_xm(path: Path, samples: dict[str, list[int]]) -> None:
+def write_xm(path: Path, samples: dict[str, Sample]) -> None:
     names = ["kick", "snare", "hat", "bass", "synth"]
     orders = bytes(range(8)).ljust(256, b"\0")
     song_header = struct.pack("<8H", 8, 0, 8, 8, len(names), 1, 6, 125) + orders
