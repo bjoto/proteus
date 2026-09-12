@@ -311,10 +311,12 @@ failed:
 
 static Matrix transform_matrix(Transform3D transform)
 {
+    // MatrixMultiply(A, B) composes B before A in raymath. This matches the CPU renderer's
+    // explicit order: scale a mesh vertex, rotate it, then add its world position.
     return MatrixMultiply(
-        MatrixTranslate(transform.position.x, transform.position.y, transform.position.z),
-        MatrixMultiply(MatrixRotateXYZ(transform.rotation),
-            MatrixScale(transform.scale.x, transform.scale.y, transform.scale.z)));
+        MatrixMultiply(MatrixScale(transform.scale.x, transform.scale.y, transform.scale.z),
+            MatrixRotateXYZ(transform.rotation)),
+        MatrixTranslate(transform.position.x, transform.position.y, transform.position.z));
 }
 
 static void set_object_color(Shader shader, Color color)
