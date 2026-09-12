@@ -1,5 +1,6 @@
 #include "external/glad.h"
 #include "raylib.h"
+#include "raymath.h"
 #include "renderer_gpu.h"
 #include "rlgl.h"
 
@@ -282,6 +283,103 @@ static bool verify_shader_rejection(void)
     return rejected;
 }
 
+static bool verify_winding_and_normals(FixtureSize size)
+{
+    static const char NORMAL_VERTEX_SHADER[]
+        = "#version 330\n"
+          "in vec3 vertexPosition;\n"
+          "in vec3 vertexNormal;\n"
+          "uniform mat4 mvp;\n"
+          "out vec3 normal;\n"
+          "void main() { normal = vertexNormal; gl_Position = mvp * vec4(vertexPosition, 1.0); }\n";
+    static const char NORMAL_FRAGMENT_SHADER[]
+        = "#version 330\n"
+          "in vec3 normal;\n"
+          "out vec4 finalColor;\n"
+          "void main() { finalColor = vec4(normal * .5 + .5, 1.0); }\n";
+    Camera3D camera = {
+        .position = { 0.0f, 0.0f, 8.0f },
+        .target = { 0.0f, 0.0f, 0.0f },
+        .up = { 0.0f, 1.0f, 0.0f },
+        .fovy = 4.0f,
+        .projection = CAMERA_ORTHOGRAPHIC,
+    };
+    RenderTexture2D target = LoadRenderTexture(size.width, size.height);
+    if (!IsRenderTextureValid(target)) {
+        fprintf(stderr, "GPU fixture: winding/normal framebuffer is incomplete\n");
+        if (target.id != 0)
+            UnloadRenderTexture(target);
+        return false;
+    }
+    float *vertices = malloc(9 * sizeof(*vertices));
+    float *normals = malloc(9 * sizeof(*normals));
+    if (vertices == NULL || normals == NULL) {
+        free(normals);
+        free(vertices);
+        UnloadRenderTexture(target);
+        return false;
+    }
+    float positions[] = { -.3f, -.8f, 0, .3f, -.8f, 0, 0, .2f, 0 };
+    float normal_data[] = { 0, 1, 0, 0, 1, 0, 0, 1, 0 };
+    memcpy(vertices, positions, sizeof(positions));
+    memcpy(normals, normal_data, sizeof(normal_data));
+    Mesh normal_mesh
+        = { .vertexCount = 3, .triangleCount = 1, .vertices = vertices, .normals = normals };
+    UploadMesh(&normal_mesh, false);
+    Shader normal_shader = LoadShaderFromMemory(NORMAL_VERTEX_SHADER, NORMAL_FRAGMENT_SHADER);
+    if (normal_mesh.vaoId == 0 || !IsShaderValid(normal_shader)
+        || normal_shader.id == rlGetShaderIdDefault()) {
+        fprintf(stderr, "GPU fixture: normal submission shader failed\n");
+        if (normal_mesh.vaoId != 0)
+            UnloadMesh(normal_mesh);
+        if (normal_shader.id != 0 && normal_shader.id != rlGetShaderIdDefault())
+            UnloadShader(normal_shader);
+        UnloadRenderTexture(target);
+        return false;
+    }
+    Material material = LoadMaterialDefault();
+    material.shader = normal_shader;
+
+    BeginTextureMode(target);
+    ClearBackground(BLACK);
+    BeginMode3D(camera);
+    rlEnableBackfaceCulling();
+    DrawTriangle3D((Vector3) { -1.8f, -1.0f, 0 }, (Vector3) { -.6f, -1.0f, 0 },
+        (Vector3) { -1.2f, 1.0f, 0 }, GREEN);
+    // raylib batches immediate triangles, so flush while culling is enabled before changing it.
+    rlDrawRenderBatchActive();
+    DrawTriangle3D((Vector3) { .6f, -1.0f, 0 }, (Vector3) { 1.2f, 1.0f, 0 },
+        (Vector3) { 1.8f, -1.0f, 0 }, RED);
+    rlDrawRenderBatchActive();
+    rlDisableBackfaceCulling();
+    DrawMesh(normal_mesh, material, MatrixIdentity());
+    EndMode3D();
+    EndTextureMode();
+
+    Image image = LoadImageFromTexture(target.texture);
+    bool valid = image.data != NULL;
+    if (valid)
+        ImageFlipVertical(&image);
+    Color front = valid ? GetImageColor(image, size.width / 3, size.height / 2) : BLACK;
+    Color back = valid ? GetImageColor(image, size.width * 2 / 3, size.height / 2) : BLACK;
+    Color normal = valid ? GetImageColor(image, size.width / 2, size.height / 2) : BLACK;
+    if (!valid || !color_matches(front, GREEN) || !color_matches(back, BLACK) || normal.g < 220
+        || normal.r < 100 || normal.r > 155 || normal.b < 100 || normal.b > 155) {
+        fprintf(stderr,
+            "GPU fixture: winding/normal check failed (front=%u,%u,%u back=%u,%u,%u "
+            "normal=%u,%u,%u)\n",
+            front.r, front.g, front.b, back.r, back.g, back.b, normal.r, normal.g, normal.b);
+        valid = false;
+    }
+    UnloadImage(image);
+    material.shader.id = rlGetShaderIdDefault();
+    UnloadMaterial(material);
+    UnloadShader(normal_shader);
+    UnloadMesh(normal_mesh);
+    UnloadRenderTexture(target);
+    return valid;
+}
+
 static void present_target(RenderTexture2D target, FixtureOptions options)
 {
     Rectangle source = { options.city ? (float)target.texture.width : 0, 0,
@@ -314,6 +412,8 @@ int main(int argc, char **argv)
     print_context_details(options.size);
 
     int result = 1;
+    WaterfrontGpuScene city = { 0 };
+    RenderTexture2D target = { 0 };
     if (options.invalid_shader) {
         result = verify_shader_rejection() ? 1 : 2;
         CloseWindow();
@@ -333,9 +433,9 @@ int main(int argc, char **argv)
             return 1;
         }
     }
+    if (options.check && !verify_shader_rejection())
+        goto cleanup;
 
-    WaterfrontGpuScene city = { 0 };
-    RenderTexture2D target = { 0 };
     FixtureSize intermediate = { options.size.width / 2, options.size.height / 2 };
     if (!replace_target(&target, intermediate) || !replace_target(&target, options.size))
         goto cleanup;
@@ -349,6 +449,10 @@ int main(int argc, char **argv)
     Image image = LoadImageFromTexture(target.texture);
     if (!normalize_and_check_image(
             &image, options.size, options.check && !options.city, options.city)) {
+        UnloadImage(image);
+        goto cleanup;
+    }
+    if (options.check && !options.city && !verify_winding_and_normals(options.size)) {
         UnloadImage(image);
         goto cleanup;
     }

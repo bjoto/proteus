@@ -6,6 +6,8 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+option(PROTEUS_GPU_TESTS "Enable GPU-context CTest cases and the GPU review target" OFF)
+
 include(FetchContent)
 set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(
@@ -149,3 +151,23 @@ add_test(NAME cube_start_screenshot
 set_tests_properties(cube_start_screenshot PROPERTIES
   PASS_REGULAR_EXPRESSION "scene=cube"
 )
+
+if(PROTEUS_GPU_TESTS)
+  find_package(Python3 REQUIRED COMPONENTS Interpreter)
+  set(PROTEUS_GPU_REVIEW_DIR "${CMAKE_CURRENT_BINARY_DIR}/gpu-review")
+  set(PROTEUS_GPU_REVIEW_COMMAND
+    ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/gpu_review.py
+    --proteus $<TARGET_FILE:proteus>
+    --gpu-fixture $<TARGET_FILE:gpu_fixture>
+    --output ${PROTEUS_GPU_REVIEW_DIR}
+    --build-directory ${CMAKE_CURRENT_BINARY_DIR}
+  )
+  add_custom_target(gpu_review
+    COMMAND ${PROTEUS_GPU_REVIEW_COMMAND}
+    DEPENDS proteus gpu_fixture
+    USES_TERMINAL
+    COMMENT "Capturing CPU/GPU waterfront review artifacts"
+  )
+  add_test(NAME gpu_review COMMAND ${PROTEUS_GPU_REVIEW_COMMAND})
+  set_tests_properties(gpu_review PROPERTIES LABELS "gpu" RUN_SERIAL TRUE)
+endif()

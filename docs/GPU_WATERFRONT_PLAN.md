@@ -445,7 +445,7 @@ its remaining manual motion review is called out below rather than being treated
 | 03 Shared scene evaluation | Complete | Scene-owned static geometry and explicit scene-time evaluation now feed the unchanged CPU submission order. See record below. |
 | 04 Static GPU city | Implemented, verification pending | Static city diagnostic path added; see record below. |
 | 05 City life/application integration | Implemented, verification pending | GPU city life and application backend routing are in place; desktop GPU checks remain pending. See record below. |
-| 06 GPU regression/profiling | Pending | |
+| 06 GPU regression/profiling | Implemented, verification pending | Opt-in `PROTEUS_GPU_TESTS` adds a context-required capture/review CTest and target. Desktop context verification remains pending. |
 | 07 Surface detail | Pending | |
 | 08 Local lighting | Pending | |
 | 09 Directional shadows | Pending | |
@@ -577,6 +577,28 @@ development desktop, capture and inspect times 0, 2.5, 5, 10, and 15 at 320x200 
 compare direct seeks with sequential evaluation; then manually check the full route, 1/2/3
 resolution changes, window resize, fullscreen, quit, and audio playback/seek. The next step is
 06 only after that review.
+
+### Step 06 record — 2026-09-12
+
+Added the default-off `PROTEUS_GPU_TESTS` CMake option, labelled `gpu` CTest case, and the
+`gpu_review` build target. With the option enabled, both execute `tools/gpu_review.py`, which first
+runs the GPU fixture and then captures the CPU and GPU `cube` paths at local times 0, 1.7, 2.7, 5,
+7.5, 10, and 15 seconds. It leaves PNG sources, a CPU | GPU | amplified-diff contact sheet, and a
+JSON manifest containing CMake build details plus the fixture's OpenGL vendor/renderer/version
+report under `build/gpu-review/`. The review checks dimensions, exposed sky-band ordering, city
+coverage, and broad lower-frame lit moving-object regions with tolerances. It does not compare
+cross-driver image hashes. `gpu_fixture --check` now also probes explicit front/back winding and
+the normal vertex attribute, in addition to its existing target, orientation, depth, and shader
+failure checks.
+
+With the option off, `cmake --build build -j` and the ordinary display-free
+`ctest --test-dir build --output-on-failure` passed all 12 tests in 0.81 seconds. The opt-in
+configuration exposed exactly one `gpu_review` CTest (`ctest --test-dir build -N -L gpu`). Attempting
+the review target in this session again stalled while creating the hidden context, before the
+fixture could emit a manifest or OpenGL details, so GPU acceptance remains pending. Run
+`cmake --build build --target gpu_review` on the desktop session and inspect
+`build/gpu-review/contact-sheet.png`; a context/shader/capture failure intentionally fails the
+target and CTest instead of skipping it.
 
 ## Technical references
 

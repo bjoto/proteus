@@ -65,6 +65,29 @@ interpret the time relative to its start:
 
 Screenshot mode also accepts `--resolution` and defaults to 320x200.
 
+## GPU visual review
+
+GPU checks are deliberately opt-in because they need a desktop graphics context. Configure them on
+a machine that can create a raylib/OpenGL window, then run either the labelled CTest case or the
+review target:
+
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DPROTEUS_GPU_TESTS=ON
+cmake --build build -j
+ctest --test-dir build -L gpu --output-on-failure
+# or: cmake --build build --target gpu_review
+```
+
+The review command captures the `cube` scene at local times 0, 1.7, 2.7, 5, 7.5, 10, and 15 seconds
+with both renderers. It writes `build/gpu-review/contact-sheet.png` (CPU | GPU | amplified visual
+diff), all source captures, and `manifest.json` with the build and OpenGL renderer details. It checks
+dimensions, city coverage, sky-band presence/order, and broad lit moving-object regions with
+tolerances; it never compares CPU/GPU image hashes. The GPU fixture in the same command checks
+render target dimensions, orientation, depth, winding, normal submission, and shader rejection.
+
+If no graphics context is available in an automated session, the GPU test fails and records the
+context error in the manifest. Ordinary CTest does not include this test and remains display-free.
+
 The profiler keeps a rolling 240-frame history (about four seconds at 60 FPS) and
 graphs total frame wall time, CPU scene generation plus texture upload, and
 presentation time (including any vertical-sync wait). It also reports rolling
