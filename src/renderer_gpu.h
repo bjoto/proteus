@@ -11,6 +11,9 @@
 // created and destroyed while a raylib/OpenGL context is alive.
 typedef struct {
     Mesh city;
+    Mesh facades;
+    Mesh roofs;
+    Mesh quay;
     Mesh windows;
     Mesh crane;
     Mesh bridge;
@@ -19,7 +22,13 @@ typedef struct {
     Mesh light_patch;
     Shader shader;
     Material city_material;
+    Material facade_material;
+    Material roof_material;
+    Material quay_material;
     Material life_material;
+    Texture2D facade_texture;
+    Texture2D roof_texture;
+    Texture2D quay_texture;
     bool ready;
 } WaterfrontGpuScene;
 

@@ -297,6 +297,14 @@ Acceptance: detail reads at both resolutions and improves the moving shot. Inspe
 scale, seams, distant shimmer, and roof normals. Record artistic defaults; do not claim the
 textured style was already approved in the original discussion.
 
+Implementation defaults: the GPU route uses bundled 32x32 facade, roof, and quay textures as
+subtle albedo modulation over the imported colors. They repeat at 0.04 texture units per world
+unit, use point filtering and repeat wrapping, and use world-aligned UVs only on static city
+architecture. The existing flat material remains in use for unclassified/background geometry and
+is retained as the comparison baseline. `tools/generate_gpu_textures.py` regenerates these
+standard-library PNG assets deterministically. This is an exploratory textured style, not an
+approved art direction.
+
 ### 08 — Add local lighting
 
 Agent: Terra medium/high. Prerequisite: 07.

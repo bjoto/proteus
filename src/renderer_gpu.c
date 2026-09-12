@@ -4,12 +4,14 @@
 #include "rlgl.h"
 
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 typedef struct {
     float *positions;
     float *normals;
+    float *texcoords;
     unsigned char *colors;
     int count;
     int capacity;
@@ -19,6 +21,7 @@ static void builder_destroy(MeshBuilder *builder)
 {
     free(builder->positions);
     free(builder->normals);
+    free(builder->texcoords);
     free(builder->colors);
     *builder = (MeshBuilder) { 0 };
 }
@@ -32,24 +35,41 @@ static bool builder_reserve(MeshBuilder *builder, int additional)
         capacity *= 2;
     float *positions = malloc((size_t)capacity * 3 * sizeof(*positions));
     float *normals = malloc((size_t)capacity * 3 * sizeof(*normals));
+    float *texcoords = malloc((size_t)capacity * 2 * sizeof(*texcoords));
     unsigned char *colors = malloc((size_t)capacity * 4 * sizeof(*colors));
-    if (positions == NULL || normals == NULL || colors == NULL) {
+    if (positions == NULL || normals == NULL || texcoords == NULL || colors == NULL) {
         free(positions);
         free(normals);
+        free(texcoords);
         free(colors);
         return false;
     }
     memcpy(positions, builder->positions, (size_t)builder->count * 3 * sizeof(*positions));
     memcpy(normals, builder->normals, (size_t)builder->count * 3 * sizeof(*normals));
+    memcpy(texcoords, builder->texcoords, (size_t)builder->count * 2 * sizeof(*texcoords));
     memcpy(colors, builder->colors, (size_t)builder->count * 4 * sizeof(*colors));
     free(builder->positions);
     free(builder->normals);
+    free(builder->texcoords);
     free(builder->colors);
     builder->positions = positions;
     builder->normals = normals;
+    builder->texcoords = texcoords;
     builder->colors = colors;
     builder->capacity = capacity;
     return true;
+}
+
+// The imported city vertices are already in world space.  A conservative density keeps the
+// 32-pixel detail textures legible at virtual resolution without creating fine distant shimmer.
+static Vector2 world_uv(Vector3 point, Vector3 normal)
+{
+    const float density = .04f;
+    if (fabsf(normal.y) > fabsf(normal.x) && fabsf(normal.y) > fabsf(normal.z))
+        return (Vector2) { point.x * density, point.z * density };
+    if (fabsf(normal.x) > fabsf(normal.z))
+        return (Vector2) { point.z * density, -point.y * density };
+    return (Vector2) { point.x * density, -point.y * density };
 }
 
 static Color shaded(Color color, Vector3 normal)
@@ -72,12 +92,15 @@ static bool builder_triangle(
     Vector3 points[] = { a, b, c };
     for (int i = 0; i < 3; ++i) {
         int vertex = builder->count++;
+        Vector2 uv = world_uv(points[i], normal);
         builder->positions[vertex * 3] = points[i].x;
         builder->positions[vertex * 3 + 1] = points[i].y;
         builder->positions[vertex * 3 + 2] = points[i].z;
         builder->normals[vertex * 3] = normal.x;
         builder->normals[vertex * 3 + 1] = normal.y;
         builder->normals[vertex * 3 + 2] = normal.z;
+        builder->texcoords[vertex * 2] = uv.x;
+        builder->texcoords[vertex * 2 + 1] = uv.y;
         builder->colors[vertex * 4] = color.r;
         builder->colors[vertex * 4 + 1] = color.g;
         builder->colors[vertex * 4 + 2] = color.b;
@@ -125,30 +148,61 @@ static Mesh builder_finish(MeshBuilder *builder)
         .triangleCount = builder->count / 3,
         .vertices = builder->positions,
         .normals = builder->normals,
+        .texcoords = builder->texcoords,
         .colors = builder->colors };
     builder->positions = NULL;
     builder->normals = NULL;
+    builder->texcoords = NULL;
     builder->colors = NULL;
     UploadMesh(&mesh, false);
     *builder = (MeshBuilder) { 0 };
     return mesh;
 }
 
-static bool build_city(Mesh *mesh)
+typedef enum {
+    CITY_SURFACE_FLAT,
+    CITY_SURFACE_FACADE,
+    CITY_SURFACE_ROOF,
+    CITY_SURFACE_QUAY,
+} CitySurface;
+
+static CitySurface city_surface(Vector3 a, Vector3 b, Vector3 c)
+{
+    Vector3 normal
+        = Vector3Normalize(Vector3CrossProduct(Vector3Subtract(b, a), Vector3Subtract(c, a)));
+    float top = fmaxf(a.y, fmaxf(b.y, c.y));
+    if (normal.y > .95f)
+        return top > 4.0f ? CITY_SURFACE_ROOF : CITY_SURFACE_QUAY;
+    if (fabsf(normal.y) < .15f && top >= 9.0f)
+        return CITY_SURFACE_FACADE;
+    return CITY_SURFACE_FLAT;
+}
+
+static bool build_city(Mesh *city_mesh, Mesh *facades, Mesh *roofs, Mesh *quay)
 {
     const Mesh3D *city = waterfront_scene_city_mesh();
-    MeshBuilder builder = { 0 };
+    MeshBuilder builders[] = { { 0 }, { 0 }, { 0 }, { 0 } };
     for (size_t i = 0; i < city->triangle_count; ++i) {
         const Triangle3D *triangle = &city->triangles[i];
-        if (!builder_triangle(&builder, city->vertices[triangle->vertices[0]],
-                city->vertices[triangle->vertices[1]], city->vertices[triangle->vertices[2]],
-                triangle->color, false)) {
-            builder_destroy(&builder);
-            return false;
-        }
+        Vector3 a = city->vertices[triangle->vertices[0]];
+        Vector3 b = city->vertices[triangle->vertices[1]];
+        Vector3 c = city->vertices[triangle->vertices[2]];
+        CitySurface surface = city_surface(a, b, c);
+        if (!builder_triangle(&builders[surface], a, b, c, triangle->color, false))
+            goto failed;
     }
-    *mesh = builder_finish(&builder);
-    return mesh->vaoId != 0;
+    if (builders[CITY_SURFACE_FLAT].count == 0 || builders[CITY_SURFACE_FACADE].count == 0
+        || builders[CITY_SURFACE_ROOF].count == 0 || builders[CITY_SURFACE_QUAY].count == 0)
+        goto failed;
+    *city_mesh = builder_finish(&builders[CITY_SURFACE_FLAT]);
+    *facades = builder_finish(&builders[CITY_SURFACE_FACADE]);
+    *roofs = builder_finish(&builders[CITY_SURFACE_ROOF]);
+    *quay = builder_finish(&builders[CITY_SURFACE_QUAY]);
+    return city_mesh->vaoId != 0 && facades->vaoId != 0 && roofs->vaoId != 0 && quay->vaoId != 0;
+failed:
+    for (size_t i = 0; i < sizeof(builders) / sizeof(builders[0]); ++i)
+        builder_destroy(&builders[i]);
+    return false;
 }
 
 static bool build_windows(Mesh *mesh)
@@ -286,6 +340,33 @@ static bool build_unit_plane(Mesh *mesh)
     return mesh->vaoId != 0;
 }
 
+static bool load_detail_texture(
+    Texture2D *texture, const char *fragment_shader_path, const char *asset_name)
+{
+    const char *slash = strrchr(fragment_shader_path, '/');
+    if (slash == NULL || (size_t)(slash - fragment_shader_path) > 900)
+        return false;
+    char texture_path[1024];
+    snprintf(texture_path, sizeof(texture_path), "%.*s/../textures/%s",
+        (int)(slash - fragment_shader_path), fragment_shader_path, asset_name);
+    *texture = LoadTexture(texture_path);
+    if (texture->id == 0)
+        return false;
+    SetTextureFilter(*texture, TEXTURE_FILTER_POINT);
+    SetTextureWrap(*texture, TEXTURE_WRAP_REPEAT);
+    return true;
+}
+
+static bool init_detail_material(Material *material, Shader shader, Texture2D texture)
+{
+    *material = LoadMaterialDefault();
+    if (material->maps == NULL)
+        return false;
+    material->shader = shader;
+    material->maps[MATERIAL_MAP_DIFFUSE].texture = texture;
+    return true;
+}
+
 bool waterfront_gpu_scene_init(WaterfrontGpuScene *scene, const char *fragment_shader_path)
 {
     *scene = (WaterfrontGpuScene) { 0 };
@@ -297,7 +378,15 @@ bool waterfront_gpu_scene_init(WaterfrontGpuScene *scene, const char *fragment_s
     if (scene->city_material.maps == NULL || scene->life_material.maps == NULL)
         goto failed;
     scene->city_material.shader = scene->shader;
-    if (!build_city(&scene->city) || !build_windows(&scene->windows) || !build_crane(&scene->crane))
+    if (!load_detail_texture(&scene->facade_texture, fragment_shader_path, "facade.png")
+        || !load_detail_texture(&scene->roof_texture, fragment_shader_path, "roof.png")
+        || !load_detail_texture(&scene->quay_texture, fragment_shader_path, "quay.png")
+        || !init_detail_material(&scene->facade_material, scene->shader, scene->facade_texture)
+        || !init_detail_material(&scene->roof_material, scene->shader, scene->roof_texture)
+        || !init_detail_material(&scene->quay_material, scene->shader, scene->quay_texture))
+        goto failed;
+    if (!build_city(&scene->city, &scene->facades, &scene->roofs, &scene->quay)
+        || !build_windows(&scene->windows) || !build_crane(&scene->crane))
         goto failed;
     if (!build_unit_cube(&scene->bridge) || !build_unit_cube(&scene->cube)
         || !build_unit_plane(&scene->plane) || !build_light_patch(&scene->light_patch))
@@ -473,6 +562,9 @@ void waterfront_gpu_scene_draw(
     rlEnableBackfaceCulling();
     set_object_color(scene->shader, WHITE);
     DrawMesh(scene->city, material, MatrixIdentity());
+    DrawMesh(scene->facades, scene->facade_material, MatrixIdentity());
+    DrawMesh(scene->roofs, scene->roof_material, MatrixIdentity());
+    DrawMesh(scene->quay, scene->quay_material, MatrixIdentity());
     DrawMesh(scene->windows, material, MatrixIdentity());
     draw_colored_mesh(scene->bridge, life_material, frame.bridge, frame.bridge_color);
     // These small closed meshes use reusable, non-indexed buffers. Keep them two-sided while
@@ -489,6 +581,12 @@ void waterfront_gpu_scene_destroy(WaterfrontGpuScene *scene)
 {
     if (scene->city.vaoId != 0)
         UnloadMesh(scene->city);
+    if (scene->facades.vaoId != 0)
+        UnloadMesh(scene->facades);
+    if (scene->roofs.vaoId != 0)
+        UnloadMesh(scene->roofs);
+    if (scene->quay.vaoId != 0)
+        UnloadMesh(scene->quay);
     if (scene->windows.vaoId != 0)
         UnloadMesh(scene->windows);
     if (scene->crane.vaoId != 0)
@@ -505,8 +603,26 @@ void waterfront_gpu_scene_destroy(WaterfrontGpuScene *scene)
         scene->city_material.shader.id = rlGetShaderIdDefault();
         UnloadMaterial(scene->city_material);
     }
+    if (scene->facade_material.maps != NULL) {
+        scene->facade_material.shader.id = rlGetShaderIdDefault();
+        UnloadMaterial(scene->facade_material);
+    }
+    if (scene->roof_material.maps != NULL) {
+        scene->roof_material.shader.id = rlGetShaderIdDefault();
+        UnloadMaterial(scene->roof_material);
+    }
+    if (scene->quay_material.maps != NULL) {
+        scene->quay_material.shader.id = rlGetShaderIdDefault();
+        UnloadMaterial(scene->quay_material);
+    }
     if (scene->life_material.maps != NULL)
         UnloadMaterial(scene->life_material);
+    if (scene->facade_texture.id != 0)
+        UnloadTexture(scene->facade_texture);
+    if (scene->roof_texture.id != 0)
+        UnloadTexture(scene->roof_texture);
+    if (scene->quay_texture.id != 0)
+        UnloadTexture(scene->quay_texture);
     if (scene->shader.id != 0 && scene->shader.id != rlGetShaderIdDefault())
         UnloadShader(scene->shader);
     *scene = (WaterfrontGpuScene) { 0 };
