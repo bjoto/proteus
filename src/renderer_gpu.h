@@ -16,6 +16,7 @@ typedef struct {
     Mesh bridge;
     Mesh cube;
     Mesh plane;
+    Mesh light_patch;
     Shader shader;
     bool ready;
 } WaterfrontGpuScene;

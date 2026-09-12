@@ -223,6 +223,19 @@ failed:
     return false;
 }
 
+static bool build_light_patch(Mesh *mesh)
+{
+    MeshBuilder builder = { 0 };
+    // Match the CPU pool shape: a narrow base widening toward its forward tip.
+    if (!builder_quad(&builder, (Vector3) { -.25f, 0, 0 }, (Vector3) { -1, 0, 1 },
+            (Vector3) { 1, 0, 1 }, (Vector3) { .25f, 0, 0 }, WHITE, true)) {
+        builder_destroy(&builder);
+        return false;
+    }
+    *mesh = builder_finish(&builder);
+    return mesh->vaoId != 0;
+}
+
 bool waterfront_gpu_scene_init(WaterfrontGpuScene *scene, const char *fragment_shader_path)
 {
     *scene = (WaterfrontGpuScene) { 0 };
@@ -234,7 +247,8 @@ bool waterfront_gpu_scene_init(WaterfrontGpuScene *scene, const char *fragment_s
     scene->bridge = GenMeshCube(1, 1, 1);
     scene->cube = GenMeshCube(1, 1, 1);
     scene->plane = GenMeshPlane(1, 1, 1, 1);
-    if (scene->bridge.vaoId == 0 || scene->cube.vaoId == 0 || scene->plane.vaoId == 0)
+    if (!build_light_patch(&scene->light_patch) || scene->bridge.vaoId == 0
+        || scene->cube.vaoId == 0 || scene->plane.vaoId == 0)
         goto failed;
     scene->ready = true;
     return true;
@@ -265,7 +279,17 @@ static float street_length(WaterfrontStreet street)
     return length;
 }
 
-static void draw_patch(const WaterfrontGpuScene *scene, Material material, Vector3 center,
+static void draw_patch(const WaterfrontGpuScene *scene, Material material, Vector3 start,
+    Vector3 forward, float width, float length, Color color)
+{
+    draw_colored_mesh(scene->light_patch, material,
+        (Transform3D) { .position = start,
+            .rotation = { 0, atan2f(forward.x, forward.z), 0 },
+            .scale = { width, 1, length } },
+        color);
+}
+
+static void draw_rectangle(const WaterfrontGpuScene *scene, Material material, Vector3 center,
     Vector3 forward, float width, float length, Color color)
 {
     draw_colored_mesh(scene->plane, material,
@@ -280,9 +304,9 @@ static void draw_pool(const WaterfrontGpuScene *scene, Material material, Vector
 {
     for (int layer = 0; layer < 3; ++layer) {
         float factor = 1 - (float)layer * .25f;
-        Vector3 center = Vector3Add(p, Vector3Scale(forward, length * factor * .5f));
-        center.y += .006f * (float)(layer + 1);
-        draw_patch(scene, material, center, forward, width * factor * .5f, length * factor,
+        Vector3 start = p;
+        start.y += .006f * (float)(layer + 1);
+        draw_patch(scene, material, start, forward, width * factor, length * factor,
             (Color) { (unsigned char)(79 + layer * 15), (unsigned char)(76 + layer * 12),
                 (unsigned char)(65 + layer * 7), 255 });
     }
@@ -360,8 +384,8 @@ static void draw_life(
         (Color) { 247, 191, 108, 255 });
     for (int i = 0; i < 8; ++i) {
         float drift = fmodf(frame.time * 2 + i * 1.8f, 14);
-        draw_patch(scene, material, (Vector3) { 12, .04f, z + 3.95f + drift },
-            (Vector3) { 0, 0, 1 }, 1.4f + drift * .14f, .3f, (Color) { 63, 98, 117, 255 });
+        draw_rectangle(scene, material, (Vector3) { 12, .04f, z + 3.95f + drift },
+            (Vector3) { 0, 0, 1 }, (1.4f + drift * .14f) * 2, .3f, (Color) { 63, 98, 117, 255 });
     }
 }
 
@@ -382,9 +406,9 @@ void waterfront_gpu_scene_draw(
     DrawMesh(scene->windows, material, MatrixIdentity());
     material.maps[MATERIAL_MAP_DIFFUSE].color = frame.bridge_color;
     DrawMesh(scene->bridge, material, transform_matrix(frame.bridge));
+    draw_life(scene, material, frame);
     material.maps[MATERIAL_MAP_DIFFUSE].color = WHITE;
     DrawMesh(scene->crane, material, MatrixIdentity());
-    draw_life(scene, material, frame);
     EndMode3D();
 }
 
@@ -402,6 +426,8 @@ void waterfront_gpu_scene_destroy(WaterfrontGpuScene *scene)
         UnloadMesh(scene->cube);
     if (scene->plane.vaoId != 0)
         UnloadMesh(scene->plane);
+    if (scene->light_patch.vaoId != 0)
+        UnloadMesh(scene->light_patch);
     if (scene->shader.id != 0 && scene->shader.id != rlGetShaderIdDefault())
         UnloadShader(scene->shader);
     *scene = (WaterfrontGpuScene) { 0 };
