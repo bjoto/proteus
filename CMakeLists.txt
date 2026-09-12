@@ -37,6 +37,21 @@ add_custom_command(TARGET proteus POST_BUILD
           $<TARGET_FILE_DIR:proteus>/assets
 )
 
+add_executable(gpu_fixture tools/gpu_fixture.c)
+target_include_directories(gpu_fixture PRIVATE ${raylib_SOURCE_DIR}/src)
+target_link_libraries(gpu_fixture PRIVATE raylib)
+target_compile_definitions(gpu_fixture PRIVATE
+  PROTEUS_ASSET_DIR="$<TARGET_FILE_DIR:gpu_fixture>/assets"
+)
+target_compile_options(gpu_fixture PRIVATE
+  $<$<C_COMPILER_ID:AppleClang,Clang,GNU>:-Wall;-Wextra;-Wpedantic>
+)
+add_custom_command(TARGET gpu_fixture POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+          ${CMAKE_CURRENT_SOURCE_DIR}/assets
+          $<TARGET_FILE_DIR:gpu_fixture>/assets
+)
+
 add_executable(validate_xm
   tools/validate_xm.c
   src/xm_audio.c

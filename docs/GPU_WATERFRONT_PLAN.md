@@ -61,8 +61,12 @@ if they change. No automatic delegation or model configuration is required by th
 
 Run one numbered step at a time unless explicitly asked for a range. Read its prerequisites,
 finish its checks, update the progress table, and stop at its boundary. Within an assigned
-step, routine implementation choices do not require repeated permission. Keep useful work
-if a check cannot run, but record the limitation and do not call that check passed.
+step, routine implementation choices do not require repeated permission. Once its required
+checks have passed, create one focused commit for that step before handing it off. Stage only
+the step's intended source, asset, test, and documentation changes; never commit `build/`,
+caches, generated reference captures, or unrelated user work. If a required check cannot run,
+keep useful work, record the limitation, and leave the step uncommitted until the limitation is
+resolved or explicitly accepted.
 
 Copy this prompt into a fresh implementation session, replacing NN:
 
@@ -431,12 +435,13 @@ required check cannot run. Do not mark visual acceptance based only on compilati
 
 ## Progress log
 
-All implementation steps are pending. Documentation creation does not complete step 01.
+Documentation creation alone does not complete step 01. Step 01 has a recorded CPU baseline;
+its remaining manual motion review is called out below rather than being treated as passed.
 
 | Step | Status | Evidence / deviations |
 | --- | --- | --- |
-| 01 CPU baseline | Pending | Baseline artifact set is defined below; no captures or checks are recorded yet. |
-| 02 GPU target/capture fixture | Pending | |
+| 01 CPU baseline | Implemented, verification pending | Build and 12/12 CTest passed; seven captures inspected. Full interactive route-motion review remains pending. See record below. |
+| 02 GPU target/capture fixture | Complete | Custom-shader render-target fixture, readback, orientation/depth checks, resizing, and visible comparison passed on the development Mac. See record below. |
 | 03 Shared scene evaluation | Pending | |
 | 04 Static GPU city | Pending | |
 | 05 City life/application integration | Pending | |
@@ -447,6 +452,61 @@ All implementation steps are pending. Documentation creation does not complete s
 | 10 Atmosphere | Pending | |
 | 11 Water reflection | Optional, pending | |
 | 12 Default/documentation | Pending | |
+
+### Step 01 record — 2026-09-12
+
+Baseline commit: `9055b5d3a790e782ef0074a4bdaa5c333d88d659` (`Add plan for GPU rendering the
+waterfront`). The tree was already dirty before the baseline: `docs/3D.md` and
+`docs/WATERFRONT_PLAN.md` contained existing documentation edits. This plan was also edited to
+record the baseline; no source, asset, or runtime behavior changed.
+
+Configured Debug with `cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug`, built with
+`cmake --build build -j`, and ran `ctest --test-dir build --output-on-failure`. All 12 tests
+passed in 0.74 seconds: storyboard and renderer validation, XM/audio checks, screenshot/CLI
+checks, and all four deterministic scene checksums.
+
+Inspected captures, all under `build/gpu-reference/` and intentionally untracked:
+
+- `cpu-200-t0.png`, `cpu-200-t2.5.png`, `cpu-200-t5.png`, `cpu-200-t10.png`, and
+  `cpu-200-t15.png` are 320x200.
+- `cpu-240-t5.png` is 320x240; `cpu-180-t5.png` is 320x180.
+
+The early route keeps the road, cars, lit windows, and lamp patches legible. The crane enters
+the 2.5-second frame, crosses the center around 5–10 seconds, and frames the basin at 15
+seconds; the water, quay, and distant window grid remain recognizable. The 180- and 240-pixel
+captures retain the 5-second framing. A visible launch at scene time zero created the expected
+point-filtered 320x240 texture, initialized Core Audio and `assets/music/starter.xm`, and
+reported Apple M1 Max OpenGL 4.1 / GLSL 4.10. The command runner did not retain the window for
+the complete 15.36-second route, but the demo continued running until the user closed it. Full
+motion, resize, and audible playback review have not been accepted. Perform that review before
+marking step 01 complete.
+
+### Step 02 record — 2026-09-12
+
+Changed `CMakeLists.txt`, `tools/gpu_fixture.c`, and `assets/shaders/gpu_fixture.fs`. The new
+`gpu_fixture` executable creates a hidden raylib context by default, has no audio initialization,
+and supports `--check`, `--resolution`, `--screenshot`, `--visible`, `--frames`, and
+`--invalid-shader`. It renders intersecting red/blue cubes to a point-filtered color/depth target,
+uses a custom GLSL 330 fragment shader, replaces the target at a half-size intermediate before
+the requested size, verifies four asymmetric orientation markers plus the blue depth result, and
+normalizes the capture exactly once. The target is presented with a negative-height source
+rectangle. A custom-shader load is rejected if raylib supplies its default program instead;
+`--invalid-shader` deliberately returns nonzero and preserves the compiler diagnostic.
+
+Configured Debug, built with `cmake --build build -j`, and ran
+`ctest --test-dir build --output-on-failure`: all 12 existing tests passed in 0.74 seconds.
+Hidden `--check --screenshot` runs passed at 320x180, 320x200, and 320x240. The exported,
+untracked artifacts are `build/gpu-fixture-180.png`, `build/gpu-fixture-200.png`, and
+`build/gpu-fixture-240.png`; their dimensions match their selected targets. Inspected all three:
+the red/green/blue/yellow corner markers establish image orientation, and the blue foreground
+cube correctly occludes the intersecting red cube. A 60-frame visible 320x200 run exported
+`build/gpu-fixture-visible.png`, which is byte-identical to the hidden 320x200 capture.
+
+Checks ran on Apple M1 Max, OpenGL `4.1 Metal - 90.5`, GLSL `4.10`. The hidden-context fixture
+created and destroyed cleanly on this Mac. `./build/gpu_fixture --invalid-shader` returned exit
+code 1 and printed the expected GLSL compiler syntax error. No GPU CTest is added yet: step 06
+will make context-dependent checks opt-in. The next implementation step is 03, shared scene
+evaluation; it must preserve the CPU checksums captured above.
 
 ## Technical references
 
