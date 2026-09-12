@@ -230,7 +230,8 @@ static void draw_fixture(RenderTexture2D target, Shader shader)
     EndTextureMode();
 }
 
-static bool normalize_and_check_image(Image *image, FixtureSize size, bool check)
+static bool normalize_and_check_image(
+    Image *image, FixtureSize size, bool check, bool flip_horizontal)
 {
     if (image->data == NULL) {
         fprintf(stderr, "GPU fixture: render-target readback failed\n");
@@ -243,6 +244,8 @@ static bool normalize_and_check_image(Image *image, FixtureSize size, bool check
     }
 
     ImageFlipVertical(image);
+    if (flip_horizontal)
+        ImageFlipHorizontal(image);
     if (!check)
         return true;
 
@@ -281,7 +284,9 @@ static bool verify_shader_rejection(void)
 
 static void present_target(RenderTexture2D target, FixtureOptions options)
 {
-    Rectangle source = { 0, 0, (float)target.texture.width, (float)-target.texture.height };
+    Rectangle source = { options.city ? (float)target.texture.width : 0, 0,
+        options.city ? (float)-target.texture.width : (float)target.texture.width,
+        (float)-target.texture.height };
     Rectangle destination = { 0, 0, (float)GetScreenWidth(), (float)GetScreenHeight() };
     for (int frame = 0; frame < options.frames && !WindowShouldClose(); ++frame) {
         BeginDrawing();
@@ -342,7 +347,8 @@ int main(int argc, char **argv)
         draw_fixture(target, shader);
     }
     Image image = LoadImageFromTexture(target.texture);
-    if (!normalize_and_check_image(&image, options.size, options.check && !options.city)) {
+    if (!normalize_and_check_image(
+            &image, options.size, options.check && !options.city, options.city)) {
         UnloadImage(image);
         goto cleanup;
     }

@@ -312,30 +312,6 @@ static Matrix transform_matrix(Transform3D transform)
             MatrixScale(transform.scale.x, transform.scale.y, transform.scale.z)));
 }
 
-// The software renderer deliberately uses cross(up, forward) for screen-right.
-// raylib's Camera3D uses its opposite, so install the matching view basis explicitly.
-static Matrix cpu_compatible_view(View3D camera)
-{
-    Vector3 forward = Vector3Normalize(Vector3Subtract(camera.target, camera.position));
-    Vector3 right = Vector3Normalize(Vector3CrossProduct(camera.up, forward));
-    Vector3 up = Vector3CrossProduct(forward, right);
-    return (Matrix) {
-        .m0 = right.x,
-        .m1 = up.x,
-        .m2 = -forward.x,
-        .m4 = right.y,
-        .m5 = up.y,
-        .m6 = -forward.y,
-        .m8 = right.z,
-        .m9 = up.z,
-        .m10 = -forward.z,
-        .m12 = -Vector3DotProduct(right, camera.position),
-        .m13 = -Vector3DotProduct(up, camera.position),
-        .m14 = Vector3DotProduct(forward, camera.position),
-        .m15 = 1,
-    };
-}
-
 static void draw_colored_mesh(Mesh mesh, Material material, Transform3D transform, Color color)
 {
     material.maps[MATERIAL_MAP_DIFFUSE].color = color;
@@ -471,7 +447,6 @@ void waterfront_gpu_scene_draw(
     Material material = LoadMaterialDefault();
     material.shader = scene->shader;
     BeginMode3D(camera);
-    rlSetMatrixModelview(cpu_compatible_view(frame.camera));
     rlSetMatrixProjection(MatrixPerspective(frame.camera.vertical_fov, (float)width / (float)height,
         frame.camera.near_plane, frame.camera.far_plane));
     DrawMesh(scene->city, material, MatrixIdentity());

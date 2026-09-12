@@ -317,8 +317,10 @@ static bool dump_live_screenshot(VirtualFramebuffer cpu_framebuffer, GpuFramebuf
         (long long)llroundf(timeline_time * 1000.0f));
     if (use_gpu) {
         Image image = LoadImageFromTexture(gpu_framebuffer.target.texture);
-        if (image.data != NULL)
+        if (image.data != NULL) {
             ImageFlipVertical(&image);
+            ImageFlipHorizontal(&image);
+        }
         bool exported = image.data != NULL && ExportImage(image, path);
         UnloadImage(image);
         if (exported)
@@ -371,8 +373,10 @@ static int run_screenshot(ProgramOptions options)
         }
         gpu_draw_frame(&gpu_scene, framebuffer, scene.time);
         Image image = LoadImageFromTexture(framebuffer.target.texture);
-        if (image.data != NULL)
+        if (image.data != NULL) {
             ImageFlipVertical(&image);
+            ImageFlipHorizontal(&image);
+        }
         bool exported = image.data != NULL && ExportImage(image, options.screenshot_path);
         UnloadImage(image);
         waterfront_gpu_scene_destroy(&gpu_scene);
@@ -457,7 +461,8 @@ static int run_profile(ProgramOptions options)
             gpu_draw_frame(
                 &gpu_scene, framebuffer, fmodf((float)i / 60.0f, scene_duration(SCENE_CUBE)));
             if (options.visible) {
-                Rectangle source = { 0, 0, (float)size.width, (float)-size.height };
+                Rectangle source
+                    = { (float)size.width, 0, (float)-size.width, (float)-size.height };
                 Rectangle destination
                     = integer_scaled_destination(GetScreenWidth(), GetScreenHeight(), size);
                 BeginDrawing();
@@ -770,8 +775,9 @@ int main(int argc, char **argv)
         int screen_width = GetScreenWidth();
         int screen_height = GetScreenHeight();
         Rectangle destination = integer_scaled_destination(screen_width, screen_height, size);
-        Rectangle source
-            = { 0, 0, (float)size.width, use_gpu ? (float)-size.height : (float)size.height };
+        Rectangle source = { use_gpu ? (float)size.width : 0, 0,
+            use_gpu ? (float)-size.width : (float)size.width,
+            use_gpu ? (float)-size.height : (float)size.height };
         if (current_frame_started_at >= next_snapshot_time) {
             snapshot = profiler_snapshot(
                 &profiler, scene, time, size, destination, music_ready, music, spectrum);
