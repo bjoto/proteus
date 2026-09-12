@@ -287,6 +287,61 @@ static Rectangle integer_scaled_destination(int screen_width, int screen_height,
     };
 }
 
+static SceneId adjacent_scene(SceneId scene, int direction)
+{
+    static const SceneId order[] = {
+        SCENE_STARSCROLL,
+        SCENE_FIRE,
+        SCENE_PLASMA,
+        SCENE_CUBE,
+    };
+    for (size_t i = 0; i < sizeof(order) / sizeof(order[0]); ++i) {
+        if (order[i] != scene)
+            continue;
+        int next = (int)i + direction;
+        int count = (int)(sizeof(order) / sizeof(order[0]));
+        if (next < 0)
+            next += count;
+        if (next >= count)
+            next -= count;
+        return order[next];
+    }
+    return SCENE_STARSCROLL;
+}
+
+static bool dump_live_screenshot(VirtualFramebuffer cpu_framebuffer, GpuFramebuffer gpu_framebuffer,
+    bool use_gpu, SceneFrame scene, float timeline_time)
+{
+    char path[128];
+    snprintf(path, sizeof(path), "proteus-%s-%08lld.png", scene_name(scene.id),
+        (long long)llroundf(timeline_time * 1000.0f));
+    if (use_gpu) {
+        Image image = LoadImageFromTexture(gpu_framebuffer.target.texture);
+        if (image.data != NULL)
+            ImageFlipVertical(&image);
+        bool exported = image.data != NULL && ExportImage(image, path);
+        UnloadImage(image);
+        if (exported)
+            printf("live_screenshot=%s\n", path);
+        else
+            fprintf(stderr, "Unable to export live screenshot: %s\n", path);
+        return exported;
+    }
+    Image image = {
+        .data = cpu_framebuffer.pixels,
+        .width = cpu_framebuffer.size.width,
+        .height = cpu_framebuffer.size.height,
+        .mipmaps = 1,
+        .format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8,
+    };
+    bool exported = ExportImage(image, path);
+    if (exported)
+        printf("live_screenshot=%s\n", path);
+    else
+        fprintf(stderr, "Unable to export live screenshot: %s\n", path);
+    return exported;
+}
+
 static int run_screenshot(ProgramOptions options)
 {
     VirtualSize size = VIRTUAL_SIZES[options.size_index];
@@ -654,6 +709,16 @@ int main(int argc, char **argv)
             if (profiler_visible)
                 next_snapshot_time = 0.0;
         }
+        int scene_direction = IsKeyPressed(KEY_LEFT) ? -1 : IsKeyPressed(KEY_RIGHT) ? 1 : 0;
+        if (scene_direction != 0) {
+            float current_time = timeline_start + (float)(GetTime() - animation_start_time);
+            SceneId next_scene = adjacent_scene(scene_at(current_time).id, scene_direction);
+            timeline_start = scene_start_time(next_scene);
+            animation_start_time = GetTime();
+            if (music_ready && !xm_music_start_at(music, timeline_start))
+                TraceLog(LOG_WARNING, "Unable to seek XM music to %.3f seconds", timeline_start);
+        }
+        bool save_frame = IsKeyPressed(KEY_F2);
 
         int requested = size_index;
         if (IsKeyPressed(KEY_ONE))
@@ -699,6 +764,8 @@ int main(int argc, char **argv)
             UpdateTexture(framebuffer.texture, framebuffer.pixels);
         }
         previous_scene_ms = (float)((GetTime() - scene_started_at) * 1000.0);
+        if (save_frame)
+            dump_live_screenshot(framebuffer, gpu_framebuffer, use_gpu, scene, time);
 
         int screen_width = GetScreenWidth();
         int screen_height = GetScreenHeight();
@@ -718,8 +785,10 @@ int main(int argc, char **argv)
             destination, (Vector2) { 0, 0 }, 0, WHITE);
         if (profiler_visible)
             profiler_draw(&profiler, &snapshot, size);
-        DrawText(TextFormat("%dx%d  |  1/2/3 resolution  F3 profiler  F11 fullscreen  Esc quit",
-                     size.width, size.height),
+        DrawText(
+            TextFormat("%dx%d  |  Left/Right scene  F2 screenshot  1/2/3 resolution  F3 profiler  "
+                       "F11 fullscreen  Esc quit",
+                size.width, size.height),
             12, screen_height - 28, 16, RAYWHITE);
         EndDrawing();
         previous_present_ms = (float)((GetTime() - present_started_at) * 1000.0);

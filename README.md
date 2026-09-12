@@ -39,6 +39,8 @@ Controls:
 - `1`: 320x180
 - `2`: 320x200
 - `3`: 320x240
+- `Left` / `Right`: jump to the previous / next scene and seek the music with it
+- `F2`: save the current virtual frame as `proteus-SCENE-MILLISECONDS.png`
 - `F3`: toggle the debug profiler overlay
 - `F11`: toggle fullscreen
 - `Esc`: quit
