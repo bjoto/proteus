@@ -25,6 +25,24 @@ No engine replacement, Metal migration, ray tracing, compute shaders, deferred r
 general scene graph, new map downloads, music regeneration, or camera-route redesign is
 part of this work. Do not implement optional effects while completing the baseline.
 
+## Migration invariants
+
+Every step must preserve these boundaries. They are decisions, rather than suggestions, so
+an implementation can be reviewed without inferring them from the later milestones.
+
+| Concern | Required boundary |
+| --- | --- |
+| Time | A caller supplies scene-local time. Scene evaluation derives every animated value from it; GPU code receives evaluated transforms and uniforms only. |
+| Context | The application or fixture creates and destroys the raylib window/context. GPU renderer code may create and release resources only while that context is alive. |
+| Rendering | The CPU backend writes `Color` pixels. The GPU city backend writes one virtual-resolution render texture. Neither backend reads the other's output during a normal frame. |
+| Presentation and export | Both display and PNG export use the completed virtual image for their selected backend. Export is the only normal GPU-to-CPU readback. |
+| Ownership | Shared scene data owns CPU arrays; GPU resources own their converted/uploaded copies. A GPU resource must never retain a pointer to temporary or borrowed scene storage. |
+| Compatibility | `cube`, its timeline mapping, all supported virtual resolutions, and the CPU path's deterministic tests continue to work throughout the migration. |
+
+Do not introduce a runtime fallback from `--renderer gpu` to CPU after a context, shader, or
+framebuffer error. Report the failed GPU request and return nonzero. A fallback would make
+diagnostics and GPU test results ambiguous. The normal default may remain CPU until step 12.
+
 ## Recommended agent and execution method
 
 Use **GPT-5.6 Terra, medium reasoning**, as the default implementation agent. The steps
@@ -102,6 +120,15 @@ bounds, duplicate vertices at face/color boundaries as necessary, and provide fl
 Respect raylib mesh index limits; split large meshes or use valid non-indexed buffers.
 Keep CPU and GPU ownership separate to avoid unloading borrowed generated arrays.
 
+The first GPU fixture should be a deliberately narrow executable or diagnostic mode with a
+documented interface: accept `--screenshot FILE`, `--resolution WIDTHxHEIGHT`, and a
+noninteractive validation switch such as `--check`. `--check` must return nonzero for a
+context failure, shader compile/link failure, incomplete framebuffer, failed readback/export,
+wrong image dimensions, or failed depth/orientation probe. It must print the OpenGL version
+and renderer strings, selected target size, and enough shader log text to identify the failing
+stage. This fixture is a prerequisite proof, not an alternate city renderer or a new public
+application mode.
+
 Use Y-up coordinates and existing transforms. Convert vertical FOV radians to the units
 raylib expects; match near/far planes explicitly rather than assuming defaults. Verify
 view handedness, matrix order, triangle winding, and inverse-transpose normal transforms
@@ -142,6 +169,8 @@ Agent: Luna medium. Prerequisites: none. Changes: reference notes/artifacts only
 3. Inspect the images and play the short route. Record recognizable comparisons: road
    alignment, windows, car/boat positions, crane silhouette, sky bands, and light patches.
 4. Record commit ID plus dirty-tree status, build type, commands, and artifact paths here.
+   Record image dimensions and whether each capture was visually inspected. Do not commit
+   these generated PNGs.
 
 Acceptance: baseline CTest results and inspected frames are recorded; no runtime behavior
 changes. If the baseline has failures, identify them rather than regenerating expected hashes.
@@ -156,9 +185,13 @@ Agent: Terra medium. Prerequisite: 01. Scope: isolated diagnostic, not city inte
    disable multisample antialiasing for the virtual target. Avoid high-resolution rendering
    followed by downsampling. Keep colors simple; defer gamma/palette changes.
 3. Support fixture PNG export through a hidden context with no audio initialization.
-   Use `LoadImageFromTexture` and export the resulting image. Free readback memory.
+   Use `LoadImageFromTexture` and export the resulting image. Free readback memory. The
+   fixture owns image-orientation normalization, so city integration does not have to guess
+   whether a readback needs flipping.
 4. Verify actual OpenGL version, shader logs, depth occlusion, PNG dimensions, orientation,
-   hidden-window behavior, and context teardown. Also test target resize repeatedly.
+   hidden-window behavior, and context teardown. Also test target resize repeatedly. The
+   asymmetric marker must make all four rotations/reflections distinguishable; a symmetric
+   triangle cannot prove this check.
 
 Acceptance: visible and captured fixture agree; intersecting geometry is depth-correct;
 shader failure produces a useful nonzero failure. Hidden capture is demonstrated on the
@@ -360,12 +393,21 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
 cmake --build build -j
 ctest --test-dir build --output-on-failure
 mkdir -p build/gpu-reference
+./build/proteus --screenshot build/gpu-reference/cpu-200-t0.png --scene cube --time 0 --resolution 320x200
+./build/proteus --screenshot build/gpu-reference/cpu-200-t2.5.png --scene cube --time 2.5 --resolution 320x200
+./build/proteus --screenshot build/gpu-reference/cpu-200-t5.png --scene cube --time 5 --resolution 320x200
+./build/proteus --screenshot build/gpu-reference/cpu-200-t10.png --scene cube --time 10 --resolution 320x200
+./build/proteus --screenshot build/gpu-reference/cpu-200-t15.png --scene cube --time 15 --resolution 320x200
 ./build/proteus --screenshot build/gpu-reference/cpu-240-t5.png --scene cube --time 5 --resolution 320x240
+./build/proteus --screenshot build/gpu-reference/cpu-180-t5.png --scene cube --time 5 --resolution 320x180
 ./build/proteus --scene cube --time 0 --resolution 320x240
 ```
 
 The last command is a manual interactive check, not a finite automated test. Baseline captures
 must be collected before changing defaults, and explicitly use `--renderer cpu` after step 05.
+The seven captures above are the minimum baseline set: all five route checkpoints at the default
+resolution, plus a representative image at each compatibility resolution. Add rather than
+replace captures when a later step needs a more revealing comparison.
 
 Planned commands, usable only after their implementing steps:
 
@@ -393,7 +435,7 @@ All implementation steps are pending. Documentation creation does not complete s
 
 | Step | Status | Evidence / deviations |
 | --- | --- | --- |
-| 01 CPU baseline | Pending | |
+| 01 CPU baseline | Pending | Baseline artifact set is defined below; no captures or checks are recorded yet. |
 | 02 GPU target/capture fixture | Pending | |
 | 03 Shared scene evaluation | Pending | |
 | 04 Static GPU city | Pending | |

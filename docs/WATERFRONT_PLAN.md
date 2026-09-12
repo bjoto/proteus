@@ -1,5 +1,9 @@
 # Waterfront fly-through plan
 
+The next rendering phase is specified in [the GPU migration plan](GPU_WATERFRONT_PLAN.md).
+That plan selects raylib with custom shaders and supersedes the CPU-only constraint below
+for the new GPU path. The implementation described here remains the current CPU baseline.
+
 Status: Route A evening city-life pass integrated into `cube` (2026-09-12).
 The shortened 15.36-second route uses the existing two-pattern slot. A separate
 `waterfront_storyboard` tool retains the full 30.72-second route for comparison.
