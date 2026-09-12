@@ -2,6 +2,7 @@
 #define PROTEUS_WATERFRONT_H
 
 #include "renderer3d.h"
+#include "waterfront_scene.h"
 
 // Standalone storyboard: full Route A is four patterns, shortened cut is two.
 float waterfront_duration(bool short_route);

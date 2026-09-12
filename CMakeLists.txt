@@ -23,6 +23,7 @@ add_executable(proteus
   src/renderer3d.c
   src/scenes.c
   src/waterfront.c
+  src/waterfront_scene.c
   src/xm_audio.c
 )
 target_link_libraries(proteus PRIVATE raylib)
@@ -79,7 +80,7 @@ target_compile_options(validate_audio_spectrum PRIVATE
 
 enable_testing()
 add_executable(waterfront_storyboard
-  tools/waterfront_storyboard.c src/waterfront.c src/renderer3d.c
+  tools/waterfront_storyboard.c src/waterfront.c src/waterfront_scene.c src/renderer3d.c
 )
 target_include_directories(waterfront_storyboard PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(waterfront_storyboard PRIVATE raylib)

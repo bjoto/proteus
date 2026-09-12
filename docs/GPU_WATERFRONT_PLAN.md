@@ -442,7 +442,7 @@ its remaining manual motion review is called out below rather than being treated
 | --- | --- | --- |
 | 01 CPU baseline | Implemented, verification pending | Build and 12/12 CTest passed; seven captures inspected. Full interactive route-motion review remains pending. See record below. |
 | 02 GPU target/capture fixture | Complete | Custom-shader render-target fixture, readback, orientation/depth checks, resizing, and visible comparison passed on the development Mac. See record below. |
-| 03 Shared scene evaluation | Pending | |
+| 03 Shared scene evaluation | Complete | Scene-owned static geometry and explicit scene-time evaluation now feed the unchanged CPU submission order. See record below. |
 | 04 Static GPU city | Pending | |
 | 05 City life/application integration | Pending | |
 | 06 GPU regression/profiling | Pending | |
@@ -505,8 +505,25 @@ cube correctly occludes the intersecting red cube. A 60-frame visible 320x200 ru
 Checks ran on Apple M1 Max, OpenGL `4.1 Metal - 90.5`, GLSL `4.10`. The hidden-context fixture
 created and destroyed cleanly on this Mac. `./build/gpu_fixture --invalid-shader` returned exit
 code 1 and printed the expected GLSL compiler syntax error. No GPU CTest is added yet: step 06
-will make context-dependent checks opt-in. The next implementation step is 03, shared scene
-evaluation; it must preserve the CPU checksums captured above.
+will make context-dependent checks opt-in.
+
+### Step 03 record — 2026-09-12
+
+Changed `src/waterfront_scene.[ch]`, `src/waterfront.[ch]`, and `CMakeLists.txt`.
+`waterfront_scene` owns the generated-city mesh descriptor and authored street routes, and evaluates
+the camera, bridge transform/color, and boat position exclusively from scene-local time. The CPU
+adapter retains its original draw/submission order, including its deterministic window occupancy,
+coplanar light patches, crane, traffic, and wake behavior. The storyboard target now links the
+same shared scene module, so proxy-clearance validation and both routes continue to use the
+scene-owned city geometry.
+
+Built with `cmake --build build -j` and ran `ctest --test-dir build --output-on-failure`: all 12
+tests passed in 1.47 seconds, including unchanged exact CPU scene checksums and storyboard seeking.
+Captured and inspected `build/step03-cube-t5.png` (320x200) and
+`build/step03-cube-t5-240.png` (320x240). Each is byte-identical to its corresponding step-01
+reference capture (`cpu-200-t5.png` and `cpu-240-t5.png`); the inspected frame retains the road,
+traffic, lit windows, crane silhouette, and basin framing. No interactive behavior changed or was
+re-reviewed. The next implementation step is 04, static GPU city port in the diagnostic harness.
 
 ## Technical references
 

@@ -4,63 +4,13 @@
 
 #include <math.h>
 #include <stdio.h>
-
-#include "../assets/geometry/eriksberg/geometry.h"
-
-typedef struct {
-    Vector3 position;
-    Vector3 target;
-} CameraKey;
-
-static const CameraKey keys[] = {
-    { { -85, 17.5f, 170 }, { -78, 5, 100 } },
-    { { -78, 21.5f, 90 }, { -70, 5, 10 } },
-    { { -70, 28.5f, 0 }, { -15, 5, 90 } },
-    { { -30, 35.5f, -130 }, { 30, 8, 130 } },
-    { { 120, 41.5f, -200 }, { 20, 8, 140 } },
-};
-static const float key_distances[] = { 0, 80.306f, 170.661f, 306.676f, 472.205f };
-
-float waterfront_duration(bool short_route) { return short_route ? 15.36f : 30.72f; }
-
-static Vector3 tangent(int index, bool target)
-{
-    int before = index > 0 ? index - 1 : index;
-    int after = index < 4 ? index + 1 : index;
-    Vector3 a = target ? keys[before].target : keys[before].position;
-    Vector3 b = target ? keys[after].target : keys[after].position;
-    return Vector3Scale(Vector3Subtract(b, a), 1 / (key_distances[after] - key_distances[before]));
-}
-
-static Vector3 interpolate(int index, float u, bool target)
-{
-    float span = key_distances[index + 1] - key_distances[index];
-    Vector3 a = target ? keys[index].target : keys[index].position;
-    Vector3 b = target ? keys[index + 1].target : keys[index + 1].position;
-    float u2 = u * u, u3 = u2 * u;
-    return Vector3Add(
-        Vector3Add(Vector3Scale(a, 2 * u3 - 3 * u2 + 1), Vector3Scale(b, -2 * u3 + 3 * u2)),
-        Vector3Add(Vector3Scale(tangent(index, target), (u3 - 2 * u2 + u) * span),
-            Vector3Scale(tangent(index + 1, target), (u3 - u2) * span)));
-}
+float waterfront_duration(bool short_route) { return waterfront_scene_duration(short_route); }
 
 View3D waterfront_camera(float time, bool short_route)
 {
-    float progress = Clamp(time / waterfront_duration(short_route), 0, 1);
-    // The short cut keeps the street approach and omits the furthest departure.
-    float distance = short_route ? Lerp(0, 340, progress) : progress * key_distances[4];
-    int index = 0;
-    while (index < 3 && distance > key_distances[index + 1])
-        ++index;
-    float u = (distance - key_distances[index]) / (key_distances[index + 1] - key_distances[index]);
-    return (View3D) {
-        .position = interpolate(index, u, false),
-        .target = interpolate(index, u, true),
-        .up = { 0, 1, 0 },
-        .vertical_fov = 62 * DEG2RAD,
-        .near_plane = 0.25f,
-        .far_plane = 1400,
-    };
+    WaterfrontSceneFrame frame;
+    waterfront_scene_evaluate(time, short_route, &frame);
+    return frame.camera;
 }
 
 // The crane proxy is deliberately open. Beam dimensions are authored assumptions;
@@ -127,25 +77,6 @@ static void crane(Renderer3D *r)
 
 // Authored traffic follows retained Monsungatan and Ostindiefararen centreline vertices.
 // Speeds, lane offsets, lamps and occupancy are artistic, not geographic source data.
-static const Vector3 west_street[] = { { -99.4f, 3.56f, 308.7f }, { -86.9f, 3.56f, 186.7f },
-    { -80.6f, 3.56f, 116.5f }, { -73.9f, 3.56f, 53.6f }, { -68.8f, 3.56f, -5.7f },
-    { -64.8f, 3.56f, -35.8f }, { -61.5f, 3.56f, -69.6f } };
-static const Vector3 east_street[] = { { 67.4f, 3.56f, 406.2f }, { 82.5f, 3.56f, 269.5f },
-    { 92.7f, 3.56f, 167.2f }, { 95.6f, 3.56f, 133.7f }, { 103.7f, 3.56f, 67.1f } };
-
-static Vector3 street_position(const Vector3 *points, int count, float distance, Vector3 *direction)
-{
-    for (int i = 1; i < count; ++i) {
-        Vector3 delta = Vector3Subtract(points[i], points[i - 1]);
-        float length = Vector3Length(delta);
-        if (distance <= length || i == count - 1) {
-            *direction = Vector3Scale(delta, 1 / length);
-            return Vector3Add(points[i - 1], Vector3Scale(*direction, distance));
-        }
-        distance -= length;
-    }
-    return points[0];
-}
 
 static void glow_quad(Renderer3D *r, Vector3 a, Vector3 b, Vector3 c, Vector3 d, Color color)
 {
@@ -187,11 +118,12 @@ static void windows(Renderer3D *r)
 {
     // Each imported wall starts with a triangle a,c,b (two ground vertices).
     // Derive inset windows from that edge, preserving arbitrary facade orientation.
-    for (size_t i = 0; i < sizeof(waterfront_triangles) / sizeof(waterfront_triangles[0]); ++i) {
-        const Triangle3D *t = &waterfront_triangles[i];
-        Vector3 a = waterfront_vertices[t->vertices[0]];
-        Vector3 c = waterfront_vertices[t->vertices[1]];
-        Vector3 b = waterfront_vertices[t->vertices[2]];
+    const Mesh3D *city = waterfront_scene_city_mesh();
+    for (size_t i = 0; i < city->triangle_count; ++i) {
+        const Triangle3D *t = &city->triangles[i];
+        Vector3 a = city->vertices[t->vertices[0]];
+        Vector3 c = city->vertices[t->vertices[1]];
+        Vector3 b = city->vertices[t->vertices[2]];
         if (fabsf(a.y - 3.5f) > .001f || fabsf(b.y - a.y) > .001f || c.y < 9)
             continue;
         Vector3 edge = Vector3Subtract(b, a);
@@ -222,15 +154,13 @@ static void windows(Renderer3D *r)
 static void street_life(Renderer3D *r, float time)
 {
     for (int street = 0; street < 2; ++street) {
-        const Vector3 *points = street ? east_street : west_street;
-        int count = street ? (int)(sizeof(east_street) / sizeof(east_street[0]))
-                           : (int)(sizeof(west_street) / sizeof(west_street[0]));
+        WaterfrontStreet route = waterfront_scene_street(street);
         float length = 0;
-        for (int i = 1; i < count; ++i)
-            length += Vector3Distance(points[i - 1], points[i]);
+        for (int i = 1; i < route.point_count; ++i)
+            length += Vector3Distance(route.points[i - 1], route.points[i]);
         for (float distance = 20; distance < length - 12; distance += 27) {
             Vector3 direction;
-            Vector3 p = street_position(points, count, distance, &direction);
+            Vector3 p = waterfront_scene_street_position(route, distance, &direction);
             Vector3 side = { direction.z, 0, -direction.x };
             p = Vector3Add(p, Vector3Scale(side, 2.6f));
             renderer3d_draw_box(r,
@@ -245,7 +175,7 @@ static void street_life(Renderer3D *r, float time)
             float distance
                 = fmodf(car * length / 10 + time * (5.5f + street) * sign + length, length);
             Vector3 forward;
-            Vector3 p = street_position(points, count, distance, &forward);
+            Vector3 p = waterfront_scene_street_position(route, distance, &forward);
             forward = Vector3Scale(forward, (float)sign);
             Vector3 right = { forward.z, 0, -forward.x };
             p = Vector3Add(p, Vector3Scale(right, 1.25f));
@@ -278,10 +208,9 @@ static void street_life(Renderer3D *r, float time)
     }
 }
 
-static void harbour_life(Renderer3D *r, float time)
+static void harbour_life(Renderer3D *r, float time, float z)
 {
     // A slow launch stays inside the basin, south of Dockbron, for both route lengths.
-    float z = 85 - time * 2;
     renderer3d_draw_box(r, (Transform3D) { .position = { 12, .7f, z }, .scale = { 3.2f, 1.3f, 7 } },
         (Color) { 164, 177, 185, 255 });
     renderer3d_draw_box(r,
@@ -302,6 +231,8 @@ static void harbour_life(Renderer3D *r, float time)
 bool waterfront_draw(
     Renderer3D *r, Color *pixels, int width, int height, float time, bool short_route)
 {
+    WaterfrontSceneFrame frame;
+    waterfront_scene_evaluate(time, short_route, &frame);
     time = Clamp(time, 0, waterfront_duration(short_route));
     for (int y = 0; y < height; ++y) {
         int band = y * 7 / height;
@@ -310,20 +241,15 @@ bool waterfront_draw(
         for (int x = 0; x < width; ++x)
             pixels[y * width + x] = sky;
     }
-    if (!renderer3d_begin(r, pixels, width, height, waterfront_camera(time, short_route),
-            (Vector3) { -0.4f, 0.85f, -0.35f }))
+    if (!renderer3d_begin(
+            r, pixels, width, height, frame.camera, (Vector3) { -0.4f, 0.85f, -0.35f }))
         return false;
-    Mesh3D mesh = { waterfront_vertices, waterfront_triangles,
-        sizeof(waterfront_triangles) / sizeof(waterfront_triangles[0]) };
-    renderer3d_draw_mesh(r, &mesh, (Transform3D) { .scale = { 1, 1, 1 } });
+    renderer3d_draw_mesh(r, waterfront_scene_city_mesh(), (Transform3D) { .scale = { 1, 1, 1 } });
     // Dockbron: approximate mapped endpoints and assumed deck elevation, for composition.
-    renderer3d_draw_box(r,
-        (Transform3D) {
-            .position = { 11, 7, 126 }, .rotation = { 0, -0.08f, 0 }, .scale = { 68, 1, 3 } },
-        (Color) { 119, 128, 145, 255 });
+    renderer3d_draw_box(r, frame.bridge, frame.bridge_color);
     windows(r);
     street_life(r, time);
-    harbour_life(r, time);
+    harbour_life(r, time, frame.boat_z);
     crane(r);
     return true;
 }
@@ -358,6 +284,7 @@ static float triangle_distance_squared(Vector3 p, Vector3 a, Vector3 b, Vector3 
 
 bool waterfront_check_routes(void)
 {
+    const Mesh3D *city = waterfront_scene_city_mesh();
     for (int route = 0; route < 2; ++route) {
         bool short_route = route != 0;
         float duration = waterfront_duration(short_route);
@@ -365,12 +292,11 @@ bool waterfront_check_routes(void)
         for (int i = 0; i <= steps; ++i) {
             float time = duration * (float)i / (float)steps;
             Vector3 p = waterfront_camera(time, short_route).position;
-            for (size_t j = 0; j < sizeof(waterfront_triangles) / sizeof(waterfront_triangles[0]);
-                ++j) {
-                const Triangle3D *t = &waterfront_triangles[j];
-                Vector3 a = waterfront_vertices[t->vertices[0]];
-                Vector3 b = waterfront_vertices[t->vertices[1]];
-                Vector3 c = waterfront_vertices[t->vertices[2]];
+            for (size_t j = 0; j < city->triangle_count; ++j) {
+                const Triangle3D *t = &city->triangles[j];
+                Vector3 a = city->vertices[t->vertices[0]];
+                Vector3 b = city->vertices[t->vertices[1]];
+                Vector3 c = city->vertices[t->vertices[2]];
                 if (p.x < fminf(a.x, fminf(b.x, c.x)) - 2 || p.x > fmaxf(a.x, fmaxf(b.x, c.x)) + 2
                     || p.y < fminf(a.y, fminf(b.y, c.y)) - 2
                     || p.y > fmaxf(a.y, fmaxf(b.y, c.y)) + 2
