@@ -18,6 +18,8 @@ typedef struct {
     Mesh plane;
     Mesh light_patch;
     Shader shader;
+    Material city_material;
+    Material life_material;
     bool ready;
 } WaterfrontGpuScene;
 

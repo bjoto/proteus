@@ -292,6 +292,11 @@ bool waterfront_gpu_scene_init(WaterfrontGpuScene *scene, const char *fragment_s
     scene->shader = LoadShader(NULL, fragment_shader_path);
     if (!IsShaderValid(scene->shader) || scene->shader.id == rlGetShaderIdDefault())
         goto failed;
+    scene->city_material = LoadMaterialDefault();
+    scene->life_material = LoadMaterialDefault();
+    if (scene->city_material.maps == NULL || scene->life_material.maps == NULL)
+        goto failed;
+    scene->city_material.shader = scene->shader;
     if (!build_city(&scene->city) || !build_windows(&scene->windows) || !build_crane(&scene->crane))
         goto failed;
     if (!build_unit_cube(&scene->bridge) || !build_unit_cube(&scene->cube)
@@ -328,6 +333,7 @@ static void set_object_color(Shader shader, Color color)
 static void draw_colored_mesh(Mesh mesh, Material material, Transform3D transform, Color color)
 {
     set_object_color(material.shader, color);
+    material.maps[MATERIAL_MAP_DIFFUSE].color = color;
     DrawMesh(mesh, material, transform_matrix(transform));
 }
 
@@ -457,8 +463,8 @@ void waterfront_gpu_scene_draw(
         .up = frame.camera.up,
         .fovy = frame.camera.vertical_fov * RAD2DEG,
         .projection = CAMERA_PERSPECTIVE };
-    Material material = LoadMaterialDefault();
-    material.shader = scene->shader;
+    Material material = scene->city_material;
+    Material life_material = scene->life_material;
     BeginMode3D(camera);
     rlSetMatrixProjection(MatrixPerspective(frame.camera.vertical_fov, (float)width / (float)height,
         frame.camera.near_plane, frame.camera.far_plane));
@@ -466,11 +472,11 @@ void waterfront_gpu_scene_draw(
     set_object_color(scene->shader, WHITE);
     DrawMesh(scene->city, material, MatrixIdentity());
     DrawMesh(scene->windows, material, MatrixIdentity());
-    draw_colored_mesh(scene->bridge, material, frame.bridge, frame.bridge_color);
+    draw_colored_mesh(scene->bridge, life_material, frame.bridge, frame.bridge_color);
     // These small closed meshes use reusable, non-indexed buffers. Keep them two-sided while
     // retaining depth testing, so their visibility does not depend on backend cull-state defaults.
     rlDisableBackfaceCulling();
-    draw_life(scene, material, frame);
+    draw_life(scene, life_material, frame);
     rlEnableBackfaceCulling();
     set_object_color(scene->shader, WHITE);
     DrawMesh(scene->crane, material, MatrixIdentity());
@@ -493,6 +499,12 @@ void waterfront_gpu_scene_destroy(WaterfrontGpuScene *scene)
         UnloadMesh(scene->plane);
     if (scene->light_patch.vaoId != 0)
         UnloadMesh(scene->light_patch);
+    if (scene->city_material.maps != NULL) {
+        scene->city_material.shader.id = rlGetShaderIdDefault();
+        UnloadMaterial(scene->city_material);
+    }
+    if (scene->life_material.maps != NULL)
+        UnloadMaterial(scene->life_material);
     if (scene->shader.id != 0 && scene->shader.id != rlGetShaderIdDefault())
         UnloadShader(scene->shader);
     *scene = (WaterfrontGpuScene) { 0 };
