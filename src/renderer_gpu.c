@@ -312,9 +312,22 @@ static Matrix transform_matrix(Transform3D transform)
             MatrixScale(transform.scale.x, transform.scale.y, transform.scale.z)));
 }
 
+static void set_object_color(Shader shader, Color color)
+{
+    float values[] = {
+        (float)color.r / 255.0f,
+        (float)color.g / 255.0f,
+        (float)color.b / 255.0f,
+        (float)color.a / 255.0f,
+    };
+    int location = GetShaderLocation(shader, "objectColor");
+    if (location >= 0)
+        SetShaderValue(shader, location, values, SHADER_UNIFORM_VEC4);
+}
+
 static void draw_colored_mesh(Mesh mesh, Material material, Transform3D transform, Color color)
 {
-    material.maps[MATERIAL_MAP_DIFFUSE].color = color;
+    set_object_color(material.shader, color);
     DrawMesh(mesh, material, transform_matrix(transform));
 }
 
@@ -449,12 +462,12 @@ void waterfront_gpu_scene_draw(
     BeginMode3D(camera);
     rlSetMatrixProjection(MatrixPerspective(frame.camera.vertical_fov, (float)width / (float)height,
         frame.camera.near_plane, frame.camera.far_plane));
+    set_object_color(scene->shader, WHITE);
     DrawMesh(scene->city, material, MatrixIdentity());
     DrawMesh(scene->windows, material, MatrixIdentity());
-    material.maps[MATERIAL_MAP_DIFFUSE].color = frame.bridge_color;
-    DrawMesh(scene->bridge, material, transform_matrix(frame.bridge));
+    draw_colored_mesh(scene->bridge, material, frame.bridge, frame.bridge_color);
     draw_life(scene, material, frame);
-    material.maps[MATERIAL_MAP_DIFFUSE].color = WHITE;
+    set_object_color(scene->shader, WHITE);
     DrawMesh(scene->crane, material, MatrixIdentity());
     EndMode3D();
 }
