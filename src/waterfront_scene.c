@@ -52,6 +52,7 @@ static Vector3 interpolate(int index, float u, bool target)
 void waterfront_scene_evaluate(float time, bool short_route, WaterfrontSceneFrame *frame)
 {
     time = Clamp(time, 0, waterfront_scene_duration(short_route));
+    frame->time = time;
     float progress = Clamp(time / waterfront_scene_duration(short_route), 0, 1);
     float distance = short_route ? Lerp(0, 340, progress) : progress * key_distances[4];
     int index = 0;

@@ -20,6 +20,7 @@ add_executable(proteus
   src/audio_spectrum.c
   src/main.c
   src/profiler.c
+  src/renderer_gpu.c
   src/renderer3d.c
   src/scenes.c
   src/waterfront.c
@@ -27,7 +28,10 @@ add_executable(proteus
   src/xm_audio.c
 )
 target_link_libraries(proteus PRIVATE raylib)
-target_compile_definitions(proteus PRIVATE PROTEUS_BUILD_TYPE="$<CONFIG>")
+target_compile_definitions(proteus PRIVATE
+  PROTEUS_BUILD_TYPE="$<CONFIG>"
+  PROTEUS_ASSET_DIR="$<TARGET_FILE_DIR:proteus>/assets"
+)
 target_compile_options(proteus PRIVATE
   $<$<C_COMPILER_ID:AppleClang,Clang,GNU>:-Wall;-Wextra;-Wpedantic>
 )
@@ -38,8 +42,11 @@ add_custom_command(TARGET proteus POST_BUILD
           $<TARGET_FILE_DIR:proteus>/assets
 )
 
-add_executable(gpu_fixture tools/gpu_fixture.c)
-target_include_directories(gpu_fixture PRIVATE ${raylib_SOURCE_DIR}/src)
+add_executable(gpu_fixture tools/gpu_fixture.c src/renderer_gpu.c src/waterfront_scene.c)
+target_include_directories(gpu_fixture PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/src
+  ${raylib_SOURCE_DIR}/src
+)
 target_link_libraries(gpu_fixture PRIVATE raylib)
 target_compile_definitions(gpu_fixture PRIVATE
   PROTEUS_ASSET_DIR="$<TARGET_FILE_DIR:gpu_fixture>/assets"

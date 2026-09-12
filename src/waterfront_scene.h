@@ -7,6 +7,7 @@
 // The returned mesh refers to scene-owned, static generated geometry.
 typedef struct {
     View3D camera;
+    float time;
     Transform3D bridge;
     Color bridge_color;
     float boat_z;

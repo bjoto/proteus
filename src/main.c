@@ -1,6 +1,7 @@
 #include "audio_spectrum.h"
 #include "profiler.h"
 #include "raylib.h"
+#include "renderer_gpu.h"
 #include "scenes.h"
 #include "xm_audio.h"
 
@@ -15,11 +16,21 @@
 #define PROTEUS_BUILD_TYPE "unknown"
 #endif
 
+#ifndef PROTEUS_ASSET_DIR
+#define PROTEUS_ASSET_DIR "assets"
+#endif
+
+typedef enum {
+    RENDERER_CPU,
+    RENDERER_GPU,
+} RendererKind;
+
 typedef struct {
     bool profile_enabled;
     bool visible;
     bool show_help;
     bool scene_selected;
+    RendererKind renderer;
     SceneId scene_id;
     int frames;
     int warmup_frames;
@@ -33,6 +44,11 @@ typedef struct {
     Texture2D texture;
     Color *pixels;
 } VirtualFramebuffer;
+
+typedef struct {
+    VirtualSize size;
+    RenderTexture2D target;
+} GpuFramebuffer;
 
 static const VirtualSize VIRTUAL_SIZES[] = {
     { 320, 180 },
@@ -63,6 +79,50 @@ static void virtual_framebuffer_destroy(VirtualFramebuffer *framebuffer)
     free(framebuffer->pixels);
     UnloadTexture(framebuffer->texture);
     *framebuffer = (VirtualFramebuffer) { 0 };
+}
+
+static bool gpu_framebuffer_create(GpuFramebuffer *framebuffer, VirtualSize size)
+{
+    RenderTexture2D target = LoadRenderTexture(size.width, size.height);
+    if (!IsRenderTextureValid(target)) {
+        if (target.id != 0)
+            UnloadRenderTexture(target);
+        return false;
+    }
+    SetTextureFilter(target.texture, TEXTURE_FILTER_POINT);
+    *framebuffer = (GpuFramebuffer) { .size = size, .target = target };
+    return true;
+}
+
+static void gpu_framebuffer_destroy(GpuFramebuffer *framebuffer)
+{
+    if (framebuffer->target.id != 0)
+        UnloadRenderTexture(framebuffer->target);
+    *framebuffer = (GpuFramebuffer) { 0 };
+}
+
+static void gpu_draw_sky(RenderTexture2D target)
+{
+    BeginTextureMode(target);
+    ClearBackground(BLACK);
+    for (int y = 0; y < target.texture.height; ++y) {
+        int band = y * 7 / target.texture.height;
+        DrawRectangle(0, y, target.texture.width, 1,
+            (Color) { (unsigned char)(20 + band * 5), (unsigned char)(29 + band * 5),
+                (unsigned char)(52 + band * 6), 255 });
+    }
+    EndTextureMode();
+}
+
+static void gpu_draw_frame(
+    const WaterfrontGpuScene *gpu_scene, GpuFramebuffer framebuffer, float scene_time)
+{
+    WaterfrontSceneFrame frame;
+    waterfront_scene_evaluate(scene_time, true, &frame);
+    gpu_draw_sky(framebuffer.target);
+    BeginTextureMode(framebuffer.target);
+    waterfront_gpu_scene_draw(gpu_scene, frame, framebuffer.size.width, framebuffer.size.height);
+    EndTextureMode();
 }
 
 static bool parse_count(const char *text, int minimum, int *value)
@@ -109,6 +169,7 @@ static void print_usage(const char *program)
     printf("  --resolution WIDTHxHEIGHT (default: 320x200)\n");
     printf("  --visible               include upload/presentation using a visible window\n");
     printf("Timeline options:\n");
+    printf("  --renderer cpu|gpu     city renderer (default: cpu)\n");
     printf("  --time SECONDS          start at a global or scene-local time (default: 0)\n");
     printf("  --scene SCENE           select a scene and interpret --time relative to it\n");
     printf("  --resolution WIDTHxHEIGHT (default: 320x200)\n");
@@ -121,6 +182,7 @@ static bool parse_options(int argc, char **argv, ProgramOptions *options)
         .frames = 600,
         .warmup_frames = 60,
         .size_index = 1,
+        .renderer = RENDERER_CPU,
     };
     bool profile_only_option = false;
     bool timeline_option = false;
@@ -135,6 +197,16 @@ static bool parse_options(int argc, char **argv, ProgramOptions *options)
             }
         } else if (strcmp(argv[i], "--screenshot") == 0 && i + 1 < argc) {
             options->screenshot_path = argv[++i];
+        } else if (strcmp(argv[i], "--renderer") == 0 && i + 1 < argc) {
+            const char *renderer = argv[++i];
+            if (strcmp(renderer, "cpu") == 0)
+                options->renderer = RENDERER_CPU;
+            else if (strcmp(renderer, "gpu") == 0)
+                options->renderer = RENDERER_GPU;
+            else {
+                fprintf(stderr, "Unknown renderer: %s\n", renderer);
+                return false;
+            }
         } else if (strcmp(argv[i], "--time") == 0 && i + 1 < argc) {
             timeline_option = true;
             if (!parse_time(argv[++i], &options->start_time)) {
@@ -218,6 +290,48 @@ static Rectangle integer_scaled_destination(int screen_width, int screen_height,
 static int run_screenshot(ProgramOptions options)
 {
     VirtualSize size = VIRTUAL_SIZES[options.size_index];
+    float timeline_time = requested_timeline_time(options);
+    SceneFrame scene = scene_at(timeline_time);
+    if (options.renderer == RENDERER_GPU && scene.id == SCENE_CUBE) {
+        SetConfigFlags(FLAG_WINDOW_HIDDEN);
+        SetTraceLogLevel(LOG_WARNING);
+        InitWindow(size.width, size.height, "Proteus GPU screenshot");
+        if (!IsWindowReady()) {
+            fprintf(stderr, "Unable to create the GPU screenshot context\n");
+            return 1;
+        }
+        GpuFramebuffer framebuffer = { 0 };
+        WaterfrontGpuScene gpu_scene = { 0 };
+        char shader_path[1024];
+        snprintf(
+            shader_path, sizeof(shader_path), "%s/shaders/waterfront_city.fs", PROTEUS_ASSET_DIR);
+        bool ready = gpu_framebuffer_create(&framebuffer, size)
+            && waterfront_gpu_scene_init(&gpu_scene, shader_path);
+        if (!ready) {
+            fprintf(stderr, "Unable to initialize the GPU city renderer\n");
+            waterfront_gpu_scene_destroy(&gpu_scene);
+            gpu_framebuffer_destroy(&framebuffer);
+            CloseWindow();
+            return 1;
+        }
+        gpu_draw_frame(&gpu_scene, framebuffer, scene.time);
+        Image image = LoadImageFromTexture(framebuffer.target.texture);
+        if (image.data != NULL)
+            ImageFlipVertical(&image);
+        bool exported = image.data != NULL && ExportImage(image, options.screenshot_path);
+        UnloadImage(image);
+        waterfront_gpu_scene_destroy(&gpu_scene);
+        gpu_framebuffer_destroy(&framebuffer);
+        CloseWindow();
+        if (!exported) {
+            fprintf(stderr, "Unable to export GPU screenshot: %s\n", options.screenshot_path);
+            return 1;
+        }
+        printf("screenshot=%s\nscene=%s\nscene_time=%.3f\ntimeline_time=%.3f\nresolution=%dx%d\n",
+            options.screenshot_path, scene_name(scene.id), scene.time, timeline_time, size.width,
+            size.height);
+        return 0;
+    }
     size_t pixel_count = (size_t)size.width * (size_t)size.height;
     Color *pixels = malloc(pixel_count * sizeof(*pixels));
     if (pixels == NULL) {
@@ -225,8 +339,6 @@ static int run_screenshot(ProgramOptions options)
         return 1;
     }
 
-    float timeline_time = requested_timeline_time(options);
-    SceneFrame scene = scene_at(timeline_time);
     float beat = timeline_time * 125.0f / 60.0f;
     scene_draw(pixels, size, scene, timeline_time, beat);
 
@@ -255,6 +367,73 @@ static int run_screenshot(ProgramOptions options)
 
 static int run_profile(ProgramOptions options)
 {
+    if (options.renderer == RENDERER_GPU && options.scene_id == SCENE_CUBE) {
+        VirtualSize size = VIRTUAL_SIZES[options.size_index];
+        SetConfigFlags(options.visible ? 0 : FLAG_WINDOW_HIDDEN);
+        SetTraceLogLevel(LOG_WARNING);
+        InitWindow(size.width, size.height, "Proteus GPU profile");
+        if (!IsWindowReady()) {
+            fprintf(stderr, "Unable to create the GPU profiling context\n");
+            return 1;
+        }
+        GpuFramebuffer framebuffer = { 0 };
+        WaterfrontGpuScene gpu_scene = { 0 };
+        char shader_path[1024];
+        snprintf(
+            shader_path, sizeof(shader_path), "%s/shaders/waterfront_city.fs", PROTEUS_ASSET_DIR);
+        if (!gpu_framebuffer_create(&framebuffer, size)
+            || !waterfront_gpu_scene_init(&gpu_scene, shader_path)) {
+            fprintf(stderr, "Unable to initialize the GPU city renderer\n");
+            waterfront_gpu_scene_destroy(&gpu_scene);
+            gpu_framebuffer_destroy(&framebuffer);
+            CloseWindow();
+            return 1;
+        }
+        float *samples = malloc((size_t)options.frames * sizeof(*samples));
+        if (samples == NULL) {
+            waterfront_gpu_scene_destroy(&gpu_scene);
+            gpu_framebuffer_destroy(&framebuffer);
+            CloseWindow();
+            return 1;
+        }
+        int total = options.warmup_frames + options.frames;
+        for (int i = 0; i < total; ++i) {
+            double started = profile_time();
+            gpu_draw_frame(
+                &gpu_scene, framebuffer, fmodf((float)i / 60.0f, scene_duration(SCENE_CUBE)));
+            if (options.visible) {
+                Rectangle source = { 0, 0, (float)size.width, (float)-size.height };
+                Rectangle destination
+                    = integer_scaled_destination(GetScreenWidth(), GetScreenHeight(), size);
+                BeginDrawing();
+                ClearBackground(BLACK);
+                DrawTexturePro(
+                    framebuffer.target.texture, source, destination, (Vector2) { 0 }, 0, WHITE);
+                EndDrawing();
+            }
+            if (i >= options.warmup_frames)
+                samples[i - options.warmup_frames] = (float)((profile_time() - started) * 1000.0);
+        }
+        ProfileStats submission = profile_stats_linear(samples, options.frames);
+        printf("proteus_profile_begin=1\nformat_version=2\nbuild_type=%s\nscene=cube\n",
+            PROTEUS_BUILD_TYPE);
+        printf("renderer=gpu\nframes=%d\nwarmup_frames=%d\nvirtual_width=%d\nvirtual_height=%d\n",
+            options.frames, options.warmup_frames, size.width, size.height);
+        printf("graphics_enabled=true\npacing=%s\ngeneration_scope=gpu_cpu_submission\n",
+            options.visible ? "visible_present" : "hidden_context");
+        printf(
+            "upload_scope=no_cpu_framebuffer_upload\npresent_scope=%s\nframe_scope=gpu_submission",
+            options.visible ? "begin_drawing_through_end_drawing" : "zero_when_hidden");
+        printf("\nfinal_framebuffer_checksum=unavailable\n");
+        profile_stats_print("generation", submission);
+        profile_stats_print("frame", submission);
+        printf("proteus_profile_end=1\n");
+        free(samples);
+        waterfront_gpu_scene_destroy(&gpu_scene);
+        gpu_framebuffer_destroy(&framebuffer);
+        CloseWindow();
+        return 0;
+    }
     VirtualSize size = VIRTUAL_SIZES[options.size_index];
     Texture2D framebuffer = { 0 };
     if (options.visible) {
@@ -408,6 +587,25 @@ int main(int argc, char **argv)
         CloseWindow();
         return 1;
     }
+    GpuFramebuffer gpu_framebuffer = { 0 };
+    WaterfrontGpuScene gpu_scene = { 0 };
+    bool gpu_ready = false;
+    if (options.renderer == RENDERER_GPU) {
+        char shader_path[1024];
+        snprintf(
+            shader_path, sizeof(shader_path), "%s/shaders/waterfront_city.fs", PROTEUS_ASSET_DIR);
+        gpu_ready = gpu_framebuffer_create(&gpu_framebuffer, size)
+            && waterfront_gpu_scene_init(&gpu_scene, shader_path);
+        if (!gpu_ready) {
+            fprintf(stderr, "Unable to initialize the requested GPU city renderer\n");
+            waterfront_gpu_scene_destroy(&gpu_scene);
+            gpu_framebuffer_destroy(&gpu_framebuffer);
+            virtual_framebuffer_destroy(&framebuffer);
+            CloseAudioDevice();
+            CloseWindow();
+            return 1;
+        }
+    }
 
     Music music = { 0 };
     bool music_ready = false;
@@ -468,8 +666,19 @@ int main(int argc, char **argv)
             VirtualFramebuffer resized;
             if (!virtual_framebuffer_create(&resized, VIRTUAL_SIZES[requested]))
                 break;
+            GpuFramebuffer gpu_resized = { 0 };
+            if (gpu_ready) {
+                if (!gpu_framebuffer_create(&gpu_resized, VIRTUAL_SIZES[requested])) {
+                    virtual_framebuffer_destroy(&resized);
+                    break;
+                }
+            }
             virtual_framebuffer_destroy(&framebuffer);
             framebuffer = resized;
+            if (gpu_ready) {
+                gpu_framebuffer_destroy(&gpu_framebuffer);
+                gpu_framebuffer = gpu_resized;
+            }
             size_index = requested;
             size = framebuffer.size;
         }
@@ -482,14 +691,20 @@ int main(int argc, char **argv)
         float beat = time * 125.0f / 60.0f;
         SceneFrame scene = scene_at(time);
         double scene_started_at = GetTime();
-        scene_draw(framebuffer.pixels, size, scene, time, beat);
-        UpdateTexture(framebuffer.texture, framebuffer.pixels);
+        bool use_gpu = gpu_ready && scene.id == SCENE_CUBE;
+        if (use_gpu)
+            gpu_draw_frame(&gpu_scene, gpu_framebuffer, scene.time);
+        else {
+            scene_draw(framebuffer.pixels, size, scene, time, beat);
+            UpdateTexture(framebuffer.texture, framebuffer.pixels);
+        }
         previous_scene_ms = (float)((GetTime() - scene_started_at) * 1000.0);
 
         int screen_width = GetScreenWidth();
         int screen_height = GetScreenHeight();
         Rectangle destination = integer_scaled_destination(screen_width, screen_height, size);
-        Rectangle source = { 0, 0, (float)size.width, (float)size.height };
+        Rectangle source
+            = { 0, 0, (float)size.width, use_gpu ? (float)-size.height : (float)size.height };
         if (current_frame_started_at >= next_snapshot_time) {
             snapshot = profiler_snapshot(
                 &profiler, scene, time, size, destination, music_ready, music, spectrum);
@@ -499,7 +714,8 @@ int main(int argc, char **argv)
         double present_started_at = GetTime();
         BeginDrawing();
         ClearBackground(BLACK);
-        DrawTexturePro(framebuffer.texture, source, destination, (Vector2) { 0, 0 }, 0, WHITE);
+        DrawTexturePro(use_gpu ? gpu_framebuffer.target.texture : framebuffer.texture, source,
+            destination, (Vector2) { 0, 0 }, 0, WHITE);
         if (profiler_visible)
             profiler_draw(&profiler, &snapshot, size);
         DrawText(TextFormat("%dx%d  |  1/2/3 resolution  F3 profiler  F11 fullscreen  Esc quit",
@@ -514,6 +730,8 @@ int main(int argc, char **argv)
         audio_spectrum_detach(music.stream);
     if (music_ready)
         UnloadMusicStream(music);
+    waterfront_gpu_scene_destroy(&gpu_scene);
+    gpu_framebuffer_destroy(&gpu_framebuffer);
     virtual_framebuffer_destroy(&framebuffer);
     CloseAudioDevice();
     CloseWindow();

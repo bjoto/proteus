@@ -443,8 +443,8 @@ its remaining manual motion review is called out below rather than being treated
 | 01 CPU baseline | Implemented, verification pending | Build and 12/12 CTest passed; seven captures inspected. Full interactive route-motion review remains pending. See record below. |
 | 02 GPU target/capture fixture | Complete | Custom-shader render-target fixture, readback, orientation/depth checks, resizing, and visible comparison passed on the development Mac. See record below. |
 | 03 Shared scene evaluation | Complete | Scene-owned static geometry and explicit scene-time evaluation now feed the unchanged CPU submission order. See record below. |
-| 04 Static GPU city | Pending | |
-| 05 City life/application integration | Pending | |
+| 04 Static GPU city | Implemented, verification pending | Static city diagnostic path added; see record below. |
+| 05 City life/application integration | Implemented, verification pending | GPU city life and application backend routing are in place; desktop GPU checks remain pending. See record below. |
 | 06 GPU regression/profiling | Pending | |
 | 07 Surface detail | Pending | |
 | 08 Local lighting | Pending | |
@@ -524,6 +524,59 @@ Captured and inspected `build/step03-cube-t5.png` (320x200) and
 reference capture (`cpu-200-t5.png` and `cpu-240-t5.png`); the inspected frame retains the road,
 traffic, lit windows, crane silhouette, and basin framing. No interactive behavior changed or was
 re-reviewed. The next implementation step is 04, static GPU city port in the diagnostic harness.
+
+### Step 04 record — 2026-09-12
+
+Changed `CMakeLists.txt`, `tools/gpu_fixture.c`, `src/renderer_gpu.[ch]`, and added
+`assets/shaders/waterfront_city.fs`. The existing `gpu_fixture` diagnostic now accepts `--city`
+and `--time SECONDS`. This path retains the fixture's virtual-resolution target, capture, and
+point-filtered presentation, but builds/uploads the city, deterministic emissive window quads,
+crane, and bridge mesh only once. It evaluates the shared scene camera and bridge transform for
+each requested scene-local time. The city uses the same seven sky bands in virtual-pixel space,
+the existing explicit clip values through the shared camera, authored facade colors with baked
+flat ambient/directional shading, and unlit window colors. Traffic, boat/wake, lamps, light
+patches, shadows, reflections, textures, and postprocessing remain intentionally absent.
+
+`cmake --build build -j` completed without warnings in project code and
+`ctest --test-dir build --output-on-failure` passed all 12 CPU tests in 0.80 seconds. GPU visual
+verification is pending: attempts to run both `./build/gpu_fixture --check` and the new
+`./build/gpu_fixture --city --check --resolution 320x200 --time 5` stalled during hidden raylib
+window creation in this command environment, before the fixture printed its OpenGL context
+details. macOS reported a `com.apple.hiservices-xpcservice` connection failure. This is an
+environment/session failure rather than a city-render result; rerun the city captures at 0, 2.5,
+5, 10, and 15 seconds at 320x200 and 320x240 on the development desktop, inspect them against
+the step-01 references, and check a visible presentation before accepting step 04.
+
+### Step 05 record — 2026-09-12
+
+Changed `CMakeLists.txt`, `src/main.c`, `src/renderer_gpu.[ch]`, and
+`src/waterfront_scene.[ch]`; this step also retains the uncommitted step-04 files
+(`tools/gpu_fixture.c` and `assets/shaders/waterfront_city.fs`). `--renderer cpu|gpu` now
+selects the backend and defaults to CPU. GPU is used for `cube`; the other scenes retain their
+CPU framebuffer-upload path. The GPU scene owns reusable cube/plane meshes and draws the shared,
+explicit scene-time traffic, lamp posts/lenses, opaque stepped pools, boat, and wake without
+rebuilding static city resources or reading back during live frames.
+
+GPU screenshots create a hidden context with no audio device, render the same virtual target used
+by live frames, normalize the render-texture orientation once for PNG export, and release all GPU
+resources before closing the context. GPU profiling similarly uses that frame path and labels its
+measurements as CPU submission, explicitly reporting no CPU framebuffer upload. Live rendering
+uses the existing integer destination calculation, negative-height GPU source rectangle, and
+replacement-before-release resize handling. Music initialization and seek behavior are unchanged.
+
+`cmake --build build -j` completed warning-clean for project sources and
+`ctest --test-dir build --output-on-failure` passed all 12 CPU tests in 1.54 seconds. The CPU
+`cube` profile still produced its exact checksum `fd8832e64f03e590`.
+
+GPU capture verification remains blocked in this command environment: `./build/proteus --renderer
+gpu --scene cube --time 0 --screenshot build/step05-gpu-t0.png --resolution 320x200` stalled while
+creating the hidden macOS raylib window and emitted the existing
+`com.apple.hiservices-xpcservice` connection failure before context details/capture output. This
+matches the step-04 environment limitation, so no GPU visual acceptance is claimed. On the
+development desktop, capture and inspect times 0, 2.5, 5, 10, and 15 at 320x200 and 320x240;
+compare direct seeks with sequential evaluation; then manually check the full route, 1/2/3
+resolution changes, window resize, fullscreen, quit, and audio playback/seek. The next step is
+06 only after that review.
 
 ## Technical references
 

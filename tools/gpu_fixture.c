@@ -1,5 +1,6 @@
 #include "external/glad.h"
 #include "raylib.h"
+#include "renderer_gpu.h"
 #include "rlgl.h"
 
 #include <limits.h>
@@ -24,6 +25,8 @@ typedef struct {
     bool visible;
     bool check;
     bool invalid_shader;
+    bool city;
+    float time;
 } FixtureOptions;
 
 static const FixtureSize SUPPORTED_SIZES[] = {
@@ -35,7 +38,7 @@ static const FixtureSize SUPPORTED_SIZES[] = {
 static void print_usage(const char *program)
 {
     printf("Usage: %s [--check] [--visible] [--frames N] [--screenshot FILE]\n", program);
-    printf("       %s [--resolution WIDTHxHEIGHT] [--invalid-shader]\n", program);
+    printf("       %s [--city --time SECONDS] [--resolution WIDTHxHEIGHT]\n", program);
     printf("Options:\n");
     printf("  --check                 verify depth, orientation, target resizing, and capture\n");
     printf("  --visible               present the virtual target in a window\n");
@@ -43,6 +46,8 @@ static void print_usage(const char *program)
     printf("  --resolution WIDTHxHEIGHT (default: 320x200)\n");
     printf("  --screenshot FILE       export the virtual target as a PNG\n");
     printf("  --invalid-shader        verify a shader error fails without a fallback\n");
+    printf("  --city                  render the static waterfront GPU scene\n");
+    printf("  --time SECONDS          scene-local city time (default: 0)\n");
 }
 
 static bool parse_count(const char *text, int *value)
@@ -52,6 +57,16 @@ static bool parse_count(const char *text, int *value)
     if (text[0] == '\0' || *end != '\0' || parsed < 1 || parsed > INT_MAX)
         return false;
     *value = (int)parsed;
+    return true;
+}
+
+static bool parse_time(const char *text, float *value)
+{
+    char *end = NULL;
+    float parsed = strtof(text, &end);
+    if (text[0] == '\0' || *end != '\0' || parsed < 0.0f)
+        return false;
+    *value = parsed;
     return true;
 }
 
@@ -95,6 +110,13 @@ static bool parse_options(int argc, char **argv, FixtureOptions *options)
             options->screenshot_path = argv[++i];
         } else if (strcmp(argv[i], "--invalid-shader") == 0) {
             options->invalid_shader = true;
+        } else if (strcmp(argv[i], "--city") == 0) {
+            options->city = true;
+        } else if (strcmp(argv[i], "--time") == 0 && i + 1 < argc) {
+            if (!parse_time(argv[++i], &options->time)) {
+                fprintf(stderr, "Invalid scene time: %s\n", argv[i]);
+                return false;
+            }
         } else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
             print_usage(argv[0]);
             exit(0);
@@ -105,10 +127,40 @@ static bool parse_options(int argc, char **argv, FixtureOptions *options)
     }
 
     if (options->invalid_shader
-        && (options->check || options->visible || options->screenshot_path)) {
+        && (options->check || options->visible || options->screenshot_path || options->city)) {
         fprintf(stderr, "--invalid-shader cannot be combined with rendering options\n");
         return false;
     }
+    return true;
+}
+
+static void draw_city_sky(RenderTexture2D target)
+{
+    BeginTextureMode(target);
+    ClearBackground(BLACK);
+    for (int y = 0; y < target.texture.height; ++y) {
+        int band = y * 7 / target.texture.height;
+        DrawRectangle(0, y, target.texture.width, 1,
+            (Color) { (unsigned char)(20 + band * 5), (unsigned char)(29 + band * 5),
+                (unsigned char)(52 + band * 6), 255 });
+    }
+    EndTextureMode();
+}
+
+static bool draw_city(RenderTexture2D target, WaterfrontGpuScene *scene, FixtureOptions options)
+{
+    char shader_path[1024];
+    snprintf(shader_path, sizeof(shader_path), "%s/shaders/waterfront_city.fs", PROTEUS_ASSET_DIR);
+    if (!waterfront_gpu_scene_init(scene, shader_path)) {
+        fprintf(stderr, "GPU fixture: waterfront city resources failed: %s\n", shader_path);
+        return false;
+    }
+    WaterfrontSceneFrame frame;
+    waterfront_scene_evaluate(options.time, true, &frame);
+    draw_city_sky(target);
+    BeginTextureMode(target);
+    waterfront_gpu_scene_draw(scene, frame, target.texture.width, target.texture.height);
+    EndTextureMode();
     return true;
 }
 
@@ -263,25 +315,34 @@ int main(int argc, char **argv)
         return result;
     }
 
-    char shader_path[1024];
-    snprintf(shader_path, sizeof(shader_path), "%s/shaders/gpu_fixture.fs", PROTEUS_ASSET_DIR);
-    Shader shader = LoadShader(NULL, shader_path);
-    if (!IsShaderValid(shader) || shader.id == rlGetShaderIdDefault()) {
-        fprintf(stderr, "GPU fixture: custom fragment shader failed: %s\n", shader_path);
-        if (shader.id != 0 && shader.id != rlGetShaderIdDefault())
-            UnloadShader(shader);
-        CloseWindow();
-        return 1;
+    Shader shader = { 0 };
+    if (!options.city) {
+        char shader_path[1024];
+        snprintf(shader_path, sizeof(shader_path), "%s/shaders/gpu_fixture.fs", PROTEUS_ASSET_DIR);
+        shader = LoadShader(NULL, shader_path);
+        if (!IsShaderValid(shader) || shader.id == rlGetShaderIdDefault()) {
+            fprintf(stderr, "GPU fixture: custom fragment shader failed: %s\n", shader_path);
+            if (shader.id != 0 && shader.id != rlGetShaderIdDefault())
+                UnloadShader(shader);
+            CloseWindow();
+            return 1;
+        }
     }
 
+    WaterfrontGpuScene city = { 0 };
     RenderTexture2D target = { 0 };
     FixtureSize intermediate = { options.size.width / 2, options.size.height / 2 };
     if (!replace_target(&target, intermediate) || !replace_target(&target, options.size))
         goto cleanup;
 
-    draw_fixture(target, shader);
+    if (options.city) {
+        if (!draw_city(target, &city, options))
+            goto cleanup;
+    } else {
+        draw_fixture(target, shader);
+    }
     Image image = LoadImageFromTexture(target.texture);
-    if (!normalize_and_check_image(&image, options.size, options.check)) {
+    if (!normalize_and_check_image(&image, options.size, options.check && !options.city)) {
         UnloadImage(image);
         goto cleanup;
     }
@@ -300,9 +361,11 @@ int main(int argc, char **argv)
     result = 0;
 
 cleanup:
+    waterfront_gpu_scene_destroy(&city);
     if (target.id != 0)
         UnloadRenderTexture(target);
-    UnloadShader(shader);
+    if (shader.id != 0)
+        UnloadShader(shader);
     CloseWindow();
     return result;
 }
