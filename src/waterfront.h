@@ -1,0 +1,15 @@
+#ifndef PROTEUS_WATERFRONT_H
+#define PROTEUS_WATERFRONT_H
+
+#include "renderer3d.h"
+
+// Standalone storyboard: full Route A is four patterns, shortened cut is two.
+float waterfront_duration(bool short_route);
+View3D waterfront_camera(float time, bool short_route);
+bool waterfront_draw(
+    Renderer3D *renderer, Color *pixels, int width, int height, float time, bool short_route);
+// Samples both routes against the storyboard's surfaces with a two-metre camera radius.
+// This validates the proxy geometry only, not real-world clearance.
+bool waterfront_check_routes(void);
+
+#endif

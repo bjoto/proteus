@@ -30,6 +30,7 @@ bool renderer3d_begin(
         r->depth = depth;
         r->capacity = count;
     }
+    r->point_light = (PointLight3D) { 0 };
     r->pixels = pixels;
     r->width = width;
     r->height = height;
@@ -112,7 +113,51 @@ static float edge(ProjectedVertex a, ProjectedVertex b, float x, float y)
     return (x - a.x) * (b.y - a.y) - (y - a.y) * (b.x - a.x);
 }
 
-static void rasterize(Renderer3D *r, Vector3 va, Vector3 vb, Vector3 vc, Color color)
+// Recover world position from reciprocal depth so texture and light stay perspective-correct
+// even on clipped triangles. World-aligned mapping also keeps adjacent boxes at one texel scale.
+static Color shade_material(const Renderer3D *r, const Material3D *material, Vector3 normal,
+    float px, float py, float inverse_z)
+{
+    float z = 1.0f / inverse_z;
+    float vx = (px - (float)r->width * 0.5f) * z / r->focal_length;
+    float vy = ((float)r->height * 0.5f - py) * z / r->focal_length;
+    Vector3 world = Vector3Add(r->camera.position,
+        Vector3Add(Vector3Scale(r->forward, z),
+            Vector3Add(Vector3Scale(r->right, vx), Vector3Scale(r->up, vy))));
+    float u, v;
+    if (fabsf(normal.y) > fabsf(normal.x) && fabsf(normal.y) > fabsf(normal.z)) {
+        u = world.x;
+        v = world.z;
+    } else if (fabsf(normal.x) > fabsf(normal.z)) {
+        u = world.z;
+        v = -world.y;
+    } else {
+        u = world.x;
+        v = -world.y;
+    }
+    int tx = (int)floorf(u * material->texels_per_unit) % material->width;
+    int ty = (int)floorf(v * material->texels_per_unit) % material->height;
+    if (tx < 0)
+        tx += material->width;
+    if (ty < 0)
+        ty += material->height;
+    float light = 0.16f + 0.12f * fmaxf(0, Vector3DotProduct(normal, r->light_direction));
+    Vector3 delta = Vector3Subtract(r->point_light.position, world);
+    float distance_squared = Vector3DotProduct(delta, delta);
+    float radius = r->point_light.radius;
+    if (radius > 0 && distance_squared < radius * radius) {
+        float distance = sqrtf(fmaxf(distance_squared, 0.0001f));
+        float incidence = fmaxf(0, Vector3DotProduct(normal, delta) / distance);
+        float attenuation = 1.0f - distance / radius;
+        light += r->point_light.intensity * incidence * attenuation * attenuation;
+    }
+    int level = material->emissive ? 15 : (int)(fminf(1, fmaxf(0, light)) * 15.0f);
+    unsigned char texel = material->texels[ty * material->width + tx];
+    return material->palette[level * 16 + texel];
+}
+
+static void rasterize(Renderer3D *r, Vector3 va, Vector3 vb, Vector3 vc, Color color,
+    const Material3D *material, Vector3 normal)
 {
     ProjectedVertex a = project(r, va), b = project(r, vb), c = project(r, vc);
     float area = edge(a, b, c.x, c.y);
@@ -135,13 +180,15 @@ static void rasterize(Renderer3D *r, Vector3 va, Vector3 vb, Vector3 vc, Color c
             size_t index = (size_t)y * (size_t)r->width + (size_t)x;
             if (inverse_z > r->depth[index]) {
                 r->depth[index] = inverse_z;
-                r->pixels[index] = color;
+                r->pixels[index]
+                    = material ? shade_material(r, material, normal, px, py, inverse_z) : color;
             }
         }
     }
 }
 
-void renderer3d_draw_mesh(Renderer3D *r, const Mesh3D *mesh, Transform3D transform)
+static void draw_mesh(Renderer3D *r, const Mesh3D *mesh, Transform3D transform,
+    const Material3D *material, bool emissive)
 {
     Matrix rotation = MatrixRotateXYZ(transform.rotation);
     for (size_t i = 0; i < mesh->triangle_count; ++i) {
@@ -157,7 +204,9 @@ void renderer3d_draw_mesh(Renderer3D *r, const Mesh3D *mesh, Transform3D transfo
             Vector3Subtract(world[1], world[0]), Vector3Subtract(world[2], world[0])));
         if (Vector3DotProduct(normal, Vector3Subtract(r->camera.position, world[0])) <= 0)
             continue;
-        float brightness = 0.30f + 0.70f * fmaxf(0, Vector3DotProduct(normal, r->light_direction));
+        float brightness = emissive
+            ? 1
+            : 0.30f + 0.70f * fmaxf(0, Vector3DotProduct(normal, r->light_direction));
         Color color = { (unsigned char)(triangle->color.r * brightness),
             (unsigned char)(triangle->color.g * brightness),
             (unsigned char)(triangle->color.b * brightness), 255 };
@@ -170,11 +219,22 @@ void renderer3d_draw_mesh(Renderer3D *r, const Mesh3D *mesh, Transform3D transfo
             source = 1 - source;
         }
         for (int j = 1; j + 1 < count; ++j)
-            rasterize(r, buffers[source][0], buffers[source][j], buffers[source][j + 1], color);
+            rasterize(r, buffers[source][0], buffers[source][j], buffers[source][j + 1], color,
+                material, normal);
     }
 }
 
-void renderer3d_draw_box(Renderer3D *r, Transform3D transform, Color color)
+void renderer3d_draw_mesh(Renderer3D *r, const Mesh3D *mesh, Transform3D transform)
+{
+    draw_mesh(r, mesh, transform, NULL, false);
+}
+
+void renderer3d_draw_emissive_mesh(Renderer3D *r, const Mesh3D *mesh, Transform3D transform)
+{
+    draw_mesh(r, mesh, transform, NULL, true);
+}
+
+static void draw_box(Renderer3D *r, Transform3D transform, Color color, const Material3D *material)
 {
     static const Vector3 vertices[] = {
         { -0.5f, -0.5f, -0.5f },
@@ -201,5 +261,18 @@ void renderer3d_draw_box(Renderer3D *r, Transform3D transform, Color color)
         { { 4, 0, 1 }, color },
     };
     Mesh3D mesh = { vertices, triangles, sizeof(triangles) / sizeof(triangles[0]) };
-    renderer3d_draw_mesh(r, &mesh, transform);
+    draw_mesh(r, &mesh, transform, material, false);
+}
+
+void renderer3d_draw_box(Renderer3D *r, Transform3D transform, Color color)
+{
+    draw_box(r, transform, color, NULL);
+}
+
+void renderer3d_draw_textured_box(Renderer3D *r, Transform3D transform, const Material3D *material)
+{
+    if (!material || !material->texels || !material->palette || material->width <= 0
+        || material->height <= 0 || !(material->texels_per_unit > 0))
+        return;
+    draw_box(r, transform, WHITE, material);
 }

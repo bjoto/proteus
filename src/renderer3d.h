@@ -34,6 +34,23 @@ typedef struct {
     float far_plane;
 } View3D;
 
+// Indexed, repeating nearest-neighbour texture with 16 albedo entries and 16 light levels.
+// Palette layout is [light level * 16 + texel]. All texels must be in [0, 15].
+// Coordinates are world-aligned planar projections, at texels_per_unit density.
+typedef struct {
+    const unsigned char *texels;
+    const Color *palette; // 256 entries, darkest to brightest ramps.
+    int width, height;
+    float texels_per_unit;
+    bool emissive;
+} Material3D;
+
+typedef struct {
+    Vector3 position;
+    float radius;
+    float intensity;
+} PointLight3D;
+
 // Zero-initialize before first use. Owns only its depth buffer; pixels belong to the caller.
 typedef struct {
     Color *pixels;
@@ -47,6 +64,7 @@ typedef struct {
     Vector3 forward;
     Vector3 light_direction; // World-space direction toward the light, normalized by begin.
     float focal_length;
+    PointLight3D point_light; // Disabled by begin; set before drawing the frame.
 } Renderer3D;
 
 // Starts a frame and clears depth, preserving the caller's background pixels.
@@ -54,9 +72,14 @@ typedef struct {
 bool renderer3d_begin(Renderer3D *renderer, Color *pixels, int width, int height, View3D camera,
     Vector3 light_direction);
 void renderer3d_draw_mesh(Renderer3D *renderer, const Mesh3D *mesh, Transform3D transform);
+// Unlit vertex colors, with the same clipping, culling and depth as ordinary meshes.
+void renderer3d_draw_emissive_mesh(Renderer3D *renderer, const Mesh3D *mesh, Transform3D transform);
 void renderer3d_destroy(Renderer3D *renderer);
 
 // Shared unit box centered at the origin, spanning [-0.5, 0.5] on each axis.
 void renderer3d_draw_box(Renderer3D *renderer, Transform3D transform, Color color);
+
+void renderer3d_draw_textured_box(
+    Renderer3D *renderer, Transform3D transform, const Material3D *material);
 
 #endif

@@ -127,10 +127,16 @@ The virtual framebuffer defaults to 320x200. Resolution is intentionally not an
 architectural decision: try all three shapes while the demo runs.
 
 The visuals follow the eight-pattern music loop. Two patterns each are given to
-the starfield, fire, and plasma. The final two introduce a 3D blockout: a rotating cube
-above a plinth, a street, and simple buildings viewed by an orbiting camera. All geometry
-is transformed, clipped, depth-tested, and rasterized in the CPU-side virtual framebuffer.
-This is the foundation for a future city fly-by; see [the 3D renderer notes](docs/3D.md).
+the starfield, fire, and plasma. The final two show a 15.36-second Eriksberg waterfront
+fly-by: follow evening traffic along Monsungatan, pass lit apartments, and look back
+across the dock, with the crane in the background. The `cube`
+scene name is retained for screenshots and profiling. This flat-shaded blockout uses
+bundled geographic geometry and an authored crane; rendering runs in the CPU-side
+virtual framebuffer. See [the 3D renderer notes](docs/3D.md).
+
+Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright),
+[ODbL 1.0](https://opendatacommons.org/licenses/odbl/1-0/). The retained snapshot and
+height assumptions are recorded in `assets/geometry/eriksberg/manifest.json`.
 
 ## Editor setup
 

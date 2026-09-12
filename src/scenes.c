@@ -1,5 +1,6 @@
 #include "scenes.h"
 #include "renderer3d.h"
+#include "waterfront.h"
 
 #include <math.h>
 #include <stdint.h>
@@ -337,71 +338,23 @@ void scenes_shutdown(void) { renderer3d_destroy(&cube_renderer); }
 
 static void draw_cube(Color *pixels, VirtualSize size, float time)
 {
-    for (int y = 0; y < size.height; ++y) {
-        unsigned char blue = (unsigned char)(18 + 22 * y / size.height);
-        for (int x = 0; x < size.width; ++x)
-            pixels[y * size.width + x] = (Color) { 5, 9, blue, 255 };
-    }
-
-    // One slow camera arc per two-pattern scene; all motion is scene-local and seekable.
-    float phase = time / scene_duration(SCENE_CUBE) * 2.0f * PI;
-    View3D camera = {
-        .position = { sinf(phase) * 10.0f, 5.5f + sinf(phase) * 0.8f, -cosf(phase) * 12.0f },
-        .target = { 0, 1.2f, 0 },
-        .up = { 0, 1, 0 },
-        .vertical_fov = 55.0f * DEG2RAD,
-        .near_plane = 0.15f,
-        .far_plane = 80.0f,
-    };
-    if (!renderer3d_begin(&cube_renderer, pixels, size.width, size.height, camera,
-            (Vector3) { -0.4f, 0.8f, -0.5f }))
-        return;
-
-    renderer3d_draw_box(&cube_renderer,
-        (Transform3D) { .position = { 0, -0.3f, 0 }, .scale = { 24, 0.6f, 30 } },
-        (Color) { 45, 57, 78, 255 });
-    renderer3d_draw_box(&cube_renderer,
-        (Transform3D) { .position = { 0, 0.015f, 0 }, .scale = { 4, 0.03f, 30 } },
-        (Color) { 21, 28, 44, 255 });
-
-    // A small, deterministic blockout exercises shared geometry, depth and nonuniform scales.
-    for (int row = 0; row < 5; ++row) {
-        for (int side = -1; side <= 1; side += 2) {
-            float height = 1.5f + (float)((row * 7 + (side + 1) * 3) % 5) * 0.7f;
-            Color color = side < 0 ? (Color) { 55, 165, 205, 255 } : (Color) { 170, 95, 185, 255 };
-            Transform3D building = {
-                .position = { (float)side * 5.0f, height * 0.5f, (float)(row - 2) * 5.0f },
-                .scale = { 3, height, 3 },
-            };
-            renderer3d_draw_box(&cube_renderer, building, color);
-        }
-    }
-
-    // Keep the original spinning cube as a landmark while the surrounding scene grows.
-    renderer3d_draw_box(&cube_renderer,
-        (Transform3D) { .position = { 0, 0.3f, 0 }, .scale = { 2.8f, 0.6f, 2.8f } },
-        (Color) { 95, 110, 145, 255 });
-    renderer3d_draw_box(&cube_renderer,
-        (Transform3D) {
-            .position = { 0, 2.6f, 0 },
-            .rotation = { time * 0.47f + 0.38f, time * 0.72f, sinf(time * 0.31f) * 0.22f },
-            .scale = { 2, 2, 2 },
-        },
-        (Color) { 255, 165, 60, 255 });
+    // The shortened Route A fits the existing two-pattern music slot.
+    waterfront_draw(&cube_renderer, pixels, size.width, size.height, time, true);
 }
 
 SceneFrame scene_at(float time)
 {
     float loop_time = fmodf(time, scene_timeline_duration());
+    float start = 0;
     for (size_t i = 0; i < sizeof(SCENES) / sizeof(SCENES[0]); ++i) {
-        if (loop_time < SCENES[i].duration) {
+        if (loop_time < start + SCENES[i].duration) {
             return (SceneFrame) {
                 SCENES[i].id,
-                loop_time,
-                loop_time / SCENES[i].duration,
+                loop_time - start,
+                (loop_time - start) / SCENES[i].duration,
             };
         }
-        loop_time -= SCENES[i].duration;
+        start += SCENES[i].duration;
     }
     return (SceneFrame) { SCENES[0].id, 0.0f, 0.0f };
 }

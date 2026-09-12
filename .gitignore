@@ -4,3 +4,6 @@ build-profile/
 __pycache__/
 *.pyc
 .DS_Store
+
+# Emacs autosave files
+\#*#

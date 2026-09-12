@@ -1,0 +1,1249 @@
+{
+  "source": "docs/eriksberg/osm-survey.json.gz",
+  "source_sha256": "9349d7014692dba93203e03d842b9b1402a481f77503514cb68f38902eb23b54",
+  "snapshot": "2026-09-09T09:33:47Z",
+  "origin_epsg3007": [
+    144570.57938487717,
+    6397583.370403226
+  ],
+  "license": "ODbL-1.0",
+  "license_url": "https://opendatacommons.org/licenses/odbl/1-0/",
+  "attribution": "Map data \u00a9 OpenStreetMap contributors",
+  "attribution_url": "https://www.openstreetmap.org/copyright",
+  "ground": "Assumed flat quay at 3.5 m above water; terrain samples not used",
+  "crop": [
+    -400.0,
+    -400.0,
+    550.0,
+    500.0
+  ],
+  "vertices": 7388,
+  "triangles": 9083,
+  "geometry_sha256": "3af6840e9f5df286776c3de5c315b44787927a9f8d42790ee210c0a0ebc2d8fc",
+  "buildings": [
+    {
+      "osm": "relation/2198314",
+      "height": 14.0,
+      "basis": "height",
+      "courtyards": 1
+    },
+    {
+      "osm": "relation/2198405",
+      "height": 13.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 1
+    },
+    {
+      "osm": "relation/2198407",
+      "height": 14.0,
+      "basis": "height",
+      "courtyards": 1
+    },
+    {
+      "osm": "relation/2198413",
+      "height": 14.0,
+      "basis": "height",
+      "courtyards": 1
+    },
+    {
+      "osm": "way/27018036",
+      "height": 16.0,
+      "basis": "fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/27018051",
+      "height": 13.0,
+      "basis": "height",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/56434160",
+      "height": 16.0,
+      "basis": "fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/89956591",
+      "height": 7.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/89956592",
+      "height": 7.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/89956593",
+      "height": 16.0,
+      "basis": "fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/89956594",
+      "height": 23.0,
+      "basis": "height",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/89956595",
+      "height": 7.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/89956596",
+      "height": 16.0,
+      "basis": "fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/89956597",
+      "height": 22.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/89956598",
+      "height": 7.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/89956599",
+      "height": 23.0,
+      "basis": "height",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/89956600",
+      "height": 16.0,
+      "basis": "fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/89956601",
+      "height": 7.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/89956602",
+      "height": 7.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/93187214",
+      "height": 16.0,
+      "basis": "fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/93187215",
+      "height": 16.0,
+      "basis": "fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/93187216",
+      "height": 16.0,
+      "basis": "fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/93187547",
+      "height": 9.0,
+      "basis": "height",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/93187549",
+      "height": 9.0,
+      "basis": "height",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/93187552",
+      "height": 9.0,
+      "basis": "height",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/93187553",
+      "height": 9.0,
+      "basis": "height",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/93187554",
+      "height": 9.0,
+      "basis": "height",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/93187555",
+      "height": 9.0,
+      "basis": "height",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/93187556",
+      "height": 9.0,
+      "basis": "height",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/93187557",
+      "height": 9.0,
+      "basis": "height",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/93187558",
+      "height": 9.0,
+      "basis": "height",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/93187559",
+      "height": 9.0,
+      "basis": "height",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/93187560",
+      "height": 9.0,
+      "basis": "height",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/93197077",
+      "height": 9.0,
+      "basis": "height",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/93197087",
+      "height": 9.0,
+      "basis": "height",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/93197092",
+      "height": 9.0,
+      "basis": "height",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/93198856",
+      "height": 17.0,
+      "basis": "height",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/93198861",
+      "height": 17.0,
+      "basis": "height",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/93198862",
+      "height": 17.0,
+      "basis": "height",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/93198865",
+      "height": 17.0,
+      "basis": "height",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/93198866",
+      "height": 22.0,
+      "basis": "height",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/93198868",
+      "height": 22.0,
+      "basis": "height",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/93198869",
+      "height": 16.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/93198872",
+      "height": 16.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/93198873",
+      "height": 22.0,
+      "basis": "height",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/93198874",
+      "height": 22.0,
+      "basis": "height",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/93198875",
+      "height": 22.0,
+      "basis": "height",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/93198876",
+      "height": 16.0,
+      "basis": "fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/93198877",
+      "height": 17.0,
+      "basis": "height",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/110515249",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/110515271",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/110515286",
+      "height": 16.0,
+      "basis": "fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/110515291",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/110515292",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/110515306",
+      "height": 16.0,
+      "basis": "fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/110515321",
+      "height": 16.0,
+      "basis": "fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/110515328",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/110515331",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/110515345",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/110515367",
+      "height": 16.0,
+      "basis": "fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/110515369",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/110515395",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/110515406",
+      "height": 16.0,
+      "basis": "fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/110515418",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/110515435",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/110515445",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/110515447",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/110515452",
+      "height": 16.0,
+      "basis": "fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/110515454",
+      "height": 16.0,
+      "basis": "fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/110515458",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/110515468",
+      "height": 16.0,
+      "basis": "fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/110515472",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/110515504",
+      "height": 16.0,
+      "basis": "fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/110515505",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/110515541",
+      "height": 16.0,
+      "basis": "fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/110515543",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/110515549",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/110515557",
+      "height": 16.0,
+      "basis": "fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/110515566",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/110515592",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/110515601",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/110515639",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/110515646",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/110515647",
+      "height": 16.0,
+      "basis": "fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/110515650",
+      "height": 16.0,
+      "basis": "fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/110515652",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/115318523",
+      "height": 16.0,
+      "basis": "fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/115318537",
+      "height": 40.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/120171691",
+      "height": 16.0,
+      "basis": "fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/120171693",
+      "height": 16.0,
+      "basis": "fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/120171694",
+      "height": 16.0,
+      "basis": "fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/135955100",
+      "height": 16.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/136840735",
+      "height": 16.0,
+      "basis": "fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/136840736",
+      "height": 16.0,
+      "basis": "fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/136840737",
+      "height": 16.0,
+      "basis": "fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/136840741",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/136840743",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/163652239",
+      "height": 16.0,
+      "basis": "fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/163652254",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/164673315",
+      "height": 19.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/164673840",
+      "height": 22.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/164761434",
+      "height": 16.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/164761452",
+      "height": 16.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/164761934",
+      "height": 19.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/164761935",
+      "height": 10.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/164761937",
+      "height": 10.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/164761938",
+      "height": 19.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/164761939",
+      "height": 19.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/164761949",
+      "height": 19.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/164762048",
+      "height": 19.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/164762073",
+      "height": 10.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/164762074",
+      "height": 10.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/164963584",
+      "height": 19.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/164963867",
+      "height": 25.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/164963868",
+      "height": 16.0,
+      "basis": "fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/164963869",
+      "height": 37.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/164963897",
+      "height": 25.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/164964582",
+      "height": 25.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/164964583",
+      "height": 19.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/164964584",
+      "height": 19.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/164964585",
+      "height": 19.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/164964586",
+      "height": 19.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/164965368",
+      "height": 19.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/164965369",
+      "height": 16.0,
+      "basis": "fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/164965639",
+      "height": 25.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/164965830",
+      "height": 10.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/164967227",
+      "height": 22.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/164967228",
+      "height": 19.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/164968414",
+      "height": 19.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/165485913",
+      "height": 16.0,
+      "basis": "fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/282574762",
+      "height": 40.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/282574763",
+      "height": 16.0,
+      "basis": "fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/282574764",
+      "height": 16.0,
+      "basis": "fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/282574765",
+      "height": 16.0,
+      "basis": "fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/282574767",
+      "height": 16.0,
+      "basis": "fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/282615542",
+      "height": 7.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/303912306",
+      "height": 25.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/303912307",
+      "height": 25.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/303925538",
+      "height": 17.0,
+      "basis": "height",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/303925539",
+      "height": 40.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/303925540",
+      "height": 16.0,
+      "basis": "fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/303925541",
+      "height": 16.0,
+      "basis": "fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/304437197",
+      "height": 25.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/362806039",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/433429746",
+      "height": 16.0,
+      "basis": "fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/433429748",
+      "height": 16.0,
+      "basis": "fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/433429750",
+      "height": 25.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/433429751",
+      "height": 25.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/433429753",
+      "height": 25.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/433429755",
+      "height": 25.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/433450899",
+      "height": 25.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/461443924",
+      "height": 16.0,
+      "basis": "fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/461443925",
+      "height": 16.0,
+      "basis": "fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/461443926",
+      "height": 16.0,
+      "basis": "fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/503087593",
+      "height": 3.0,
+      "basis": "height",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/503087601",
+      "height": 5.0,
+      "basis": "height",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/503087611",
+      "height": 5.0,
+      "basis": "height",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/503087612",
+      "height": 4.0,
+      "basis": "height",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/503087613",
+      "height": 5.0,
+      "basis": "height",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/558161008",
+      "height": 7.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/558161009",
+      "height": 7.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/558161010",
+      "height": 7.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/795163311",
+      "height": 25.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/795163313",
+      "height": 25.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/795163314",
+      "height": 25.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/795163315",
+      "height": 22.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/795163316",
+      "height": 22.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/795163317",
+      "height": 25.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/940437752",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/1023913624",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/1068834252",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/1086386662",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/1086386663",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/1086386664",
+      "height": 16.0,
+      "basis": "fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/1086389622",
+      "height": 16.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/1086389623",
+      "height": 16.0,
+      "basis": "floors * 3 + 1",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/1097255022",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/1097257362",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/1097257377",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/1122167754",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/1122167757",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/1126560820",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/1149148954",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/1149155442",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/1149155443",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/1149155445",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/1149155446",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/1149155447",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/1149155448",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/1149155449",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/1149155450",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/1149156588",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/1149183780",
+      "height": 16.0,
+      "basis": "fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/1214903280",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/1255591299",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/1255591300",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/1352418102",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/1352493495",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/1352493499",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/1393067195",
+      "height": 9.0,
+      "basis": "height",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/1393067196",
+      "height": 9.0,
+      "basis": "height",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/1433637061",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/1449470343",
+      "height": 16.0,
+      "basis": "fallback",
+      "courtyards": 0
+    },
+    {
+      "osm": "way/1514509231",
+      "height": 4.0,
+      "basis": "small-footprint fallback",
+      "courtyards": 0
+    }
+  ]
+}

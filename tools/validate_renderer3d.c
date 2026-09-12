@@ -73,6 +73,19 @@ int main(void)
     float expected_depth = (1.0f + 0.5f / renderer.focal_length) / 3.0f;
     CHECK(fabsf(renderer.depth[30 * 80 + 40] - expected_depth) < 0.00001f);
 
+    // Emissive windows retain their color away from the sun, but are still occluded.
+    CHECK(renderer3d_begin(&renderer, pixels, 80, 60, camera, (Vector3) { 0, 0, 1 }));
+    triangle.color = (Color) { 230, 169, 88, 255 };
+    renderer3d_draw_emissive_mesh(&renderer, &mesh, identity);
+    CHECK(memcmp(&pixels[30 * 80 + 40], &triangle.color, sizeof(Color)) == 0);
+    CHECK(fabsf(renderer.depth[30 * 80 + 40] - expected_depth) < 0.00001f);
+    renderer3d_draw_box(
+        &renderer, (Transform3D) { .position = { 0, 0, 1 }, .scale = { 1, 1, .2f } }, BLUE);
+    Color occluder = pixels[30 * 80 + 40];
+    renderer3d_draw_emissive_mesh(&renderer, &mesh, identity);
+    CHECK(memcmp(&pixels[30 * 80 + 40], &occluder, sizeof(Color)) == 0);
+    triangle.color = WHITE;
+
     // Fully outside each of the six frustum planes, including behind the camera.
     const Vector3 outside[] = {
         { 0, 0, -10 },
@@ -90,6 +103,58 @@ int main(void)
         for (int j = 0; j < 80 * 60; ++j)
             CHECK(renderer.depth[j] == 0);
     }
+
+    // An emissive indexed face has analytically known world-space texel coordinates.
+    // Include negative coordinates and frustum clipping; depth reconstructs the same mapping.
+    unsigned char texels[4] = { 0, 1, 2, 3 };
+    Color palette[256];
+    for (int level = 0; level < 16; ++level)
+        for (int texel = 0; texel < 16; ++texel)
+            palette[level * 16 + texel]
+                = (Color) { (unsigned char)(texel + 1), (unsigned char)level, 0, 255 };
+    Material3D material = { texels, palette, 2, 2, 2, true };
+    Transform3D wall = { .position = { 0, 0, 3 }, .scale = { 8, 8, 2 } };
+    for (int pass = 0; pass < 2; ++pass) {
+        float angle = pass == 0 ? 0 : 0.35f;
+        wall.rotation.y = angle;
+        CHECK(renderer3d_begin(&renderer, pixels, 80, 60, camera, light));
+        renderer3d_draw_textured_box(&renderer, wall, &material);
+        for (int y = 0; y < 60; ++y) {
+            for (int x = 0; x < 80; ++x) {
+                float dx = ((float)x + 0.5f - 40) / renderer.focal_length;
+                float dy = (30 - (float)y - 0.5f) / renderer.focal_length;
+                // Ray/plane intersection with the rotated front face, independent of
+                // the renderer's triangle interpolation. This catches affine mapping.
+                float z = (3 * cosf(angle) - 1) / (sinf(angle) * dx + cosf(angle));
+                int u = ((int)floorf(dx * z * 2) % 2 + 2) % 2;
+                int v = ((int)floorf(-dy * z * 2) % 2 + 2) % 2;
+                CHECK(pixels[y * 80 + x].r == texels[v * 2 + u] + 1);
+                CHECK(pixels[y * 80 + x].g == 15);
+            }
+        }
+    }
+    wall.rotation.y = 0;
+    material.emissive = false;
+    CHECK(renderer3d_begin(&renderer, pixels, 80, 60, camera, light));
+    renderer3d_draw_textured_box(&renderer, wall, &material);
+    memcpy(reference, pixels, sizeof(pixels));
+    renderer.point_light = (PointLight3D) { .position = { 0, 0, 0 }, .radius = 6, .intensity = 2 };
+    // Begin must clear point-light state, then the caller sets this frame's light.
+    CHECK(renderer3d_begin(&renderer, pixels, 80, 60, camera, light));
+    CHECK(renderer.point_light.radius == 0);
+    renderer.point_light = (PointLight3D) { .position = { 0, 0, 0 }, .radius = 6, .intensity = 2 };
+    renderer3d_draw_textured_box(&renderer, wall, &material);
+    CHECK(pixels[30 * 80 + 40].g > reference[30 * 80 + 40].g);
+    CHECK(pixels[30 * 80 + 40].g > pixels[0].g);
+    for (int i = 0; i < 80 * 60; ++i) {
+        CHECK(pixels[i].r == reference[i].r);
+        CHECK(pixels[i].g < 16);
+    }
+    // A light behind the surface contributes nothing (normal-facing test).
+    CHECK(renderer3d_begin(&renderer, pixels, 80, 60, camera, light));
+    renderer.point_light = (PointLight3D) { .position = { 0, 0, 6 }, .radius = 10, .intensity = 2 };
+    renderer3d_draw_textured_box(&renderer, wall, &material);
+    CHECK(memcmp(reference, pixels, sizeof(pixels)) == 0);
 
     // Moving camera and object together preserves projection and world-space lighting.
     CHECK(renderer3d_begin(&renderer, pixels, 80, 60, camera, light));

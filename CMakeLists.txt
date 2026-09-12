@@ -22,6 +22,7 @@ add_executable(proteus
   src/profiler.c
   src/renderer3d.c
   src/scenes.c
+  src/waterfront.c
   src/xm_audio.c
 )
 target_link_libraries(proteus PRIVATE raylib)
@@ -62,6 +63,15 @@ target_compile_options(validate_audio_spectrum PRIVATE
 )
 
 enable_testing()
+add_executable(waterfront_storyboard
+  tools/waterfront_storyboard.c src/waterfront.c src/renderer3d.c
+)
+target_include_directories(waterfront_storyboard PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(waterfront_storyboard PRIVATE raylib)
+target_compile_options(waterfront_storyboard PRIVATE
+  $<$<C_COMPILER_ID:AppleClang,Clang,GNU>:-Wall;-Wextra;-Wpedantic>
+)
+add_test(NAME waterfront_storyboard_is_valid COMMAND waterfront_storyboard --check)
 add_executable(validate_renderer3d tools/validate_renderer3d.c src/renderer3d.c)
 target_include_directories(validate_renderer3d PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(validate_renderer3d PRIVATE raylib)
@@ -99,7 +109,7 @@ set_tests_properties(interactive_timeline_options PROPERTIES
 set(starscroll_checksum e7e36b86f9776e7d)
 set(fire_checksum fd61ac9ce25e71a6)
 set(plasma_checksum cac9c63d222163d3)
-set(cube_checksum a3519c734d31a9dc)
+set(cube_checksum fd8832e64f03e590)
 foreach(scene starscroll fire plasma cube)
   add_test(NAME ${scene}_render_checksum
     COMMAND proteus --profile ${scene} --frames 1 --warmup 0
@@ -108,3 +118,11 @@ foreach(scene starscroll fire plasma cube)
     PASS_REGULAR_EXPRESSION "final_framebuffer_checksum=${${scene}_checksum}"
   )
 endforeach()
+
+add_test(NAME cube_start_screenshot
+  COMMAND proteus --screenshot ${CMAKE_CURRENT_BINARY_DIR}/cube-start.png
+          --scene cube --time 0
+)
+set_tests_properties(cube_start_screenshot PROPERTIES
+  PASS_REGULAR_EXPRESSION "scene=cube"
+)
