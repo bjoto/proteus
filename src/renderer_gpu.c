@@ -236,6 +236,56 @@ static bool build_light_patch(Mesh *mesh)
     return mesh->vaoId != 0;
 }
 
+static bool build_unit_cube(Mesh *mesh)
+{
+    static const Vector3 points[] = {
+        { -.5f, -.5f, -.5f },
+        { .5f, -.5f, -.5f },
+        { .5f, .5f, -.5f },
+        { -.5f, .5f, -.5f },
+        { -.5f, -.5f, .5f },
+        { .5f, -.5f, .5f },
+        { .5f, .5f, .5f },
+        { -.5f, .5f, .5f },
+    };
+    static const unsigned char faces[][3] = {
+        { 0, 2, 1 },
+        { 0, 3, 2 },
+        { 5, 7, 4 },
+        { 5, 6, 7 },
+        { 4, 3, 0 },
+        { 4, 7, 3 },
+        { 1, 6, 5 },
+        { 1, 2, 6 },
+        { 3, 6, 2 },
+        { 3, 7, 6 },
+        { 4, 1, 5 },
+        { 4, 0, 1 },
+    };
+    MeshBuilder builder = { 0 };
+    for (size_t i = 0; i < sizeof(faces) / sizeof(faces[0]); ++i) {
+        if (!builder_triangle(&builder, points[faces[i][0]], points[faces[i][1]],
+                points[faces[i][2]], WHITE, true)) {
+            builder_destroy(&builder);
+            return false;
+        }
+    }
+    *mesh = builder_finish(&builder);
+    return mesh->vaoId != 0;
+}
+
+static bool build_unit_plane(Mesh *mesh)
+{
+    MeshBuilder builder = { 0 };
+    if (!builder_quad(&builder, (Vector3) { -.5f, 0, -.5f }, (Vector3) { -.5f, 0, .5f },
+            (Vector3) { .5f, 0, .5f }, (Vector3) { .5f, 0, -.5f }, WHITE, true)) {
+        builder_destroy(&builder);
+        return false;
+    }
+    *mesh = builder_finish(&builder);
+    return mesh->vaoId != 0;
+}
+
 bool waterfront_gpu_scene_init(WaterfrontGpuScene *scene, const char *fragment_shader_path)
 {
     *scene = (WaterfrontGpuScene) { 0 };
@@ -244,11 +294,8 @@ bool waterfront_gpu_scene_init(WaterfrontGpuScene *scene, const char *fragment_s
         goto failed;
     if (!build_city(&scene->city) || !build_windows(&scene->windows) || !build_crane(&scene->crane))
         goto failed;
-    scene->bridge = GenMeshCube(1, 1, 1);
-    scene->cube = GenMeshCube(1, 1, 1);
-    scene->plane = GenMeshPlane(1, 1, 1, 1);
-    if (!build_light_patch(&scene->light_patch) || scene->bridge.vaoId == 0
-        || scene->cube.vaoId == 0 || scene->plane.vaoId == 0)
+    if (!build_unit_cube(&scene->bridge) || !build_unit_cube(&scene->cube)
+        || !build_unit_plane(&scene->plane) || !build_light_patch(&scene->light_patch))
         goto failed;
     scene->ready = true;
     return true;
