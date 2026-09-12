@@ -462,11 +462,16 @@ void waterfront_gpu_scene_draw(
     BeginMode3D(camera);
     rlSetMatrixProjection(MatrixPerspective(frame.camera.vertical_fov, (float)width / (float)height,
         frame.camera.near_plane, frame.camera.far_plane));
+    rlEnableBackfaceCulling();
     set_object_color(scene->shader, WHITE);
     DrawMesh(scene->city, material, MatrixIdentity());
     DrawMesh(scene->windows, material, MatrixIdentity());
     draw_colored_mesh(scene->bridge, material, frame.bridge, frame.bridge_color);
+    // These small closed meshes use reusable, non-indexed buffers. Keep them two-sided while
+    // retaining depth testing, so their visibility does not depend on backend cull-state defaults.
+    rlDisableBackfaceCulling();
     draw_life(scene, material, frame);
+    rlEnableBackfaceCulling();
     set_object_color(scene->shader, WHITE);
     DrawMesh(scene->crane, material, MatrixIdentity());
     EndMode3D();
