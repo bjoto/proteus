@@ -30,6 +30,7 @@ typedef struct {
     bool visible;
     bool show_help;
     bool scene_selected;
+    bool gpu_lighting;
     RendererKind renderer;
     SceneId scene_id;
     int frames;
@@ -115,7 +116,7 @@ static void gpu_draw_sky(RenderTexture2D target)
 }
 
 static void gpu_draw_frame(
-    const WaterfrontGpuScene *gpu_scene, GpuFramebuffer framebuffer, float scene_time)
+    WaterfrontGpuScene *gpu_scene, GpuFramebuffer framebuffer, float scene_time)
 {
     WaterfrontSceneFrame frame;
     waterfront_scene_evaluate(scene_time, true, &frame);
@@ -170,6 +171,7 @@ static void print_usage(const char *program)
     printf("  --visible               include upload/presentation using a visible window\n");
     printf("Timeline options:\n");
     printf("  --renderer cpu|gpu     city renderer (default: cpu)\n");
+    printf("  --gpu-lights on|off    GPU local-light diagnostic switch (default: on)\n");
     printf("  --time SECONDS          start at a global or scene-local time (default: 0)\n");
     printf("  --scene SCENE           select a scene and interpret --time relative to it\n");
     printf("  --resolution WIDTHxHEIGHT (default: 320x200)\n");
@@ -183,6 +185,7 @@ static bool parse_options(int argc, char **argv, ProgramOptions *options)
         .warmup_frames = 60,
         .size_index = 1,
         .renderer = RENDERER_CPU,
+        .gpu_lighting = true,
     };
     bool profile_only_option = false;
     bool timeline_option = false;
@@ -205,6 +208,16 @@ static bool parse_options(int argc, char **argv, ProgramOptions *options)
                 options->renderer = RENDERER_GPU;
             else {
                 fprintf(stderr, "Unknown renderer: %s\n", renderer);
+                return false;
+            }
+        } else if (strcmp(argv[i], "--gpu-lights") == 0 && i + 1 < argc) {
+            const char *lighting = argv[++i];
+            if (strcmp(lighting, "on") == 0)
+                options->gpu_lighting = true;
+            else if (strcmp(lighting, "off") == 0)
+                options->gpu_lighting = false;
+            else {
+                fprintf(stderr, "GPU lights must be on or off: %s\n", lighting);
                 return false;
             }
         } else if (strcmp(argv[i], "--time") == 0 && i + 1 < argc) {
@@ -371,6 +384,7 @@ static int run_screenshot(ProgramOptions options)
             CloseWindow();
             return 1;
         }
+        waterfront_gpu_scene_set_lighting_enabled(&gpu_scene, options.gpu_lighting);
         gpu_draw_frame(&gpu_scene, framebuffer, scene.time);
         Image image = LoadImageFromTexture(framebuffer.target.texture);
         if (image.data != NULL) {
@@ -448,6 +462,7 @@ static int run_profile(ProgramOptions options)
             CloseWindow();
             return 1;
         }
+        waterfront_gpu_scene_set_lighting_enabled(&gpu_scene, options.gpu_lighting);
         float *samples = malloc((size_t)options.frames * sizeof(*samples));
         if (samples == NULL) {
             waterfront_gpu_scene_destroy(&gpu_scene);
@@ -665,6 +680,7 @@ int main(int argc, char **argv)
             CloseWindow();
             return 1;
         }
+        waterfront_gpu_scene_set_lighting_enabled(&gpu_scene, options.gpu_lighting);
     }
 
     Music music = { 0 };

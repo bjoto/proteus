@@ -7,6 +7,18 @@
 
 #include <stdbool.h>
 
+#define WATERFRONT_GPU_MAX_LOCAL_LIGHTS 8
+
+typedef struct {
+    Vector3 position;
+    Vector3 direction;
+    Color color;
+    float radius;
+    float intensity;
+    float inner_cone_cos;
+    float outer_cone_cos;
+} WaterfrontGpuLight;
+
 // GPU-owned, static waterfront resources for the diagnostic fixture.  They must be
 // created and destroyed while a raylib/OpenGL context is alive.
 typedef struct {
@@ -19,7 +31,6 @@ typedef struct {
     Mesh bridge;
     Mesh cube;
     Mesh plane;
-    Mesh light_patch;
     Shader shader;
     Material city_material;
     Material facade_material;
@@ -29,12 +40,17 @@ typedef struct {
     Texture2D facade_texture;
     Texture2D roof_texture;
     Texture2D quay_texture;
+    WaterfrontGpuLight local_lights[WATERFRONT_GPU_MAX_LOCAL_LIGHTS];
+    int local_light_ids[WATERFRONT_GPU_MAX_LOCAL_LIGHTS];
+    int local_light_count;
+    bool lighting_enabled;
     bool ready;
 } WaterfrontGpuScene;
 
 bool waterfront_gpu_scene_init(WaterfrontGpuScene *scene, const char *fragment_shader_path);
+void waterfront_gpu_scene_set_lighting_enabled(WaterfrontGpuScene *scene, bool enabled);
 void waterfront_gpu_scene_draw(
-    const WaterfrontGpuScene *scene, WaterfrontSceneFrame frame, int width, int height);
+    WaterfrontGpuScene *scene, WaterfrontSceneFrame frame, int width, int height);
 void waterfront_gpu_scene_destroy(WaterfrontGpuScene *scene);
 
 #endif

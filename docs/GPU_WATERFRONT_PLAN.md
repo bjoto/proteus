@@ -1,6 +1,6 @@
 # Waterfront GPU migration plan
 
-Status: planned, not implemented. Written 2026-09-12.
+Status: steps 01–08 implemented; GPU visual verification remains pending. Written 2026-09-12.
 
 ## Decision and scope
 
@@ -454,8 +454,8 @@ its remaining manual motion review is called out below rather than being treated
 | 04 Static GPU city | Implemented, verification pending | Static city diagnostic path added; see record below. |
 | 05 City life/application integration | Implemented, verification pending | GPU city life and application backend routing are in place; desktop GPU checks remain pending. See record below. |
 | 06 GPU regression/profiling | Implemented, verification pending | Opt-in `PROTEUS_GPU_TESTS` adds a context-required capture/review CTest and target. Desktop context verification remains pending. |
-| 07 Surface detail | Pending | |
-| 08 Local lighting | Pending | |
+| 07 Surface detail | Implemented, verification pending | Bundled point-filtered facade, roof, and quay detail textures are on the GPU route; desktop visual review remains pending. |
+| 08 Local lighting | Implemented, verification pending | Eight bounded, hysteresis-selected lamp/headlight lights now shade the GPU route; desktop context/capture review remains pending. |
 | 09 Directional shadows | Pending | |
 | 10 Atmosphere | Pending | |
 | 11 Water reflection | Optional, pending | |
@@ -607,6 +607,50 @@ fixture could emit a manifest or OpenGL details, so GPU acceptance remains pendi
 `cmake --build build --target gpu_review` on the desktop session and inspect
 `build/gpu-review/contact-sheet.png`; a context/shader/capture failure intentionally fails the
 target and CTest instead of skipping it.
+
+### Step 08 record — 2026-09-12
+
+Added `assets/shaders/waterfront_city.vs` and extended `waterfront_city.fs`,
+`src/renderer_gpu.[ch]`, `src/main.c`, and `tools/gpu_fixture.c`. The GPU city now passes world
+position and correctly transformed normals to its shader. It combines a cool ambient fill and a
+warm directional fill with at most eight selected unshadowed local lights. Lamps are warm points
+(radius 15, intensity 0.78); vehicle headlights are warm, downward-tilted spots (radius 18,
+intensity 1.25, inner/outer cone cosines 0.90/0.72). Candidate lights are derived only from the
+shared scene time. Three slots are reserved for two warm boom floods and a cool trolley work light,
+three for street lamps, and two for headlights. The crane floods are broad downward spots (radii
+31–34, intensities 1.3–1.45); the trolley is a narrower cool spot (radius 26, intensity 1.35).
+Street lamps use radius 18 and intensity 1.0 to establish warm quay pools. Candidates are ranked
+against the authored camera target rather than the eye position, and a selected light receives a 65%
+squared-distance-score discount on the following frame, so a replacement must be roughly 40%
+closer to the shot focus before it takes a slot.
+
+Lighting is accumulated before a six-level material ramp. The cool ambient fill is 0.07/0.09/0.18
+with a blue directional fill at 0.45 intensity, leaving room for local lights to change the surface
+ramp. This preserves albedo hue and prevents nearby lamps from adding white directly to materials.
+Windows, lamp lenses, headlights, and the boat light are separately emissive. The crane also has
+chunky orange and blue emissive fixtures, matching its three local lights. The
+GPU-only opaque lamp/headlight pools have been removed;
+the CPU reference still draws them. These local lights are intentionally unshadowed, so authored
+radii limit—but cannot eliminate—light leaking through walls.
+
+For identical-time comparison captures, `--gpu-lights on|off` on `proteus --renderer gpu` and
+`--lights on|off` on `gpu_fixture --city` toggle local lights only; ambient/directional fill and
+emissive appearance remain stable. For example:
+
+```sh
+./build/proteus --renderer gpu --gpu-lights on --screenshot build/step08-on.png \
+  --scene cube --time 5 --resolution 320x200
+./build/proteus --renderer gpu --gpu-lights off --screenshot build/step08-off.png \
+  --scene cube --time 5 --resolution 320x200
+```
+
+`cmake --build build -j` completed warning-clean and the 12 display-free CTests passed in 0.80
+seconds (`ctest --test-dir build -LE gpu --output-on-failure`; this build has the opt-in GPU test
+enabled). GPU visual verification remains pending: the on-light city fixture was stopped after 20
+seconds during hidden raylib window creation, before it printed context details or compiled the
+new shader. macOS again reported a `com.apple.hiservices-xpcservice` connection failure. On a
+desktop session, inspect on/off captures at 0, 2.5, 5, 10, and 15 seconds at 320x200 and 320x240,
+then check headlight motion, nearby lamp influence, selection transitions, and the visible route.
 
 ## Technical references
 

@@ -27,6 +27,7 @@ typedef struct {
     bool check;
     bool invalid_shader;
     bool city;
+    bool lighting;
     float time;
 } FixtureOptions;
 
@@ -39,7 +40,8 @@ static const FixtureSize SUPPORTED_SIZES[] = {
 static void print_usage(const char *program)
 {
     printf("Usage: %s [--check] [--visible] [--frames N] [--screenshot FILE]\n", program);
-    printf("       %s [--city --time SECONDS] [--resolution WIDTHxHEIGHT]\n", program);
+    printf("       %s [--city --time SECONDS] [--lights on|off] [--resolution WIDTHxHEIGHT]\n",
+        program);
     printf("Options:\n");
     printf("  --check                 verify depth, orientation, target resizing, and capture\n");
     printf("  --visible               present the virtual target in a window\n");
@@ -49,6 +51,7 @@ static void print_usage(const char *program)
     printf("  --invalid-shader        verify a shader error fails without a fallback\n");
     printf("  --city                  render the static waterfront GPU scene\n");
     printf("  --time SECONDS          scene-local city time (default: 0)\n");
+    printf("  --lights on|off         city local-light diagnostic switch (default: on)\n");
 }
 
 static bool parse_count(const char *text, int *value)
@@ -90,6 +93,7 @@ static bool parse_options(int argc, char **argv, FixtureOptions *options)
     *options = (FixtureOptions) {
         .size = { 320, 200 },
         .frames = 1,
+        .lighting = true,
     };
 
     for (int i = 1; i < argc; ++i) {
@@ -113,6 +117,16 @@ static bool parse_options(int argc, char **argv, FixtureOptions *options)
             options->invalid_shader = true;
         } else if (strcmp(argv[i], "--city") == 0) {
             options->city = true;
+        } else if (strcmp(argv[i], "--lights") == 0 && i + 1 < argc) {
+            const char *lighting = argv[++i];
+            if (strcmp(lighting, "on") == 0)
+                options->lighting = true;
+            else if (strcmp(lighting, "off") == 0)
+                options->lighting = false;
+            else {
+                fprintf(stderr, "Lights must be on or off: %s\n", lighting);
+                return false;
+            }
         } else if (strcmp(argv[i], "--time") == 0 && i + 1 < argc) {
             if (!parse_time(argv[++i], &options->time)) {
                 fprintf(stderr, "Invalid scene time: %s\n", argv[i]);
@@ -156,6 +170,7 @@ static bool draw_city(RenderTexture2D target, WaterfrontGpuScene *scene, Fixture
         fprintf(stderr, "GPU fixture: waterfront city resources failed: %s\n", shader_path);
         return false;
     }
+    waterfront_gpu_scene_set_lighting_enabled(scene, options.lighting);
     WaterfrontSceneFrame frame;
     waterfront_scene_evaluate(options.time, true, &frame);
     draw_city_sky(target);
