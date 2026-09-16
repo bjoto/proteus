@@ -88,6 +88,16 @@ render target dimensions, orientation, depth, winding, normal submission, and sh
 If no graphics context is available in an automated session, the GPU test fails and records the
 context error in the manifest. Ordinary CTest does not include this test and remains display-free.
 
+The GPU waterfront enables its directional shadow map by default. Use `--gpu-shadows off` for a
+same-time comparison. The focused fixture can compare its supported shadow resolutions and export
+the light-frustum depth map for review:
+
+```sh
+./build/gpu_fixture --city --time 5 --shadow-resolution 512 --screenshot build/shadow-512.png
+./build/gpu_fixture --city --time 5 --shadow-resolution 1024 --screenshot build/shadow-1024.png
+./build/gpu_fixture --city --time 5 --shadow-map --screenshot build/shadow-depth.png
+```
+
 The profiler keeps a rolling 240-frame history (about four seconds at 60 FPS) and
 graphs total frame wall time, CPU scene generation plus texture upload, and
 presentation time (including any vertical-sync wait). It also reports rolling

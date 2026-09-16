@@ -28,6 +28,9 @@ typedef struct {
     bool invalid_shader;
     bool city;
     bool lighting;
+    bool shadows;
+    bool shadow_map_view;
+    int shadow_map_size;
     float time;
 } FixtureOptions;
 
@@ -40,8 +43,8 @@ static const FixtureSize SUPPORTED_SIZES[] = {
 static void print_usage(const char *program)
 {
     printf("Usage: %s [--check] [--visible] [--frames N] [--screenshot FILE]\n", program);
-    printf("       %s [--city --time SECONDS] [--lights on|off] [--resolution WIDTHxHEIGHT]\n",
-        program);
+    printf("       %s [--city --time SECONDS] [--lights on|off] [--shadows on|off]\n", program);
+    printf("       %s [--city --shadow-map] [--resolution WIDTHxHEIGHT]\n", program);
     printf("Options:\n");
     printf("  --check                 verify depth, orientation, target resizing, and capture\n");
     printf("  --visible               present the virtual target in a window\n");
@@ -52,6 +55,9 @@ static void print_usage(const char *program)
     printf("  --city                  render the static waterfront GPU scene\n");
     printf("  --time SECONDS          scene-local city time (default: 0)\n");
     printf("  --lights on|off         city local-light diagnostic switch (default: on)\n");
+    printf("  --shadows on|off        city directional-shadow diagnostic switch (default: on)\n");
+    printf("  --shadow-resolution N   directional-shadow map size: 512 or 1024 (default: 1024)\n");
+    printf("  --shadow-map            export/present the light-frustum depth-map diagnostic\n");
 }
 
 static bool parse_count(const char *text, int *value)
@@ -94,6 +100,8 @@ static bool parse_options(int argc, char **argv, FixtureOptions *options)
         .size = { 320, 200 },
         .frames = 1,
         .lighting = true,
+        .shadows = true,
+        .shadow_map_size = WATERFRONT_GPU_SHADOW_MAP_SIZE,
     };
 
     for (int i = 1; i < argc; ++i) {
@@ -127,6 +135,25 @@ static bool parse_options(int argc, char **argv, FixtureOptions *options)
                 fprintf(stderr, "Lights must be on or off: %s\n", lighting);
                 return false;
             }
+        } else if (strcmp(argv[i], "--shadows") == 0 && i + 1 < argc) {
+            const char *shadows = argv[++i];
+            if (strcmp(shadows, "on") == 0)
+                options->shadows = true;
+            else if (strcmp(shadows, "off") == 0)
+                options->shadows = false;
+            else {
+                fprintf(stderr, "Shadows must be on or off: %s\n", shadows);
+                return false;
+            }
+        } else if (strcmp(argv[i], "--shadow-map") == 0) {
+            options->shadow_map_view = true;
+        } else if (strcmp(argv[i], "--shadow-resolution") == 0 && i + 1 < argc) {
+            if (!parse_count(argv[++i], &options->shadow_map_size)
+                || (options->shadow_map_size != 512
+                    && options->shadow_map_size != WATERFRONT_GPU_SHADOW_MAP_SIZE)) {
+                fprintf(stderr, "Shadow resolution must be 512 or 1024: %s\n", argv[i]);
+                return false;
+            }
         } else if (strcmp(argv[i], "--time") == 0 && i + 1 < argc) {
             if (!parse_time(argv[++i], &options->time)) {
                 fprintf(stderr, "Invalid scene time: %s\n", argv[i]);
@@ -146,6 +173,14 @@ static bool parse_options(int argc, char **argv, FixtureOptions *options)
         fprintf(stderr, "--invalid-shader cannot be combined with rendering options\n");
         return false;
     }
+    if (options->shadow_map_view && !options->city) {
+        fprintf(stderr, "--shadow-map requires --city\n");
+        return false;
+    }
+    if (options->shadow_map_view && !options->shadows) {
+        fprintf(stderr, "--shadow-map requires --shadows on\n");
+        return false;
+    }
     return true;
 }
 
@@ -154,10 +189,11 @@ static void draw_city_sky(RenderTexture2D target)
     BeginTextureMode(target);
     ClearBackground(BLACK);
     for (int y = 0; y < target.texture.height; ++y) {
-        int band = y * 7 / target.texture.height;
+        float t = target.texture.height > 1 ? (float)y / (float)(target.texture.height - 1) : 0;
         DrawRectangle(0, y, target.texture.width, 1,
-            (Color) { (unsigned char)(20 + band * 5), (unsigned char)(29 + band * 5),
-                (unsigned char)(52 + band * 6), 255 });
+            (Color) { (unsigned char)roundf(Lerp(20, 50, t)),
+                (unsigned char)roundf(Lerp(29, 59, t)), (unsigned char)roundf(Lerp(52, 88, t)),
+                255 });
     }
     EndTextureMode();
 }
@@ -171,12 +207,28 @@ static bool draw_city(RenderTexture2D target, WaterfrontGpuScene *scene, Fixture
         return false;
     }
     waterfront_gpu_scene_set_lighting_enabled(scene, options.lighting);
+    waterfront_gpu_scene_set_shadows_enabled(scene, options.shadows);
+    if (!waterfront_gpu_scene_set_shadow_map_size(scene, options.shadow_map_size)) {
+        fprintf(stderr, "GPU fixture: unable to select %d shadow map\n", options.shadow_map_size);
+        waterfront_gpu_scene_destroy(scene);
+        return false;
+    }
     WaterfrontSceneFrame frame;
     waterfront_scene_evaluate(options.time, true, &frame);
     draw_city_sky(target);
     BeginTextureMode(target);
     waterfront_gpu_scene_draw(scene, frame, target.texture.width, target.texture.height);
     EndTextureMode();
+    if (options.shadow_map_view) {
+        Texture2D shadow_map = waterfront_gpu_scene_shadow_map(scene);
+        BeginTextureMode(target);
+        ClearBackground(BLACK);
+        DrawTexturePro(shadow_map,
+            (Rectangle) { 0, 0, (float)shadow_map.width, (float)-shadow_map.height },
+            (Rectangle) { 0, 0, (float)target.texture.width, (float)target.texture.height },
+            (Vector2) { 0 }, 0, WHITE);
+        EndTextureMode();
+    }
     return true;
 }
 
@@ -462,8 +514,8 @@ int main(int argc, char **argv)
         draw_fixture(target, shader);
     }
     Image image = LoadImageFromTexture(target.texture);
-    if (!normalize_and_check_image(
-            &image, options.size, options.check && !options.city, options.city)) {
+    if (!normalize_and_check_image(&image, options.size, options.check && !options.city,
+            options.city && !options.shadow_map_view)) {
         UnloadImage(image);
         goto cleanup;
     }

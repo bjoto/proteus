@@ -1,6 +1,7 @@
 #include "audio_spectrum.h"
 #include "profiler.h"
 #include "raylib.h"
+#include "raymath.h"
 #include "renderer_gpu.h"
 #include "scenes.h"
 #include "xm_audio.h"
@@ -31,6 +32,7 @@ typedef struct {
     bool show_help;
     bool scene_selected;
     bool gpu_lighting;
+    bool gpu_shadows;
     RendererKind renderer;
     SceneId scene_id;
     int frames;
@@ -107,10 +109,11 @@ static void gpu_draw_sky(RenderTexture2D target)
     BeginTextureMode(target);
     ClearBackground(BLACK);
     for (int y = 0; y < target.texture.height; ++y) {
-        int band = y * 7 / target.texture.height;
+        float t = target.texture.height > 1 ? (float)y / (float)(target.texture.height - 1) : 0;
         DrawRectangle(0, y, target.texture.width, 1,
-            (Color) { (unsigned char)(20 + band * 5), (unsigned char)(29 + band * 5),
-                (unsigned char)(52 + band * 6), 255 });
+            (Color) { (unsigned char)roundf(Lerp(20, 50, t)),
+                (unsigned char)roundf(Lerp(29, 59, t)), (unsigned char)roundf(Lerp(52, 88, t)),
+                255 });
     }
     EndTextureMode();
 }
@@ -172,6 +175,7 @@ static void print_usage(const char *program)
     printf("Timeline options:\n");
     printf("  --renderer cpu|gpu     city renderer (default: cpu)\n");
     printf("  --gpu-lights on|off    GPU local-light diagnostic switch (default: on)\n");
+    printf("  --gpu-shadows on|off   GPU directional-shadow diagnostic switch (default: on)\n");
     printf("  --time SECONDS          start at a global or scene-local time (default: 0)\n");
     printf("  --scene SCENE           select a scene and interpret --time relative to it\n");
     printf("  --resolution WIDTHxHEIGHT (default: 320x200)\n");
@@ -186,6 +190,7 @@ static bool parse_options(int argc, char **argv, ProgramOptions *options)
         .size_index = 1,
         .renderer = RENDERER_CPU,
         .gpu_lighting = true,
+        .gpu_shadows = true,
     };
     bool profile_only_option = false;
     bool timeline_option = false;
@@ -218,6 +223,16 @@ static bool parse_options(int argc, char **argv, ProgramOptions *options)
                 options->gpu_lighting = false;
             else {
                 fprintf(stderr, "GPU lights must be on or off: %s\n", lighting);
+                return false;
+            }
+        } else if (strcmp(argv[i], "--gpu-shadows") == 0 && i + 1 < argc) {
+            const char *shadows = argv[++i];
+            if (strcmp(shadows, "on") == 0)
+                options->gpu_shadows = true;
+            else if (strcmp(shadows, "off") == 0)
+                options->gpu_shadows = false;
+            else {
+                fprintf(stderr, "GPU shadows must be on or off: %s\n", shadows);
                 return false;
             }
         } else if (strcmp(argv[i], "--time") == 0 && i + 1 < argc) {
@@ -385,6 +400,7 @@ static int run_screenshot(ProgramOptions options)
             return 1;
         }
         waterfront_gpu_scene_set_lighting_enabled(&gpu_scene, options.gpu_lighting);
+        waterfront_gpu_scene_set_shadows_enabled(&gpu_scene, options.gpu_shadows);
         gpu_draw_frame(&gpu_scene, framebuffer, scene.time);
         Image image = LoadImageFromTexture(framebuffer.target.texture);
         if (image.data != NULL) {
@@ -463,6 +479,7 @@ static int run_profile(ProgramOptions options)
             return 1;
         }
         waterfront_gpu_scene_set_lighting_enabled(&gpu_scene, options.gpu_lighting);
+        waterfront_gpu_scene_set_shadows_enabled(&gpu_scene, options.gpu_shadows);
         float *samples = malloc((size_t)options.frames * sizeof(*samples));
         if (samples == NULL) {
             waterfront_gpu_scene_destroy(&gpu_scene);
@@ -681,6 +698,7 @@ int main(int argc, char **argv)
             return 1;
         }
         waterfront_gpu_scene_set_lighting_enabled(&gpu_scene, options.gpu_lighting);
+        waterfront_gpu_scene_set_shadows_enabled(&gpu_scene, options.gpu_shadows);
     }
 
     Music music = { 0 };

@@ -17,6 +17,12 @@ typedef struct {
     int capacity;
 } MeshBuilder;
 
+// A low dusk key produces readable building and vehicle shadows at virtual resolution while
+// retaining the cool blue-hour palette. This direction points from a shaded surface to the light.
+static const Vector3 DIRECTIONAL_LIGHT_DIRECTION = { -.45f, .55f, -.35f };
+static const Color LAMP_LENS_COLOR = { 255, 218, 132, 255 };
+static const Color HEADLIGHT_LENS_COLOR = { 255, 246, 202, 255 };
+
 static void builder_destroy(MeshBuilder *builder)
 {
     free(builder->positions);
@@ -352,18 +358,69 @@ static Shader load_city_shader(const char *fragment_shader_path)
     return LoadShader(vertex_shader_path, fragment_shader_path);
 }
 
+static Shader load_shadow_shader(const char *fragment_shader_path)
+{
+    const char *slash = strrchr(fragment_shader_path, '/');
+    if (slash == NULL || (size_t)(slash - fragment_shader_path) > 900)
+        return (Shader) { 0 };
+    char vertex_shader_path[1024];
+    char fragment_path[1024];
+    snprintf(vertex_shader_path, sizeof(vertex_shader_path), "%.*s/waterfront_shadow.vs",
+        (int)(slash - fragment_shader_path), fragment_shader_path);
+    snprintf(fragment_path, sizeof(fragment_path), "%.*s/waterfront_shadow.fs",
+        (int)(slash - fragment_shader_path), fragment_shader_path);
+    return LoadShader(vertex_shader_path, fragment_path);
+}
+
+static bool create_shadow_map(RenderTexture2D *target, int size)
+{
+    *target = (RenderTexture2D) { 0 };
+    target->id = rlLoadFramebuffer();
+    if (target->id == 0)
+        return false;
+    target->texture.width = size;
+    target->texture.height = size;
+    target->depth.id = rlLoadTextureDepth(size, size, false);
+    target->depth.width = size;
+    target->depth.height = size;
+    target->depth.mipmaps = 1;
+    if (target->depth.id == 0) {
+        rlUnloadFramebuffer(target->id);
+        *target = (RenderTexture2D) { 0 };
+        return false;
+    }
+    rlEnableFramebuffer(target->id);
+    rlFramebufferAttach(
+        target->id, target->depth.id, RL_ATTACHMENT_DEPTH, RL_ATTACHMENT_TEXTURE2D, 0);
+    bool complete = rlFramebufferComplete(target->id);
+    rlDisableFramebuffer();
+    if (!complete) {
+        rlUnloadFramebuffer(target->id);
+        *target = (RenderTexture2D) { 0 };
+        return false;
+    }
+    SetTextureFilter(target->depth, TEXTURE_FILTER_POINT);
+    return true;
+}
+
 bool waterfront_gpu_scene_init(WaterfrontGpuScene *scene, const char *fragment_shader_path)
 {
     *scene = (WaterfrontGpuScene) { 0 };
     scene->shader = load_city_shader(fragment_shader_path);
-    if (!IsShaderValid(scene->shader) || scene->shader.id == rlGetShaderIdDefault())
+    scene->shadow_shader = load_shadow_shader(fragment_shader_path);
+    if (!IsShaderValid(scene->shader) || scene->shader.id == rlGetShaderIdDefault()
+        || !IsShaderValid(scene->shadow_shader)
+        || scene->shadow_shader.id == rlGetShaderIdDefault())
         goto failed;
     scene->city_material = LoadMaterialDefault();
     scene->life_material = LoadMaterialDefault();
-    if (scene->city_material.maps == NULL || scene->life_material.maps == NULL)
+    scene->shadow_material = LoadMaterialDefault();
+    if (scene->city_material.maps == NULL || scene->life_material.maps == NULL
+        || scene->shadow_material.maps == NULL)
         goto failed;
     scene->city_material.shader = scene->shader;
     scene->life_material.shader = scene->shader;
+    scene->shadow_material.shader = scene->shadow_shader;
     if (!load_detail_texture(&scene->facade_texture, fragment_shader_path, "facade.png")
         || !load_detail_texture(&scene->roof_texture, fragment_shader_path, "roof.png")
         || !load_detail_texture(&scene->quay_texture, fragment_shader_path, "quay.png")
@@ -377,7 +434,11 @@ bool waterfront_gpu_scene_init(WaterfrontGpuScene *scene, const char *fragment_s
     if (!build_unit_cube(&scene->bridge) || !build_unit_cube(&scene->cube)
         || !build_unit_plane(&scene->plane))
         goto failed;
+    scene->shadow_map_size = WATERFRONT_GPU_SHADOW_MAP_SIZE;
+    if (!create_shadow_map(&scene->shadow_map, scene->shadow_map_size))
+        goto failed;
     scene->lighting_enabled = true;
+    scene->shadows_enabled = true;
     scene->ready = true;
     return true;
 failed:
@@ -500,9 +561,8 @@ static int select_light_class(const WaterfrontGpuScene *scene, const LightCandid
     return selected_count;
 }
 
-// Three crane work lights, three lamps, and two headlights give the landmark a stable blue-hour
-// presence without crowding out street life. The retained-light discount means a new candidate
-// must be roughly 40% closer to the shot focus before it replaces a selected light.
+// Every authored lamp stays in the forward-light list, so its pool cannot pop off while the camera
+// approaches. The remaining slots retain the three crane lights and nearby moving headlights.
 static void select_local_lights(WaterfrontGpuScene *scene, WaterfrontSceneFrame frame)
 {
     LightCandidate candidates[72];
@@ -585,8 +645,8 @@ static void select_local_lights(WaterfrontGpuScene *scene, WaterfrontSceneFrame 
     LightCandidate selected[WATERFRONT_GPU_MAX_LOCAL_LIGHTS];
     int selected_count
         = select_light_class(scene, candidates, candidate_count, frame, LIGHT_CRANE, selected, 3);
-    selected_count += select_light_class(
-        scene, candidates, candidate_count, frame, LIGHT_LAMP, &selected[selected_count], 3);
+    selected_count += select_light_class(scene, candidates, candidate_count, frame, LIGHT_LAMP,
+        &selected[selected_count], WATERFRONT_GPU_MAX_LOCAL_LIGHTS - selected_count - 4);
     selected_count += select_light_class(scene, candidates, candidate_count, frame, LIGHT_HEADLIGHT,
         &selected[selected_count], WATERFRONT_GPU_MAX_LOCAL_LIGHTS - selected_count);
     scene->local_light_count = selected_count;
@@ -600,7 +660,8 @@ static void set_lighting_uniforms(WaterfrontGpuScene *scene)
 {
     static const float ambient_color[] = { .07f, .09f, .18f };
     static const float directional_color[] = { .32f, .38f, .62f };
-    static const float directional_direction[] = { -.4f, .85f, -.35f };
+    float directional_direction[] = { DIRECTIONAL_LIGHT_DIRECTION.x, DIRECTIONAL_LIGHT_DIRECTION.y,
+        DIRECTIONAL_LIGHT_DIRECTION.z };
     int location = GetShaderLocation(scene->shader, "ambientColor");
     if (location >= 0)
         SetShaderValue(scene->shader, location, ambient_color, SHADER_UNIFORM_VEC3);
@@ -612,8 +673,26 @@ static void set_lighting_uniforms(WaterfrontGpuScene *scene)
         SetShaderValue(scene->shader, location, directional_direction, SHADER_UNIFORM_VEC3);
     location = GetShaderLocation(scene->shader, "directionalIntensity");
     if (location >= 0) {
-        float intensity = .45f;
+        float intensity = .72f;
         SetShaderValue(scene->shader, location, &intensity, SHADER_UNIFORM_FLOAT);
+    }
+    int shadows_enabled = scene->shadows_enabled && scene->shadow_map.depth.id != 0;
+    location = GetShaderLocation(scene->shader, "shadowsEnabled");
+    if (location >= 0)
+        SetShaderValue(scene->shader, location, &shadows_enabled, SHADER_UNIFORM_INT);
+    if (shadows_enabled) {
+        location = GetShaderLocation(scene->shader, "lightViewProjection");
+        if (location >= 0)
+            SetShaderValueMatrix(scene->shader, location, scene->light_view_projection);
+        location = GetShaderLocation(scene->shader, "shadowMap");
+        if (location >= 0) {
+            int texture_slot = 10;
+            rlEnableShader(scene->shader.id);
+            rlActiveTextureSlot(texture_slot);
+            rlEnableTexture(scene->shadow_map.depth.id);
+            rlSetUniform(location, &texture_slot, SHADER_UNIFORM_INT, 1);
+            rlActiveTextureSlot(0);
+        }
     }
     int light_count = scene->lighting_enabled ? scene->local_light_count : 0;
     location = GetShaderLocation(scene->shader, "localLightCount");
@@ -674,7 +753,7 @@ static void draw_rectangle(const WaterfrontGpuScene *scene, Material material, V
 }
 
 static void draw_life(
-    const WaterfrontGpuScene *scene, Material material, WaterfrontSceneFrame frame)
+    const WaterfrontGpuScene *scene, Material material, WaterfrontSceneFrame frame, bool emissive)
 {
     static const Color colors[] = {
         { 153, 69, 57, 255 },
@@ -693,9 +772,10 @@ static void draw_life(
             draw_colored_mesh(scene->cube, material,
                 (Transform3D) { .position = { p.x, 6, p.z }, .scale = { .16f, 5, .16f } },
                 (Color) { 58, 66, 79, 255 }, false);
-            draw_colored_mesh(scene->cube, material,
-                (Transform3D) { .position = { p.x, 8.5f, p.z }, .scale = { .65f, .3f, .65f } },
-                (Color) { 255, 202, 116, 255 }, true);
+            if (emissive)
+                draw_colored_mesh(scene->cube, material,
+                    (Transform3D) { .position = { p.x, 8.5f, p.z }, .scale = { .85f, .38f, .85f } },
+                    LAMP_LENS_COLOR, true);
         }
         for (int car = 0; car < 10; ++car) {
             int sign = car % 2 ? 1 : -1;
@@ -717,16 +797,19 @@ static void draw_life(
                     .rotation = { 0, yaw, 0 },
                     .scale = { 1.4f, .65f, 1.9f } },
                 (Color) { 49, 65, 81, 255 }, false);
-            for (int end = -1; end <= 1; end += 2) {
-                for (int side = -1; side <= 1; side += 2) {
-                    Vector3 lamp = Vector3Add(p,
-                        Vector3Add(
-                            Vector3Scale(forward, end * 2.0f), Vector3Scale(right, side * .6f)));
-                    lamp.y = 4.3f;
-                    draw_colored_mesh(scene->cube, material,
-                        (Transform3D) { .position = lamp, .scale = { .35f, .28f, .35f } },
-                        end > 0 ? (Color) { 255, 233, 174, 255 } : (Color) { 240, 56, 34, 255 },
-                        true);
+            if (emissive) {
+                // Source lenses are always emissive. The bounded forward-light selection only
+                // decides which nearby headlights affect surrounding surfaces this frame.
+                for (int end = -1; end <= 1; end += 2) {
+                    for (int side = -1; side <= 1; side += 2) {
+                        Vector3 lamp = Vector3Add(p,
+                            Vector3Add(Vector3Scale(forward, end * 2.0f),
+                                Vector3Scale(right, side * .6f)));
+                        lamp.y = 4.3f;
+                        draw_colored_mesh(scene->cube, material,
+                            (Transform3D) { .position = lamp, .scale = { .48f, .34f, .48f } },
+                            end > 0 ? HEADLIGHT_LENS_COLOR : (Color) { 240, 56, 34, 255 }, true);
+                    }
                 }
             }
         }
@@ -738,13 +821,17 @@ static void draw_life(
     draw_colored_mesh(scene->cube, material,
         (Transform3D) { .position = { 12, 1.9f, z + .5f }, .scale = { 2.5f, 1.3f, 3.2f } },
         (Color) { 69, 91, 111, 255 }, false);
-    draw_colored_mesh(scene->cube, material,
-        (Transform3D) { .position = { 12, 2, z - 1.15f }, .scale = { 2, .6f, .1f } },
-        (Color) { 247, 191, 108, 255 }, true);
-    for (int i = 0; i < 8; ++i) {
-        float drift = fmodf(frame.time * 2 + i * 1.8f, 14);
-        draw_rectangle(scene, material, (Vector3) { 12, .04f, z + 3.95f + drift },
-            (Vector3) { 0, 0, 1 }, (1.4f + drift * .14f) * 2, .3f, (Color) { 63, 98, 117, 255 });
+    if (emissive)
+        draw_colored_mesh(scene->cube, material,
+            (Transform3D) { .position = { 12, 2, z - 1.15f }, .scale = { 2, .6f, .1f } },
+            (Color) { 247, 191, 108, 255 }, true);
+    if (emissive) {
+        for (int i = 0; i < 8; ++i) {
+            float drift = fmodf(frame.time * 2 + i * 1.8f, 14);
+            draw_rectangle(scene, material, (Vector3) { 12, .04f, z + 3.95f + drift },
+                (Vector3) { 0, 0, 1 }, (1.4f + drift * .14f) * 2, .3f,
+                (Color) { 63, 98, 117, 255 });
+        }
     }
 }
 
@@ -763,6 +850,74 @@ static void draw_crane_lights(const WaterfrontGpuScene *scene, Material material
         (Color) { 255, 86, 44, 255 }, true);
 }
 
+static Camera3D shadow_camera(const WaterfrontGpuScene *scene, WaterfrontSceneFrame frame)
+{
+    const float coverage = 500.0f;
+    const float texel_size = coverage / scene->shadow_map_size;
+    Vector3 light_direction = Vector3Normalize(DIRECTIONAL_LIGHT_DIRECTION);
+    Vector3 right = Vector3Normalize(Vector3CrossProduct((Vector3) { 0, 1, 0 }, light_direction));
+    Vector3 up = Vector3CrossProduct(light_direction, right);
+    Vector3 target = frame.camera.target;
+    float right_offset = roundf(Vector3DotProduct(target, right) / texel_size) * texel_size
+        - Vector3DotProduct(target, right);
+    float up_offset = roundf(Vector3DotProduct(target, up) / texel_size) * texel_size
+        - Vector3DotProduct(target, up);
+    target = Vector3Add(
+        target, Vector3Add(Vector3Scale(right, right_offset), Vector3Scale(up, up_offset)));
+    return (Camera3D) { .position = Vector3Add(target, Vector3Scale(light_direction, 600)),
+        .target = target,
+        .up = up,
+        .fovy = coverage,
+        .projection = CAMERA_ORTHOGRAPHIC };
+}
+
+static void draw_shadow_casters(
+    const WaterfrontGpuScene *scene, Material material, WaterfrontSceneFrame frame)
+{
+    set_object_color(scene->shadow_shader, WHITE);
+    set_emissive(scene->shadow_shader, false);
+    rlEnableBackfaceCulling();
+    DrawMesh(scene->city, material, MatrixIdentity());
+    DrawMesh(scene->facades, material, MatrixIdentity());
+    DrawMesh(scene->roofs, material, MatrixIdentity());
+    DrawMesh(scene->quay, material, MatrixIdentity());
+    draw_colored_mesh(scene->bridge, material, frame.bridge, frame.bridge_color, false);
+    // Cars, boats, and lamp poles matter to the road shadow, but their lenses and wake do not.
+    rlDisableBackfaceCulling();
+    draw_life(scene, material, frame, false);
+    rlEnableBackfaceCulling();
+    DrawMesh(scene->crane, material, MatrixIdentity());
+}
+
+static void render_shadow_map(WaterfrontGpuScene *scene, WaterfrontSceneFrame frame)
+{
+    Camera3D camera = shadow_camera(scene, frame);
+    unsigned int previous_framebuffer = rlGetActiveFramebuffer();
+    int previous_width = rlGetFramebufferWidth();
+    int previous_height = rlGetFramebufferHeight();
+    BeginTextureMode(scene->shadow_map);
+    ClearBackground(WHITE);
+    BeginMode3D(camera);
+    rlSetMatrixProjection(MatrixOrtho(-250, 250, -250, 250, .25, 1400));
+    Matrix view = rlGetMatrixModelview();
+    Matrix projection = rlGetMatrixProjection();
+    draw_shadow_casters(scene, scene->shadow_material, frame);
+    EndMode3D();
+    EndTextureMode();
+    // Begin/EndTextureMode does not stack: ending the depth pass always binds the window target.
+    // Restore the caller's virtual framebuffer before submitting the visible city pass.
+    if (previous_framebuffer != 0)
+        rlEnableFramebuffer(previous_framebuffer);
+    else
+        rlDisableFramebuffer();
+    rlViewport(0, 0, previous_width, previous_height);
+    rlSetFramebufferWidth(previous_width);
+    rlSetFramebufferHeight(previous_height);
+    // raylib composes matrices in this order for its shaders; retain the pinned example's
+    // convention so this matrix maps world positions into the depth texture's clip space.
+    scene->light_view_projection = MatrixMultiply(view, projection);
+}
+
 void waterfront_gpu_scene_draw(
     WaterfrontGpuScene *scene, WaterfrontSceneFrame frame, int width, int height)
 {
@@ -773,6 +928,8 @@ void waterfront_gpu_scene_draw(
         .projection = CAMERA_PERSPECTIVE };
     Material material = scene->city_material;
     Material life_material = scene->life_material;
+    if (scene->shadows_enabled)
+        render_shadow_map(scene, frame);
     select_local_lights(scene, frame);
     set_lighting_uniforms(scene);
     BeginMode3D(camera);
@@ -791,7 +948,7 @@ void waterfront_gpu_scene_draw(
     // These small closed meshes use reusable, non-indexed buffers. Keep them two-sided while
     // retaining depth testing, so their visibility does not depend on backend cull-state defaults.
     rlDisableBackfaceCulling();
-    draw_life(scene, life_material, frame);
+    draw_life(scene, life_material, frame, true);
     rlEnableBackfaceCulling();
     set_object_color(scene->shader, WHITE);
     set_emissive(scene->shader, false);
@@ -805,6 +962,32 @@ void waterfront_gpu_scene_draw(
 void waterfront_gpu_scene_set_lighting_enabled(WaterfrontGpuScene *scene, bool enabled)
 {
     scene->lighting_enabled = enabled;
+}
+
+void waterfront_gpu_scene_set_shadows_enabled(WaterfrontGpuScene *scene, bool enabled)
+{
+    scene->shadows_enabled = enabled;
+}
+
+bool waterfront_gpu_scene_set_shadow_map_size(WaterfrontGpuScene *scene, int size)
+{
+    if (size != 512 && size != WATERFRONT_GPU_SHADOW_MAP_SIZE)
+        return false;
+    if (size == scene->shadow_map_size)
+        return true;
+    RenderTexture2D replacement;
+    if (!create_shadow_map(&replacement, size))
+        return false;
+    if (scene->shadow_map.id != 0)
+        rlUnloadFramebuffer(scene->shadow_map.id);
+    scene->shadow_map = replacement;
+    scene->shadow_map_size = size;
+    return true;
+}
+
+Texture2D waterfront_gpu_scene_shadow_map(const WaterfrontGpuScene *scene)
+{
+    return scene->shadow_map.depth;
 }
 
 void waterfront_gpu_scene_destroy(WaterfrontGpuScene *scene)
@@ -847,13 +1030,21 @@ void waterfront_gpu_scene_destroy(WaterfrontGpuScene *scene)
         scene->life_material.shader.id = rlGetShaderIdDefault();
         UnloadMaterial(scene->life_material);
     }
+    if (scene->shadow_material.maps != NULL) {
+        scene->shadow_material.shader.id = rlGetShaderIdDefault();
+        UnloadMaterial(scene->shadow_material);
+    }
     if (scene->facade_texture.id != 0)
         UnloadTexture(scene->facade_texture);
     if (scene->roof_texture.id != 0)
         UnloadTexture(scene->roof_texture);
     if (scene->quay_texture.id != 0)
         UnloadTexture(scene->quay_texture);
+    if (scene->shadow_map.id != 0)
+        rlUnloadFramebuffer(scene->shadow_map.id);
     if (scene->shader.id != 0 && scene->shader.id != rlGetShaderIdDefault())
         UnloadShader(scene->shader);
+    if (scene->shadow_shader.id != 0 && scene->shadow_shader.id != rlGetShaderIdDefault())
+        UnloadShader(scene->shadow_shader);
     *scene = (WaterfrontGpuScene) { 0 };
 }

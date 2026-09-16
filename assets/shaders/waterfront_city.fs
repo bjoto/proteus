@@ -12,13 +12,36 @@ uniform vec3 ambientColor;
 uniform vec3 directionalColor;
 uniform vec3 directionalDirection;
 uniform float directionalIntensity;
+uniform mat4 lightViewProjection;
+uniform sampler2D shadowMap;
+uniform int shadowsEnabled;
 uniform int localLightCount;
-uniform vec4 localLightPositionRadius[8];
-uniform vec4 localLightColorIntensity[8];
-uniform vec4 localLightDirection[8];
-uniform vec4 localLightCone[8];
+uniform vec4 localLightPositionRadius[32];
+uniform vec4 localLightColorIntensity[32];
+uniform vec4 localLightDirection[32];
+uniform vec4 localLightCone[32];
 
 out vec4 finalColor;
+
+float directional_shadow(vec3 normal)
+{
+    if (shadowsEnabled == 0)
+        return 1.0;
+
+    vec4 lightSpace = lightViewProjection * vec4(fragWorldPosition, 1.0);
+    vec3 projected = lightSpace.xyz / max(lightSpace.w, 0.0001);
+    projected = projected * 0.5 + 0.5;
+    if (projected.x <= 0.0 || projected.x >= 1.0 || projected.y <= 0.0 || projected.y >= 1.0
+        || projected.z <= 0.0 || projected.z >= 1.0)
+        return 1.0;
+
+    float incidence = max(0.0, dot(normal, normalize(directionalDirection)));
+    float bias = max(0.0012 * (1.0 - incidence), 0.00018);
+    // The city uses a coarse six-level ramp. A partial multiplier commonly quantizes to the same
+    // level as lit surfaces, so fully remove direct fill here; ambient and local/emissive light
+    // remain visible below.
+    return projected.z - bias > texture(shadowMap, projected.xy).r ? 0.0 : 1.0;
+}
 
 void main()
 {
@@ -29,9 +52,9 @@ void main()
     }
 
     vec3 normal = normalize(fragWorldNormal);
+    float directional = max(0.0, dot(normal, normalize(directionalDirection)));
     vec3 illumination = ambientColor
-        + directionalColor * directionalIntensity
-            * max(0.0, dot(normal, normalize(directionalDirection)));
+        + directionalColor * directionalIntensity * directional * directional_shadow(normal);
     for (int index = 0; index < localLightCount; ++index) {
         vec3 delta = localLightPositionRadius[index].xyz - fragWorldPosition;
         float radius = localLightPositionRadius[index].w;
@@ -52,8 +75,9 @@ void main()
             * (localLightColorIntensity[index].a * incidence * attenuation * attenuation * spot);
     }
 
-    // Six levels retain hue and leave emissive colors untouched. Clamp illumination before
-    // multiplying the albedo, rather than adding white, so nearby lamps do not bleach materials.
-    vec3 stepped = floor(clamp(illumination, 0.0, 1.25) * 6.0 + 0.5) / 6.0;
-    finalColor = vec4(min(albedo.rgb * stepped, vec3(1.0)), albedo.a);
+    // Preserve the full output palette while retaining the low-resolution framebuffer. Clamp
+    // illumination before multiplying albedo, rather than adding white, so nearby lamps do not
+    // bleach materials.
+    vec3 lit = clamp(illumination, 0.0, 1.25);
+    finalColor = vec4(min(albedo.rgb * lit, vec3(1.0)), albedo.a);
 }

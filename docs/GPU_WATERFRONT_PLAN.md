@@ -456,7 +456,7 @@ its remaining manual motion review is called out below rather than being treated
 | 06 GPU regression/profiling | Implemented, verification pending | Opt-in `PROTEUS_GPU_TESTS` adds a context-required capture/review CTest and target. Desktop context verification remains pending. |
 | 07 Surface detail | Implemented, verification pending | Bundled point-filtered facade, roof, and quay detail textures are on the GPU route; desktop visual review remains pending. |
 | 08 Local lighting | Implemented, verification pending | Eight bounded, hysteresis-selected lamp/headlight lights now shade the GPU route; desktop context/capture review remains pending. |
-| 09 Directional shadows | Pending | |
+| 09 Directional shadows | Implemented, verification pending | One texel-snapped directional depth map, caster pass, hard direct-light attenuation, and fixture diagnostics are in place; desktop review remains pending. See record below. |
 | 10 Atmosphere | Pending | |
 | 11 Water reflection | Optional, pending | |
 | 12 Default/documentation | Pending | |
@@ -651,6 +651,47 @@ seconds during hidden raylib window creation, before it printed context details 
 new shader. macOS again reported a `com.apple.hiservices-xpcservice` connection failure. On a
 desktop session, inspect on/off captures at 0, 2.5, 5, 10, and 15 seconds at 320x200 and 320x240,
 then check headlight motion, nearby lamp influence, selection transitions, and the visible route.
+
+### Step 09 record — 2026-09-16
+
+Added `assets/shaders/waterfront_shadow.[vs|fs]`, extended
+`assets/shaders/waterfront_city.fs`, and updated `src/renderer_gpu.[ch]`, `src/main.c`, and
+`tools/gpu_fixture.c`. The GPU route now creates an explicitly depth-textured, depth-only
+framebuffer and rejects initialization if its framebuffer is incomplete. It renders the city,
+bridge, crane, vehicle bodies, boat, and lamp poles from one directional orthographic light before
+the main city pass; windows, lenses, crane fixtures, the boat lamp, and wake remain out of the
+caster pass. The default 1024x1024 map covers a 500-world-unit square around the camera target.
+Its center is snapped in the light's right/up basis to 0.488-world-unit texels, so camera motion
+does not continuously shift depth samples. A 512 option is available only for comparison.
+
+The city shader removes only its directional fill in shadow. Ambient, selected local lights, and
+emissive materials stay independent. The conservative slope-aware
+comparison bias is `max(0.0012 * (1 - NdotL), 0.00018)` in normalized depth space; samples outside
+the light frustum are deliberately unshadowed. `--gpu-shadows on|off` enables identical-time app
+captures, while `gpu_fixture --city --shadows on|off` does the same in the focused harness.
+`gpu_fixture --city --shadow-map` renders the light-frustum depth-map diagnostic; use
+`--shadow-resolution 512` or `1024` to compare coverage quality before changing the default.
+The directional key is a low, cool `(-0.45, 0.55, -0.35)` fill at 0.72 intensity: this gives
+longer, palette-readable shadows than the prior high, low-intensity fill. The GPU route now keeps
+full 8-bit material-lighting colors and a smooth virtual-resolution sky gradient, while retaining
+the nearest-neighbour low-resolution presentation.
+
+All lamp-post lanterns and each car's two front lenses are continuously emissive; they do not
+depend on the bounded forward-light selection. The 32-slot forward-light list now carries every
+authored lamp post throughout the route, alongside crane lights and nearby moving headlights, so
+lamp pools remain on as the camera approaches. Visible sources remain on throughout the route.
+
+`cmake --build build -j` completed warning-clean. The 12 display-free CTests completed successfully;
+the enabled `gpu_review` test then reached its desktop-context stage but did not complete in this
+session. A separately bounded 20-second depth-map fixture launch stalled during hidden GLFW window
+creation and emitted the prior `com.apple.hiservices-xpcservice` connection failure. No GPU visual
+acceptance is claimed. A later visible desktop launch exposed that the first implementation's nested
+depth pass returned raylib to the window framebuffer, leaving the virtual target with sky only; the
+renderer now explicitly restores the caller's framebuffer and viewport before its visible city pass.
+On a desktop session, capture shadows on/off at route times 0, 2.5, 5, 10, and 15 at 320x200 and
+320x240; inspect both 512 and 1024 maps plus the depth-map diagnostic; and check full-route motion
+for acne, detached silhouettes, coverage loss, or crawling. Record the selected quality, GPU cost,
+and any unavoidable coverage/bias limits before accepting this step.
 
 ## Technical references
 

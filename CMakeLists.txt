@@ -38,11 +38,12 @@ target_compile_options(proteus PRIVATE
   $<$<C_COMPILER_ID:AppleClang,Clang,GNU>:-Wall;-Wextra;-Wpedantic>
 )
 
-add_custom_command(TARGET proteus POST_BUILD
+add_custom_target(proteus_assets
   COMMAND ${CMAKE_COMMAND} -E copy_directory
           ${CMAKE_CURRENT_SOURCE_DIR}/assets
           $<TARGET_FILE_DIR:proteus>/assets
 )
+add_dependencies(proteus proteus_assets)
 
 add_executable(gpu_fixture tools/gpu_fixture.c src/renderer_gpu.c src/waterfront_scene.c)
 target_include_directories(gpu_fixture PRIVATE
@@ -56,11 +57,7 @@ target_compile_definitions(gpu_fixture PRIVATE
 target_compile_options(gpu_fixture PRIVATE
   $<$<C_COMPILER_ID:AppleClang,Clang,GNU>:-Wall;-Wextra;-Wpedantic>
 )
-add_custom_command(TARGET gpu_fixture POST_BUILD
-  COMMAND ${CMAKE_COMMAND} -E copy_directory
-          ${CMAKE_CURRENT_SOURCE_DIR}/assets
-          $<TARGET_FILE_DIR:gpu_fixture>/assets
-)
+add_dependencies(gpu_fixture proteus_assets)
 
 add_executable(validate_xm
   tools/validate_xm.c
