@@ -101,6 +101,14 @@ the light-frustum depth map for review:
 Distance atmosphere is also enabled by default. Compare its cool dusk haze at the same scene time
 with `--gpu-atmosphere off` in the demo or `--atmosphere off` in the fixture.
 
+The GPU water plane uses a 160x120 reflected scene pass by default. Compare it with
+`--gpu-reflections off` in the demo or `--reflections off` in the fixture:
+
+```sh
+./build/gpu_fixture --city --time 10 --reflections on --screenshot build/reflection-on.png
+./build/gpu_fixture --city --time 10 --reflections off --screenshot build/reflection-off.png
+```
+
 The profiler keeps a rolling 240-frame history (about four seconds at 60 FPS) and
 graphs total frame wall time, CPU scene generation plus texture upload, and
 presentation time (including any vertical-sync wait). It also reports rolling

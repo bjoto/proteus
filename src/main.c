@@ -34,6 +34,7 @@ typedef struct {
     bool gpu_lighting;
     bool gpu_shadows;
     bool gpu_atmosphere;
+    bool gpu_reflections;
     RendererKind renderer;
     SceneId scene_id;
     int frames;
@@ -178,6 +179,7 @@ static void print_usage(const char *program)
     printf("  --gpu-lights on|off    GPU local-light diagnostic switch (default: on)\n");
     printf("  --gpu-shadows on|off   GPU directional-shadow diagnostic switch (default: on)\n");
     printf("  --gpu-atmosphere on|off GPU distance-atmosphere diagnostic switch (default: on)\n");
+    printf("  --gpu-reflections on|off GPU water-reflection diagnostic switch (default: on)\n");
     printf("  --time SECONDS          start at a global or scene-local time (default: 0)\n");
     printf("  --scene SCENE           select a scene and interpret --time relative to it\n");
     printf("  --resolution WIDTHxHEIGHT (default: 320x200)\n");
@@ -194,6 +196,7 @@ static bool parse_options(int argc, char **argv, ProgramOptions *options)
         .gpu_lighting = true,
         .gpu_shadows = true,
         .gpu_atmosphere = true,
+        .gpu_reflections = true,
     };
     bool profile_only_option = false;
     bool timeline_option = false;
@@ -246,6 +249,16 @@ static bool parse_options(int argc, char **argv, ProgramOptions *options)
                 options->gpu_atmosphere = false;
             else {
                 fprintf(stderr, "GPU atmosphere must be on or off: %s\n", atmosphere);
+                return false;
+            }
+        } else if (strcmp(argv[i], "--gpu-reflections") == 0 && i + 1 < argc) {
+            const char *reflections = argv[++i];
+            if (strcmp(reflections, "on") == 0)
+                options->gpu_reflections = true;
+            else if (strcmp(reflections, "off") == 0)
+                options->gpu_reflections = false;
+            else {
+                fprintf(stderr, "GPU reflections must be on or off: %s\n", reflections);
                 return false;
             }
         } else if (strcmp(argv[i], "--time") == 0 && i + 1 < argc) {
@@ -415,6 +428,7 @@ static int run_screenshot(ProgramOptions options)
         waterfront_gpu_scene_set_lighting_enabled(&gpu_scene, options.gpu_lighting);
         waterfront_gpu_scene_set_shadows_enabled(&gpu_scene, options.gpu_shadows);
         waterfront_gpu_scene_set_atmosphere_enabled(&gpu_scene, options.gpu_atmosphere);
+        waterfront_gpu_scene_set_reflections_enabled(&gpu_scene, options.gpu_reflections);
         gpu_draw_frame(&gpu_scene, framebuffer, scene.time);
         Image image = LoadImageFromTexture(framebuffer.target.texture);
         if (image.data != NULL) {
@@ -495,6 +509,7 @@ static int run_profile(ProgramOptions options)
         waterfront_gpu_scene_set_lighting_enabled(&gpu_scene, options.gpu_lighting);
         waterfront_gpu_scene_set_shadows_enabled(&gpu_scene, options.gpu_shadows);
         waterfront_gpu_scene_set_atmosphere_enabled(&gpu_scene, options.gpu_atmosphere);
+        waterfront_gpu_scene_set_reflections_enabled(&gpu_scene, options.gpu_reflections);
         float *samples = malloc((size_t)options.frames * sizeof(*samples));
         if (samples == NULL) {
             waterfront_gpu_scene_destroy(&gpu_scene);
@@ -715,6 +730,7 @@ int main(int argc, char **argv)
         waterfront_gpu_scene_set_lighting_enabled(&gpu_scene, options.gpu_lighting);
         waterfront_gpu_scene_set_shadows_enabled(&gpu_scene, options.gpu_shadows);
         waterfront_gpu_scene_set_atmosphere_enabled(&gpu_scene, options.gpu_atmosphere);
+        waterfront_gpu_scene_set_reflections_enabled(&gpu_scene, options.gpu_reflections);
     }
 
     Music music = { 0 };

@@ -22,6 +22,7 @@ typedef struct {
 static const Vector3 DIRECTIONAL_LIGHT_DIRECTION = { -.45f, .55f, -.35f };
 static const Color LAMP_LENS_COLOR = { 255, 218, 132, 255 };
 static const Color HEADLIGHT_LENS_COLOR = { 255, 246, 202, 255 };
+static const Color WATER_COLOR = { 45, 79, 104, 255 };
 
 static void builder_destroy(MeshBuilder *builder)
 {
@@ -172,30 +173,46 @@ static CitySurface city_surface(Vector3 a, Vector3 b, Vector3 c)
     return CITY_SURFACE_FLAT;
 }
 
-static bool build_city(Mesh *city_mesh, Mesh *facades, Mesh *roofs, Mesh *quay)
+static bool is_water_triangle(const Triangle3D *triangle)
+{
+    return triangle->color.r == WATER_COLOR.r && triangle->color.g == WATER_COLOR.g
+        && triangle->color.b == WATER_COLOR.b;
+}
+
+static bool build_city(Mesh *city_mesh, Mesh *facades, Mesh *roofs, Mesh *quay, Mesh *water)
 {
     const Mesh3D *city = waterfront_scene_city_mesh();
     MeshBuilder builders[] = { { 0 }, { 0 }, { 0 }, { 0 } };
+    MeshBuilder water_builder = { 0 };
     for (size_t i = 0; i < city->triangle_count; ++i) {
         const Triangle3D *triangle = &city->triangles[i];
         Vector3 a = city->vertices[triangle->vertices[0]];
         Vector3 b = city->vertices[triangle->vertices[1]];
         Vector3 c = city->vertices[triangle->vertices[2]];
+        if (is_water_triangle(triangle)) {
+            if (!builder_triangle(&water_builder, a, b, c, triangle->color))
+                goto failed;
+            continue;
+        }
         CitySurface surface = city_surface(a, b, c);
         if (!builder_triangle(&builders[surface], a, b, c, triangle->color))
             goto failed;
     }
     if (builders[CITY_SURFACE_FLAT].count == 0 || builders[CITY_SURFACE_FACADE].count == 0
-        || builders[CITY_SURFACE_ROOF].count == 0 || builders[CITY_SURFACE_QUAY].count == 0)
+        || builders[CITY_SURFACE_ROOF].count == 0 || builders[CITY_SURFACE_QUAY].count == 0
+        || water_builder.count == 0)
         goto failed;
     *city_mesh = builder_finish(&builders[CITY_SURFACE_FLAT]);
     *facades = builder_finish(&builders[CITY_SURFACE_FACADE]);
     *roofs = builder_finish(&builders[CITY_SURFACE_ROOF]);
     *quay = builder_finish(&builders[CITY_SURFACE_QUAY]);
-    return city_mesh->vaoId != 0 && facades->vaoId != 0 && roofs->vaoId != 0 && quay->vaoId != 0;
+    *water = builder_finish(&water_builder);
+    return city_mesh->vaoId != 0 && facades->vaoId != 0 && roofs->vaoId != 0 && quay->vaoId != 0
+        && water->vaoId != 0;
 failed:
     for (size_t i = 0; i < sizeof(builders) / sizeof(builders[0]); ++i)
         builder_destroy(&builders[i]);
+    builder_destroy(&water_builder);
     return false;
 }
 
@@ -372,6 +389,20 @@ static Shader load_shadow_shader(const char *fragment_shader_path)
     return LoadShader(vertex_shader_path, fragment_path);
 }
 
+static Shader load_water_shader(const char *fragment_shader_path)
+{
+    const char *slash = strrchr(fragment_shader_path, '/');
+    if (slash == NULL || (size_t)(slash - fragment_shader_path) > 900)
+        return (Shader) { 0 };
+    char vertex_shader_path[1024];
+    char fragment_path[1024];
+    snprintf(vertex_shader_path, sizeof(vertex_shader_path), "%.*s/waterfront_city.vs",
+        (int)(slash - fragment_shader_path), fragment_shader_path);
+    snprintf(fragment_path, sizeof(fragment_path), "%.*s/waterfront_water.fs",
+        (int)(slash - fragment_shader_path), fragment_shader_path);
+    return LoadShader(vertex_shader_path, fragment_path);
+}
+
 static bool create_shadow_map(RenderTexture2D *target, int size)
 {
     *target = (RenderTexture2D) { 0 };
@@ -408,19 +439,22 @@ bool waterfront_gpu_scene_init(WaterfrontGpuScene *scene, const char *fragment_s
     *scene = (WaterfrontGpuScene) { 0 };
     scene->shader = load_city_shader(fragment_shader_path);
     scene->shadow_shader = load_shadow_shader(fragment_shader_path);
+    scene->water_shader = load_water_shader(fragment_shader_path);
     if (!IsShaderValid(scene->shader) || scene->shader.id == rlGetShaderIdDefault()
-        || !IsShaderValid(scene->shadow_shader)
-        || scene->shadow_shader.id == rlGetShaderIdDefault())
+        || !IsShaderValid(scene->shadow_shader) || scene->shadow_shader.id == rlGetShaderIdDefault()
+        || !IsShaderValid(scene->water_shader) || scene->water_shader.id == rlGetShaderIdDefault())
         goto failed;
     scene->city_material = LoadMaterialDefault();
     scene->life_material = LoadMaterialDefault();
     scene->shadow_material = LoadMaterialDefault();
+    scene->water_material = LoadMaterialDefault();
     if (scene->city_material.maps == NULL || scene->life_material.maps == NULL
-        || scene->shadow_material.maps == NULL)
+        || scene->shadow_material.maps == NULL || scene->water_material.maps == NULL)
         goto failed;
     scene->city_material.shader = scene->shader;
     scene->life_material.shader = scene->shader;
     scene->shadow_material.shader = scene->shadow_shader;
+    scene->water_material.shader = scene->water_shader;
     if (!load_detail_texture(&scene->facade_texture, fragment_shader_path, "facade.png")
         || !load_detail_texture(&scene->roof_texture, fragment_shader_path, "roof.png")
         || !load_detail_texture(&scene->quay_texture, fragment_shader_path, "quay.png")
@@ -428,7 +462,7 @@ bool waterfront_gpu_scene_init(WaterfrontGpuScene *scene, const char *fragment_s
         || !init_detail_material(&scene->roof_material, scene->shader, scene->roof_texture)
         || !init_detail_material(&scene->quay_material, scene->shader, scene->quay_texture))
         goto failed;
-    if (!build_city(&scene->city, &scene->facades, &scene->roofs, &scene->quay)
+    if (!build_city(&scene->city, &scene->facades, &scene->roofs, &scene->quay, &scene->water)
         || !build_windows(&scene->windows) || !build_crane(&scene->crane))
         goto failed;
     if (!build_unit_cube(&scene->bridge) || !build_unit_cube(&scene->cube)
@@ -437,9 +471,15 @@ bool waterfront_gpu_scene_init(WaterfrontGpuScene *scene, const char *fragment_s
     scene->shadow_map_size = WATERFRONT_GPU_SHADOW_MAP_SIZE;
     if (!create_shadow_map(&scene->shadow_map, scene->shadow_map_size))
         goto failed;
+    scene->reflection
+        = LoadRenderTexture(WATERFRONT_GPU_REFLECTION_WIDTH, WATERFRONT_GPU_REFLECTION_HEIGHT);
+    if (!IsRenderTextureValid(scene->reflection))
+        goto failed;
+    SetTextureFilter(scene->reflection.texture, TEXTURE_FILTER_POINT);
     scene->lighting_enabled = true;
     scene->shadows_enabled = true;
     scene->atmosphere_enabled = true;
+    scene->reflections_enabled = true;
     scene->ready = true;
     return true;
 failed:
@@ -771,6 +811,33 @@ static void set_atmosphere_uniforms(WaterfrontGpuScene *scene, Vector3 camera_po
         SetShaderValue(scene->shader, location, &atmosphere_enabled, SHADER_UNIFORM_INT);
 }
 
+static void set_water_uniforms(WaterfrontGpuScene *scene, WaterfrontSceneFrame frame)
+{
+    float camera[] = { frame.camera.position.x, frame.camera.position.y, frame.camera.position.z };
+    int reflections_enabled = scene->reflections_enabled;
+    int location = GetShaderLocation(scene->water_shader, "reflectionViewProjection");
+    if (location >= 0)
+        SetShaderValueMatrix(scene->water_shader, location, scene->reflection_view_projection);
+    location = GetShaderLocation(scene->water_shader, "cameraPosition");
+    if (location >= 0)
+        SetShaderValue(scene->water_shader, location, camera, SHADER_UNIFORM_VEC3);
+    location = GetShaderLocation(scene->water_shader, "time");
+    if (location >= 0)
+        SetShaderValue(scene->water_shader, location, &frame.time, SHADER_UNIFORM_FLOAT);
+    location = GetShaderLocation(scene->water_shader, "reflectionsEnabled");
+    if (location >= 0)
+        SetShaderValue(scene->water_shader, location, &reflections_enabled, SHADER_UNIFORM_INT);
+    location = GetShaderLocation(scene->water_shader, "reflectionTexture");
+    if (location >= 0) {
+        int texture_slot = 11;
+        rlEnableShader(scene->water_shader.id);
+        rlActiveTextureSlot(texture_slot);
+        rlEnableTexture(scene->reflection.texture.id);
+        rlSetUniform(location, &texture_slot, SHADER_UNIFORM_INT, 1);
+        rlActiveTextureSlot(0);
+    }
+}
+
 static void draw_rectangle(const WaterfrontGpuScene *scene, Material material, Vector3 center,
     Vector3 forward, float width, float length, Color color)
 {
@@ -879,6 +946,83 @@ static void draw_crane_lights(const WaterfrontGpuScene *scene, Material material
         (Color) { 255, 86, 44, 255 }, true);
 }
 
+static Camera3D reflection_camera(WaterfrontSceneFrame frame)
+{
+    return (Camera3D) { .position
+        = { frame.camera.position.x, -frame.camera.position.y, frame.camera.position.z },
+        .target = { frame.camera.target.x, -frame.camera.target.y, frame.camera.target.z },
+        .up = { 0, -1, 0 },
+        .fovy = frame.camera.vertical_fov * RAD2DEG,
+        .projection = CAMERA_PERSPECTIVE };
+}
+
+static void restore_framebuffer(unsigned int framebuffer, int width, int height)
+{
+    if (framebuffer != 0)
+        rlEnableFramebuffer(framebuffer);
+    else
+        rlDisableFramebuffer();
+    rlViewport(0, 0, width, height);
+    rlSetFramebufferWidth(width);
+    rlSetFramebufferHeight(height);
+}
+
+static void draw_reflection_sky(RenderTexture2D target)
+{
+    for (int y = 0; y < target.texture.height; ++y) {
+        float t = target.texture.height > 1 ? (float)y / (float)(target.texture.height - 1) : 0;
+        DrawRectangle(0, y, target.texture.width, 1,
+            (Color) { (unsigned char)roundf(Lerp(20, 50, t)),
+                (unsigned char)roundf(Lerp(29, 59, t)), (unsigned char)roundf(Lerp(52, 88, t)),
+                255 });
+    }
+}
+
+static void draw_reflected_scene(
+    const WaterfrontGpuScene *scene, WaterfrontSceneFrame frame, Material material, Material life)
+{
+    set_object_color(scene->shader, WHITE);
+    set_emissive(scene->shader, false);
+    DrawMesh(scene->city, material, MatrixIdentity());
+    DrawMesh(scene->facades, scene->facade_material, MatrixIdentity());
+    DrawMesh(scene->roofs, scene->roof_material, MatrixIdentity());
+    DrawMesh(scene->quay, scene->quay_material, MatrixIdentity());
+    set_emissive(scene->shader, true);
+    DrawMesh(scene->windows, material, MatrixIdentity());
+    draw_colored_mesh(scene->bridge, life, frame.bridge, frame.bridge_color, false);
+    // The reflection source deliberately excludes the water mesh and its wake, preventing a
+    // feedback surface while retaining vehicles, boat hull, lamp poles, and the city silhouette.
+    draw_life(scene, life, frame, false);
+    set_emissive(scene->shader, false);
+    DrawMesh(scene->crane, material, MatrixIdentity());
+}
+
+static void render_reflection(WaterfrontGpuScene *scene, WaterfrontSceneFrame frame)
+{
+    Camera3D camera = reflection_camera(frame);
+    unsigned int previous_framebuffer = rlGetActiveFramebuffer();
+    int previous_width = rlGetFramebufferWidth();
+    int previous_height = rlGetFramebufferHeight();
+    BeginTextureMode(scene->reflection);
+    ClearBackground(BLACK);
+    draw_reflection_sky(scene->reflection);
+    BeginMode3D(camera);
+    rlSetMatrixProjection(MatrixPerspective(frame.camera.vertical_fov,
+        (float)scene->reflection.texture.width / (float)scene->reflection.texture.height,
+        frame.camera.near_plane, frame.camera.far_plane));
+    Matrix view = rlGetMatrixModelview();
+    Matrix projection = rlGetMatrixProjection();
+    // A reflected view reverses the projected winding. Disable culling for this pass so the
+    // separate camera does not require mirrored geometry or per-mesh winding changes.
+    rlDisableBackfaceCulling();
+    draw_reflected_scene(scene, frame, scene->city_material, scene->life_material);
+    rlEnableBackfaceCulling();
+    EndMode3D();
+    EndTextureMode();
+    restore_framebuffer(previous_framebuffer, previous_width, previous_height);
+    scene->reflection_view_projection = MatrixMultiply(view, projection);
+}
+
 static Camera3D shadow_camera(const WaterfrontGpuScene *scene, WaterfrontSceneFrame frame)
 {
     const float coverage = 500.0f;
@@ -961,6 +1105,10 @@ void waterfront_gpu_scene_draw(
         render_shadow_map(scene, frame);
     select_local_lights(scene, frame);
     set_lighting_uniforms(scene);
+    if (scene->reflections_enabled) {
+        set_atmosphere_uniforms(scene, reflection_camera(frame).position);
+        render_reflection(scene, frame);
+    }
     set_atmosphere_uniforms(scene, frame.camera.position);
     BeginMode3D(camera);
     rlSetMatrixProjection(MatrixPerspective(frame.camera.vertical_fov, (float)width / (float)height,
@@ -972,6 +1120,9 @@ void waterfront_gpu_scene_draw(
     DrawMesh(scene->facades, scene->facade_material, MatrixIdentity());
     DrawMesh(scene->roofs, scene->roof_material, MatrixIdentity());
     DrawMesh(scene->quay, scene->quay_material, MatrixIdentity());
+    set_object_color(scene->water_shader, WHITE);
+    set_water_uniforms(scene, frame);
+    DrawMesh(scene->water, scene->water_material, MatrixIdentity());
     set_emissive(scene->shader, true);
     DrawMesh(scene->windows, material, MatrixIdentity());
     draw_colored_mesh(scene->bridge, life_material, frame.bridge, frame.bridge_color, false);
@@ -1002,6 +1153,11 @@ void waterfront_gpu_scene_set_shadows_enabled(WaterfrontGpuScene *scene, bool en
 void waterfront_gpu_scene_set_atmosphere_enabled(WaterfrontGpuScene *scene, bool enabled)
 {
     scene->atmosphere_enabled = enabled;
+}
+
+void waterfront_gpu_scene_set_reflections_enabled(WaterfrontGpuScene *scene, bool enabled)
+{
+    scene->reflections_enabled = enabled;
 }
 
 bool waterfront_gpu_scene_set_shadow_map_size(WaterfrontGpuScene *scene, int size)
@@ -1035,6 +1191,8 @@ void waterfront_gpu_scene_destroy(WaterfrontGpuScene *scene)
         UnloadMesh(scene->roofs);
     if (scene->quay.vaoId != 0)
         UnloadMesh(scene->quay);
+    if (scene->water.vaoId != 0)
+        UnloadMesh(scene->water);
     if (scene->windows.vaoId != 0)
         UnloadMesh(scene->windows);
     if (scene->crane.vaoId != 0)
@@ -1069,6 +1227,10 @@ void waterfront_gpu_scene_destroy(WaterfrontGpuScene *scene)
         scene->shadow_material.shader.id = rlGetShaderIdDefault();
         UnloadMaterial(scene->shadow_material);
     }
+    if (scene->water_material.maps != NULL) {
+        scene->water_material.shader.id = rlGetShaderIdDefault();
+        UnloadMaterial(scene->water_material);
+    }
     if (scene->facade_texture.id != 0)
         UnloadTexture(scene->facade_texture);
     if (scene->roof_texture.id != 0)
@@ -1077,9 +1239,13 @@ void waterfront_gpu_scene_destroy(WaterfrontGpuScene *scene)
         UnloadTexture(scene->quay_texture);
     if (scene->shadow_map.id != 0)
         rlUnloadFramebuffer(scene->shadow_map.id);
+    if (scene->reflection.id != 0)
+        UnloadRenderTexture(scene->reflection);
     if (scene->shader.id != 0 && scene->shader.id != rlGetShaderIdDefault())
         UnloadShader(scene->shader);
     if (scene->shadow_shader.id != 0 && scene->shadow_shader.id != rlGetShaderIdDefault())
         UnloadShader(scene->shadow_shader);
+    if (scene->water_shader.id != 0 && scene->water_shader.id != rlGetShaderIdDefault())
+        UnloadShader(scene->water_shader);
     *scene = (WaterfrontGpuScene) { 0 };
 }

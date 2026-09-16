@@ -1,6 +1,6 @@
 # Waterfront GPU migration plan
 
-Status: steps 01–08 implemented; GPU visual verification remains pending. Written 2026-09-12.
+Status: steps 01–11 implemented; GPU visual verification remains pending. Written 2026-09-12.
 
 ## Decision and scope
 
@@ -458,7 +458,7 @@ its remaining manual motion review is called out below rather than being treated
 | 08 Local lighting | Implemented, verification pending | Eight bounded, hysteresis-selected lamp/headlight lights now shade the GPU route; desktop context/capture review remains pending. |
 | 09 Directional shadows | Implemented, verification pending | One texel-snapped directional depth map, caster pass, hard direct-light attenuation, and fixture diagnostics are in place; desktop review remains pending. See record below. |
 | 10 Atmosphere | Implemented, verification pending | Distance haze is applied after direct, local, and emissive lighting, with identical-time on/off switches; desktop visual review remains pending. See record below. |
-| 11 Water reflection | Optional, pending | |
+| 11 Water reflection | Implemented, verification pending | The semantic water mesh samples a separate 160x120 reflected scene with deterministic distortion; desktop review remains pending. See record below. |
 | 12 Default/documentation | Pending | |
 
 ### Step 01 record — 2026-09-12
@@ -713,6 +713,29 @@ scene-local 0, 2.5, 5, 10, and 15 seconds at 320x200 and 320x240; verify that ne
 and vehicles stay crisp while the distant crane/buildings recede coherently toward the sky. Adjust
 only the documented distance/opacity constants if those captures show an avoidable foreground wash
 or horizon seam.
+
+### Step 11 record — 2026-09-16
+
+The generated geometry already marks every water triangle with its authored `(45, 79, 104)` color
+at y=0, so `src/renderer_gpu.c` now separates that semantic mesh from land, walls, facades, roofs,
+and quay during its one-time upload. It renders the non-water city, bridge, vehicle/boat bodies,
+lamp poles, windows, and crane from the camera mirrored about y=0 into a point-filtered 160x120
+color/depth target. The source has no below-water geometry; excluding the water mesh and wake from
+that pass prevents feedback and below-surface leakage. Reflected winding is handled by disabling
+backface culling only for the reflected submission.
+
+`assets/shaders/waterfront_water.fs` maps water world positions through the exact reflected
+view-projection matrix, applies two bounded deterministic sine ripples (at most 0.5% of texture
+width/height), and blends the tinted reflection at 10–42% based on the view angle. Water remains a
+dark blue independent of the reflection. The main pass draws water before the bridge, boat, and
+wake, retaining their depth order. `--gpu-reflections on|off` and `gpu_fixture --reflections on|off`
+provide identical-time comparisons; both default to on.
+
+`cmake --build build -j` completed warning-clean. Desktop GPU capture is still required: compare
+reflection on/off at scene-local 0, 2.5, 5, 10, and 15 seconds at 320x200 and 320x240; confirm the
+shoreline remains attached, distant crane/window forms are legible but subdued, boat/wake stay in
+front of the surface, and motion has no seams or unstable sampling. Measure the reflected-pass
+cost during the profile route before accepting this optional step.
 
 ## Technical references
 
