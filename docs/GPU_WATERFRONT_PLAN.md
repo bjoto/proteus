@@ -457,7 +457,7 @@ its remaining manual motion review is called out below rather than being treated
 | 07 Surface detail | Implemented, verification pending | Bundled point-filtered facade, roof, and quay detail textures are on the GPU route; desktop visual review remains pending. |
 | 08 Local lighting | Implemented, verification pending | Eight bounded, hysteresis-selected lamp/headlight lights now shade the GPU route; desktop context/capture review remains pending. |
 | 09 Directional shadows | Implemented, verification pending | One texel-snapped directional depth map, caster pass, hard direct-light attenuation, and fixture diagnostics are in place; desktop review remains pending. See record below. |
-| 10 Atmosphere | Pending | |
+| 10 Atmosphere | Implemented, verification pending | Distance haze is applied after direct, local, and emissive lighting, with identical-time on/off switches; desktop visual review remains pending. See record below. |
 | 11 Water reflection | Optional, pending | |
 | 12 Default/documentation | Pending | |
 
@@ -692,6 +692,27 @@ On a desktop session, capture shadows on/off at route times 0, 2.5, 5, 10, and 1
 320x240; inspect both 512 and 1024 maps plus the depth-map diagnostic; and check full-route motion
 for acne, detached silhouettes, coverage loss, or crawling. Record the selected quality, GPU cost,
 and any unavoidable coverage/bias limits before accepting this step.
+
+### Step 10 record — 2026-09-16
+
+Added distance-based atmosphere to `assets/shaders/waterfront_city.fs` and scene uniforms in
+`src/renderer_gpu.[ch]`. The shader blends its final shaded (or emissive) material color toward the
+smooth GPU sky horizon color `(50, 59, 88)` only after lighting, so shadows, local lights, and
+source emissives retain their normal near-field contrast. The haze begins at 145 world units and
+rises smoothly to a 76% blend at 620 units. It is deterministic, with no temporal noise or history
+buffer.
+
+`--gpu-atmosphere on|off` applies to GPU screenshot, profile, and interactive routes; the focused
+fixture exposes the same switch as `--atmosphere on|off`. Both default to on. Glow was not added:
+the current city already uses emissive source geometry, and this step does not justify an extra
+virtual-resolution pass without desktop capture evidence that it improves the shot.
+
+`cmake --build build -j` completed warning-clean. Desktop GPU capture remains pending because the
+hidden GLFW context stalls in this session. On a desktop session, compare atmosphere on/off at
+scene-local 0, 2.5, 5, 10, and 15 seconds at 320x200 and 320x240; verify that nearby road, lamps,
+and vehicles stay crisp while the distant crane/buildings recede coherently toward the sky. Adjust
+only the documented distance/opacity constants if those captures show an avoidable foreground wash
+or horizon seam.
 
 ## Technical references
 

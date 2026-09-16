@@ -98,6 +98,9 @@ the light-frustum depth map for review:
 ./build/gpu_fixture --city --time 5 --shadow-map --screenshot build/shadow-depth.png
 ```
 
+Distance atmosphere is also enabled by default. Compare its cool dusk haze at the same scene time
+with `--gpu-atmosphere off` in the demo or `--atmosphere off` in the fixture.
+
 The profiler keeps a rolling 240-frame history (about four seconds at 60 FPS) and
 graphs total frame wall time, CPU scene generation plus texture upload, and
 presentation time (including any vertical-sync wait). It also reports rolling

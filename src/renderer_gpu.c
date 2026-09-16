@@ -439,6 +439,7 @@ bool waterfront_gpu_scene_init(WaterfrontGpuScene *scene, const char *fragment_s
         goto failed;
     scene->lighting_enabled = true;
     scene->shadows_enabled = true;
+    scene->atmosphere_enabled = true;
     scene->ready = true;
     return true;
 failed:
@@ -742,6 +743,34 @@ static void set_lighting_uniforms(WaterfrontGpuScene *scene)
         SetShaderValueV(scene->shader, location, cones, SHADER_UNIFORM_VEC4, light_count);
 }
 
+static void set_atmosphere_uniforms(WaterfrontGpuScene *scene, Vector3 camera_position)
+{
+    static const float fog_color[] = { 50.0f / 255.0f, 59.0f / 255.0f, 88.0f / 255.0f };
+    float camera[] = { camera_position.x, camera_position.y, camera_position.z };
+    float fog_start = 145.0f;
+    float fog_end = 620.0f;
+    float fog_opacity = .76f;
+    int atmosphere_enabled = scene->atmosphere_enabled;
+    int location = GetShaderLocation(scene->shader, "cameraPosition");
+    if (location >= 0)
+        SetShaderValue(scene->shader, location, camera, SHADER_UNIFORM_VEC3);
+    location = GetShaderLocation(scene->shader, "fogColor");
+    if (location >= 0)
+        SetShaderValue(scene->shader, location, fog_color, SHADER_UNIFORM_VEC3);
+    location = GetShaderLocation(scene->shader, "fogStart");
+    if (location >= 0)
+        SetShaderValue(scene->shader, location, &fog_start, SHADER_UNIFORM_FLOAT);
+    location = GetShaderLocation(scene->shader, "fogEnd");
+    if (location >= 0)
+        SetShaderValue(scene->shader, location, &fog_end, SHADER_UNIFORM_FLOAT);
+    location = GetShaderLocation(scene->shader, "fogOpacity");
+    if (location >= 0)
+        SetShaderValue(scene->shader, location, &fog_opacity, SHADER_UNIFORM_FLOAT);
+    location = GetShaderLocation(scene->shader, "atmosphereEnabled");
+    if (location >= 0)
+        SetShaderValue(scene->shader, location, &atmosphere_enabled, SHADER_UNIFORM_INT);
+}
+
 static void draw_rectangle(const WaterfrontGpuScene *scene, Material material, Vector3 center,
     Vector3 forward, float width, float length, Color color)
 {
@@ -932,6 +961,7 @@ void waterfront_gpu_scene_draw(
         render_shadow_map(scene, frame);
     select_local_lights(scene, frame);
     set_lighting_uniforms(scene);
+    set_atmosphere_uniforms(scene, frame.camera.position);
     BeginMode3D(camera);
     rlSetMatrixProjection(MatrixPerspective(frame.camera.vertical_fov, (float)width / (float)height,
         frame.camera.near_plane, frame.camera.far_plane));
@@ -967,6 +997,11 @@ void waterfront_gpu_scene_set_lighting_enabled(WaterfrontGpuScene *scene, bool e
 void waterfront_gpu_scene_set_shadows_enabled(WaterfrontGpuScene *scene, bool enabled)
 {
     scene->shadows_enabled = enabled;
+}
+
+void waterfront_gpu_scene_set_atmosphere_enabled(WaterfrontGpuScene *scene, bool enabled)
+{
+    scene->atmosphere_enabled = enabled;
 }
 
 bool waterfront_gpu_scene_set_shadow_map_size(WaterfrontGpuScene *scene, int size)

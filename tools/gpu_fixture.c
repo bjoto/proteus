@@ -29,6 +29,7 @@ typedef struct {
     bool city;
     bool lighting;
     bool shadows;
+    bool atmosphere;
     bool shadow_map_view;
     int shadow_map_size;
     float time;
@@ -43,7 +44,9 @@ static const FixtureSize SUPPORTED_SIZES[] = {
 static void print_usage(const char *program)
 {
     printf("Usage: %s [--check] [--visible] [--frames N] [--screenshot FILE]\n", program);
-    printf("       %s [--city --time SECONDS] [--lights on|off] [--shadows on|off]\n", program);
+    printf("       %s [--city --time SECONDS] [--lights on|off] [--shadows on|off] [--atmosphere "
+           "on|off]\n",
+        program);
     printf("       %s [--city --shadow-map] [--resolution WIDTHxHEIGHT]\n", program);
     printf("Options:\n");
     printf("  --check                 verify depth, orientation, target resizing, and capture\n");
@@ -56,6 +59,7 @@ static void print_usage(const char *program)
     printf("  --time SECONDS          scene-local city time (default: 0)\n");
     printf("  --lights on|off         city local-light diagnostic switch (default: on)\n");
     printf("  --shadows on|off        city directional-shadow diagnostic switch (default: on)\n");
+    printf("  --atmosphere on|off     city distance-atmosphere diagnostic switch (default: on)\n");
     printf("  --shadow-resolution N   directional-shadow map size: 512 or 1024 (default: 1024)\n");
     printf("  --shadow-map            export/present the light-frustum depth-map diagnostic\n");
 }
@@ -101,6 +105,7 @@ static bool parse_options(int argc, char **argv, FixtureOptions *options)
         .frames = 1,
         .lighting = true,
         .shadows = true,
+        .atmosphere = true,
         .shadow_map_size = WATERFRONT_GPU_SHADOW_MAP_SIZE,
     };
 
@@ -143,6 +148,16 @@ static bool parse_options(int argc, char **argv, FixtureOptions *options)
                 options->shadows = false;
             else {
                 fprintf(stderr, "Shadows must be on or off: %s\n", shadows);
+                return false;
+            }
+        } else if (strcmp(argv[i], "--atmosphere") == 0 && i + 1 < argc) {
+            const char *atmosphere = argv[++i];
+            if (strcmp(atmosphere, "on") == 0)
+                options->atmosphere = true;
+            else if (strcmp(atmosphere, "off") == 0)
+                options->atmosphere = false;
+            else {
+                fprintf(stderr, "Atmosphere must be on or off: %s\n", atmosphere);
                 return false;
             }
         } else if (strcmp(argv[i], "--shadow-map") == 0) {
@@ -208,6 +223,7 @@ static bool draw_city(RenderTexture2D target, WaterfrontGpuScene *scene, Fixture
     }
     waterfront_gpu_scene_set_lighting_enabled(scene, options.lighting);
     waterfront_gpu_scene_set_shadows_enabled(scene, options.shadows);
+    waterfront_gpu_scene_set_atmosphere_enabled(scene, options.atmosphere);
     if (!waterfront_gpu_scene_set_shadow_map_size(scene, options.shadow_map_size)) {
         fprintf(stderr, "GPU fixture: unable to select %d shadow map\n", options.shadow_map_size);
         waterfront_gpu_scene_destroy(scene);

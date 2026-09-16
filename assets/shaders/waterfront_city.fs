@@ -15,6 +15,12 @@ uniform float directionalIntensity;
 uniform mat4 lightViewProjection;
 uniform sampler2D shadowMap;
 uniform int shadowsEnabled;
+uniform vec3 cameraPosition;
+uniform vec3 fogColor;
+uniform float fogStart;
+uniform float fogEnd;
+uniform float fogOpacity;
+uniform int atmosphereEnabled;
 uniform int localLightCount;
 uniform vec4 localLightPositionRadius[32];
 uniform vec4 localLightColorIntensity[32];
@@ -22,6 +28,16 @@ uniform vec4 localLightDirection[32];
 uniform vec4 localLightCone[32];
 
 out vec4 finalColor;
+
+vec3 apply_atmosphere(vec3 color)
+{
+    if (atmosphereEnabled == 0)
+        return color;
+
+    float distanceToCamera = length(fragWorldPosition - cameraPosition);
+    float fog = smoothstep(fogStart, fogEnd, distanceToCamera) * fogOpacity;
+    return mix(color, fogColor, fog);
+}
 
 float directional_shadow(vec3 normal)
 {
@@ -47,7 +63,7 @@ void main()
 {
     vec4 albedo = texture(texture0, fragTexCoord) * objectColor * fragColor;
     if (emissive != 0) {
-        finalColor = albedo;
+        finalColor = vec4(apply_atmosphere(albedo.rgb), albedo.a);
         return;
     }
 
@@ -79,5 +95,5 @@ void main()
     // illumination before multiplying albedo, rather than adding white, so nearby lamps do not
     // bleach materials.
     vec3 lit = clamp(illumination, 0.0, 1.25);
-    finalColor = vec4(min(albedo.rgb * lit, vec3(1.0)), albedo.a);
+    finalColor = vec4(apply_atmosphere(min(albedo.rgb * lit, vec3(1.0))), albedo.a);
 }

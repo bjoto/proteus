@@ -51,12 +51,14 @@ typedef struct {
     int local_light_count;
     bool lighting_enabled;
     bool shadows_enabled;
+    bool atmosphere_enabled;
     bool ready;
 } WaterfrontGpuScene;
 
 bool waterfront_gpu_scene_init(WaterfrontGpuScene *scene, const char *fragment_shader_path);
 void waterfront_gpu_scene_set_lighting_enabled(WaterfrontGpuScene *scene, bool enabled);
 void waterfront_gpu_scene_set_shadows_enabled(WaterfrontGpuScene *scene, bool enabled);
+void waterfront_gpu_scene_set_atmosphere_enabled(WaterfrontGpuScene *scene, bool enabled);
 bool waterfront_gpu_scene_set_shadow_map_size(WaterfrontGpuScene *scene, int size);
 Texture2D waterfront_gpu_scene_shadow_map(const WaterfrontGpuScene *scene);
 void waterfront_gpu_scene_draw(
