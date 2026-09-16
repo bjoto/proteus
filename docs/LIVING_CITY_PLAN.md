@@ -37,7 +37,7 @@ report what remains. A purely documentary step does not require a new manual dem
 
 | Step | Deliverable and completion evidence | Status |
 | --- | --- | --- |
-| 01 | Capture and inspect the existing short/long routes; audit map coverage, heights, empty parcels, and camera views. Record a prioritized list of exact areas to change, with still-frame evidence and a performance baseline. | Pending |
+| 01 | Capture and inspect the existing short/long routes; audit map coverage, heights, empty parcels, and camera views. Record a prioritized list of exact areas to change, with still-frame evidence and a performance baseline. | Complete |
 | 02 | Repair nearby street enclosure and give exposed ground areas an identity, using step 01 findings. Compare matching before/after stills and check camera clearance. | Pending |
 | 03 | Extend surrounding blocks and the distant skyline where needed. Inspect the whole route for visible map edges, new gaps, and depth continuity. | Pending |
 | 04 | Finish one visible street corner: kerbs, entrances, shop/cafe, planting, furniture, and parked bikes/vehicles. It must read as inhabited in a still frame. | Pending |
@@ -70,6 +70,13 @@ For subsequent work, replace `01` and the task-specific sentence with the next s
 deliverable, or request a range such as `02–04, with one commit per step`.
 
 ### Progress log
+
+- Step 01: [coverage audit and verification](LIVING_CITY_AUDIT.md) records exact missing
+  building parts, priority areas, baseline captures, and profiling. Added GPU storyboard
+  playback/capture for both routes and a repeatable comparison script. Corrected the
+  GPU review's stale sky-band assumption. Build and all 13 tests passed, including GPU.
+  Both windowed routes completed; live human motion observation and true GPU timing
+  remain limitations noted in the audit. Scene output is unchanged.
 
 - Planning: inspected the existing scene code, geometry manifest, and two saved captures;
   documented the artistic stages and commit workflow. `cmake --build build -j` and

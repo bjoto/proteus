@@ -109,6 +109,21 @@ def semantic_check(path, renderer, time):
         for x in range(width):
             offset = (y * width + x) * 4
             pixel = tuple(pixels[offset : offset + 3])
+            # GPU atmosphere uses a continuous sky gradient; CPU retains seven bands.
+            # Compare the expected row colour before counting non-sky coverage. Looking
+            # for CPU band colours in the GPU image misclassified almost all of its sky.
+            if renderer == "gpu":
+                expected = tuple(int(base + 30 * y / (height - 1) + 0.5)
+                                 for base in (20, 29, 52))
+                if pixel == expected:
+                    band = min(6, int(7 * y / height))
+                    sky_counts[band] += 1
+                    sky_row_sums[band] += y
+                else:
+                    city_pixels += 1
+                if y >= height // 3 and max(pixel) >= 145 and pixel[0] >= pixel[2]:
+                    bright_lower_pixels += 1
+                continue
             for band in range(7):
                 if pixel == (20 + band * 5, 29 + band * 5, 52 + band * 6):
                     sky_counts[band] += 1

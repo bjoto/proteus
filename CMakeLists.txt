@@ -87,7 +87,12 @@ target_compile_options(validate_audio_spectrum PRIVATE
 enable_testing()
 add_executable(waterfront_storyboard
   tools/waterfront_storyboard.c src/waterfront.c src/waterfront_scene.c src/renderer3d.c
+  src/renderer_gpu.c
 )
+target_compile_definitions(waterfront_storyboard PRIVATE
+  PROTEUS_ASSET_DIR="$<TARGET_FILE_DIR:waterfront_storyboard>/assets"
+)
+add_dependencies(waterfront_storyboard proteus_assets)
 target_include_directories(waterfront_storyboard PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(waterfront_storyboard PRIVATE raylib)
 target_compile_options(waterfront_storyboard PRIVATE
