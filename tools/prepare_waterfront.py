@@ -21,7 +21,9 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "docs/eriksberg/osm-survey.json.gz"
 EXPECTED_HASH = "9349d7014692dba93203e03d842b9b1402a481f77503514cb68f38902eb23b54"
 GROUND = 3.5
-CROP = box(-400, -400, 550, 500)
+# Extend beyond the old 950x900 m crop using the same retained snapshot. The river
+# closing-edge checks below remain authoritative; extending past them invents coastline.
+CROP = box(-700, -600, 950, 800)
 
 
 def join_chains(chains):

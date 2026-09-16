@@ -139,9 +139,11 @@ def semantic_check(path, renderer, time):
     coverage = city_pixels / (width * height)
     # City pixels include buildings, quay, traffic, boat and lights. Broad bounds leave room for
     # driver rasterization differences while rejecting a cleared, flipped, or missing city target.
-    # The city may occlude lower bands, especially around t=5. Require the exposed bands to be
-    # present and vertically ordered instead of requiring every authored band in every composition.
-    if visible_bands < 2 or not sky_ordered:
+    # Dense context can occlude every lower band in the downward-looking t=5 shot.
+    # Require the top sky colour and ordered exposed rows, rather than prescribing how
+    # many bands the architecture leaves visible. Coverage and the separate asymmetric
+    # GPU fixture still check a missing scene and incorrect image orientation.
+    if visible_bands < 1 or sky_counts[0] < 12 or not sky_ordered:
         failures.append(f"sky bands are not visibly ordered ({visible_bands}/7 exposed)")
     if not 0.04 <= coverage <= 0.96:
         failures.append(f"city coverage {coverage:.1%} is outside the 4%-96% review range")

@@ -44,6 +44,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--compare", type=Path)
+    parser.add_argument("--sweep", action="store_true",
+                        help="also capture each route at one-second intervals")
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     logs = []
@@ -64,6 +66,20 @@ def main():
         logs.append(run(["./build/waterfront_storyboard", "--renderer", "gpu",
                          "--route", route, "--time", 10, "--resolution", "320x180",
                          "--screenshot", args.output / f"{route}-10-180.png"]))
+        if args.sweep:
+            duration = 15.36 if route == "short" else 30.72
+            paths = []
+            for time in [*range(int(duration) + 1), duration]:
+                path = args.output / f"sweep-{time:g}-{route}.png"
+                logs.append(run(["./build/waterfront_storyboard", "--renderer", "gpu",
+                                 "--route", route, "--time", time, "--screenshot", path]))
+                paths.append(path)
+            sheet(paths, args.output / f"{route}-sweep.png", 3)
+    if args.compare:
+        for route, time in (("short", 0), ("short", 10), ("long", 30.72)):
+            name = f"{route}-{time:g}-200.png"
+            sheet([args.compare / name, args.output / name],
+                  args.output / f"compare-{route}-{time:g}.png", 2)
     logs.append(run(["./build/proteus", "--renderer", "gpu", "--profile", "cube",
                      "--frames", 923, "--warmup", 120]))
     (args.output / "capture.log").write_text("\n".join(logs))

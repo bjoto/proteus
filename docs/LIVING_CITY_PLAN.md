@@ -1,8 +1,7 @@
 # Living Eriksberg city plan
 
-Status: ready for incremental implementation, 2026-09-16. This is the next
+Status: execution steps 01–03 complete, 2026-09-16; step 04 is next. This is the
 visual-development plan after the [GPU migration](GPU_WATERFRONT_PLAN.md).
-Implementation steps below are pending; no runtime changes are included here.
 
 ## Direction
 
@@ -39,7 +38,7 @@ report what remains. A purely documentary step does not require a new manual dem
 | --- | --- | --- |
 | 01 | Capture and inspect the existing short/long routes; audit map coverage, heights, empty parcels, and camera views. Record a prioritized list of exact areas to change, with still-frame evidence and a performance baseline. | Complete |
 | 02 | Repair nearby street enclosure and give exposed ground areas an identity, using step 01 findings. Compare matching before/after stills and check camera clearance. | Complete |
-| 03 | Extend surrounding blocks and the distant skyline where needed. Inspect the whole route for visible map edges, new gaps, and depth continuity. | Pending |
+| 03 | Extend surrounding blocks and the distant skyline where needed. Inspect the whole route for visible map edges, new gaps, and depth continuity. | Complete |
 | 04 | Finish one visible street corner: kerbs, entrances, shop/cafe, planting, furniture, and parked bikes/vehicles. It must read as inhabited in a still frame. | Pending |
 | 05 | Consolidate the actor evaluation needed for city life into the shared scene layer. Preserve existing behaviour and verify direct seeks before adding actors. | Pending |
 | 06 | Add a small cast of pedestrians and cyclists around the completed corner and quay, with readable silhouettes and deterministic paths. Inspect motion and occlusion. | Pending |
@@ -70,6 +69,33 @@ For subsequent work, replace `01` and the task-specific sentence with the next s
 deliverable, or request a range such as `02–04, with one commit per step`.
 
 ### Progress log
+
+- Step 03: enlarged the retained-data crop from X -400..550 / Z -400..500 to
+  X -700..950 / Z -600..800 m. Building features increase from 204 to 523 without a new
+  download or authored building footprints. The river assembly still verifies that its
+  artificial closing edges lie outside the crop. Geometry is now 20,434 vertices /
+  25,512 triangles; regeneration into `build/living-city/step03/repro` matches the bundled
+  geometry and manifest byte-for-byte. The new context uses existing colour, shadow,
+  reflection, and atmosphere passes without new per-object draw calls.
+  Inspected matching before/after captures at all supported resolutions and one-second
+  sweeps of both full routes (17 short / 32 long frames including endpoints). Added
+  `--sweep` and compact paired views to the review script. No exposed rectangular crop
+  edge was apparent in the reviewed sweep; real open water and park space remain.
+  CPU frames at t=0/15 were reviewed before updating the reference checksum to
+  `5ebe525b6d2f6f83`. Build and all 13 tests pass, including GPU review, CPU seek checks,
+  and 2 m route clearance. Both windowed GPU routes completed.
+  The denser t=5 skyline leaves only the top sky band exposed in both renderers; the
+  semantic review now requires that top band and ordered exposed sky rather than two
+  bands, retaining coverage limits and the independent orientation/depth fixture.
+  Final artifacts: `build/living-city/step03/`, with baseline-left/current-right comparison
+  sheets and `compare-short-0.png`, `compare-short-10.png`, `compare-long-30.72.png`.
+  CPU submission mean 1.328 ms / p95 1.517 ms versus baseline 1.317 / 1.405 ms (Debug;
+  noisy submission measurements, not GPU execution timings). Live human motion review,
+  GPU execution timing/memory measurement, and exact GPU seeking with the existing
+  history-dependent light selection are not established by these checks.
+  Remaining sparseness: broad undressed quay/paving, simple flat ground, repetitive
+  facades, and no human destinations or activity. Step 04 should concentrate on a readable
+  street corner, entrances, kerbs, parked bikes, and cafe/stop furniture.
 
 - Step 02: restored 43 non-bridge mapped building parts, including 28 stepped apartment
   sections beside Monsungatan. Taller overlapping parts take precedence within parent
