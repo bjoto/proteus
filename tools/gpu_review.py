@@ -90,9 +90,7 @@ def command(arguments, label):
 
 
 def capture(executable, renderer, time, path):
-    arguments = [executable]
-    if renderer == "gpu":
-        arguments += ["--renderer", "gpu"]
+    arguments = [executable, "--renderer", renderer]
     arguments += ["--screenshot", str(path), "--scene", "cube", "--time", str(time), "--resolution", "320x200"]
     return command(arguments, f"{renderer} capture at t={time:g}")
 

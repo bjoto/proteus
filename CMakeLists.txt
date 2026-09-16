@@ -108,13 +108,13 @@ add_test(NAME audio_spectrum_is_valid
   COMMAND validate_audio_spectrum
 )
 add_test(NAME fire_profile_report
-  COMMAND proteus --profile fire --frames 10 --warmup 2
+  COMMAND proteus --renderer cpu --profile fire --frames 10 --warmup 2
 )
 set_tests_properties(fire_profile_report PROPERTIES
   PASS_REGULAR_EXPRESSION "proteus_profile_end=1"
 )
 add_test(NAME cube_screenshot
-  COMMAND proteus --screenshot ${CMAKE_CURRENT_BINARY_DIR}/cube-screenshot.png
+  COMMAND proteus --renderer cpu --screenshot ${CMAKE_CURRENT_BINARY_DIR}/cube-screenshot.png
           --scene cube --time 1.5
 )
 set_tests_properties(cube_screenshot PROPERTIES
@@ -122,7 +122,7 @@ set_tests_properties(cube_screenshot PROPERTIES
 )
 
 add_test(NAME interactive_timeline_options
-  COMMAND proteus --scene cube --time 2.5 --help
+  COMMAND proteus --renderer cpu --scene cube --time 2.5 --help
 )
 set_tests_properties(interactive_timeline_options PROPERTIES
   PASS_REGULAR_EXPRESSION "Usage:"
@@ -134,7 +134,7 @@ set(plasma_checksum cac9c63d222163d3)
 set(cube_checksum fd8832e64f03e590)
 foreach(scene starscroll fire plasma cube)
   add_test(NAME ${scene}_render_checksum
-    COMMAND proteus --profile ${scene} --frames 1 --warmup 0
+    COMMAND proteus --renderer cpu --profile ${scene} --frames 1 --warmup 0
   )
   set_tests_properties(${scene}_render_checksum PROPERTIES
     PASS_REGULAR_EXPRESSION "final_framebuffer_checksum=${${scene}_checksum}"
@@ -142,7 +142,7 @@ foreach(scene starscroll fire plasma cube)
 endforeach()
 
 add_test(NAME cube_start_screenshot
-  COMMAND proteus --screenshot ${CMAKE_CURRENT_BINARY_DIR}/cube-start.png
+  COMMAND proteus --renderer cpu --screenshot ${CMAKE_CURRENT_BINARY_DIR}/cube-start.png
           --scene cube --time 0
 )
 set_tests_properties(cube_start_screenshot PROPERTIES

@@ -175,7 +175,7 @@ static void print_usage(const char *program)
     printf("  --resolution WIDTHxHEIGHT (default: 320x200)\n");
     printf("  --visible               include upload/presentation using a visible window\n");
     printf("Timeline options:\n");
-    printf("  --renderer cpu|gpu     city renderer (default: cpu)\n");
+    printf("  --renderer cpu|gpu     cube city renderer (default: gpu; cpu is the reference)\n");
     printf("  --gpu-lights on|off    GPU local-light diagnostic switch (default: on)\n");
     printf("  --gpu-shadows on|off   GPU directional-shadow diagnostic switch (default: on)\n");
     printf("  --gpu-atmosphere on|off GPU distance-atmosphere diagnostic switch (default: on)\n");
@@ -192,7 +192,7 @@ static bool parse_options(int argc, char **argv, ProgramOptions *options)
         .frames = 600,
         .warmup_frames = 60,
         .size_index = 1,
-        .renderer = RENDERER_CPU,
+        .renderer = RENDERER_GPU,
         .gpu_lighting = true,
         .gpu_shadows = true,
         .gpu_atmosphere = true,

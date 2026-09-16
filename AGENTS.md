@@ -35,13 +35,15 @@ Run the demo from the repository root so its relative asset paths resolve:
 ./build/proteus
 ```
 
-For deterministic visual verification, render and inspect representative frames without opening a
-window. Without `--scene`, `--time` addresses the complete timeline; with `--scene`, it is local to
-that scene. `--resolution` is optional and defaults to 320x200.
+For deterministic CPU visual verification, render and inspect representative frames without opening
+a window. The `cube` scene defaults to GPU and therefore needs a graphics context; select
+`--renderer cpu` for display-free captures. Without `--scene`, `--time` addresses the complete
+timeline; with `--scene`, it is local to that scene. `--resolution` is optional and defaults to
+320x200.
 
 ```sh
-./build/proteus --screenshot build/timeline.png --time 48
-./build/proteus --screenshot build/cube.png --scene cube --time 2.5 --resolution 320x240
+./build/proteus --renderer cpu --screenshot build/timeline.png --time 48
+./build/proteus --renderer cpu --screenshot build/cube.png --scene cube --time 2.5 --resolution 320x240
 ```
 
 On macOS, deeper CPU profiling can use Xcode's Instruments command-line tools when full Xcode is the
@@ -50,7 +52,7 @@ scene run:
 
 ```sh
 xcrun xctrace record --template 'Time Profiler' --output build/cube.trace \
-  --launch -- ./build/proteus --profile cube --frames 100000
+  --launch -- ./build/proteus --renderer cpu --profile cube --frames 100000
 ```
 
 ## Conventions

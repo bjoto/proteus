@@ -34,6 +34,11 @@ Start at a global timeline position, or select a scene and use a scene-local tim
 The music seeks with the visuals so their timing remains synchronized. These options have the same
 meaning in interactive and screenshot modes.
 
+The `cube` waterfront uses the GPU renderer by default. Other scenes remain CPU-rendered.
+`--renderer cpu` selects the deterministic software reference; `--renderer gpu` is available for
+explicit GPU comparison. GPU waterfront screenshots and profiles create a raylib/OpenGL context,
+while CPU screenshots remain display-free.
+
 Controls:
 
 - `1`: 320x180
@@ -50,10 +55,10 @@ Unused screen space is letterboxed.
 
 ## Capture a screenshot
 
-Render a PNG directly from the CPU-side framebuffer without opening a window:
+Render a PNG without opening a window from the CPU-side framebuffer:
 
 ```sh
-./build/proteus --screenshot build/proteus.png --time 48
+./build/proteus --renderer cpu --screenshot build/proteus.png --time 48
 ```
 
 By default, `--time` addresses the complete visual timeline. Add `--scene` to select a scene and
@@ -64,6 +69,14 @@ interpret the time relative to its start:
 ```
 
 Screenshot mode also accepts `--resolution` and defaults to 320x200.
+
+The default GPU `cube` screenshot needs a desktop graphics context. Use `--renderer cpu` for a
+display-free waterfront reference capture:
+
+```sh
+./build/proteus --renderer cpu --screenshot build/cube-cpu.png --scene cube --time 2.5
+./build/proteus --renderer gpu --screenshot build/cube-gpu.png --scene cube --time 2.5
+```
 
 ## GPU visual review
 
@@ -127,7 +140,7 @@ key/value report:
 ./build/proteus --profile fire
 ```
 
-The default run is headless and measures 600 frames after 60 warm-up frames. Use
+The default CPU run is headless and measures 600 frames after 60 warm-up frames. Use
 `--frames`, `--warmup`, and `--resolution` to change the workload. For example:
 
 ```sh
@@ -139,6 +152,10 @@ timings. Without it, those report fields are zero and the run isolates CPU scene
 The report includes its build type and a final-framebuffer checksum so automated comparisons
 can reject mismatched builds or unintended visual changes. Run `./build/proteus --help` for
 the complete interface.
+
+`--profile cube` uses the GPU waterfront by default and reports CPU submission timing for the
+shadow, reflection, and city passes; it does not report GPU timestamp-query timing. Select
+`--renderer cpu --profile cube` for the original software checksum/profile route.
 
 For function-level CPU sampling on macOS, the built-in `sample` command can attach to a
 longer headless run. Start the sampler in one terminal, then the workload in another:
@@ -176,9 +193,9 @@ The visuals follow the eight-pattern music loop. Two patterns each are given to
 the starfield, fire, and plasma. The final two show a 15.36-second Eriksberg waterfront
 fly-by: follow evening traffic along Monsungatan, pass lit apartments, and look back
 across the dock, with the crane in the background. The `cube`
-scene name is retained for screenshots and profiling. This flat-shaded blockout uses
-bundled geographic geometry and an authored crane; rendering runs in the CPU-side
-virtual framebuffer. See [the 3D renderer notes](docs/3D.md).
+scene name is retained for screenshots and profiling. It uses bundled geographic geometry and an
+authored crane; the GPU route is the default for this scene and the CPU route remains the reference.
+See [the 3D renderer notes](docs/3D.md).
 
 Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright),
 [ODbL 1.0](https://opendatacommons.org/licenses/odbl/1-0/). The retained snapshot and

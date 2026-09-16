@@ -1,6 +1,7 @@
 # Waterfront GPU migration plan
 
-Status: steps 01–11 implemented; GPU visual verification remains pending. Written 2026-09-12.
+Status: steps 01–12 implemented; desktop GPU-test verification remains platform-dependent. Written
+2026-09-12.
 
 ## Decision and scope
 
@@ -459,7 +460,7 @@ its remaining manual motion review is called out below rather than being treated
 | 09 Directional shadows | Implemented, verification pending | One texel-snapped directional depth map, caster pass, hard direct-light attenuation, and fixture diagnostics are in place; desktop review remains pending. See record below. |
 | 10 Atmosphere | Implemented, verification pending | Distance haze is applied after direct, local, and emissive lighting, with identical-time on/off switches; desktop visual review remains pending. See record below. |
 | 11 Water reflection | Implemented, verification pending | The semantic water mesh samples a separate 160x120 reflected scene with deterministic distortion; desktop review remains pending. See record below. |
-| 12 Default/documentation | Pending | |
+| 12 Default/documentation | Implemented, verification pending | GPU is now the default `cube` renderer; CPU reference tests and captures explicitly select `--renderer cpu`. Desktop GPU-test verification remains pending. See record below. |
 
 ### Step 01 record — 2026-09-12
 
@@ -736,6 +737,26 @@ reflection on/off at scene-local 0, 2.5, 5, 10, and 15 seconds at 320x200 and 32
 shoreline remains attached, distant crane/window forms are legible but subdued, boat/wake stay in
 front of the surface, and motion has no seams or unstable sampling. Measure the reflected-pass
 cost during the profile route before accepting this optional step.
+
+### Step 12 record — 2026-09-16
+
+The `cube` city renderer now defaults to GPU in `src/main.c`; `--renderer cpu` remains the explicit
+software reference and other scenes remain CPU-rendered. CPU checksum, profile, screenshot, and
+option CTests now pass `--renderer cpu` explicitly. The GPU review script also requests both
+renderers explicitly, so its CPU/GPU contact sheet continues to compare the intended routes rather
+than relying on a default.
+
+README, `docs/3D.md`, and `AGENTS.md` now distinguish the display-free CPU reference capture from
+the context-requiring GPU city capture. The documented default quality is the 1024x1024 directional
+shadow map, bounded local lights, distance atmosphere, and the point-filtered 160x120 water
+reflection. GPU profile reports measure CPU submission time for those passes, not GPU timestamp
+queries; `--renderer cpu --profile cube` retains the original checksum/profile path.
+
+The 12 display-free CTests remain the required baseline. The opt-in `gpu_review` test still needs a
+desktop session capable of creating a hidden raylib context; this environment previously reached
+the macOS window-service failure before a context was available. No fallback from a requested GPU
+route to CPU is introduced. The user has visually reviewed the final GPU route; retain the
+documented GPU review command for future driver/platform validation.
 
 ## Technical references
 
