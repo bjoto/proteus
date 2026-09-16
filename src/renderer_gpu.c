@@ -194,7 +194,9 @@ static bool build_city(Mesh *city_mesh, Mesh *facades, Mesh *roofs, Mesh *quay, 
                 goto failed;
             continue;
         }
-        CitySurface surface = city_surface(a, b, c);
+        bool planting = (triangle->color.r == 72 && triangle->color.g == 105)
+            || (triangle->color.r == 61 && triangle->color.g == 91);
+        CitySurface surface = planting ? CITY_SURFACE_FLAT : city_surface(a, b, c);
         if (!builder_triangle(&builders[surface], a, b, c, triangle->color))
             goto failed;
     }

@@ -136,7 +136,8 @@ set_tests_properties(interactive_timeline_options PROPERTIES
 set(starscroll_checksum e7e36b86f9776e7d)
 set(fire_checksum fd61ac9ce25e71a6)
 set(plasma_checksum cac9c63d222163d3)
-set(cube_checksum fd8832e64f03e590)
+# Reviewed CPU reference after restoring mapped building parts and planted open spaces.
+set(cube_checksum 0b17e8f1198856c6)
 foreach(scene starscroll fire plasma cube)
   add_test(NAME ${scene}_render_checksum
     COMMAND proteus --renderer cpu --profile ${scene} --frames 1 --warmup 0

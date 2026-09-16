@@ -38,7 +38,7 @@ report what remains. A purely documentary step does not require a new manual dem
 | Step | Deliverable and completion evidence | Status |
 | --- | --- | --- |
 | 01 | Capture and inspect the existing short/long routes; audit map coverage, heights, empty parcels, and camera views. Record a prioritized list of exact areas to change, with still-frame evidence and a performance baseline. | Complete |
-| 02 | Repair nearby street enclosure and give exposed ground areas an identity, using step 01 findings. Compare matching before/after stills and check camera clearance. | Pending |
+| 02 | Repair nearby street enclosure and give exposed ground areas an identity, using step 01 findings. Compare matching before/after stills and check camera clearance. | Complete |
 | 03 | Extend surrounding blocks and the distant skyline where needed. Inspect the whole route for visible map edges, new gaps, and depth continuity. | Pending |
 | 04 | Finish one visible street corner: kerbs, entrances, shop/cafe, planting, furniture, and parked bikes/vehicles. It must read as inhabited in a still frame. | Pending |
 | 05 | Consolidate the actor evaluation needed for city life into the shared scene layer. Preserve existing behaviour and verify direct seeks before adding actors. | Pending |
@@ -70,6 +70,23 @@ For subsequent work, replace `01` and the task-specific sentence with the next s
 deliverable, or request a range such as `02–04, with one commit per step`.
 
 ### Progress log
+
+- Step 02: restored 43 non-bridge mapped building parts, including 28 stepped apartment
+  sections beside Monsungatan. Taller overlapping parts take precedence within parent
+  footprints; uncovered parent areas remain. Added 13 authored planted zones and 33 coarse
+  park canopies, clipped away from roads, buildings, and water. Generated geometry now has
+  10,249 vertices / 13,015 triangles. Converter self-checks cover height parsing, overlap
+  partitioning, and triangulation; regeneration into `build/living-city/step02/repro`
+  matches both bundled outputs byte-for-byte.
+  Inspected before/after sheets for both routes at 320x200/240 and framing at 320x180;
+  inspected CPU frames at t=0/5 before deliberately updating the CPU reference checksum
+  to `0b17e8f1198856c6`. Shared geometry also changes the existing triangle-seeded window
+  patterns. Both routes retain 2 m clearance and deterministic CPU seeks. Windowed GPU
+  routes completed. Build and 13-test CTest verification includes GPU review.
+  Captures/comparisons: `build/living-city/step02/`; CPU submission mean 1.301 ms,
+  p95 1.366 ms (same Debug configuration as baseline; no measured GPU execution time).
+  Near facades now have stronger enclosure and stepped roofs; background continuity and
+  large undressed quay surfaces remain visibly sparse. Step 03 addresses the background.
 
 - Step 01: [coverage audit and verification](LIVING_CITY_AUDIT.md) records exact missing
   building parts, priority areas, baseline captures, and profiling. Added GPU storyboard
