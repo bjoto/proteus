@@ -196,6 +196,7 @@ across the dock, with the crane in the background. The `cube`
 scene name is retained for screenshots and profiling. It uses bundled geographic geometry and an
 authored crane; the GPU route is the default for this scene and the CPU route remains the reference.
 See [the 3D renderer notes](docs/3D.md).
+The proposed next visual pass is described in [the living city plan](docs/LIVING_CITY_PLAN.md).
 
 Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright),
 [ODbL 1.0](https://opendatacommons.org/licenses/odbl/1-0/). The retained snapshot and
