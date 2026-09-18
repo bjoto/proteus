@@ -87,6 +87,15 @@ target_compile_options(validate_audio_spectrum PRIVATE
 )
 
 enable_testing()
+add_executable(validate_city_dressing tools/validate_city_dressing.c
+  src/waterfront_corner.c src/waterfront_scene.c)
+target_include_directories(validate_city_dressing PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(validate_city_dressing PRIVATE raylib)
+target_compile_options(validate_city_dressing PRIVATE
+  $<$<C_COMPILER_ID:AppleClang,Clang,GNU>:-Wall;-Wextra;-Wpedantic>
+)
+add_test(NAME city_dressing COMMAND validate_city_dressing)
+
 add_executable(waterfront_storyboard
   tools/waterfront_storyboard.c src/waterfront.c src/waterfront_scene.c src/renderer3d.c
   src/renderer_gpu.c src/waterfront_corner.c

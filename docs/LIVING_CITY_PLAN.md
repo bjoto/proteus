@@ -1,6 +1,7 @@
 # Living Eriksberg city plan
 
-Status: execution steps 01–04 complete, 2026-09-18; step 05 is next. This is the
+Status: execution steps 01–04 and city-wide coverage follow-up 04b complete,
+2026-09-18; step 05 is next. This is the
 visual-development plan after the [GPU migration](GPU_WATERFRONT_PLAN.md).
 
 ## Direction
@@ -40,16 +41,23 @@ report what remains. A purely documentary step does not require a new manual dem
 | 02 | Repair nearby street enclosure and give exposed ground areas an identity, using step 01 findings. Compare matching before/after stills and check camera clearance. | Complete |
 | 03 | Extend surrounding blocks and the distant skyline where needed. Inspect the whole route for visible map edges, new gaps, and depth continuity. | Complete |
 | 04 | Finish one visible street corner: kerbs, entrances, shop/cafe, planting, furniture, and parked bikes/vehicles. It must read as inhabited in a still frame. | Complete |
+| 04b | Bring the street-treatment expansion forward: distribute entrances, shopfronts, pavements, planted forecourts, parked vehicles, and quay furniture across the visible neighbourhood. Compare both whole routes, not just the cafe shot. | Complete |
 | 05 | Consolidate the actor evaluation needed for city life into the shared scene layer. Preserve existing behaviour and verify direct seeks before adding actors. | Pending |
-| 06 | Add a small cast of pedestrians and cyclists around the completed corner and quay, with readable silhouettes and deterministic paths. Inspect motion and occlusion. | Pending |
+| 06 | Distribute a small cast of pedestrians and cyclists between street destinations and both quays, with readable silhouettes and deterministic paths. Avoid concentrating all life at the cafe. Inspect motion and occlusion. | Pending |
 | 07 | Add varied vehicles and one authored interaction, such as a bus stop or yielding car. Verify spacing, stops, and hidden route wraps. | Pending |
 | 08 | Add sparse room activity, coordinated lamp flicker, and selective vehicle lighting. Verify stills, motion, and direct-seek consistency. | Pending |
 | 09 | Stage a ferry proxy in a visible river shot and validate scale, route clearance, and camera composition before detailed modelling. Preserve the music slot. | Pending |
 | 10 | Finish the ferry silhouette, livery, deck lights, wake, and reflection, plus selected quay details. Review the complete harbour shot. | Pending |
 | 11 | Add gulls: a few perched birds and a small number of circling/gliding silhouettes. Keep flight paths deterministic and readable against the sky at 320x200. | Pending |
-| 12 | Expand the successful street treatment selectively and add restrained atmosphere. Review both routes, all resolutions, seeking, and final performance. | Pending |
+| 12 | Refine remaining weak areas after the city-wide coverage pass and add restrained atmosphere. Review both routes, all resolutions, seeking, and final performance. | Pending |
 
 Steps 02–04 establish the city in a frozen frame before the new moving cast arrives.
+User review of step 04 exposed a contrast problem: one rich corner makes the undressed
+surroundings feel even emptier. Step 04b therefore brings the broad static-detail pass
+forward from step 12. Coverage is the baseline; hero corners add variety on top of it.
+Assess street approaches, both dock banks, foreground plazas, and the long-route overview.
+Small-prop counts alone are not visual acceptance: planting and shared courts must read
+as purposeful groups at the native resolution. Keep circulation and genuine open space.
 Gulls are a planned deliverable, with gliding and occasional wingbeats rather than a dense
 particle flock. During step 01, note possible ferry framing; detailed proxy work belongs
 to step 09 unless explicitly brought forward.
@@ -69,6 +77,42 @@ For subsequent work, replace `01` and the task-specific sentence with the next s
 deliverable, or request a range such as `02–04, with one commit per step`.
 
 ### Progress log
+
+- Step 04b (2026-09-18): expanded the cafe kit into map-constrained static dressing.
+  Added 318 exterior entrances and 15 shopfronts beyond the cafe, 210 three-metre
+  pavement sections, 320 quay sections with kerbs/bollards and intermittent rails,
+  39 shared planted or parking forecourts, 25 parked cars, and 83 additional trees.
+  Totals including the cafe: 101 benches and 28 bicycles. These are artistic land uses,
+  not new geographic facts. Footprint samples reject roads, water, roofs, and existing
+  planting; crane supports and the original cafe are reserved. Shared courts also avoid
+  previously placed furniture. The surface-query cache is discarded after construction.
+  The first small-prop-only review still looked sparse, so this pass includes larger
+  planted courts and seating groups that survive wider views.
+  All 7,104 boxes/beams still use the same two resident GPU batches: five submissions
+  across main/reflection/shadow passes, unchanged from step 04. The non-indexed vertex
+  payload is about 8.78 MiB (255,744 vertices at 36 bytes), plus its CPU-side mesh copy;
+  this is a calculated payload, not measured driver memory. No new local lights, actor
+  behaviour, camera changes, music changes, or CPU image changes.
+  Added a display-free coverage test for west/east/north/south distribution, finite bounded
+  geometry, emissive frontage coverage, stable initialization, and clearance queries.
+  Both routes retain 2 m clearance at 120 Hz and the CPU direct-seek checks pass.
+  Debug configure/build and all 14 CTest checks passed, including GPU review and the new
+  city-coverage guard. Inspected matching before/after captures at 320x200/240, 320x180
+  framing checks, and one-second sweeps for both complete routes. Both windowed GPU
+  passes completed successfully. Captures and the profile log are in
+  `build/living-city/step04b/`; `compare-short-5.png`, `compare-short-15.png`, and
+  `compare-long-7.68.png` show baseline left/current right. Reproduce with
+  `python3 tools/living_city_review.py --output build/living-city/step04b --compare build/living-city/step04 --sweep`.
+  CPU submission mean 1.274 ms / p95 1.340 ms (923 frames, 120 warm-up), versus
+  step 04's 1.317 / 1.421 ms; this noisy measurement is not evidence of a speedup and
+  does not measure GPU execution. The standalone coverage check takes about 1 second,
+  including one-time dressing construction. Live human motion observation, measured GPU
+  memory/execution time, and exact GPU seek parity with history-dependent light selection
+  remain unverified. Static dressing itself is initialized once and has no time/history state.
+  Remaining: the wide concrete plazas still need stronger local identity; dark shadows
+  hide small furniture, building facades/roofs remain repetitive, and there are no new
+  people, moving cyclists, buses, gulls, or major harbour activity yet. This establishes
+  a broader static baseline, not a claim that every visible parcel is finished.
 
 - Step 04 (2026-09-18): added an authored cafe at the northwest corner of mapped way
   282574767 (local origin X -71.82 / Z 105.90). Includes raised pavement and kerb,

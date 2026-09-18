@@ -3,7 +3,8 @@
 
 #include "renderer3d.h"
 
-// Static, authored dressing at the northwest corner of OSM way 282574767.
+// Static city dressing: the authored cafe at OSM way 282574767 and a map-constrained
+// kit distributed along streets, exterior facades, and quays. Placements are artistic.
 // Corners use the same ordering as the renderer's unit cube; arrays are scene-owned.
 typedef struct {
     Vector3 vertices[8];

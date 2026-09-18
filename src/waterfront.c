@@ -294,7 +294,7 @@ bool waterfront_check_routes(void)
             float time = duration * (float)i / (float)steps;
             Vector3 p = waterfront_camera(time, short_route).position;
             if (!waterfront_corner_clear(p, 2)) {
-                fprintf(stderr, "Route %s at %.3f s is within 2 m of the cafe dressing\n",
+                fprintf(stderr, "Route %s at %.3f s is within 2 m of the city dressing\n",
                     short_route ? "short" : "long", time);
                 return false;
             }
