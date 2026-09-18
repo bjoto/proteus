@@ -1,6 +1,6 @@
 # Living Eriksberg city plan
 
-Status: execution steps 01–03 complete, 2026-09-16; step 04 is next. This is the
+Status: execution steps 01–04 complete, 2026-09-18; step 05 is next. This is the
 visual-development plan after the [GPU migration](GPU_WATERFRONT_PLAN.md).
 
 ## Direction
@@ -39,7 +39,7 @@ report what remains. A purely documentary step does not require a new manual dem
 | 01 | Capture and inspect the existing short/long routes; audit map coverage, heights, empty parcels, and camera views. Record a prioritized list of exact areas to change, with still-frame evidence and a performance baseline. | Complete |
 | 02 | Repair nearby street enclosure and give exposed ground areas an identity, using step 01 findings. Compare matching before/after stills and check camera clearance. | Complete |
 | 03 | Extend surrounding blocks and the distant skyline where needed. Inspect the whole route for visible map edges, new gaps, and depth continuity. | Complete |
-| 04 | Finish one visible street corner: kerbs, entrances, shop/cafe, planting, furniture, and parked bikes/vehicles. It must read as inhabited in a still frame. | Pending |
+| 04 | Finish one visible street corner: kerbs, entrances, shop/cafe, planting, furniture, and parked bikes/vehicles. It must read as inhabited in a still frame. | Complete |
 | 05 | Consolidate the actor evaluation needed for city life into the shared scene layer. Preserve existing behaviour and verify direct seeks before adding actors. | Pending |
 | 06 | Add a small cast of pedestrians and cyclists around the completed corner and quay, with readable silhouettes and deterministic paths. Inspect motion and occlusion. | Pending |
 | 07 | Add varied vehicles and one authored interaction, such as a bus stop or yielding car. Verify spacing, stops, and hidden route wraps. | Pending |
@@ -69,6 +69,30 @@ For subsequent work, replace `01` and the task-specific sentence with the next s
 deliverable, or request a range such as `02–04, with one commit per step`.
 
 ### Progress log
+
+- Step 04 (2026-09-18): added an authored cafe at the northwest corner of mapped way
+  282574767 (local origin X -71.82 / Z 105.90). Includes raised pavement and kerb,
+  striped canvas awning, readable KAFFE sign, warm display glazing and a north entrance,
+  three tables/six chairs, three planters, bench, bin, menu board, three cycle stands,
+  and two parked bicycles. The existing north garden and the traffic lanes remain clear.
+  The destination reads during the opening approach, especially t=1–2.5 on the short
+  route. Camera position, music, actor motion, and generated geographic assets are unchanged.
+  Static scene-owned box/beam data lives in `src/waterfront_corner.[ch]`; the GPU uploads
+  two batches and reuses them for colour, reflection, and opaque shadows (five additional
+  mesh submissions with all passes enabled). One reserved shop light fits the existing
+  32-light limit, keeping the street lamps and at least three headlight slots.
+  The CPU reference remains visually unchanged; its checksum tests pass without updates.
+  Camera clearance now includes all new props, sampled at 120 Hz for both routes.
+  Debug configure/build and CTest passed 13/13, including GPU review. Matching captures
+  and one-second sweeps for both routes were inspected at 320x200/240, with 320x180
+  framing checks. Windowed short and long GPU passes completed. Final artifacts are in
+  `build/living-city/step04/`; `compare-corner-2.png` pairs step 03 and step 04 at t=2.
+  CPU submission mean 1.317 ms / p95 1.421 ms (923 frames after 120 warm-up frames).
+  This does not measure GPU execution time. As before, live human motion observation
+  and exact GPU seek parity with history-dependent light selection remain unverified.
+  Small furniture naturally becomes a few pixels on the fly-through; the awning, sign,
+  doorway and warm pavement carry the main visual identity. People and moving cyclists
+  remain work for later steps.
 
 - Step 03: enlarged the retained-data crop from X -400..550 / Z -400..500 to
   X -700..950 / Z -600..800 m. Building features increase from 204 to 523 without a new

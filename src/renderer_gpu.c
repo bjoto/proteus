@@ -1,4 +1,5 @@
 #include "renderer_gpu.h"
+#include "waterfront_corner.h"
 
 #include "raymath.h"
 #include "rlgl.h"
@@ -160,6 +161,30 @@ typedef enum {
     CITY_SURFACE_ROOF,
     CITY_SURFACE_QUAY,
 } CitySurface;
+
+static bool build_corner(Mesh *opaque, Mesh *emissive)
+{
+    size_t count;
+    const WaterfrontCornerBox *boxes = waterfront_corner_boxes(&count);
+    if (!boxes)
+        return false;
+    static const unsigned char faces[][3]
+        = { { 0, 2, 1 }, { 0, 3, 2 }, { 5, 7, 4 }, { 5, 6, 7 }, { 4, 3, 0 }, { 4, 7, 3 },
+              { 1, 6, 5 }, { 1, 2, 6 }, { 3, 6, 2 }, { 3, 7, 6 }, { 4, 1, 5 }, { 4, 0, 1 } };
+    MeshBuilder builders[2] = { 0 };
+    for (size_t i = 0; i < count; ++i)
+        for (size_t f = 0; f < sizeof(faces) / sizeof(faces[0]); ++f)
+            if (!builder_triangle(&builders[boxes[i].emissive], boxes[i].vertices[faces[f][0]],
+                    boxes[i].vertices[faces[f][1]], boxes[i].vertices[faces[f][2]],
+                    boxes[i].color)) {
+                builder_destroy(&builders[0]);
+                builder_destroy(&builders[1]);
+                return false;
+            }
+    *opaque = builder_finish(&builders[0]);
+    *emissive = builder_finish(&builders[1]);
+    return opaque->vaoId != 0 && emissive->vaoId != 0;
+}
 
 static CitySurface city_surface(Vector3 a, Vector3 b, Vector3 c)
 {
@@ -465,7 +490,8 @@ bool waterfront_gpu_scene_init(WaterfrontGpuScene *scene, const char *fragment_s
         || !init_detail_material(&scene->quay_material, scene->shader, scene->quay_texture))
         goto failed;
     if (!build_city(&scene->city, &scene->facades, &scene->roofs, &scene->quay, &scene->water)
-        || !build_windows(&scene->windows) || !build_crane(&scene->crane))
+        || !build_windows(&scene->windows) || !build_crane(&scene->crane)
+        || !build_corner(&scene->corner, &scene->corner_emissive))
         goto failed;
     if (!build_unit_cube(&scene->bridge) || !build_unit_cube(&scene->cube)
         || !build_unit_plane(&scene->plane))
@@ -540,6 +566,7 @@ static float street_length(WaterfrontStreet street)
 
 typedef enum {
     LIGHT_CRANE,
+    LIGHT_SHOP,
     LIGHT_LAMP,
     LIGHT_HEADLIGHT,
 } LightKind;
@@ -605,11 +632,20 @@ static int select_light_class(const WaterfrontGpuScene *scene, const LightCandid
 }
 
 // Every authored lamp stays in the forward-light list, so its pool cannot pop off while the camera
-// approaches. The remaining slots retain the three crane lights and nearby moving headlights.
+// approaches. Reserve the cafe light, three crane lights, and nearby moving headlights.
 static void select_local_lights(WaterfrontGpuScene *scene, WaterfrontSceneFrame frame)
 {
     LightCandidate candidates[72];
     int candidate_count = 0;
+    add_light_candidate(candidates, &candidate_count, 40,
+        (WaterfrontGpuLight) { .position = waterfront_corner_position(-2.8f, 3.1f, -6),
+            .direction = { 0, -1, 0 },
+            .color = { 255, 197, 119, 255 },
+            .radius = 12,
+            .intensity = 1.5f,
+            .inner_cone_cos = -1,
+            .outer_cone_cos = -1 },
+        LIGHT_SHOP);
     add_light_candidate(candidates, &candidate_count, 10,
         (WaterfrontGpuLight) { .position = crane_point(-42, 75, -5),
             .direction = Vector3Normalize(crane_point(.2f, -1, .3f)),
@@ -688,8 +724,10 @@ static void select_local_lights(WaterfrontGpuScene *scene, WaterfrontSceneFrame 
     LightCandidate selected[WATERFRONT_GPU_MAX_LOCAL_LIGHTS];
     int selected_count
         = select_light_class(scene, candidates, candidate_count, frame, LIGHT_CRANE, selected, 3);
+    selected_count += select_light_class(
+        scene, candidates, candidate_count, frame, LIGHT_SHOP, &selected[selected_count], 1);
     selected_count += select_light_class(scene, candidates, candidate_count, frame, LIGHT_LAMP,
-        &selected[selected_count], WATERFRONT_GPU_MAX_LOCAL_LIGHTS - selected_count - 4);
+        &selected[selected_count], WATERFRONT_GPU_MAX_LOCAL_LIGHTS - selected_count - 3);
     selected_count += select_light_class(scene, candidates, candidate_count, frame, LIGHT_HEADLIGHT,
         &selected[selected_count], WATERFRONT_GPU_MAX_LOCAL_LIGHTS - selected_count);
     scene->local_light_count = selected_count;
@@ -989,8 +1027,10 @@ static void draw_reflected_scene(
     DrawMesh(scene->facades, scene->facade_material, MatrixIdentity());
     DrawMesh(scene->roofs, scene->roof_material, MatrixIdentity());
     DrawMesh(scene->quay, scene->quay_material, MatrixIdentity());
+    DrawMesh(scene->corner, material, MatrixIdentity());
     set_emissive(scene->shader, true);
     DrawMesh(scene->windows, material, MatrixIdentity());
+    DrawMesh(scene->corner_emissive, material, MatrixIdentity());
     draw_colored_mesh(scene->bridge, life, frame.bridge, frame.bridge_color, false);
     // The reflection source deliberately excludes the water mesh and its wake, preventing a
     // feedback surface while retaining vehicles, boat hull, lamp poles, and the city silhouette.
@@ -1056,6 +1096,7 @@ static void draw_shadow_casters(
     DrawMesh(scene->facades, material, MatrixIdentity());
     DrawMesh(scene->roofs, material, MatrixIdentity());
     DrawMesh(scene->quay, material, MatrixIdentity());
+    DrawMesh(scene->corner, material, MatrixIdentity());
     draw_colored_mesh(scene->bridge, material, frame.bridge, frame.bridge_color, false);
     // Cars, boats, and lamp poles matter to the road shadow, but their lenses and wake do not.
     rlDisableBackfaceCulling();
@@ -1122,11 +1163,13 @@ void waterfront_gpu_scene_draw(
     DrawMesh(scene->facades, scene->facade_material, MatrixIdentity());
     DrawMesh(scene->roofs, scene->roof_material, MatrixIdentity());
     DrawMesh(scene->quay, scene->quay_material, MatrixIdentity());
+    DrawMesh(scene->corner, material, MatrixIdentity());
     set_object_color(scene->water_shader, WHITE);
     set_water_uniforms(scene, frame);
     DrawMesh(scene->water, scene->water_material, MatrixIdentity());
     set_emissive(scene->shader, true);
     DrawMesh(scene->windows, material, MatrixIdentity());
+    DrawMesh(scene->corner_emissive, material, MatrixIdentity());
     draw_colored_mesh(scene->bridge, life_material, frame.bridge, frame.bridge_color, false);
     // These small closed meshes use reusable, non-indexed buffers. Keep them two-sided while
     // retaining depth testing, so their visibility does not depend on backend cull-state defaults.
@@ -1197,6 +1240,10 @@ void waterfront_gpu_scene_destroy(WaterfrontGpuScene *scene)
         UnloadMesh(scene->water);
     if (scene->windows.vaoId != 0)
         UnloadMesh(scene->windows);
+    if (scene->corner.vaoId != 0)
+        UnloadMesh(scene->corner);
+    if (scene->corner_emissive.vaoId != 0)
+        UnloadMesh(scene->corner_emissive);
     if (scene->crane.vaoId != 0)
         UnloadMesh(scene->crane);
     if (scene->bridge.vaoId != 0)

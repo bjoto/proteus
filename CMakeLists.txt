@@ -26,6 +26,7 @@ add_executable(proteus
   src/renderer3d.c
   src/scenes.c
   src/waterfront.c
+  src/waterfront_corner.c
   src/waterfront_scene.c
   src/xm_audio.c
 )
@@ -45,7 +46,8 @@ add_custom_target(proteus_assets
 )
 add_dependencies(proteus proteus_assets)
 
-add_executable(gpu_fixture tools/gpu_fixture.c src/renderer_gpu.c src/waterfront_scene.c)
+add_executable(gpu_fixture tools/gpu_fixture.c src/renderer_gpu.c src/waterfront_scene.c
+  src/waterfront_corner.c)
 target_include_directories(gpu_fixture PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/src
   ${raylib_SOURCE_DIR}/src
@@ -87,7 +89,7 @@ target_compile_options(validate_audio_spectrum PRIVATE
 enable_testing()
 add_executable(waterfront_storyboard
   tools/waterfront_storyboard.c src/waterfront.c src/waterfront_scene.c src/renderer3d.c
-  src/renderer_gpu.c
+  src/renderer_gpu.c src/waterfront_corner.c
 )
 target_compile_definitions(waterfront_storyboard PRIVATE
   PROTEUS_ASSET_DIR="$<TARGET_FILE_DIR:waterfront_storyboard>/assets"

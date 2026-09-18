@@ -1,4 +1,5 @@
 #include "waterfront.h"
+#include "waterfront_corner.h"
 
 #include "raymath.h"
 
@@ -292,6 +293,11 @@ bool waterfront_check_routes(void)
         for (int i = 0; i <= steps; ++i) {
             float time = duration * (float)i / (float)steps;
             Vector3 p = waterfront_camera(time, short_route).position;
+            if (!waterfront_corner_clear(p, 2)) {
+                fprintf(stderr, "Route %s at %.3f s is within 2 m of the cafe dressing\n",
+                    short_route ? "short" : "long", time);
+                return false;
+            }
             for (size_t j = 0; j < city->triangle_count; ++j) {
                 const Triangle3D *t = &city->triangles[j];
                 Vector3 a = city->vertices[t->vertices[0]];

@@ -31,6 +31,8 @@ typedef struct {
     Mesh quay;
     Mesh water;
     Mesh windows;
+    Mesh corner;
+    Mesh corner_emissive;
     Mesh crane;
     Mesh bridge;
     Mesh cube;
