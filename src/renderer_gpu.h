@@ -22,6 +22,15 @@ typedef enum {
     WATERFRONT_GROUND_COUNT
 } WaterfrontGroundMaterial;
 
+// Facade UVs are metres along the wall / above quay level. Vertex RGB is the
+// building palette; alpha stores this opaque material ID, not transparency.
+typedef enum {
+    WATERFRONT_FACADE_BRICK = 1,
+    WATERFRONT_FACADE_PLASTER,
+    WATERFRONT_FACADE_PANEL,
+    WATERFRONT_FACADE_COUNT
+} WaterfrontFacadeMaterial;
+
 typedef struct {
     Vector3 position;
     Vector3 direction;
@@ -56,12 +65,10 @@ typedef struct {
     Matrix reflection_view_projection;
     int shadow_map_size;
     Material city_material;
-    Material facade_material;
     Material roof_material;
     Material life_material;
     Material shadow_material;
     Material water_material;
-    Texture2D facade_texture;
     Texture2D roof_texture;
     WaterfrontGpuLight local_lights[WATERFRONT_GPU_MAX_LOCAL_LIGHTS];
     int local_light_ids[WATERFRONT_GPU_MAX_LOCAL_LIGHTS];

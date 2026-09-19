@@ -1,7 +1,7 @@
 # Living Eriksberg city plan
 
-Status: execution steps 01–04, city-wide coverage follow-up 04b, and ground-material pass
-04c complete, 2026-09-19. Facades (04d) are next, before step 05. This is the
+Status: execution steps 01–04 and follow-ups 04b–04d complete, 2026-09-19.
+Step 05 is next. This is the
 visual-development plan after the [GPU migration](GPU_WATERFRONT_PLAN.md).
 
 ## Direction
@@ -43,7 +43,7 @@ report what remains. A purely documentary step does not require a new manual dem
 | 04 | Finish one visible street corner: kerbs, entrances, shop/cafe, planting, furniture, and parked bikes/vehicles. It must read as inhabited in a still frame. | Complete |
 | 04b | Bring the street-treatment expansion forward: distribute entrances, shopfronts, pavements, planted forecourts, parked vehicles, and quay furniture across the visible neighbourhood. Compare both whole routes, not just the cafe shot. | Complete |
 | 04c | Separate asphalt, paving, quay concrete, and planting finishes; correct real-world scale and filter subpixel detail. Verify and commit independently of facade work. | Complete |
-| 04d | Rework facade materials around the existing window geometry, with building-aligned brick, plaster, and panel variation. Inspect near and distant views without changing the low-resolution style. | Pending |
+| 04d | Rework facade materials around the existing window geometry, with building-aligned brick, plaster, and panel variation. Inspect near and distant views without changing the low-resolution style. | Complete |
 | 05 | Consolidate the actor evaluation needed for city life into the shared scene layer. Preserve existing behaviour and verify direct seeks before adding actors. | Pending |
 | 06 | Distribute a small cast of pedestrians and cyclists between street destinations and both quays, with readable silhouettes and deterministic paths. Avoid concentrating all life at the cafe. Inspect motion and occlusion. | Pending |
 | 07 | Add varied vehicles and one authored interaction, such as a bus stop or yielding car. Verify spacing, stops, and hidden route wraps. | Pending |
@@ -81,6 +81,39 @@ For subsequent work, replace `01` and the task-specific sentence with the next s
 deliverable, or request a range such as `02–04, with one commit per step`.
 
 ### Progress log
+
+- Step 04d (2026-09-19): stopped loading the old facade bitmap with its second painted
+  window grid. Existing window geometry, positions, and room colours are unchanged.
+  Added red/buff brick, warm plaster, and cool panel finishes, chosen consistently from
+  the retained per-building palette (artistic assignments, not surveyed materials).
+  UVs now measure metres along each wall and height above the quay; paired triangles
+  share an origin, avoiding world-axis stretching on angled facades. Brick courses are
+  26 x 9 cm, panel modules 1 m wide, and floor bands follow the window rows' 3.2 m spacing.
+  Small joints/grain fade with pixel footprint; broad palette changes and a low masonry
+  base carry the distant appearance. No new windows, geometry, draw calls, or textures.
+  Vertex RGB holds the finish colour and alpha holds an opaque material ID. Main and
+  reflection passes explicitly enable/reset facade mode; shadows retain their geometry.
+  Ground materials, roofs, lighting, camera paths, music, actors, and CPU images are unchanged.
+  Extended the GPU probe (renamed `gpu_surface_materials`) to verify all facade families,
+  metre scale on angled faces, shared UVs across wall triangles, material consistency,
+  opaque output, distinct responses, and near-detail/far-shift behaviour.
+  Debug configure/build and all 15 CTest checks passed. The facade batch contains 2,806
+  brick, 1,704 plaster, and 1,424 panel triangles; isolated probes retain distinct near
+  detail and show at most one 8-bit brightness-level change for the 2 cm far-camera shift.
+  Inspected matching 320x200/240 captures and full one-second sweeps on both routes,
+  plus 320x180 framing checks. Both windowed GPU route smoke runs completed.
+  Artifacts: `build/living-city/facade-materials/`; comparisons put ground-material-pass
+  baseline on the left and current facades on the right. Useful pairs include
+  `compare-short-0.png`, `compare-short-2.5.png`, and `compare-short-5.png`. Reproduce with
+  `python3 tools/living_city_review.py --output build/living-city/facade-materials --compare build/living-city/ground-materials --sweep`.
+  CPU submission mean 1.300 ms / p95 1.380 ms (923 frames, 120 warm-up), versus 04c's
+  1.341 / 1.428 ms; these noisy Debug timings do not establish a speedup or GPU execution
+  cost. Live human motion observation and exact whole-scene GPU seek parity with the
+  existing history-dependent light selection remain unverified. Material evaluation has
+  no time/history state, and the CPU reference checksum remains unchanged.
+  Remaining: roofs still use the old repeating texture; windows remain simple flat glazing,
+  with no modeled recesses, frames, or balconies. Fine masonry intentionally disappears
+  at this resolution; broader architecture and future activity must supply further detail.
 
 - Step 04c (2026-09-19): replaced the ground's shared 25 m bitmap repetition with four
   world-space procedural finishes: asphalt, 80 x 40 cm pavers, 3 m quay concrete panels,

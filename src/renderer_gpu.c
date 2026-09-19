@@ -68,8 +68,8 @@ static bool builder_reserve(MeshBuilder *builder, int additional)
     return true;
 }
 
-// Legacy facade/roof mapping, left for the building-material pass. Ground triangles
-// replace these UVs with material IDs and use metre-scaled, filtered shader patterns.
+// Legacy roof mapping. Ground triangles replace UVs with material IDs; facades
+// replace them with wall-local metres. Both use filtered procedural finishes.
 static Vector2 world_uv(Vector3 point, Vector3 normal)
 {
     const float density = .04f;
@@ -233,6 +233,36 @@ static bool is_water_triangle(const Triangle3D *triangle)
         && triangle->color.b == WATER_COLOR.b;
 }
 
+static bool builder_facade_triangle(
+    MeshBuilder *builder, Vector3 a, Vector3 b, Vector3 c, Color source)
+{
+    // Generated wall pairs are a,c,b and a,d,c: vertex zero is the same lower
+    // corner, and the last vertex reaches the other end in both triangles.
+    Vector3 edge = { c.x - a.x, 0, c.z - a.z };
+    float length = Vector3Length(edge);
+    if (length < .001f)
+        return false;
+    Vector3 along = Vector3Scale(edge, 1 / length);
+    // The retained palette is stable per building (including its mapped parts).
+    // Artistic material assignments, not claims about surveyed facade finishes.
+    Color color = { 208, 198, 175, WATERFRONT_FACADE_PLASTER };
+    if (source.r == 185)
+        color = (Color) { 170, 104, 77, WATERFRONT_FACADE_BRICK };
+    else if (source.r == 190)
+        color = (Color) { 183, 154, 108, WATERFRONT_FACADE_BRICK };
+    else if (source.r == 154)
+        color = (Color) { 147, 165, 174, WATERFRONT_FACADE_PANEL };
+    if (!builder_triangle(builder, a, b, c, color))
+        return false;
+    Vector3 points[] = { a, b, c };
+    for (int i = 0; i < 3; ++i) {
+        int vertex = builder->count - 3 + i;
+        builder->texcoords[vertex * 2] = Vector3DotProduct(Vector3Subtract(points[i], a), along);
+        builder->texcoords[vertex * 2 + 1] = points[i].y - 3.5f;
+    }
+    return true;
+}
+
 static bool build_city(Mesh *city_mesh, Mesh *facades, Mesh *roofs, Mesh *quay, Mesh *water,
     Mesh *corner, Mesh *corner_emissive)
 {
@@ -265,7 +295,10 @@ static bool build_city(Mesh *city_mesh, Mesh *facades, Mesh *roofs, Mesh *quay, 
                 goto failed;
             continue;
         }
-        if (!builder_triangle(&builders[surface], a, b, c, triangle->color))
+        bool ok = surface == CITY_SURFACE_FACADE
+            ? builder_facade_triangle(&builders[surface], a, b, c, triangle->color)
+            : builder_triangle(&builders[surface], a, b, c, triangle->color);
+        if (!ok)
             goto failed;
     }
     if (builders[CITY_SURFACE_FLAT].count == 0 || builders[CITY_SURFACE_FACADE].count == 0
@@ -527,9 +560,7 @@ bool waterfront_gpu_scene_init(WaterfrontGpuScene *scene, const char *fragment_s
     scene->life_material.shader = scene->shader;
     scene->shadow_material.shader = scene->shadow_shader;
     scene->water_material.shader = scene->water_shader;
-    if (!load_detail_texture(&scene->facade_texture, fragment_shader_path, "facade.png")
-        || !load_detail_texture(&scene->roof_texture, fragment_shader_path, "roof.png")
-        || !init_detail_material(&scene->facade_material, scene->shader, scene->facade_texture)
+    if (!load_detail_texture(&scene->roof_texture, fragment_shader_path, "roof.png")
         || !init_detail_material(&scene->roof_material, scene->shader, scene->roof_texture))
         goto failed;
     if (!build_city(&scene->city, &scene->facades, &scene->roofs, &scene->quay, &scene->water,
@@ -1071,13 +1102,23 @@ static void draw_ground(const WaterfrontGpuScene *scene, Material material)
     SetShaderValue(scene->shader, location, &enabled, SHADER_UNIFORM_INT);
 }
 
+static void draw_facades(const WaterfrontGpuScene *scene, Material material)
+{
+    int location = GetShaderLocation(scene->shader, "facadePass");
+    int enabled = 1;
+    SetShaderValue(scene->shader, location, &enabled, SHADER_UNIFORM_INT);
+    DrawMesh(scene->facades, material, MatrixIdentity());
+    enabled = 0;
+    SetShaderValue(scene->shader, location, &enabled, SHADER_UNIFORM_INT);
+}
+
 static void draw_reflected_scene(
     const WaterfrontGpuScene *scene, WaterfrontSceneFrame frame, Material material, Material life)
 {
     set_object_color(scene->shader, WHITE);
     set_emissive(scene->shader, false);
     DrawMesh(scene->city, material, MatrixIdentity());
-    DrawMesh(scene->facades, scene->facade_material, MatrixIdentity());
+    draw_facades(scene, material);
     DrawMesh(scene->roofs, scene->roof_material, MatrixIdentity());
     draw_ground(scene, material);
     DrawMesh(scene->corner, material, MatrixIdentity());
@@ -1213,7 +1254,7 @@ void waterfront_gpu_scene_draw(
     set_object_color(scene->shader, WHITE);
     set_emissive(scene->shader, false);
     DrawMesh(scene->city, material, MatrixIdentity());
-    DrawMesh(scene->facades, scene->facade_material, MatrixIdentity());
+    draw_facades(scene, material);
     DrawMesh(scene->roofs, scene->roof_material, MatrixIdentity());
     draw_ground(scene, material);
     DrawMesh(scene->corner, material, MatrixIdentity());
@@ -1309,10 +1350,6 @@ void waterfront_gpu_scene_destroy(WaterfrontGpuScene *scene)
         scene->city_material.shader.id = rlGetShaderIdDefault();
         UnloadMaterial(scene->city_material);
     }
-    if (scene->facade_material.maps != NULL) {
-        scene->facade_material.shader.id = rlGetShaderIdDefault();
-        UnloadMaterial(scene->facade_material);
-    }
     if (scene->roof_material.maps != NULL) {
         scene->roof_material.shader.id = rlGetShaderIdDefault();
         UnloadMaterial(scene->roof_material);
@@ -1329,8 +1366,6 @@ void waterfront_gpu_scene_destroy(WaterfrontGpuScene *scene)
         scene->water_material.shader.id = rlGetShaderIdDefault();
         UnloadMaterial(scene->water_material);
     }
-    if (scene->facade_texture.id != 0)
-        UnloadTexture(scene->facade_texture);
     if (scene->roof_texture.id != 0)
         UnloadTexture(scene->roof_texture);
     if (scene->shadow_map.id != 0)

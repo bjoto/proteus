@@ -227,7 +227,77 @@ static void draw_city_sky(RenderTexture2D target)
     EndTextureMode();
 }
 
-static bool verify_ground_materials(WaterfrontGpuScene *scene)
+static bool verify_facade_mapping(const Mesh *mesh)
+{
+    int families[WATERFRONT_FACADE_COUNT] = { 0 };
+    if (mesh->vertexCount % 6 != 0)
+        return false;
+    for (int i = 0; i < mesh->vertexCount; i += 3) {
+        int kind = mesh->colors[i * 4 + 3];
+        if (kind < 1 || kind >= WATERFRONT_FACADE_COUNT)
+            return false;
+        ++families[kind];
+        for (int j = i; j < i + 3; ++j) {
+            if (mesh->colors[j * 4 + 3] != kind || !isfinite(mesh->texcoords[j * 2])
+                || !isfinite(mesh->texcoords[j * 2 + 1]) || mesh->texcoords[j * 2] < -.001f
+                || fabsf(mesh->texcoords[j * 2 + 1] - (mesh->vertices[j * 3 + 1] - 3.5f)) > .001f)
+                return false;
+            for (int k = i; k < j; ++k) {
+                float dx = mesh->vertices[j * 3] - mesh->vertices[k * 3];
+                float dz = mesh->vertices[j * 3 + 2] - mesh->vertices[k * 3 + 2];
+                if (fabsf(hypotf(dx, dz) - fabsf(mesh->texcoords[j * 2] - mesh->texcoords[k * 2]))
+                    > .003f)
+                    return false; // One UV metre must remain one metre on angled walls.
+            }
+        }
+        if (i % 6 == 0) {
+            // Shared corners of a,c,b / a,d,c must have identical UVs and palette.
+            for (int axis = 0; axis < 2; ++axis)
+                if (fabsf(mesh->texcoords[i * 2 + axis] - mesh->texcoords[(i + 3) * 2 + axis])
+                        > .001f
+                    || fabsf(mesh->texcoords[(i + 1) * 2 + axis]
+                           - mesh->texcoords[(i + 5) * 2 + axis])
+                        > .001f)
+                    return false;
+            if (memcmp(&mesh->colors[i * 4], &mesh->colors[(i + 3) * 4], 4) != 0)
+                return false;
+        }
+    }
+    for (int i = 1; i < WATERFRONT_FACADE_COUNT; ++i) {
+        printf("facade_family=%d triangles=%d\n", i, families[i]);
+        if (families[i] < 20)
+            return false;
+    }
+    return true;
+}
+
+static Mesh material_probe_plane(void)
+{
+    Mesh mesh = { .vertexCount = 6, .triangleCount = 2 };
+    mesh.vertices = MemAlloc(18 * sizeof(float));
+    mesh.normals = MemAlloc(18 * sizeof(float));
+    mesh.texcoords = MemAlloc(12 * sizeof(float));
+    mesh.colors = MemAlloc(24);
+    if (!mesh.vertices || !mesh.normals || !mesh.texcoords || !mesh.colors) {
+        UnloadMesh(mesh);
+        return (Mesh) { 0 };
+    }
+    static const Vector3 corners[]
+        = { { -256, 0, -256 }, { 256, 0, -256 }, { 256, 0, 256 }, { -256, 0, 256 } };
+    static const int order[] = { 0, 2, 1, 0, 3, 2 };
+    for (int i = 0; i < 6; ++i) {
+        Vector3 p = corners[order[i]];
+        memcpy(&mesh.vertices[i * 3], &p, sizeof(p));
+        mesh.normals[i * 3] = mesh.normals[i * 3 + 2] = 0;
+        mesh.normals[i * 3 + 1] = 1;
+        mesh.texcoords[i * 2] = mesh.texcoords[i * 2 + 1] = 0;
+    }
+    memset(mesh.colors, 255, 24);
+    UploadMesh(&mesh, true);
+    return mesh;
+}
+
+static bool verify_surface_materials(WaterfrontGpuScene *scene, bool facade)
 {
     int triangles[WATERFRONT_GROUND_COUNT] = { 0 };
     for (int i = 0; i < scene->quay.vertexCount; i += 3) {
@@ -243,14 +313,16 @@ static bool verify_ground_materials(WaterfrontGpuScene *scene)
     for (int i = 1; i < WATERFRONT_GROUND_COUNT; ++i)
         if (triangles[i] < 20)
             return false;
-    int ground_location = GetShaderLocation(scene->shader, "groundPass");
-    if (ground_location < 0)
+    if (facade && !verify_facade_mapping(&scene->facades))
+        return false;
+    int pass_location = GetShaderLocation(scene->shader, facade ? "facadePass" : "groundPass");
+    if (pass_location < 0)
         return false;
 
     // Exercise the actual material shader with identical neutral base colours.
     // Near probes must retain detail; far probes must tolerate a tiny camera shift.
     RenderTexture2D target = LoadRenderTexture(64, 64);
-    Mesh plane = GenMeshPlane(512, 512, 1, 1);
+    Mesh plane = material_probe_plane();
     bool ok = IsRenderTextureValid(target) && plane.vaoId != 0;
     if (!ok)
         goto cleanup;
@@ -260,7 +332,7 @@ static bool verify_ground_materials(WaterfrontGpuScene *scene)
     for (size_t i = 0; i < sizeof(off) / sizeof(off[0]); ++i)
         SetShaderValue(
             scene->shader, GetShaderLocation(scene->shader, off[i]), &zero, SHADER_UNIFORM_INT);
-    SetShaderValue(scene->shader, ground_location, &one, SHADER_UNIFORM_INT);
+    SetShaderValue(scene->shader, pass_location, &one, SHADER_UNIFORM_INT);
     SetShaderValue(scene->shader, GetShaderLocation(scene->shader, "ambientColor"), white,
         SHADER_UNIFORM_VEC3);
     SetShaderValue(scene->shader, GetShaderLocation(scene->shader, "directionalDirection"), white,
@@ -270,12 +342,15 @@ static bool verify_ground_materials(WaterfrontGpuScene *scene)
     SetShaderValue(scene->shader, GetShaderLocation(scene->shader, "objectColor"), neutral,
         SHADER_UNIFORM_VEC4);
     float means[WATERFRONT_GROUND_COUNT] = { 0 };
-    for (int kind = 1; kind < WATERFRONT_GROUND_COUNT; ++kind) {
+    int kind_count = facade ? WATERFRONT_FACADE_COUNT : WATERFRONT_GROUND_COUNT;
+    for (int kind = 1; kind < kind_count; ++kind) {
         for (int v = 0; v < plane.vertexCount; ++v) {
-            plane.texcoords[v * 2] = (float)kind;
-            plane.texcoords[v * 2 + 1] = 0;
+            plane.texcoords[v * 2] = facade ? plane.vertices[v * 3] : (float)kind;
+            plane.texcoords[v * 2 + 1] = facade ? plane.vertices[v * 3 + 2] + 512 : 0;
+            plane.colors[v * 4 + 3] = facade ? (unsigned char)kind : 255;
         }
         UpdateMeshBuffer(plane, 1, plane.texcoords, plane.vertexCount * 2 * (int)sizeof(float), 0);
+        UpdateMeshBuffer(plane, 3, plane.colors, plane.vertexCount * 4, 0);
         unsigned char previous[64 * 64];
         int drift = 0, near_range = 0;
         for (int sample = 0; sample < 3; ++sample) {
@@ -299,7 +374,10 @@ static bool verify_ground_materials(WaterfrontGpuScene *scene)
             int low = 255, high = 0;
             for (int y = 0; y < 64; ++y)
                 for (int x = 0; x < 64; ++x) {
-                    int value = GetImageColor(image, x, y).r;
+                    Color pixel = GetImageColor(image, x, y);
+                    int value = pixel.r;
+                    if (pixel.a != 255)
+                        ok = false; // Facade alpha is metadata, never output transparency.
                     if (value < low)
                         low = value;
                     if (value > high)
@@ -320,21 +398,26 @@ static bool verify_ground_materials(WaterfrontGpuScene *scene)
                 ok = false;
             UnloadImage(image);
         }
-        printf("ground_material=%d triangles=%d near_range=%d far_shift_max=%d\n", kind,
-            triangles[kind], near_range, drift);
+        printf("%s_material=%d mean=%.2f near_range=%d far_shift_max=%d\n",
+            facade ? "facade" : "ground", kind, means[kind], near_range, drift);
         if (near_range < 3 || drift > 2)
             ok = false;
     }
-    if (means[WATERFRONT_GROUND_ASPHALT] + 3 >= means[WATERFRONT_GROUND_CONCRETE])
+    if (!facade && means[WATERFRONT_GROUND_ASPHALT] + 3 >= means[WATERFRONT_GROUND_CONCRETE])
         ok = false;
-    SetShaderValue(scene->shader, ground_location, &zero, SHADER_UNIFORM_INT);
+    if (facade
+        && (means[WATERFRONT_FACADE_BRICK] + 2 >= means[WATERFRONT_FACADE_PLASTER]
+            || fabsf(means[WATERFRONT_FACADE_PANEL] - means[WATERFRONT_FACADE_PLASTER]) < .5f))
+        ok = false;
+    SetShaderValue(scene->shader, pass_location, &zero, SHADER_UNIFORM_INT);
 cleanup:
     if (plane.vaoId != 0)
         UnloadMesh(plane);
     if (target.id != 0)
         UnloadRenderTexture(target);
     if (!ok)
-        fprintf(stderr, "GPU ground material classification/filtering check failed\n");
+        fprintf(stderr, "GPU %s material classification/filtering check failed\n",
+            facade ? "facade" : "ground");
     return ok;
 }
 
@@ -346,7 +429,8 @@ static bool draw_city(RenderTexture2D target, WaterfrontGpuScene *scene, Fixture
         fprintf(stderr, "GPU fixture: waterfront city resources failed: %s\n", shader_path);
         return false;
     }
-    if (options.check && !verify_ground_materials(scene))
+    if (options.check
+        && (!verify_surface_materials(scene, false) || !verify_surface_materials(scene, true)))
         return false;
     waterfront_gpu_scene_set_lighting_enabled(scene, options.lighting);
     waterfront_gpu_scene_set_shadows_enabled(scene, options.shadows);

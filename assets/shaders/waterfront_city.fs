@@ -9,6 +9,7 @@ uniform sampler2D texture0;
 uniform vec4 objectColor;
 uniform int emissive;
 uniform int groundPass;
+uniform int facadePass;
 uniform vec3 ambientColor;
 uniform vec3 directionalColor;
 uniform vec3 directionalDirection;
@@ -103,6 +104,41 @@ vec3 ground_albedo()
     return fragColor.rgb * (.95 + .12 * weather + .05 * grain - .12 * joint);
 }
 
+vec3 facade_albedo()
+{
+    vec2 p = fragTexCoord; // wall-local metres, same origin for both wall triangles
+    vec2 footprint = max(abs(dFdx(p)), abs(dFdy(p)));
+    float pixelWidth = max(footprint.x, footprint.y);
+    int kind = int(fragColor.a * 255.0 + .5);
+    float weather = ground_detail(p, 6.0, pixelWidth);
+    vec3 color = fragColor.rgb;
+    if (kind == 1) { // Brick: 26 x 9 cm courses including 9 mm mortar.
+        float row = floor(p.y / .09);
+        float x = p.x + mod(row, 2.0) * .13;
+        float mortar = max(ground_joint(x, .26, .009, footprint.x),
+            ground_joint(p.y, .09, .009, footprint.y));
+        float brick = ground_hash(vec2(floor(x / .26), row)) - .5;
+        brick *= 1.0 - smoothstep(.025, .085, pixelWidth);
+        color *= .97 + .08 * brick + .07 * weather;
+        color = mix(color, vec3(.60, .56, .48), mortar * .55);
+    } else if (kind == 2) { // Plaster: quiet render, with a restrained floor stringcourse.
+        float grain = ground_detail(p, .12, pixelWidth);
+        float belt = ground_joint(p.y - .5, 3.2, .10, footprint.y);
+        color *= .98 + .06 * weather + .045 * grain - .10 * belt;
+    } else { // Metal/composite panels: 1 m modules and window-aligned 3.2 m floors.
+        float joint = max(ground_joint(p.x - .5, 1.0, .018, footprint.x),
+            ground_joint(p.y - .5, 3.2, .025, footprint.y));
+        float panel = ground_hash(floor((p - .5) / vec2(1.0, 3.2))) - .5;
+        panel *= 1.0 - smoothstep(.2, .8, pixelWidth);
+        color *= .97 + .06 * panel + .04 * weather - .22 * joint;
+    }
+    // A masonry base anchors each facade below the existing ground-floor windows.
+    // Filter the broad boundary too; this is not an extra painted opening grid.
+    float aa = max(footprint.y, .001);
+    float base = 1.0 - smoothstep(1.05 - aa * .5, 1.05 + aa * .5, p.y);
+    return mix(color, color * vec3(.69, .72, .76), base);
+}
+
 vec3 apply_atmosphere(vec3 color)
 {
     if (atmosphereEnabled == 0)
@@ -138,6 +174,8 @@ void main()
     vec4 albedo = texture(texture0, fragTexCoord) * objectColor * fragColor;
     if (groundPass != 0)
         albedo = vec4(ground_albedo(), fragColor.a) * objectColor;
+    if (facadePass != 0)
+        albedo = vec4(facade_albedo(), 1.0) * objectColor;
     if (emissive != 0) {
         finalColor = vec4(apply_atmosphere(albedo.rgb), albedo.a);
         return;
