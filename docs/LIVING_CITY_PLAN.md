@@ -1,7 +1,7 @@
 # Living Eriksberg city plan
 
-Status: execution steps 01–04 and city-wide coverage follow-up 04b complete,
-2026-09-18; step 05 is next. This is the
+Status: execution steps 01–04, city-wide coverage follow-up 04b, and ground-material pass
+04c complete, 2026-09-19. Facades (04d) are next, before step 05. This is the
 visual-development plan after the [GPU migration](GPU_WATERFRONT_PLAN.md).
 
 ## Direction
@@ -42,6 +42,8 @@ report what remains. A purely documentary step does not require a new manual dem
 | 03 | Extend surrounding blocks and the distant skyline where needed. Inspect the whole route for visible map edges, new gaps, and depth continuity. | Complete |
 | 04 | Finish one visible street corner: kerbs, entrances, shop/cafe, planting, furniture, and parked bikes/vehicles. It must read as inhabited in a still frame. | Complete |
 | 04b | Bring the street-treatment expansion forward: distribute entrances, shopfronts, pavements, planted forecourts, parked vehicles, and quay furniture across the visible neighbourhood. Compare both whole routes, not just the cafe shot. | Complete |
+| 04c | Separate asphalt, paving, quay concrete, and planting finishes; correct real-world scale and filter subpixel detail. Verify and commit independently of facade work. | Complete |
+| 04d | Rework facade materials around the existing window geometry, with building-aligned brick, plaster, and panel variation. Inspect near and distant views without changing the low-resolution style. | Pending |
 | 05 | Consolidate the actor evaluation needed for city life into the shared scene layer. Preserve existing behaviour and verify direct seeks before adding actors. | Pending |
 | 06 | Distribute a small cast of pedestrians and cyclists between street destinations and both quays, with readable silhouettes and deterministic paths. Avoid concentrating all life at the cafe. Inspect motion and occlusion. | Pending |
 | 07 | Add varied vehicles and one authored interaction, such as a bus stop or yielding car. Verify spacing, stops, and hidden route wraps. | Pending |
@@ -58,6 +60,8 @@ forward from step 12. Coverage is the baseline; hero corners add variety on top 
 Assess street approaches, both dock banks, foreground plazas, and the long-route overview.
 Small-prop counts alone are not visual acceptance: planting and shared courts must read
 as purposeful groups at the native resolution. Keep circulation and genuine open space.
+After reviewing 04b, the user prioritized street, ground, and house materials over more
+furniture. Steps 04c–04d address that before actor work; further density work can wait.
 Gulls are a planned deliverable, with gliding and occasional wingbeats rather than a dense
 particle flock. During step 01, note possible ferry framing; detailed proxy work belongs
 to step 09 unless explicitly brought forward.
@@ -77,6 +81,40 @@ For subsequent work, replace `01` and the task-specific sentence with the next s
 deliverable, or request a range such as `02–04, with one commit per step`.
 
 ### Progress log
+
+- Step 04c (2026-09-19): replaced the ground's shared 25 m bitmap repetition with four
+  world-space procedural finishes: asphalt, 80 x 40 cm pavers, 3 m quay concrete panels,
+  and irregular planted beds. Small grain and colour variation fade with projected pixel
+  footprint; thin seams use integrated pixel coverage and converge to their average at
+  distance. The original large patchwork no longer crosses streets and open ground.
+  Material identity is assigned from the source/static-kit palettes, ground height, and
+  upward normals. Raised pavement and planted court tops move into the existing ground
+  batch; they are not duplicated. Its UV channel carries constant material IDs, while
+  facade and roof UVs remain unchanged. Both colour passes use identical material logic;
+  the shadow pass retains the same triangles. No added mesh submissions or textures.
+  GPU `quay.png` loading is removed, but the legacy asset/generator are retained.
+  Lighting, geometry, camera paths, music, actors, and the CPU visual reference are unchanged.
+  The new GPU material test checks class coverage and isolated near/far shader behaviour,
+  including a 2 cm far-camera shift. It reports 11,160 asphalt, 1,778 paving, 266 concrete,
+  and 753 planting triangles; all four retain near detail, with far-shift pixel changes
+  at most one 8-bit level in the probe. This is not a proof of zero shimmer in every shot.
+  Debug configure/build and all 15 CTest checks passed, including GPU review and
+  `gpu_ground_materials`. Inspected both whole-route one-second sweeps, matching captures
+  at 320x200/240, and 320x180 framing checks. Both windowed GPU routes completed.
+  Artifacts: `build/living-city/ground-materials/`, with baseline-left/current-right
+  comparisons against `step04b`; `compare-short-0.png`, `compare-short-5.png`, and
+  `compare-short-15.png` isolate useful ground views. Reproduce with
+  `python3 tools/living_city_review.py --output build/living-city/ground-materials --compare build/living-city/step04b --sweep`.
+  CPU submission mean 1.341 ms / p95 1.428 ms (923 frames, 120 warm-up), versus 04b's
+  1.274 / 1.340 ms. These are noisy Debug CPU timings, not GPU execution measurements.
+  Live human motion observation and exact whole-scene GPU seek parity with the existing
+  history-dependent light selection remain unverified. Ground patterns themselves have
+  no time/history state. Their filtering deliberately makes broad distant surfaces quiet;
+  tiny grain and joints should not substitute for future land-use/composition detail.
+  Remaining material work: the facades still contain a second painted-window pattern and
+  use a shared world-aligned texture scale; roofs remain repetitive. Mapped footpaths and
+  roads share one importer colour and currently both use asphalt; authored raised walks
+  have the separate paving finish. Broad open parcels still need future use/composition work.
 
 - Step 04b (2026-09-18): expanded the cafe kit into map-constrained static dressing.
   Added 318 exterior entrances and 15 shopfronts beyond the cafe, 210 three-metre

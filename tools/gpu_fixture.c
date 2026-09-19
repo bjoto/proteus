@@ -5,6 +5,7 @@
 #include "rlgl.h"
 
 #include <limits.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -226,6 +227,117 @@ static void draw_city_sky(RenderTexture2D target)
     EndTextureMode();
 }
 
+static bool verify_ground_materials(WaterfrontGpuScene *scene)
+{
+    int triangles[WATERFRONT_GROUND_COUNT] = { 0 };
+    for (int i = 0; i < scene->quay.vertexCount; i += 3) {
+        float encoded = scene->quay.texcoords[i * 2];
+        if (!isfinite(encoded) || encoded < 1 || encoded >= WATERFRONT_GROUND_COUNT
+            || encoded != floorf(encoded))
+            return false;
+        ++triangles[(int)encoded];
+        for (int v = i; v < i + 3; ++v)
+            if (scene->quay.texcoords[v * 2] != encoded || scene->quay.normals[v * 3 + 1] < .95f)
+                return false;
+    }
+    for (int i = 1; i < WATERFRONT_GROUND_COUNT; ++i)
+        if (triangles[i] < 20)
+            return false;
+    int ground_location = GetShaderLocation(scene->shader, "groundPass");
+    if (ground_location < 0)
+        return false;
+
+    // Exercise the actual material shader with identical neutral base colours.
+    // Near probes must retain detail; far probes must tolerate a tiny camera shift.
+    RenderTexture2D target = LoadRenderTexture(64, 64);
+    Mesh plane = GenMeshPlane(512, 512, 1, 1);
+    bool ok = IsRenderTextureValid(target) && plane.vaoId != 0;
+    if (!ok)
+        goto cleanup;
+    int zero = 0, one = 1;
+    float none = 0, white[] = { 1, 1, 1 }, neutral[] = { .7f, .7f, .7f, 1 };
+    const char *off[] = { "emissive", "shadowsEnabled", "atmosphereEnabled", "localLightCount" };
+    for (size_t i = 0; i < sizeof(off) / sizeof(off[0]); ++i)
+        SetShaderValue(
+            scene->shader, GetShaderLocation(scene->shader, off[i]), &zero, SHADER_UNIFORM_INT);
+    SetShaderValue(scene->shader, ground_location, &one, SHADER_UNIFORM_INT);
+    SetShaderValue(scene->shader, GetShaderLocation(scene->shader, "ambientColor"), white,
+        SHADER_UNIFORM_VEC3);
+    SetShaderValue(scene->shader, GetShaderLocation(scene->shader, "directionalDirection"), white,
+        SHADER_UNIFORM_VEC3);
+    SetShaderValue(scene->shader, GetShaderLocation(scene->shader, "directionalIntensity"), &none,
+        SHADER_UNIFORM_FLOAT);
+    SetShaderValue(scene->shader, GetShaderLocation(scene->shader, "objectColor"), neutral,
+        SHADER_UNIFORM_VEC4);
+    float means[WATERFRONT_GROUND_COUNT] = { 0 };
+    for (int kind = 1; kind < WATERFRONT_GROUND_COUNT; ++kind) {
+        for (int v = 0; v < plane.vertexCount; ++v) {
+            plane.texcoords[v * 2] = (float)kind;
+            plane.texcoords[v * 2 + 1] = 0;
+        }
+        UpdateMeshBuffer(plane, 1, plane.texcoords, plane.vertexCount * 2 * (int)sizeof(float), 0);
+        unsigned char previous[64 * 64];
+        int drift = 0, near_range = 0;
+        for (int sample = 0; sample < 3; ++sample) {
+            float offset = sample == 2 ? .02f : 0;
+            Camera3D camera = { .position = { offset, 20, 0 },
+                .target = { offset, 0, 0 },
+                .up = { 0, 0, -1 },
+                .fovy = sample == 0 ? 4 : 256,
+                .projection = CAMERA_ORTHOGRAPHIC };
+            BeginTextureMode(target);
+            ClearBackground(BLACK);
+            BeginMode3D(camera);
+            DrawMesh(plane, scene->city_material, MatrixIdentity());
+            EndMode3D();
+            EndTextureMode();
+            Image image = LoadImageFromTexture(target.texture);
+            if (!image.data) {
+                ok = false;
+                break;
+            }
+            int low = 255, high = 0;
+            for (int y = 0; y < 64; ++y)
+                for (int x = 0; x < 64; ++x) {
+                    int value = GetImageColor(image, x, y).r;
+                    if (value < low)
+                        low = value;
+                    if (value > high)
+                        high = value;
+                    if (sample == 0)
+                        means[kind] += value / 4096.0f;
+                    if (sample == 1)
+                        previous[y * 64 + x] = (unsigned char)value;
+                    if (sample == 2) {
+                        int delta = abs(value - previous[y * 64 + x]);
+                        if (delta > drift)
+                            drift = delta;
+                    }
+                }
+            if (sample == 0)
+                near_range = high - low;
+            if (low < 100 || high > 230)
+                ok = false;
+            UnloadImage(image);
+        }
+        printf("ground_material=%d triangles=%d near_range=%d far_shift_max=%d\n", kind,
+            triangles[kind], near_range, drift);
+        if (near_range < 3 || drift > 2)
+            ok = false;
+    }
+    if (means[WATERFRONT_GROUND_ASPHALT] + 3 >= means[WATERFRONT_GROUND_CONCRETE])
+        ok = false;
+    SetShaderValue(scene->shader, ground_location, &zero, SHADER_UNIFORM_INT);
+cleanup:
+    if (plane.vaoId != 0)
+        UnloadMesh(plane);
+    if (target.id != 0)
+        UnloadRenderTexture(target);
+    if (!ok)
+        fprintf(stderr, "GPU ground material classification/filtering check failed\n");
+    return ok;
+}
+
 static bool draw_city(RenderTexture2D target, WaterfrontGpuScene *scene, FixtureOptions options)
 {
     char shader_path[1024];
@@ -234,6 +346,8 @@ static bool draw_city(RenderTexture2D target, WaterfrontGpuScene *scene, Fixture
         fprintf(stderr, "GPU fixture: waterfront city resources failed: %s\n", shader_path);
         return false;
     }
+    if (options.check && !verify_ground_materials(scene))
+        return false;
     waterfront_gpu_scene_set_lighting_enabled(scene, options.lighting);
     waterfront_gpu_scene_set_shadows_enabled(scene, options.shadows);
     waterfront_gpu_scene_set_atmosphere_enabled(scene, options.atmosphere);

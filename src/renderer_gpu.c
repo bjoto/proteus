@@ -68,8 +68,8 @@ static bool builder_reserve(MeshBuilder *builder, int additional)
     return true;
 }
 
-// The imported city vertices are already in world space.  A conservative density keeps the
-// 32-pixel detail textures legible at virtual resolution without creating fine distant shimmer.
+// Legacy facade/roof mapping, left for the building-material pass. Ground triangles
+// replace these UVs with material IDs and use metre-scaled, filtered shader patterns.
 static Vector2 world_uv(Vector3 point, Vector3 normal)
 {
     const float density = .04f;
@@ -162,7 +162,19 @@ typedef enum {
     CITY_SURFACE_QUAY,
 } CitySurface;
 
-static bool build_corner(Mesh *opaque, Mesh *emissive)
+static bool builder_ground_triangle(MeshBuilder *builder, Vector3 a, Vector3 b, Vector3 c,
+    Color color, WaterfrontGroundMaterial material)
+{
+    if (!builder_triangle(builder, a, b, c, color))
+        return false;
+    for (int i = builder->count - 3; i < builder->count; ++i) {
+        builder->texcoords[i * 2] = (float)material;
+        builder->texcoords[i * 2 + 1] = 0;
+    }
+    return true;
+}
+
+static bool build_corner(Mesh *opaque, Mesh *emissive, MeshBuilder *ground)
 {
     size_t count;
     const WaterfrontCornerBox *boxes = waterfront_corner_boxes(&count);
@@ -173,14 +185,31 @@ static bool build_corner(Mesh *opaque, Mesh *emissive)
               { 1, 6, 5 }, { 1, 2, 6 }, { 3, 6, 2 }, { 3, 7, 6 }, { 4, 1, 5 }, { 4, 0, 1 } };
     MeshBuilder builders[2] = { 0 };
     for (size_t i = 0; i < count; ++i)
-        for (size_t f = 0; f < sizeof(faces) / sizeof(faces[0]); ++f)
-            if (!builder_triangle(&builders[boxes[i].emissive], boxes[i].vertices[faces[f][0]],
-                    boxes[i].vertices[faces[f][1]], boxes[i].vertices[faces[f][2]],
-                    boxes[i].color)) {
+        for (size_t f = 0; f < sizeof(faces) / sizeof(faces[0]); ++f) {
+            Vector3 a = boxes[i].vertices[faces[f][0]], b = boxes[i].vertices[faces[f][1]];
+            Vector3 c = boxes[i].vertices[faces[f][2]];
+            Color color = boxes[i].color;
+            Vector3 normal = Vector3Normalize(
+                Vector3CrossProduct(Vector3Subtract(b, a), Vector3Subtract(c, a)));
+            int finish = 0;
+            // The static kit's surface palette is semantic, like the retained map's.
+            // Only tops at ground level: never texture benches, tree crowns, or kerb sides.
+            if (!boxes[i].emissive && normal.y > .95f && a.y < 3.9f) {
+                if (ColorIsEqual(color, (Color) { 171, 171, 158, 255 }))
+                    finish = WATERFRONT_GROUND_PAVING;
+                else if (ColorIsEqual(color, (Color) { 76, 109, 73, 255 }))
+                    finish = WATERFRONT_GROUND_PLANTING;
+                else if (ColorIsEqual(color, (Color) { 98, 106, 112, 255 }))
+                    finish = WATERFRONT_GROUND_ASPHALT;
+            }
+            bool ok = finish ? builder_ground_triangle(ground, a, b, c, color, finish)
+                             : builder_triangle(&builders[boxes[i].emissive], a, b, c, color);
+            if (!ok) {
                 builder_destroy(&builders[0]);
                 builder_destroy(&builders[1]);
                 return false;
             }
+        }
     *opaque = builder_finish(&builders[0]);
     *emissive = builder_finish(&builders[1]);
     return opaque->vaoId != 0 && emissive->vaoId != 0;
@@ -192,7 +221,7 @@ static CitySurface city_surface(Vector3 a, Vector3 b, Vector3 c)
         = Vector3Normalize(Vector3CrossProduct(Vector3Subtract(b, a), Vector3Subtract(c, a)));
     float top = fmaxf(a.y, fmaxf(b.y, c.y));
     if (normal.y > .95f)
-        return top > 4.0f ? CITY_SURFACE_ROOF : CITY_SURFACE_QUAY;
+        return top > 4.0f ? CITY_SURFACE_ROOF : CITY_SURFACE_FLAT;
     if (fabsf(normal.y) < .15f && top >= 9.0f)
         return CITY_SURFACE_FACADE;
     return CITY_SURFACE_FLAT;
@@ -204,7 +233,8 @@ static bool is_water_triangle(const Triangle3D *triangle)
         && triangle->color.b == WATER_COLOR.b;
 }
 
-static bool build_city(Mesh *city_mesh, Mesh *facades, Mesh *roofs, Mesh *quay, Mesh *water)
+static bool build_city(Mesh *city_mesh, Mesh *facades, Mesh *roofs, Mesh *quay, Mesh *water,
+    Mesh *corner, Mesh *corner_emissive)
 {
     const Mesh3D *city = waterfront_scene_city_mesh();
     MeshBuilder builders[] = { { 0 }, { 0 }, { 0 }, { 0 } };
@@ -222,12 +252,27 @@ static bool build_city(Mesh *city_mesh, Mesh *facades, Mesh *roofs, Mesh *quay, 
         bool planting = (triangle->color.r == 72 && triangle->color.g == 105)
             || (triangle->color.r == 61 && triangle->color.g == 91);
         CitySurface surface = planting ? CITY_SURFACE_FLAT : city_surface(a, b, c);
+        Vector3 normal
+            = Vector3Normalize(Vector3CrossProduct(Vector3Subtract(b, a), Vector3Subtract(c, a)));
+        bool road = ColorIsEqual(triangle->color, (Color) { 83, 89, 99, 255 });
+        bool land = ColorIsEqual(triangle->color, (Color) { 135, 139, 144, 255 });
+        if (normal.y > .95f && (road || land || planting) && fmaxf(a.y, fmaxf(b.y, c.y)) < 4.3f) {
+            int finish = planting ? WATERFRONT_GROUND_PLANTING : WATERFRONT_GROUND_CONCRETE;
+            if (road)
+                finish = WATERFRONT_GROUND_ASPHALT;
+            if (!builder_ground_triangle(
+                    &builders[CITY_SURFACE_QUAY], a, b, c, triangle->color, finish))
+                goto failed;
+            continue;
+        }
         if (!builder_triangle(&builders[surface], a, b, c, triangle->color))
             goto failed;
     }
     if (builders[CITY_SURFACE_FLAT].count == 0 || builders[CITY_SURFACE_FACADE].count == 0
         || builders[CITY_SURFACE_ROOF].count == 0 || builders[CITY_SURFACE_QUAY].count == 0
         || water_builder.count == 0)
+        goto failed;
+    if (!build_corner(corner, corner_emissive, &builders[CITY_SURFACE_QUAY]))
         goto failed;
     *city_mesh = builder_finish(&builders[CITY_SURFACE_FLAT]);
     *facades = builder_finish(&builders[CITY_SURFACE_FACADE]);
@@ -484,14 +529,12 @@ bool waterfront_gpu_scene_init(WaterfrontGpuScene *scene, const char *fragment_s
     scene->water_material.shader = scene->water_shader;
     if (!load_detail_texture(&scene->facade_texture, fragment_shader_path, "facade.png")
         || !load_detail_texture(&scene->roof_texture, fragment_shader_path, "roof.png")
-        || !load_detail_texture(&scene->quay_texture, fragment_shader_path, "quay.png")
         || !init_detail_material(&scene->facade_material, scene->shader, scene->facade_texture)
-        || !init_detail_material(&scene->roof_material, scene->shader, scene->roof_texture)
-        || !init_detail_material(&scene->quay_material, scene->shader, scene->quay_texture))
+        || !init_detail_material(&scene->roof_material, scene->shader, scene->roof_texture))
         goto failed;
-    if (!build_city(&scene->city, &scene->facades, &scene->roofs, &scene->quay, &scene->water)
-        || !build_windows(&scene->windows) || !build_crane(&scene->crane)
-        || !build_corner(&scene->corner, &scene->corner_emissive))
+    if (!build_city(&scene->city, &scene->facades, &scene->roofs, &scene->quay, &scene->water,
+            &scene->corner, &scene->corner_emissive)
+        || !build_windows(&scene->windows) || !build_crane(&scene->crane))
         goto failed;
     if (!build_unit_cube(&scene->bridge) || !build_unit_cube(&scene->cube)
         || !build_unit_plane(&scene->plane))
@@ -1018,6 +1061,16 @@ static void draw_reflection_sky(RenderTexture2D target)
     }
 }
 
+static void draw_ground(const WaterfrontGpuScene *scene, Material material)
+{
+    int location = GetShaderLocation(scene->shader, "groundPass");
+    int enabled = 1;
+    SetShaderValue(scene->shader, location, &enabled, SHADER_UNIFORM_INT);
+    DrawMesh(scene->quay, material, MatrixIdentity());
+    enabled = 0;
+    SetShaderValue(scene->shader, location, &enabled, SHADER_UNIFORM_INT);
+}
+
 static void draw_reflected_scene(
     const WaterfrontGpuScene *scene, WaterfrontSceneFrame frame, Material material, Material life)
 {
@@ -1026,7 +1079,7 @@ static void draw_reflected_scene(
     DrawMesh(scene->city, material, MatrixIdentity());
     DrawMesh(scene->facades, scene->facade_material, MatrixIdentity());
     DrawMesh(scene->roofs, scene->roof_material, MatrixIdentity());
-    DrawMesh(scene->quay, scene->quay_material, MatrixIdentity());
+    draw_ground(scene, material);
     DrawMesh(scene->corner, material, MatrixIdentity());
     set_emissive(scene->shader, true);
     DrawMesh(scene->windows, material, MatrixIdentity());
@@ -1162,7 +1215,7 @@ void waterfront_gpu_scene_draw(
     DrawMesh(scene->city, material, MatrixIdentity());
     DrawMesh(scene->facades, scene->facade_material, MatrixIdentity());
     DrawMesh(scene->roofs, scene->roof_material, MatrixIdentity());
-    DrawMesh(scene->quay, scene->quay_material, MatrixIdentity());
+    draw_ground(scene, material);
     DrawMesh(scene->corner, material, MatrixIdentity());
     set_object_color(scene->water_shader, WHITE);
     set_water_uniforms(scene, frame);
@@ -1264,10 +1317,6 @@ void waterfront_gpu_scene_destroy(WaterfrontGpuScene *scene)
         scene->roof_material.shader.id = rlGetShaderIdDefault();
         UnloadMaterial(scene->roof_material);
     }
-    if (scene->quay_material.maps != NULL) {
-        scene->quay_material.shader.id = rlGetShaderIdDefault();
-        UnloadMaterial(scene->quay_material);
-    }
     if (scene->life_material.maps != NULL) {
         scene->life_material.shader.id = rlGetShaderIdDefault();
         UnloadMaterial(scene->life_material);
@@ -1284,8 +1333,6 @@ void waterfront_gpu_scene_destroy(WaterfrontGpuScene *scene)
         UnloadTexture(scene->facade_texture);
     if (scene->roof_texture.id != 0)
         UnloadTexture(scene->roof_texture);
-    if (scene->quay_texture.id != 0)
-        UnloadTexture(scene->quay_texture);
     if (scene->shadow_map.id != 0)
         rlUnloadFramebuffer(scene->shadow_map.id);
     if (scene->reflection.id != 0)

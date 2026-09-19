@@ -12,6 +12,16 @@
 #define WATERFRONT_GPU_REFLECTION_WIDTH 160
 #define WATERFRONT_GPU_REFLECTION_HEIGHT 120
 
+// Ground batch stores one constant material ID per triangle in texcoord.x.
+// Keep these values in sync with waterfront_city.fs.
+typedef enum {
+    WATERFRONT_GROUND_ASPHALT = 1,
+    WATERFRONT_GROUND_PAVING,
+    WATERFRONT_GROUND_CONCRETE,
+    WATERFRONT_GROUND_PLANTING,
+    WATERFRONT_GROUND_COUNT
+} WaterfrontGroundMaterial;
+
 typedef struct {
     Vector3 position;
     Vector3 direction;
@@ -28,7 +38,7 @@ typedef struct {
     Mesh city;
     Mesh facades;
     Mesh roofs;
-    Mesh quay;
+    Mesh quay; // All ground materials, including authored pavement tops.
     Mesh water;
     Mesh windows;
     Mesh corner;
@@ -48,13 +58,11 @@ typedef struct {
     Material city_material;
     Material facade_material;
     Material roof_material;
-    Material quay_material;
     Material life_material;
     Material shadow_material;
     Material water_material;
     Texture2D facade_texture;
     Texture2D roof_texture;
-    Texture2D quay_texture;
     WaterfrontGpuLight local_lights[WATERFRONT_GPU_MAX_LOCAL_LIGHTS];
     int local_light_ids[WATERFRONT_GPU_MAX_LOCAL_LIGHTS];
     int local_light_count;
