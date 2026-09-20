@@ -152,56 +152,27 @@ static void windows(Renderer3D *r)
     }
 }
 
-static void street_life(Renderer3D *r, float time)
+static void street_life(Renderer3D *r, const WaterfrontSceneFrame *frame)
 {
     for (int street = 0; street < 2; ++street) {
-        WaterfrontStreet route = waterfront_scene_street(street);
-        float length = 0;
-        for (int i = 1; i < route.point_count; ++i)
-            length += Vector3Distance(route.points[i - 1], route.points[i]);
-        for (float distance = 20; distance < length - 12; distance += 27) {
-            Vector3 direction;
-            Vector3 p = waterfront_scene_street_position(route, distance, &direction);
-            Vector3 side = { direction.z, 0, -direction.x };
-            p = Vector3Add(p, Vector3Scale(side, 2.6f));
-            renderer3d_draw_box(r,
-                (Transform3D) { .position = { p.x, 6, p.z }, .scale = { .16f, 5, .16f } },
-                (Color) { 58, 66, 79, 255 });
-            light_box(r, (Vector3) { p.x, 8.5f, p.z }, (Vector3) { .65f, .3f, .65f },
-                (Color) { 255, 202, 116, 255 });
-            light_pool(r, p, Vector3Negate(side), 3, 5);
+        for (int i = 0; i < frame->lamp_count; ++i) {
+            const WaterfrontLampState *lamp = &frame->lamps[i];
+            if (lamp->street != street)
+                continue;
+            renderer3d_draw_box(r, lamp->pole, (Color) { 58, 66, 79, 255 });
+            light_box(r, lamp->lens, (Vector3) { .65f, .3f, .65f }, (Color) { 255, 202, 116, 255 });
+            light_pool(r, lamp->position, lamp->pool_direction, 3, 5);
         }
-        for (int car = 0; car < 10; ++car) {
-            int sign = car % 2 ? 1 : -1;
-            float distance
-                = fmodf(car * length / 10 + time * (5.5f + street) * sign + length, length);
-            Vector3 forward;
-            Vector3 p = waterfront_scene_street_position(route, distance, &forward);
-            forward = Vector3Scale(forward, (float)sign);
-            Vector3 right = { forward.z, 0, -forward.x };
-            p = Vector3Add(p, Vector3Scale(right, 1.25f));
-            float yaw = atan2f(forward.x, forward.z);
-            Color colors[] = { { 153, 69, 57, 255 }, { 170, 178, 181, 255 }, { 51, 88, 117, 255 },
-                { 183, 142, 72, 255 } };
-            renderer3d_draw_box(r,
-                (Transform3D) { .position = { p.x, 4.2f, p.z },
-                    .rotation = { 0, yaw, 0 },
-                    .scale = { 1.7f, .9f, 3.9f } },
-                colors[car % 4]);
-            renderer3d_draw_box(r,
-                (Transform3D) { .position = { p.x, 4.9f, p.z },
-                    .rotation = { 0, yaw, 0 },
-                    .scale = { 1.4f, .65f, 1.9f } },
-                (Color) { 49, 65, 81, 255 });
-            Vector3 front = Vector3Add(p, Vector3Scale(forward, 2.05f));
-            light_pool(r, front, forward, 2.3f, 8);
+        for (int car = 0; car < WATERFRONT_CAR_COUNT; ++car) {
+            const WaterfrontCarState *state = &frame->cars[car];
+            if (state->street != street)
+                continue;
+            renderer3d_draw_box(r, state->body, state->color);
+            renderer3d_draw_box(r, state->cabin, (Color) { 49, 65, 81, 255 });
+            light_pool(r, state->pool_position, state->forward, 2.3f, 8);
             for (int end = -1; end <= 1; end += 2) {
                 for (int side = -1; side <= 1; side += 2) {
-                    Vector3 lamp = Vector3Add(p,
-                        Vector3Add(
-                            Vector3Scale(forward, end * 2.0f), Vector3Scale(right, side * .6f)));
-                    lamp.y = 4.3f;
-                    light_box(r, lamp, (Vector3) { .35f, .28f, .35f },
+                    light_box(r, state->lenses[end > 0][side > 0], (Vector3) { .35f, .28f, .35f },
                         end > 0 ? (Color) { 255, 233, 174, 255 } : (Color) { 240, 56, 34, 255 });
                 }
             }
@@ -209,20 +180,15 @@ static void street_life(Renderer3D *r, float time)
     }
 }
 
-static void harbour_life(Renderer3D *r, float time, float z)
+static void harbour_life(Renderer3D *r, const WaterfrontBoatState *boat)
 {
     // A slow launch stays inside the basin, south of Dockbron, for both route lengths.
-    renderer3d_draw_box(r, (Transform3D) { .position = { 12, .7f, z }, .scale = { 3.2f, 1.3f, 7 } },
-        (Color) { 164, 177, 185, 255 });
-    renderer3d_draw_box(r,
-        (Transform3D) { .position = { 12, 1.9f, z + .5f }, .scale = { 2.5f, 1.3f, 3.2f } },
-        (Color) { 69, 91, 111, 255 });
-    light_box(r, (Vector3) { 12, 2, z - 1.15f }, (Vector3) { 2, .6f, .1f },
-        (Color) { 247, 191, 108, 255 });
-    for (int i = 0; i < 8; ++i) {
-        float drift = fmodf(time * 2 + i * 1.8f, 14);
-        float w = 1.4f + drift * .14f;
-        float zz = z + 3.8f + drift;
+    renderer3d_draw_box(r, boat->hull, (Color) { 164, 177, 185, 255 });
+    renderer3d_draw_box(r, boat->cabin, (Color) { 69, 91, 111, 255 });
+    light_box(r, boat->window.position, boat->window.scale, (Color) { 247, 191, 108, 255 });
+    for (int i = 0; i < WATERFRONT_WAKE_COUNT; ++i) {
+        float w = boat->wake[i].half_width;
+        float zz = boat->wake[i].z_start;
         glow_quad(r, (Vector3) { 12 - w, .04f, zz }, (Vector3) { 12 - w, .04f, zz + .3f },
             (Vector3) { 12 + w, .04f, zz + .3f }, (Vector3) { 12 + w, .04f, zz },
             (Color) { 63, 98, 117, 255 });
@@ -234,7 +200,6 @@ bool waterfront_draw(
 {
     WaterfrontSceneFrame frame;
     waterfront_scene_evaluate(time, short_route, &frame);
-    time = Clamp(time, 0, waterfront_duration(short_route));
     for (int y = 0; y < height; ++y) {
         int band = y * 7 / height;
         Color sky = { (unsigned char)(20 + band * 5), (unsigned char)(29 + band * 5),
@@ -249,8 +214,8 @@ bool waterfront_draw(
     // Dockbron: approximate mapped endpoints and assumed deck elevation, for composition.
     renderer3d_draw_box(r, frame.bridge, frame.bridge_color);
     windows(r);
-    street_life(r, time);
-    harbour_life(r, time, frame.boat_z);
+    street_life(r, &frame);
+    harbour_life(r, &frame.boat);
     crane(r);
     return true;
 }

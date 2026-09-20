@@ -1,5 +1,8 @@
 # Working on the starter XM
 
+For the new composition's brief, milestones, and listening criteria, see the
+[alternate soundtrack plan](SOUNDTRACK_PLAN.md).
+
 `starter.xm` is a sketch, not precious source material. It is meant to give us
 something audible and synchronized on day one.
 

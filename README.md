@@ -39,6 +39,20 @@ The `cube` waterfront uses the GPU renderer by default. Other scenes remain CPU-
 explicit GPU comparison. GPU waterfront screenshots and profiles create a raylib/OpenGL context,
 while CPU screenshots remain display-free.
 
+Add `--gpu-aa` to enable supersampling for the GPU waterfront (off by default):
+
+```sh
+./build/proteus --scene cube --gpu-aa
+./build/proteus --scene cube --time 2.5 --gpu-aa --screenshot build/cube-aa.png
+```
+
+The city renders at 4× width and height (1280x800 at the default 320x200), then averages
+each 4x4 block into one virtual pixel. This shades 16 times as many main-pass pixels;
+shadow and reflection map sizes stay fixed. The final image still uses nearest-neighbour,
+integer-scaled presentation. The flag applies to playback, screenshots, and `--profile cube`,
+including resolution changes; CPU scenes are unaffected. GPU profiles report `gpu_aa` and
+the internal render dimensions, with the downsampling pass included in submission timing.
+
 Controls:
 
 - `1`: 320x180

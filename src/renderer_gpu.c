@@ -630,14 +630,6 @@ static void draw_colored_mesh(
     DrawMesh(mesh, material, transform_matrix(transform));
 }
 
-static float street_length(WaterfrontStreet street)
-{
-    float length = 0;
-    for (int i = 1; i < street.point_count; ++i)
-        length += Vector3Distance(street.points[i - 1], street.points[i]);
-    return length;
-}
-
 typedef enum {
     LIGHT_CRANE,
     LIGHT_SHOP,
@@ -671,23 +663,23 @@ static void add_light_candidate(
 }
 
 static int select_light_class(const WaterfrontGpuScene *scene, const LightCandidate *candidates,
-    int candidate_count, WaterfrontSceneFrame frame, LightKind kind, LightCandidate *selected,
-    int capacity)
+    int candidate_count, const WaterfrontSceneFrame *frame, LightKind kind,
+    LightCandidate *selected, int capacity)
 {
     Vector3 view_direction
-        = Vector3Normalize(Vector3Subtract(frame.camera.target, frame.camera.position));
+        = Vector3Normalize(Vector3Subtract(frame->camera.target, frame->camera.position));
     int selected_count = 0;
     for (int candidate = 0; candidate < candidate_count; ++candidate) {
         LightCandidate current = candidates[candidate];
         if (current.kind != kind)
             continue;
-        Vector3 from_camera = Vector3Subtract(current.light.position, frame.camera.position);
+        Vector3 from_camera = Vector3Subtract(current.light.position, frame->camera.position);
         float view_depth = Vector3DotProduct(from_camera, view_direction);
         if (view_depth < -current.light.radius)
             continue;
         // The target is the authored shot focus, unlike the eye position which may sit far away
         // or above the street. It keeps the selected lights relevant to the visible composition.
-        current.score = Vector3DistanceSqr(current.light.position, frame.camera.target);
+        current.score = Vector3DistanceSqr(current.light.position, frame->camera.target);
         if (light_was_selected(scene, current.id))
             current.score *= .35f;
         int slot = selected_count;
@@ -707,7 +699,7 @@ static int select_light_class(const WaterfrontGpuScene *scene, const LightCandid
 
 // Every authored lamp stays in the forward-light list, so its pool cannot pop off while the camera
 // approaches. Reserve the cafe light, three crane lights, and nearby moving headlights.
-static void select_local_lights(WaterfrontGpuScene *scene, WaterfrontSceneFrame frame)
+static void select_local_lights(WaterfrontGpuScene *scene, const WaterfrontSceneFrame *frame)
 {
     LightCandidate candidates[72];
     int candidate_count = 0;
@@ -748,17 +740,12 @@ static void select_local_lights(WaterfrontGpuScene *scene, WaterfrontSceneFrame 
             .outer_cone_cos = .48f },
         LIGHT_CRANE);
     for (int street_index = 0; street_index < 2; ++street_index) {
-        WaterfrontStreet street = waterfront_scene_street(street_index);
-        float length = street_length(street);
-        int lamp_index = 0;
-        for (float distance = 20; distance < length - 12; distance += 27, ++lamp_index) {
-            Vector3 direction;
-            Vector3 position = waterfront_scene_street_position(street, distance, &direction);
-            Vector3 side = { direction.z, 0, -direction.x };
-            position = Vector3Add(position, Vector3Scale(side, 2.6f));
-            position.y = 8.5f;
-            add_light_candidate(candidates, &candidate_count, 100 + street_index * 100 + lamp_index,
-                (WaterfrontGpuLight) { .position = position,
+        for (int i = 0; i < frame->lamp_count; ++i) {
+            const WaterfrontLampState *lamp = &frame->lamps[i];
+            if (lamp->street != street_index)
+                continue;
+            add_light_candidate(candidates, &candidate_count, lamp->id,
+                (WaterfrontGpuLight) { .position = lamp->lens,
                     .direction = { 0, -1, 0 },
                     .color = { 255, 202, 116, 255 },
                     .radius = 18,
@@ -767,24 +754,14 @@ static void select_local_lights(WaterfrontGpuScene *scene, WaterfrontSceneFrame 
                     .outer_cone_cos = -1 },
                 LIGHT_LAMP);
         }
-        for (int car = 0; car < 10; ++car) {
-            int sign = car % 2 ? 1 : -1;
-            float distance = fmodf(
-                car * length / 10 + frame.time * (5.5f + street_index) * sign + length, length);
-            Vector3 forward;
-            Vector3 position = waterfront_scene_street_position(street, distance, &forward);
-            forward = Vector3Scale(forward, (float)sign);
-            Vector3 right = { forward.z, 0, -forward.x };
-            position = Vector3Add(position, Vector3Scale(right, 1.25f));
-            Vector3 direction = Vector3Normalize(Vector3Add(forward, (Vector3) { 0, -.22f, 0 }));
-            for (int side = -1; side <= 1; side += 2) {
-                Vector3 headlight = Vector3Add(position,
-                    Vector3Add(Vector3Scale(forward, 2.0f), Vector3Scale(right, side * .6f)));
-                headlight.y = 4.3f;
-                add_light_candidate(candidates, &candidate_count,
-                    1000 + street_index * 100 + car * 2 + (side > 0),
-                    (WaterfrontGpuLight) { .position = headlight,
-                        .direction = direction,
+        for (int car = 0; car < WATERFRONT_CAR_COUNT; ++car) {
+            const WaterfrontCarState *state = &frame->cars[car];
+            if (state->street != street_index)
+                continue;
+            for (int side = 0; side < 2; ++side) {
+                add_light_candidate(candidates, &candidate_count, state->id + side,
+                    (WaterfrontGpuLight) { .position = state->lenses[1][side],
+                        .direction = state->headlight_direction,
                         .color = { 255, 233, 174, 255 },
                         .radius = 18,
                         .intensity = 1.25f,
@@ -925,9 +902,10 @@ static void set_atmosphere_uniforms(WaterfrontGpuScene *scene, Vector3 camera_po
         SetShaderValue(scene->shader, location, &atmosphere_enabled, SHADER_UNIFORM_INT);
 }
 
-static void set_water_uniforms(WaterfrontGpuScene *scene, WaterfrontSceneFrame frame)
+static void set_water_uniforms(WaterfrontGpuScene *scene, const WaterfrontSceneFrame *frame)
 {
-    float camera[] = { frame.camera.position.x, frame.camera.position.y, frame.camera.position.z };
+    float camera[]
+        = { frame->camera.position.x, frame->camera.position.y, frame->camera.position.z };
     int reflections_enabled = scene->reflections_enabled;
     int location = GetShaderLocation(scene->water_shader, "reflectionViewProjection");
     if (location >= 0)
@@ -937,7 +915,7 @@ static void set_water_uniforms(WaterfrontGpuScene *scene, WaterfrontSceneFrame f
         SetShaderValue(scene->water_shader, location, camera, SHADER_UNIFORM_VEC3);
     location = GetShaderLocation(scene->water_shader, "time");
     if (location >= 0)
-        SetShaderValue(scene->water_shader, location, &frame.time, SHADER_UNIFORM_FLOAT);
+        SetShaderValue(scene->water_shader, location, &frame->time, SHADER_UNIFORM_FLOAT);
     location = GetShaderLocation(scene->water_shader, "reflectionsEnabled");
     if (location >= 0)
         SetShaderValue(scene->water_shader, location, &reflections_enabled, SHADER_UNIFORM_INT);
@@ -962,84 +940,52 @@ static void draw_rectangle(const WaterfrontGpuScene *scene, Material material, V
         color, false);
 }
 
-static void draw_life(
-    const WaterfrontGpuScene *scene, Material material, WaterfrontSceneFrame frame, bool emissive)
+static void draw_life(const WaterfrontGpuScene *scene, Material material,
+    const WaterfrontSceneFrame *frame, bool emissive)
 {
-    static const Color colors[] = {
-        { 153, 69, 57, 255 },
-        { 170, 178, 181, 255 },
-        { 51, 88, 117, 255 },
-        { 183, 142, 72, 255 },
-    };
     for (int street_index = 0; street_index < 2; ++street_index) {
-        WaterfrontStreet street = waterfront_scene_street(street_index);
-        float length = street_length(street);
-        for (float distance = 20; distance < length - 12; distance += 27) {
-            Vector3 direction;
-            Vector3 p = waterfront_scene_street_position(street, distance, &direction);
-            Vector3 side = { direction.z, 0, -direction.x };
-            p = Vector3Add(p, Vector3Scale(side, 2.6f));
-            draw_colored_mesh(scene->cube, material,
-                (Transform3D) { .position = { p.x, 6, p.z }, .scale = { .16f, 5, .16f } },
-                (Color) { 58, 66, 79, 255 }, false);
+        for (int i = 0; i < frame->lamp_count; ++i) {
+            const WaterfrontLampState *lamp = &frame->lamps[i];
+            if (lamp->street != street_index)
+                continue;
+            draw_colored_mesh(
+                scene->cube, material, lamp->pole, (Color) { 58, 66, 79, 255 }, false);
             if (emissive)
                 draw_colored_mesh(scene->cube, material,
-                    (Transform3D) { .position = { p.x, 8.5f, p.z }, .scale = { .85f, .38f, .85f } },
+                    (Transform3D) { .position = lamp->lens, .scale = { .85f, .38f, .85f } },
                     LAMP_LENS_COLOR, true);
         }
-        for (int car = 0; car < 10; ++car) {
-            int sign = car % 2 ? 1 : -1;
-            float distance = fmodf(
-                car * length / 10 + frame.time * (5.5f + street_index) * sign + length, length);
-            Vector3 forward;
-            Vector3 p = waterfront_scene_street_position(street, distance, &forward);
-            forward = Vector3Scale(forward, (float)sign);
-            Vector3 right = { forward.z, 0, -forward.x };
-            p = Vector3Add(p, Vector3Scale(right, 1.25f));
-            float yaw = atan2f(forward.x, forward.z);
-            draw_colored_mesh(scene->cube, material,
-                (Transform3D) { .position = { p.x, 4.2f, p.z },
-                    .rotation = { 0, yaw, 0 },
-                    .scale = { 1.7f, .9f, 3.9f } },
-                colors[car % 4], false);
-            draw_colored_mesh(scene->cube, material,
-                (Transform3D) { .position = { p.x, 4.9f, p.z },
-                    .rotation = { 0, yaw, 0 },
-                    .scale = { 1.4f, .65f, 1.9f } },
-                (Color) { 49, 65, 81, 255 }, false);
+        for (int car = 0; car < WATERFRONT_CAR_COUNT; ++car) {
+            const WaterfrontCarState *state = &frame->cars[car];
+            if (state->street != street_index)
+                continue;
+            draw_colored_mesh(scene->cube, material, state->body, state->color, false);
+            draw_colored_mesh(
+                scene->cube, material, state->cabin, (Color) { 49, 65, 81, 255 }, false);
             if (emissive) {
                 // Source lenses are always emissive. The bounded forward-light selection only
-                // decides which nearby headlights affect surrounding surfaces this frame.
+                // decides which nearby headlights affect surrounding surfaces this frame->
                 for (int end = -1; end <= 1; end += 2) {
                     for (int side = -1; side <= 1; side += 2) {
-                        Vector3 lamp = Vector3Add(p,
-                            Vector3Add(Vector3Scale(forward, end * 2.0f),
-                                Vector3Scale(right, side * .6f)));
-                        lamp.y = 4.3f;
                         draw_colored_mesh(scene->cube, material,
-                            (Transform3D) { .position = lamp, .scale = { .48f, .34f, .48f } },
+                            (Transform3D) { .position = state->lenses[end > 0][side > 0],
+                                .scale = { .48f, .34f, .48f } },
                             end > 0 ? HEADLIGHT_LENS_COLOR : (Color) { 240, 56, 34, 255 }, true);
                     }
                 }
             }
         }
     }
-    float z = frame.boat_z;
-    draw_colored_mesh(scene->cube, material,
-        (Transform3D) { .position = { 12, .7f, z }, .scale = { 3.2f, 1.3f, 7 } },
-        (Color) { 164, 177, 185, 255 }, false);
-    draw_colored_mesh(scene->cube, material,
-        (Transform3D) { .position = { 12, 1.9f, z + .5f }, .scale = { 2.5f, 1.3f, 3.2f } },
-        (Color) { 69, 91, 111, 255 }, false);
+    const WaterfrontBoatState *boat = &frame->boat;
+    draw_colored_mesh(scene->cube, material, boat->hull, (Color) { 164, 177, 185, 255 }, false);
+    draw_colored_mesh(scene->cube, material, boat->cabin, (Color) { 69, 91, 111, 255 }, false);
     if (emissive)
-        draw_colored_mesh(scene->cube, material,
-            (Transform3D) { .position = { 12, 2, z - 1.15f }, .scale = { 2, .6f, .1f } },
-            (Color) { 247, 191, 108, 255 }, true);
+        draw_colored_mesh(
+            scene->cube, material, boat->window, (Color) { 247, 191, 108, 255 }, true);
     if (emissive) {
-        for (int i = 0; i < 8; ++i) {
-            float drift = fmodf(frame.time * 2 + i * 1.8f, 14);
-            draw_rectangle(scene, material, (Vector3) { 12, .04f, z + 3.95f + drift },
-                (Vector3) { 0, 0, 1 }, (1.4f + drift * .14f) * 2, .3f,
+        for (int i = 0; i < WATERFRONT_WAKE_COUNT; ++i) {
+            draw_rectangle(scene, material, (Vector3) { 12, .04f, boat->wake[i].z_center },
+                (Vector3) { 0, 0, 1 }, boat->wake[i].half_width * 2, .3f,
                 (Color) { 63, 98, 117, 255 });
         }
     }
@@ -1060,13 +1006,13 @@ static void draw_crane_lights(const WaterfrontGpuScene *scene, Material material
         (Color) { 255, 86, 44, 255 }, true);
 }
 
-static Camera3D reflection_camera(WaterfrontSceneFrame frame)
+static Camera3D reflection_camera(const WaterfrontSceneFrame *frame)
 {
     return (Camera3D) { .position
-        = { frame.camera.position.x, -frame.camera.position.y, frame.camera.position.z },
-        .target = { frame.camera.target.x, -frame.camera.target.y, frame.camera.target.z },
+        = { frame->camera.position.x, -frame->camera.position.y, frame->camera.position.z },
+        .target = { frame->camera.target.x, -frame->camera.target.y, frame->camera.target.z },
         .up = { 0, -1, 0 },
-        .fovy = frame.camera.vertical_fov * RAD2DEG,
+        .fovy = frame->camera.vertical_fov * RAD2DEG,
         .projection = CAMERA_PERSPECTIVE };
 }
 
@@ -1112,8 +1058,8 @@ static void draw_facades(const WaterfrontGpuScene *scene, Material material)
     SetShaderValue(scene->shader, location, &enabled, SHADER_UNIFORM_INT);
 }
 
-static void draw_reflected_scene(
-    const WaterfrontGpuScene *scene, WaterfrontSceneFrame frame, Material material, Material life)
+static void draw_reflected_scene(const WaterfrontGpuScene *scene, const WaterfrontSceneFrame *frame,
+    Material material, Material life)
 {
     set_object_color(scene->shader, WHITE);
     set_emissive(scene->shader, false);
@@ -1125,7 +1071,7 @@ static void draw_reflected_scene(
     set_emissive(scene->shader, true);
     DrawMesh(scene->windows, material, MatrixIdentity());
     DrawMesh(scene->corner_emissive, material, MatrixIdentity());
-    draw_colored_mesh(scene->bridge, life, frame.bridge, frame.bridge_color, false);
+    draw_colored_mesh(scene->bridge, life, frame->bridge, frame->bridge_color, false);
     // The reflection source deliberately excludes the water mesh and its wake, preventing a
     // feedback surface while retaining vehicles, boat hull, lamp poles, and the city silhouette.
     draw_life(scene, life, frame, false);
@@ -1133,7 +1079,7 @@ static void draw_reflected_scene(
     DrawMesh(scene->crane, material, MatrixIdentity());
 }
 
-static void render_reflection(WaterfrontGpuScene *scene, WaterfrontSceneFrame frame)
+static void render_reflection(WaterfrontGpuScene *scene, const WaterfrontSceneFrame *frame)
 {
     Camera3D camera = reflection_camera(frame);
     unsigned int previous_framebuffer = rlGetActiveFramebuffer();
@@ -1143,9 +1089,9 @@ static void render_reflection(WaterfrontGpuScene *scene, WaterfrontSceneFrame fr
     ClearBackground(BLACK);
     draw_reflection_sky(scene->reflection);
     BeginMode3D(camera);
-    rlSetMatrixProjection(MatrixPerspective(frame.camera.vertical_fov,
+    rlSetMatrixProjection(MatrixPerspective(frame->camera.vertical_fov,
         (float)scene->reflection.texture.width / (float)scene->reflection.texture.height,
-        frame.camera.near_plane, frame.camera.far_plane));
+        frame->camera.near_plane, frame->camera.far_plane));
     Matrix view = rlGetMatrixModelview();
     Matrix projection = rlGetMatrixProjection();
     // A reflected view reverses the projected winding. Disable culling for this pass so the
@@ -1159,14 +1105,14 @@ static void render_reflection(WaterfrontGpuScene *scene, WaterfrontSceneFrame fr
     scene->reflection_view_projection = MatrixMultiply(view, projection);
 }
 
-static Camera3D shadow_camera(const WaterfrontGpuScene *scene, WaterfrontSceneFrame frame)
+static Camera3D shadow_camera(const WaterfrontGpuScene *scene, const WaterfrontSceneFrame *frame)
 {
     const float coverage = 500.0f;
     const float texel_size = coverage / scene->shadow_map_size;
     Vector3 light_direction = Vector3Normalize(DIRECTIONAL_LIGHT_DIRECTION);
     Vector3 right = Vector3Normalize(Vector3CrossProduct((Vector3) { 0, 1, 0 }, light_direction));
     Vector3 up = Vector3CrossProduct(light_direction, right);
-    Vector3 target = frame.camera.target;
+    Vector3 target = frame->camera.target;
     float right_offset = roundf(Vector3DotProduct(target, right) / texel_size) * texel_size
         - Vector3DotProduct(target, right);
     float up_offset = roundf(Vector3DotProduct(target, up) / texel_size) * texel_size
@@ -1181,7 +1127,7 @@ static Camera3D shadow_camera(const WaterfrontGpuScene *scene, WaterfrontSceneFr
 }
 
 static void draw_shadow_casters(
-    const WaterfrontGpuScene *scene, Material material, WaterfrontSceneFrame frame)
+    const WaterfrontGpuScene *scene, Material material, const WaterfrontSceneFrame *frame)
 {
     set_object_color(scene->shadow_shader, WHITE);
     set_emissive(scene->shadow_shader, false);
@@ -1191,7 +1137,7 @@ static void draw_shadow_casters(
     DrawMesh(scene->roofs, material, MatrixIdentity());
     DrawMesh(scene->quay, material, MatrixIdentity());
     DrawMesh(scene->corner, material, MatrixIdentity());
-    draw_colored_mesh(scene->bridge, material, frame.bridge, frame.bridge_color, false);
+    draw_colored_mesh(scene->bridge, material, frame->bridge, frame->bridge_color, false);
     // Cars, boats, and lamp poles matter to the road shadow, but their lenses and wake do not.
     rlDisableBackfaceCulling();
     draw_life(scene, material, frame, false);
@@ -1199,7 +1145,7 @@ static void draw_shadow_casters(
     DrawMesh(scene->crane, material, MatrixIdentity());
 }
 
-static void render_shadow_map(WaterfrontGpuScene *scene, WaterfrontSceneFrame frame)
+static void render_shadow_map(WaterfrontGpuScene *scene, const WaterfrontSceneFrame *frame)
 {
     Camera3D camera = shadow_camera(scene, frame);
     unsigned int previous_framebuffer = rlGetActiveFramebuffer();
@@ -1229,12 +1175,12 @@ static void render_shadow_map(WaterfrontGpuScene *scene, WaterfrontSceneFrame fr
 }
 
 void waterfront_gpu_scene_draw(
-    WaterfrontGpuScene *scene, WaterfrontSceneFrame frame, int width, int height)
+    WaterfrontGpuScene *scene, const WaterfrontSceneFrame *frame, int width, int height)
 {
-    Camera3D camera = { .position = frame.camera.position,
-        .target = frame.camera.target,
-        .up = frame.camera.up,
-        .fovy = frame.camera.vertical_fov * RAD2DEG,
+    Camera3D camera = { .position = frame->camera.position,
+        .target = frame->camera.target,
+        .up = frame->camera.up,
+        .fovy = frame->camera.vertical_fov * RAD2DEG,
         .projection = CAMERA_PERSPECTIVE };
     Material material = scene->city_material;
     Material life_material = scene->life_material;
@@ -1246,10 +1192,10 @@ void waterfront_gpu_scene_draw(
         set_atmosphere_uniforms(scene, reflection_camera(frame).position);
         render_reflection(scene, frame);
     }
-    set_atmosphere_uniforms(scene, frame.camera.position);
+    set_atmosphere_uniforms(scene, frame->camera.position);
     BeginMode3D(camera);
-    rlSetMatrixProjection(MatrixPerspective(frame.camera.vertical_fov, (float)width / (float)height,
-        frame.camera.near_plane, frame.camera.far_plane));
+    rlSetMatrixProjection(MatrixPerspective(frame->camera.vertical_fov,
+        (float)width / (float)height, frame->camera.near_plane, frame->camera.far_plane));
     rlEnableBackfaceCulling();
     set_object_color(scene->shader, WHITE);
     set_emissive(scene->shader, false);
@@ -1264,7 +1210,7 @@ void waterfront_gpu_scene_draw(
     set_emissive(scene->shader, true);
     DrawMesh(scene->windows, material, MatrixIdentity());
     DrawMesh(scene->corner_emissive, material, MatrixIdentity());
-    draw_colored_mesh(scene->bridge, life_material, frame.bridge, frame.bridge_color, false);
+    draw_colored_mesh(scene->bridge, life_material, frame->bridge, frame->bridge_color, false);
     // These small closed meshes use reusable, non-indexed buffers. Keep them two-sided while
     // retaining depth testing, so their visibility does not depend on backend cull-state defaults.
     rlDisableBackfaceCulling();

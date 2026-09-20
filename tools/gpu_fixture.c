@@ -445,7 +445,7 @@ static bool draw_city(RenderTexture2D target, WaterfrontGpuScene *scene, Fixture
     waterfront_scene_evaluate(options.time, true, &frame);
     draw_city_sky(target);
     BeginTextureMode(target);
-    waterfront_gpu_scene_draw(scene, frame, target.texture.width, target.texture.height);
+    waterfront_gpu_scene_draw(scene, &frame, target.texture.width, target.texture.height);
     EndTextureMode();
     if (options.shadow_map_view) {
         Texture2D shadow_map = waterfront_gpu_scene_shadow_map(scene);

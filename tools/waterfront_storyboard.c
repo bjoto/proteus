@@ -51,7 +51,7 @@ static int gpu_storyboard(
                     (unsigned char)roundf(Lerp(29, 59, t)), (unsigned char)roundf(Lerp(52, 88, t)),
                     255 });
         }
-        waterfront_gpu_scene_draw(&scene, frame, width, height);
+        waterfront_gpu_scene_draw(&scene, &frame, width, height);
         EndTextureMode();
         if (screenshot && i == 0) {
             Image image = LoadImageFromTexture(target.texture);

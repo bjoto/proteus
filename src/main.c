@@ -3,6 +3,7 @@
 #include "raylib.h"
 #include "raymath.h"
 #include "renderer_gpu.h"
+#include "rlgl.h"
 #include "scenes.h"
 #include "xm_audio.h"
 
@@ -35,6 +36,7 @@ typedef struct {
     bool gpu_shadows;
     bool gpu_atmosphere;
     bool gpu_reflections;
+    bool gpu_aa;
     RendererKind renderer;
     SceneId scene_id;
     int frames;
@@ -53,6 +55,8 @@ typedef struct {
 typedef struct {
     VirtualSize size;
     RenderTexture2D target;
+    RenderTexture2D supersampled;
+    Shader downsample;
 } GpuFramebuffer;
 
 static const VirtualSize VIRTUAL_SIZES[] = {
@@ -86,24 +90,38 @@ static void virtual_framebuffer_destroy(VirtualFramebuffer *framebuffer)
     *framebuffer = (VirtualFramebuffer) { 0 };
 }
 
-static bool gpu_framebuffer_create(GpuFramebuffer *framebuffer, VirtualSize size)
-{
-    RenderTexture2D target = LoadRenderTexture(size.width, size.height);
-    if (!IsRenderTextureValid(target)) {
-        if (target.id != 0)
-            UnloadRenderTexture(target);
-        return false;
-    }
-    SetTextureFilter(target.texture, TEXTURE_FILTER_POINT);
-    *framebuffer = (GpuFramebuffer) { .size = size, .target = target };
-    return true;
-}
-
 static void gpu_framebuffer_destroy(GpuFramebuffer *framebuffer)
 {
+    if (framebuffer->downsample.id != 0)
+        UnloadShader(framebuffer->downsample);
+    if (framebuffer->supersampled.id != 0)
+        UnloadRenderTexture(framebuffer->supersampled);
     if (framebuffer->target.id != 0)
         UnloadRenderTexture(framebuffer->target);
     *framebuffer = (GpuFramebuffer) { 0 };
+}
+
+static bool gpu_framebuffer_create(GpuFramebuffer *framebuffer, VirtualSize size, bool aa)
+{
+    GpuFramebuffer created = { .size = size };
+    created.target = LoadRenderTexture(size.width, size.height);
+    if (!IsRenderTextureValid(created.target))
+        goto failed;
+    SetTextureFilter(created.target.texture, TEXTURE_FILTER_POINT);
+    if (aa) {
+        created.supersampled = LoadRenderTexture(size.width * 4, size.height * 4);
+        if (!IsRenderTextureValid(created.supersampled))
+            goto failed;
+        created.downsample = LoadShader(NULL, PROTEUS_ASSET_DIR "/shaders/gpu_downsample.fs");
+        if (!IsShaderValid(created.downsample) || created.downsample.id == rlGetShaderIdDefault())
+            goto failed;
+    }
+    *framebuffer = created;
+    return true;
+
+failed:
+    gpu_framebuffer_destroy(&created);
+    return false;
 }
 
 static void gpu_draw_sky(RenderTexture2D target)
@@ -125,10 +143,25 @@ static void gpu_draw_frame(
 {
     WaterfrontSceneFrame frame;
     waterfront_scene_evaluate(scene_time, true, &frame);
-    gpu_draw_sky(framebuffer.target);
-    BeginTextureMode(framebuffer.target);
-    waterfront_gpu_scene_draw(gpu_scene, frame, framebuffer.size.width, framebuffer.size.height);
+    RenderTexture2D target
+        = framebuffer.supersampled.id != 0 ? framebuffer.supersampled : framebuffer.target;
+    gpu_draw_sky(target);
+    BeginTextureMode(target);
+    waterfront_gpu_scene_draw(gpu_scene, &frame, target.texture.width, target.texture.height);
     EndTextureMode();
+    if (framebuffer.supersampled.id != 0) {
+        BeginTextureMode(framebuffer.target);
+        ClearBackground(BLACK);
+        BeginShaderMode(framebuffer.downsample);
+        // Normalize only the render-texture Y flip here; presentation/export retain their
+        // existing orientation correction and always consume the virtual-resolution target.
+        Rectangle source = { 0, 0, (float)target.texture.width, (float)-target.texture.height };
+        Rectangle destination
+            = { 0, 0, (float)framebuffer.size.width, (float)framebuffer.size.height };
+        DrawTexturePro(target.texture, source, destination, (Vector2) { 0 }, 0, WHITE);
+        EndShaderMode();
+        EndTextureMode();
+    }
 }
 
 static bool parse_count(const char *text, int minimum, int *value)
@@ -180,6 +213,7 @@ static void print_usage(const char *program)
     printf("  --gpu-shadows on|off   GPU directional-shadow diagnostic switch (default: on)\n");
     printf("  --gpu-atmosphere on|off GPU distance-atmosphere diagnostic switch (default: on)\n");
     printf("  --gpu-reflections on|off GPU water-reflection diagnostic switch (default: on)\n");
+    printf("  --gpu-aa                downsample GPU city from 4x width/height (default: off)\n");
     printf("  --time SECONDS          start at a global or scene-local time (default: 0)\n");
     printf("  --scene SCENE           select a scene and interpret --time relative to it\n");
     printf("  --resolution WIDTHxHEIGHT (default: 320x200)\n");
@@ -221,6 +255,8 @@ static bool parse_options(int argc, char **argv, ProgramOptions *options)
                 fprintf(stderr, "Unknown renderer: %s\n", renderer);
                 return false;
             }
+        } else if (strcmp(argv[i], "--gpu-aa") == 0) {
+            options->gpu_aa = true;
         } else if (strcmp(argv[i], "--gpu-lights") == 0 && i + 1 < argc) {
             const char *lighting = argv[++i];
             if (strcmp(lighting, "on") == 0)
@@ -416,7 +452,7 @@ static int run_screenshot(ProgramOptions options)
         char shader_path[1024];
         snprintf(
             shader_path, sizeof(shader_path), "%s/shaders/waterfront_city.fs", PROTEUS_ASSET_DIR);
-        bool ready = gpu_framebuffer_create(&framebuffer, size)
+        bool ready = gpu_framebuffer_create(&framebuffer, size, options.gpu_aa)
             && waterfront_gpu_scene_init(&gpu_scene, shader_path);
         if (!ready) {
             fprintf(stderr, "Unable to initialize the GPU city renderer\n");
@@ -498,7 +534,7 @@ static int run_profile(ProgramOptions options)
         char shader_path[1024];
         snprintf(
             shader_path, sizeof(shader_path), "%s/shaders/waterfront_city.fs", PROTEUS_ASSET_DIR);
-        if (!gpu_framebuffer_create(&framebuffer, size)
+        if (!gpu_framebuffer_create(&framebuffer, size, options.gpu_aa)
             || !waterfront_gpu_scene_init(&gpu_scene, shader_path)) {
             fprintf(stderr, "Unable to initialize the GPU city renderer\n");
             waterfront_gpu_scene_destroy(&gpu_scene);
@@ -541,6 +577,8 @@ static int run_profile(ProgramOptions options)
             PROTEUS_BUILD_TYPE);
         printf("renderer=gpu\nframes=%d\nwarmup_frames=%d\nvirtual_width=%d\nvirtual_height=%d\n",
             options.frames, options.warmup_frames, size.width, size.height);
+        printf("gpu_aa=%s\nrender_width=%d\nrender_height=%d\n", options.gpu_aa ? "4x4" : "off",
+            size.width * (options.gpu_aa ? 4 : 1), size.height * (options.gpu_aa ? 4 : 1));
         printf("graphics_enabled=true\npacing=%s\ngeneration_scope=gpu_cpu_submission\n",
             options.visible ? "visible_present" : "hidden_context");
         printf(
@@ -716,7 +754,7 @@ int main(int argc, char **argv)
         char shader_path[1024];
         snprintf(
             shader_path, sizeof(shader_path), "%s/shaders/waterfront_city.fs", PROTEUS_ASSET_DIR);
-        gpu_ready = gpu_framebuffer_create(&gpu_framebuffer, size)
+        gpu_ready = gpu_framebuffer_create(&gpu_framebuffer, size, options.gpu_aa)
             && waterfront_gpu_scene_init(&gpu_scene, shader_path);
         if (!gpu_ready) {
             fprintf(stderr, "Unable to initialize the requested GPU city renderer\n");
@@ -804,7 +842,8 @@ int main(int argc, char **argv)
                 break;
             GpuFramebuffer gpu_resized = { 0 };
             if (gpu_ready) {
-                if (!gpu_framebuffer_create(&gpu_resized, VIRTUAL_SIZES[requested])) {
+                if (!gpu_framebuffer_create(
+                        &gpu_resized, VIRTUAL_SIZES[requested], options.gpu_aa)) {
                     virtual_framebuffer_destroy(&resized);
                     break;
                 }

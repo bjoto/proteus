@@ -26,6 +26,85 @@ static const Vector3 west_street[] = { { -99.4f, 3.56f, 308.7f }, { -86.9f, 3.56
 static const Vector3 east_street[] = { { 67.4f, 3.56f, 406.2f }, { 82.5f, 3.56f, 269.5f },
     { 92.7f, 3.56f, 167.2f }, { 95.6f, 3.56f, 133.7f }, { 103.7f, 3.56f, 67.1f } };
 
+static void evaluate_life(float time, WaterfrontSceneFrame *frame)
+{
+    static const Color colors[] = { { 153, 69, 57, 255 }, { 170, 178, 181, 255 },
+        { 51, 88, 117, 255 }, { 183, 142, 72, 255 } };
+    frame->lamp_count = 0;
+    for (int street = 0; street < 2; ++street) {
+        WaterfrontStreet route = waterfront_scene_street(street);
+        float length = 0;
+        for (int i = 1; i < route.point_count; ++i)
+            length += Vector3Distance(route.points[i - 1], route.points[i]);
+        int lamp_index = 0;
+        for (float distance = 20; distance < length - 12; distance += 27, ++lamp_index) {
+            // Capacity covers the two authored routes; validated by the scene test.
+            if (frame->lamp_count == WATERFRONT_MAX_LAMPS)
+                break;
+            Vector3 direction;
+            Vector3 p = waterfront_scene_street_position(route, distance, &direction);
+            Vector3 side = { direction.z, 0, -direction.x };
+            p = Vector3Add(p, Vector3Scale(side, 2.6f));
+            frame->lamps[frame->lamp_count++]
+                = (WaterfrontLampState) { .id = 100 + street * 100 + lamp_index,
+                      .street = street,
+                      .position = p,
+                      .pool_direction = Vector3Negate(side),
+                      .pole = { .position = { p.x, 6, p.z }, .scale = { .16f, 5, .16f } },
+                      .lens = { p.x, 8.5f, p.z } };
+        }
+        for (int car = 0; car < 10; ++car) {
+            int sign = car % 2 ? 1 : -1;
+            // Preserve the original arithmetic, phase, speed, lane, and wrap behavior.
+            float distance
+                = fmodf(car * length / 10 + time * (5.5f + street) * sign + length, length);
+            Vector3 forward;
+            Vector3 p = waterfront_scene_street_position(route, distance, &forward);
+            forward = Vector3Scale(forward, (float)sign);
+            Vector3 right = { forward.z, 0, -forward.x };
+            p = Vector3Add(p, Vector3Scale(right, 1.25f));
+            float yaw = atan2f(forward.x, forward.z);
+            WaterfrontCarState *out = &frame->cars[street * 10 + car];
+            *out = (WaterfrontCarState) { .id = 1000 + street * 100 + car * 2,
+                .street = street,
+                .position = p,
+                .forward = forward,
+                .right = right,
+                .body = { .position = { p.x, 4.2f, p.z },
+                    .rotation = { 0, yaw, 0 },
+                    .scale = { 1.7f, .9f, 3.9f } },
+                .cabin = { .position = { p.x, 4.9f, p.z },
+                    .rotation = { 0, yaw, 0 },
+                    .scale = { 1.4f, .65f, 1.9f } },
+                .color = colors[car % 4],
+                .headlight_direction
+                = Vector3Normalize(Vector3Add(forward, (Vector3) { 0, -.22f, 0 })),
+                .pool_position = Vector3Add(p, Vector3Scale(forward, 2.05f)) };
+            for (int end = -1; end <= 1; end += 2)
+                for (int side = -1; side <= 1; side += 2) {
+                    Vector3 lens = Vector3Add(p,
+                        Vector3Add(
+                            Vector3Scale(forward, end * 2.0f), Vector3Scale(right, side * .6f)));
+                    lens.y = 4.3f;
+                    out->lenses[end > 0][side > 0] = lens;
+                }
+        }
+    }
+    float z = 85 - time * 2;
+    frame->boat.hull = (Transform3D) { .position = { 12, .7f, z }, .scale = { 3.2f, 1.3f, 7 } };
+    frame->boat.cabin
+        = (Transform3D) { .position = { 12, 1.9f, z + .5f }, .scale = { 2.5f, 1.3f, 3.2f } };
+    frame->boat.window
+        = (Transform3D) { .position = { 12, 2, z - 1.15f }, .scale = { 2, .6f, .1f } };
+    for (int i = 0; i < WATERFRONT_WAKE_COUNT; ++i) {
+        float drift = fmodf(time * 2 + i * 1.8f, 14);
+        // Retain legacy float operation order for the CPU edges and GPU centre.
+        frame->boat.wake[i] = (WaterfrontWakeState) { .half_width = 1.4f + drift * .14f,
+            .z_start = z + 3.8f + drift,
+            .z_center = z + 3.95f + drift };
+    }
+}
+
 float waterfront_scene_duration(bool short_route) { return short_route ? 15.36f : 30.72f; }
 
 static Vector3 tangent(int index, bool target)
@@ -51,6 +130,7 @@ static Vector3 interpolate(int index, float u, bool target)
 
 void waterfront_scene_evaluate(float time, bool short_route, WaterfrontSceneFrame *frame)
 {
+    *frame = (WaterfrontSceneFrame) { 0 };
     time = Clamp(time, 0, waterfront_scene_duration(short_route));
     frame->time = time;
     float progress = Clamp(time / waterfront_scene_duration(short_route), 0, 1);
@@ -69,7 +149,7 @@ void waterfront_scene_evaluate(float time, bool short_route, WaterfrontSceneFram
         .position = { 11, 7, 126 }, .rotation = { 0, -.08f, 0 }, .scale = { 68, 1, 3 }
     };
     frame->bridge_color = (Color) { 119, 128, 145, 255 };
-    frame->boat_z = 85 - time * 2;
+    evaluate_life(time, frame);
 }
 
 const Mesh3D *waterfront_scene_city_mesh(void)

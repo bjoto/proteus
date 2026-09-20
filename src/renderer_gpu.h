@@ -88,7 +88,7 @@ void waterfront_gpu_scene_set_reflections_enabled(WaterfrontGpuScene *scene, boo
 bool waterfront_gpu_scene_set_shadow_map_size(WaterfrontGpuScene *scene, int size);
 Texture2D waterfront_gpu_scene_shadow_map(const WaterfrontGpuScene *scene);
 void waterfront_gpu_scene_draw(
-    WaterfrontGpuScene *scene, WaterfrontSceneFrame frame, int width, int height);
+    WaterfrontGpuScene *scene, const WaterfrontSceneFrame *frame, int width, int height);
 void waterfront_gpu_scene_destroy(WaterfrontGpuScene *scene);
 
 #endif
