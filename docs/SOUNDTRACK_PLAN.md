@@ -1,6 +1,9 @@
 # Alternate soundtrack plan
 
-Status: musical direction agreed; composition and tool setup have not started.
+Status: proof v03 approved on 2026-09-21. Milestones 1 and 2 are complete: the dark
+synth palette, restrained motif, dynamics, and grunge-influenced chord movement
+are the accepted foundation. Next is the full composition sketch; extra dirt/grit
+remains deferred to mixing.
 
 This is the working plan for an original Proteus soundtrack. Update it as we listen,
 choose directions, and complete milestones. The existing demo timeline does not
@@ -8,9 +11,17 @@ constrain the composition; visual scenes will follow the music later.
 
 ## Musical brief
 
-Create an approximately four-minute symphonic electronic adventure: epic to the
-point of exaggeration, melodic, and dynamic enough to support distinctly different
-visual moods. Duration and section timings are provisional.
+Create an approximately four-minute dark symphonic electronic adventure: powerful,
+spacious, and dynamic enough to support distinctly different visual moods. Keep
+the melody simple; develop tension and scale through texture, register, rhythm,
+and silence. The user's response to proof v01 rules out brightness and cheerfulness
+as the default direction. Duration and section timings are provisional.
+
+The user's response to v02 adds Nirvana's "Something in the Way" as a mood
+reference: brooding restraint can carry a soundtrack. Keep the electronic sound
+and arrangement, and explore grunge-influenced chord movement through slow bass
+changes, open fifths, repetition, and tension. The new harmony is an original
+composition choice.
 
 Use Skaven as a reference for theatrical character, memorable melodies, expressive
 sample sounds, rhythmic detail, and playfulness alongside grandeur. Write original
@@ -20,15 +31,17 @@ tracker composition.
 
 Core ingredients:
 
-- One recognisable main motif, developed into heroic, fragile, and threatening forms.
-- A contrasting lyrical theme introduced in the quiet passage and combined with
-  the main theme in the finale.
+- One short, recognisable main motif, developed into fragile, threatening, and
+  forceful forms. Proof v02 reduces it to three pitches.
+- A contrasting quiet treatment with room around the notes. A separate lyrical
+  theme is optional if it serves the atmosphere; avoid busy competing melodies.
 - Punchy electronic drums and mobile synth bass, with strings, brass, choir, bells,
   and an expressive synth lead.
 - Tracker character through articulation, pitch slides, fills, and quick flourishes.
 - Two major peaks, with the largest instrumental range and full choir saved for
   the final one. Quiet passages must hold attention on their own.
 - Exaggeration through harmony, register, rhythm, and anticipation as well as volume.
+  A peak can remain dark; a bright or major-key resolution is not required.
 
 ## Provisional musical arc
 
@@ -40,8 +53,8 @@ Core ingredients:
 | 1:30–1:55 | Something goes wrong | Broken rhythm, chromatic harmony, low brass, fragmented theme | Threat and instability |
 | 1:55–2:25 | Suspended world | Sparse solo voice, spacious harmony, lyrical theme | Wonder and vulnerability |
 | 2:25–2:55 | The gathering | Returning pulse, marching percussion, rising strings | Purpose and anticipation |
-| 2:55–3:35 | Apotheosis | Main theme and countermelody, full choir, final harmonic lift | Overwhelming triumph |
-| 3:35–3:55 | Afterglow | Decisive ending, opening motif returns resolved | Arrival and closure |
+| 2:55–3:35 | Apotheosis | Simple motif, full weight, choir, and harmonic pressure | Overwhelming dark grandeur |
+| 3:35–3:55 | Afterglow | Forces recede; the opening signal returns | Release and lingering tension |
 
 Sections should have clear musical boundaries and meaningful accents for eventual
 visual choreography. Phrase lengths, tempo, key, and metre remain composition choices;
@@ -69,20 +82,94 @@ patches, effects, or mix settings, so retain those with the project.
 
 ### 1. Establish a usable sound palette
 
-- Check available DAW, MIDI/rendering tools, and instrument libraries.
-- Choose a small initial palette: lead, harmony, bass, drums, and one atmospheric voice.
-- Render a short phrase to confirm the path from editable notes to audible output.
-- Record the tools, instrument sources, and exact render procedure here.
+- [x] Check available DAW, MIDI/rendering tools, and instrument libraries.
+- [x] Choose a small initial palette: lead, harmony, bass, drums, and one atmospheric voice.
+- [x] Render a short phrase to confirm the path from editable notes to audible output.
+- [x] Record the tools, instrument sources, and exact render procedure here.
 
 Done when: we have a reproducible audio render and enough control to change notes,
 instruments, and dynamics without rebuilding the toolchain.
 
+#### Established setup (2026-09-20)
+
+Local inspection found FastTracker II Clone, Python 3.14.2, FFmpeg, `afplay`, and
+Xcode/Swift 6.3.3 on Apple Silicon macOS 26.6.2. REAPER, GarageBand, FluidSynth,
+TiMidity, and third-party instrument plug-ins were not found in the application,
+PATH, and user/system audio-library locations checked. Apple's built-in General
+MIDI DLS bank is available.
+
+Use the checked-in [alternate workspace](../soundtrack/alternate/) for this first
+palette. Author notes and settings in `palette-v01.json`; `render.py` exports a
+type-1 MIDI file and invokes a small Swift AVAudioEngine offline renderer. This
+establishes a working path without installing a DAW. A piano-roll/DAW workflow
+remains open for the composition milestone; the MIDI export provides a handoff.
+
+| Role | Initial patch | Program (zero-based) | MIDI channel (display numbering) |
+|---|---|---|---|
+| Lead | Lead 2 / sawtooth | 81 | 1 |
+| Harmony | String Ensemble 1 | 48 | 2 |
+| Bass | Synth Bass 1 | 38 | 3 |
+| Drums | Standard kit: kick 36, snare 38, closed hat 42 | 0 | 10 |
+| Atmosphere | Choir Aahs | 52 | 4 |
+| Dark drone (v02) | Original detuned oscillator patch | Custom synthesis | 5 |
+| Growling pulse (v02) | Original saturated oscillator patch | Custom synthesis | 6 |
+
+Instrument source: the macOS-supplied
+`/System/Library/Components/CoreAudio.component/Contents/Resources/gs_instruments.dls`.
+Its SHA-256 on this machine is
+`739d277474bddeb120372625b70c83c653faaee44de26c3191848cc6c64bfb74`.
+The bank remains an external system dependency and is not copied into the repo.
+The initial five voices use this stock GM bank. The v02 drone and pulse are
+original oscillator patches implemented in `render.swift`, with their settings in
+`palette-v02.json`; they need no external samples. Expressive articulations,
+stronger electronic drums, brass, and bells remain candidates for later
+listening-led changes.
+
+The audition uses 120 BPM, 4/4, and E minor as test settings, not commitments for
+the full soundtrack. Notes, durations, velocity, program, channel volume, and pan
+are explicit in the JSON. The shared effect is Apple's medium-hall reverb at 14%
+wet, with master gain 0.6, 48 kHz stereo 16-bit WAV output, and a four-second tail.
+Bank reverb/chorus controller sends are zero. These settings live with the notes;
+MIDI alone does not preserve the shared effect or master gain.
+
+From the repository root:
+
+```sh
+python3 soundtrack/alternate/render.py
+afplay build/soundtrack/palette-v01/palette.wav
+```
+
+The first command compiles `render.swift` into `build/soundtrack/toolchain/` when
+needed, then writes `palette.wav`, `palette.mid`, `project.json`, and
+`manifest.json` in `build/soundtrack/palette-v01/`. The manifest records tool/OS
+versions, source/bank/audio hashes, duration, levels, and clipping count. Rendering
+uses [Apple's offline audio API](https://developer.apple.com/documentation/avfaudio/performing-offline-audio-processing)
+and does not require a running DAW or sound output device. Sandboxed command
+runners may need approval to access system Audio Units; `afplay` needs audio-device
+access separately.
+
+Output directories must be empty or absent, so an existing audition is preserved.
+For a new palette revision, copy the project to a new name such as
+`palette-v03.json`, change its notes/settings, then:
+
+```sh
+python3 soundtrack/alternate/render.py soundtrack/alternate/palette-v03.json \
+  --output build/soundtrack/palette-v03
+afplay build/soundtrack/palette-v03/palette.wav
+```
+
+For a repeatability check, pass the unchanged v01 project with another output
+directory. Two independent v01 renders produced byte-identical WAVs on this
+machine. Other macOS/instrument-bank versions may sound different; compare the
+recorded hashes before assuming byte reproducibility. `--bank /path/to/bank.sf2`
+can audition another locally supplied bank using the same program mapping.
+
 ### 2. Make the 60–90-second proof of direction
 
-- Write the main motif and a contrasting lyrical phrase.
-- Arrange a quiet passage, a rebuild, and an exaggerated final theme.
-- Make the quiet and heroic material recognisably related.
-- Export a playable stereo sketch with a brief timestamped listening guide.
+- [x] Write a simple main motif and a contrasting quiet treatment.
+- [x] Arrange quiet passages, heavier returns, and a final surge.
+- [x] Develop the same motif in the quiet and heavy passages.
+- [x] Export a playable stereo sketch with a brief timestamped listening guide.
 
 Listen for:
 
@@ -108,6 +195,9 @@ has a distinct mood, and the finale feels larger than the first peak.
 ### 4. Orchestrate and mix
 
 - Develop articulations, fills, countermelodies, spatial effects, and sound design.
+- Add dirt and grit to the accepted dark drone and pulse through post-processing.
+  Compare against palette v02 and preserve the mood, low-end weight, and movement
+  that worked in the audition; choose the processing in the context of the mix.
 - Preserve melodic clarity and the difference between intimate and massive passages.
 - Check the complete render for clipping, accidental clicks, and obscured melody.
 - Audition on headphones and speakers where available; record any listening limitations.
@@ -147,17 +237,295 @@ does not require regenerating or replacing them.
 
 - [x] Agree the musical direction and initial arc.
 - [x] Create this working plan.
-- [ ] Establish tools and palette.
-- [ ] Produce and assess the short proof of direction.
+- [x] Establish tools and palette.
+- [x] Produce the short proof of direction.
+- [x] Assess and refine the proof from listening feedback (v03 approved).
 - [ ] Complete the full composition sketch.
 - [ ] Complete orchestration and mix.
 - [ ] Integrate the accepted soundtrack with the demo.
 
-Next action: inspect the locally available composition/rendering tools and instrument
-libraries, then choose the simplest reproducible setup for the short sketch.
+Next action: expand approved proof v03 into the approximately four-minute arc,
+retaining the six voices, simple signal, and E5–C5–F5–E5 harmonic backbone. Develop
+the threatening variation, quiet space, transitions, and two distinct peaks.
+Extra dirt/grit remains a mix-stage task.
 
-Open choices: authoring tool, instruments, tempo/key, final duration, and delivery
-format. Resolve them when their milestone needs them.
+Open choices: DAW/piano-roll authoring, final instruments, composition tempo/key,
+final duration, and delivery format. Resolve them when their milestone needs them.
 
 For each listening revision, append: render location, changes, listening feedback,
-decision, and next action. No audio revisions have been produced yet.
+decision, and next action.
+
+### Palette v01 — 2026-09-20
+
+- Render: `build/soundtrack/palette-v01/palette.wav` (22 seconds); MIDI, source
+  snapshot, and manifest are alongside it. Editable source:
+  [palette-v01.json](../soundtrack/alternate/palette-v01.json).
+- Changes: initial five-voice audition, then a four-bar ensemble exercise.
+- Listening guide: 0:00 lead; 0:02 strings; 0:04 bass; 0:06 drums; 0:08 choir;
+  0:10–0:18 ensemble; 0:18–0:22 release/reverb tail. Effect tails overlap the solo
+  boundaries. Listen for lead character, string/choir separation, bass definition,
+  and whether the kit needs a more electronic sound.
+- Technical checks: each solo window contains signal; stereo output peaks at
+  −11.43 dBFS with zero clipped samples; the last second is silent. Independent
+  renders matched byte for byte. A temporary version with the lead changed to a
+  square patch, lowered an octave, and reduced in velocity rendered successfully
+  with different PCM. Apple's native MIDI importer read all five tracks and 145
+  notes from the export. `afplay` completed through the Mac's audio output.
+- Project verification: Debug configure/build and all 16 CTest cases passed,
+  including the existing GPU checks (which needed execution outside the sandbox).
+- Listening feedback: pending. Playback and signal checks do not establish musical
+  quality; the assistant has not perceptually assessed the audio. The ensemble
+  exercise is not yet the main motif or the proof of direction.
+- Decision: the tools and control needed for milestone 1 are established. Keep
+  this palette provisional until listening feedback; proceed to milestone 2
+  after that review.
+
+### Palette v02 — dark synths — 2026-09-20
+
+- Request: add dedicated dark, powerful sounds for the mood-building intro and
+  threatening middle section. This is a palette extension; motif development is
+  still the next milestone.
+- Render: `build/soundtrack/palette-v02/palette.wav` (30 seconds), with MIDI,
+  project snapshot, and manifest alongside it. Editable source:
+  [palette-v02.json](../soundtrack/alternate/palette-v02.json).
+- New voice: **deep drone**. A centred E1 fundamental supports stereo layers
+  detuned by ±11 cents, with a 1.6-second attack and 2.2-second release. Its filter
+  base opens from 100 to 950 Hz across the musical duration, with slow 0.13 Hz
+  motion and mild saturation. The fundamental stays clean under the moving
+  harmonics. Higher velocity increases level without normalising individual notes.
+- New voice: **growling pulse**. Detuned layers at ±7 cents, stronger saturation,
+  a 6 ms attack, decaying amplitude/filter envelopes, and an 85 ms release. A
+  rising 180–1400 Hz base cutoff and 0.31 Hz motion change its brightness through
+  the phrase. Syncopated eighth/sixteenth-note figures and velocity accents provide
+  the rhythmic tension. These are synthesised sounds, not renamed GM patches.
+- Sound settings: finite harmonic oscillators, synthesis at twice the output
+  sample rate, filtering before/after saturation, and a stable fundamental layer.
+  Notes, detune, cutoff endpoints, motion, drive, fundamental mix, gain, attack,
+  and release are editable in JSON. The shared hall is 19% wet; master gain is
+  0.85; delivery is 48 kHz stereo 16-bit PCM with a six-second tail. The existing
+  GM choir and kit provide context.
+- Listening guide: 0:00 drone alone; 0:02 distant choir enters; 0:08 pulse enters
+  as the opening drone releases; 0:12 combined build with percussion; 0:16 a
+  semitone rise increases tension; 0:20 return to E; 0:24–0:30 release/tail. Listen
+  for low-end weight, movement in the sustained sound, and whether the pulse has
+  enough grit without masking the choir.
+- Technical checks: two independent renders produced identical WAVs; peak
+  −3.41 dBFS, RMS −17.15 dBFS, zero clipped samples, zero opening samples, and a
+  silent final second. The opening fundamental was checked against E1. `afplay`
+  completed successfully. Debug configure/build and all 16 CTest cases passed.
+- Listening feedback: the user confirms that both voices work and particularly
+  likes the mood they set. They would like the sounds a bit more "dirty" and
+  "gritty", with that refinement handled in post-processing.
+- Decision: accept both voices for mood and character and use them in the proof
+  of direction. Keep v02 as the comparison reference; plan additional dirt/grit
+  for orchestration and mixing, preserving the qualities that were liked. This
+  feedback accepts the dark voices, not yet the full composition or broader
+  initial palette.
+
+Render v02 from the repository root (choose a fresh output directory for a repeat):
+
+```sh
+python3 soundtrack/alternate/render.py soundtrack/alternate/palette-v02.json \
+  --output build/soundtrack/palette-v02
+afplay build/soundtrack/palette-v02/palette.wav
+```
+
+The MIDI export carries the custom synth tracks' notes and dynamics, with track
+names identifying them as custom synthesis. It deliberately assigns no GM
+program to those tracks: importing MIDI alone will not reproduce their sounds.
+The JSON plus renderer is the source for these patches; use the rendered audio
+or recreate the patch settings when moving the arrangement into a DAW.
+
+### Proof v01 — The signal — 2026-09-20
+
+- Render: `build/soundtrack/proof-v01/proof.wav`, **1:18** including a six-second
+  release tail; 36 bars at 120 BPM in 4/4. `proof.mid`, `project.json`, and
+  `manifest.json` are alongside it. The editable score is
+  [proof-v01.json](../soundtrack/alternate/proof-v01.json); the original arrangement
+  recipe is [compose_proof.py](../soundtrack/alternate/compose_proof.py).
+- Main motif: E–B–D–E, a rising fifth followed by the minor seventh and octave,
+  then an answer through G–F♯–E–D–B. Short pickups and longer arrival notes give it
+  a distinctive rhythm. Bells introduce the interval shape; flute states the
+  complete fragile version; the saw lead returns with the same phrase in the
+  finale. The final statement raises G and D to G♯ and D♯ for the E-major lift.
+- Contrasting phrase: a lower, flowing E–G–B–A / G–E line, followed by a stepwise
+  answer and a leading-tone cadence. It appears alone in the quiet section, then
+  as the flute countermelody beneath the heroic theme. It is intended to feel
+  lyrical rather than simply doubling the lead.
+- Arrangement: the accepted drone establishes the opening; the pulse drives the
+  rebuild and becomes a quieter moving layer under the finale. A semitone threat,
+  rising activity/register, snare roll, and half-second break prepare the arrival.
+  The E-major lift adds the widest choir voicing. A decisive E-major chord leads
+  to the opening bell gesture returning with its seventh raised and resolved.
+- Instruments: 11 tracks. The accepted drone and pulse patch settings are intact,
+  with arrangement-specific volume/velocity. The original GM lead, strings, bass,
+  choir, and kit return. Four additional Apple-bank patches supply solo flute
+  (program 73, channel 7), celesta (8, channel 8), brass section (61, channel 9),
+  and pizzicato strings (45, channel 11). Programs are zero-based, displayed
+  channels one-based. These additional voices remain provisional.
+- Mix: 17% shared medium-hall reverb, master gain 0.65, 48 kHz stereo 16-bit PCM.
+  This is a composition sketch with velocity and arrangement dynamics; the extra
+  dirt/grit requested for the dark voices has not been added yet.
+
+| Time | Passage | Listen for |
+|---|---|---|
+| 0:00–0:08 | The signal | Accepted drone and distant choir; bells plant the main gesture. |
+| 0:08–0:16 | Fragile theme | The full main motif on a quiet solo flute. Does it stand on its own? |
+| 0:16–0:24 | Lyrical answer | A contrasting phrase, with space around the melody. |
+| 0:24–0:39.5 | The gathering | Pulse returns; a chromatic detour, arpeggios, brass fragments, and percussion build tension. |
+| 0:39.5–0:40 | Hold your breath | Parts release early, leaving a brief gap and their tails. |
+| 0:40–0:48 | First arrival | Full lead statement with the lyrical flute beneath it. Is the arrival satisfying? |
+| 0:48–0:56 | Answer and expansion | The theme repeats with a different harmonic answer and a stronger cadence. |
+| 0:56–1:04 | Harmonic lift | Parallel E major, higher/wider choir, and the largest combined sound. Is it excessive enough? |
+| 1:04–1:12 | Afterglow | Decisive chord, then a resolved echo of the opening bells. |
+| 1:12–1:18 | Release | Instrument/hall decay to silence. |
+
+Reproduce from the repository root, using a fresh output directory:
+
+```sh
+python3 soundtrack/alternate/render.py soundtrack/alternate/proof-v01.json \
+  --output build/soundtrack/proof-v01 --name proof
+afplay build/soundtrack/proof-v01/proof.wav
+```
+
+`--name` chooses the WAV/MIDI filename stem; existing palette commands retain
+their original names. Section boundaries are included in the JSON and exported
+as MIDI markers. As with v02, MIDI contains the custom synth notes but needs the
+JSON/renderer or recreated patches to reproduce those timbres.
+
+To inspect or revise the composition, edit a new JSON revision directly. The
+optional recipe can reconstruct the original score with
+`python3 soundtrack/alternate/compose_proof.py --output build/soundtrack/proof-rebuilt.json`;
+it refuses to overwrite an existing file. Its output was checked against the
+checked-in v01 score. It reads the two earlier palette sources to retain their
+instrument definitions.
+
+- Verification: independent renders produced identical WAVs; peak −4.66 dBFS,
+  whole-file RMS −23.56 dBFS, zero clipped samples, zero opening samples, and a
+  silent final second. The lyrical passage measures −33.00 dBFS RMS and the final
+  lift −19.02 dBFS RMS (about 14 dB contrast); these are signal measurements, not
+  a perceptual assessment. Section measurements are in `section-levels.json`
+  beside the render. Apple's MIDI importer read all 989 notes across 11 instrument
+  tracks plus the marker track. Full-length `afplay` playback completed successfully.
+  Debug configure/build and all 16 CTest cases passed.
+- Listening feedback: the user found this version too bright and cheerful and
+  requested more darkness, a dynamic setting, and a much simpler melody.
+- Decision: revise the composition around the accepted dark palette, fewer notes,
+  and contrasting pressure/space. Preserve v01 as the comparison; its major-key
+  lift and bright melodic instrumentation are not the accepted direction.
+
+### Proof v02 — Below the surface — 2026-09-20
+
+- Render: `build/soundtrack/proof-v02/proof.wav`, **1:18**, with `proof.mid`, source
+  snapshot, and manifest alongside it. Editable source:
+  [proof-v02.json](../soundtrack/alternate/proof-v02.json). V01's score and audio
+  are preserved unchanged for comparison.
+- Response to feedback: the accepted drone and pulse now carry the arrangement.
+  The flute, celesta, pizzicato arpeggios, brass fanfare, and bright saw melody are
+  absent. The E-major lift and major resolution are replaced by an E pedal,
+  semitone/tritone tension, and a retreat into the low register.
+- Simpler melody: **E–F–B**, three pitches with long gaps between statements. The
+  signal slows in the suspended passage and rises one octave only near the last
+  peak. There is no simultaneous countermelody. Across the whole arrangement,
+  the score falls from 989 to 267 notes, and from 11 to six instrument tracks;
+  the signal itself has 23 attacks.
+- Dynamics and setting: two cycles of pressure and withdrawal replace the long
+  rising bridge/finale. The pulse changes density, percussion leaves space, and
+  low strings/choir enter selectively. A low impact at 0:50 is followed by a
+  hollow gap before the final return. The contrast comes from changing texture,
+  register, rests, and velocity as well as level.
+- Instruments: original drone and pulse patches unchanged, low GM strings
+  (program 48), low GM choir (52), and sparse kit percussion (0, channel 10):
+  kick, low toms, restrained snare, occasional soft closed hat, no crash cymbals.
+  The sixth voice is a new filtered **three-note signal**, derived from the drone
+  oscillator with ±4-cent detune, 260–720 Hz cutoff sweep, 180 ms attack, 650 ms
+  release, and less fundamental mix. Its complete settings are in the JSON.
+- Mix: 21% shared medium-hall reverb, master gain 0.72, 48 kHz stereo 16-bit PCM,
+  with the same 120 BPM/36-bar duration and six-second tail. Additional grit remains
+  deferred to post-processing; this revision addresses composition and palette.
+
+| Time | Passage | Listen for |
+|---|---|---|
+| 0:00–0:12 | Below the surface | Low drone and distant three-note signal, with space around each entrance. |
+| 0:12–0:24 | Pulse wakes | Uneven pulse and low percussion gather weight over the pedal. |
+| 0:24–0:36 | Suspended | Rhythm disappears; the signal slows, leaving choir and low strings. |
+| 0:36–0:50 | Pressure | Heavier return, denser pulse, and semitone/tritone tension. |
+| 0:50–0:58 | Rupture | One low impact, followed by a hollow withdrawal. |
+| 0:58–1:10 | The return | Largest surge; the same simple signal remains central and the harmony stays dark. |
+| 1:10–1:12 | Back into shadow | Retreat to the pedal, without a major-key resolution. |
+| 1:12–1:18 | Release | Natural decay to silence. |
+
+Render from the repository root, with a fresh output directory:
+
+```sh
+python3 soundtrack/alternate/render.py soundtrack/alternate/proof-v02.json \
+  --output build/soundtrack/proof-v02 --name proof
+afplay build/soundtrack/proof-v02/proof.wav
+```
+
+Edit a new JSON revision for subsequent changes. No additional instrument library
+or renderer change is required; the score includes all custom patch settings and
+exports its section markers to MIDI.
+
+- Verification: peak −4.87 dBFS, whole-file RMS −19.81 dBFS, zero clipped samples,
+  zero opening samples, and a silent final second. The suspended passage measures
+  −29.40 dBFS RMS and the rupture −31.75 dBFS, compared with −17.39 dBFS for the
+  last return (roughly 12 and 14 dB contrast). Section measurements are beside the
+  render. Repeat renders matched byte for byte. Native MIDI import recovered all
+  267 notes across six instrument tracks plus the marker track. The three pitch
+  classes and unchanged v01 artifacts were checked. Full-length audio playback
+  completed successfully. Debug build and all 16 CTest cases passed.
+- Listening feedback (2026-09-21): the user likes this direction and associates
+  its moodiness with Nirvana's "Something in the Way" as a soundtrack reference.
+  Keep the synths and arrangement, and try some grunge-style chord progression.
+- Decision: preserve v02 as the accepted reference for mood, instrumentation,
+  and arrangement. Make a harmonic revision for comparison before expanding.
+
+### Proof v03 — slow chord movement — 2026-09-21
+
+- Render: `build/soundtrack/proof-v03/proof.wav`, **1:18**. `proof.mid`, the source
+  snapshot, and manifest are alongside it. Editable source:
+  [proof-v03.json](../soundtrack/alternate/proof-v03.json). V02 remains unchanged.
+- Harmonic idea: **E5 → C5 → F5 → E5**. Here "5" means a root-and-fifth power
+  chord, not an octave designation. The falling bass into C gives weight; the
+  F-to-E semitone return supplies tension. Strings use open root/fifth/octave
+  voicings; choir voices mainly use fifths and octaves, with an upper tension
+  note retained at the last peak. Held voices can overlap a bass change.
+- Changes: the first pulse drops from E to C at 0:20, and the quiet passage sits
+  over C. The heavier passage follows E at 0:36, C at 0:40, F at 0:44, and E at
+  0:48. The final return repeats E at 0:58, C at 1:02, F at 1:06, and E at 1:10.
+  The low rupture impact and its following gap keep their original pitches.
+- Melody: each three-note phrase keeps its rhythm and interval contour. Selected
+  phrases move with the harmony: C–D♭–G in the suspended passage and F–G♭–C over
+  the F-root pressure. The high phrase beginning at 1:04 stays C-based while the
+  harmony moves to F, leaving a suspended colour rather than adding more notes.
+- Preserved: all six track patches, every note's start/duration/velocity, all 267
+  notes, the entire percussion track, section boundaries, tempo, and mix settings.
+  The musical changes are pitches only. No renderer or instrument-library changes
+  were needed, and no additional dirt/grit processing was applied.
+
+Render from the repository root with a fresh output directory:
+
+```sh
+python3 soundtrack/alternate/render.py soundtrack/alternate/proof-v03.json \
+  --output build/soundtrack/proof-v03 --name proof
+afplay build/soundtrack/proof-v03/proof.wav
+```
+
+The score includes a `harmony` array documenting the intended chord changes and
+their times. It is a listening/editing guide; the explicit notes determine the
+audio. Section markers continue to export to MIDI.
+
+- Verification: score comparison confirmed the preserved timing, dynamics,
+  patches, percussion, and mix, plus unchanged v02 source/audio. Native MIDI
+  import read all 267 notes across six instrument tracks plus the marker track.
+  The WAV peaks at −5.13 dBFS, with whole-file RMS −20.61 dBFS and no clipped
+  samples. The opening starts at zero and the final second is silent. Both
+  withdrawals retain more than 8 dB of RMS contrast against the final return;
+  section measurements are alongside the render. Full-length audio playback
+  completed successfully. Debug configure/build and all 16 CTest cases passed.
+- Listening feedback (2026-09-21): the user approved this part and requested a
+  commit, then continued work on the music.
+- Decision: v03 is the accepted proof of direction and the baseline for milestone
+  3. Preserve this revision while expanding into the full composition. Its approval
+  covers the foundation, not the later full arrangement or final mix.
