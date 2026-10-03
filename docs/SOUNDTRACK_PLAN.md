@@ -1,9 +1,17 @@
 # Alternate soundtrack plan
 
-Status: proof v03 approved on 2026-09-21. Milestones 1 and 2 are complete: the dark
-synth palette, restrained motif, dynamics, and grunge-influenced chord movement
-are the accepted foundation. Next is the full composition sketch; extra dirt/grit
-remains deferred to mixing.
+Status: the user requested a FastTracker editing handoff on 2026-09-22. The full
+song is now available as an editable [XM and tracker guide](../soundtrack/alternate/fasttracker/README.md),
+with embedded instruments and separate note/chord voices. Continue musical edits
+in the XM; the JSON/MIDI sources and original WAV mix remain reference versions.
+
+Proof v03 is the current approved direction (commit `0706588`). Full sketch
+v01 has been played through; musical feedback and milestone 3 acceptance remain
+pending. Mix candidate v01 has rendered and its draft delivery package is prepared;
+full mix playback completed successfully. Listening acceptance and runtime/visual timing
+integration remain open. Milestones 1 and 2 are complete. The approved dark synth
+palette, restrained motif, dynamics, and grunge-influenced chord movement remain
+the foundation.
 
 This is the working plan for an original Proteus soundtrack. Update it as we listen,
 choose directions, and complete milestones. The existing demo timeline does not
@@ -47,14 +55,20 @@ Core ingredients:
 
 | Approximate time | Movement | Musical role | Mood |
 |---|---|---|---|
-| 0:00–0:25 | The signal | Distant choir, drone, bells, unresolved motif fragment | Mystery and scale |
-| 0:25–0:55 | Awakening | Arpeggio, bass and percussion enter; strings answer | Discovery and motion |
-| 0:55–1:30 | First ascent | First full heroic theme with broad lead and driving drums | Confidence and exhilaration |
-| 1:30–1:55 | Something goes wrong | Broken rhythm, chromatic harmony, low brass, fragmented theme | Threat and instability |
-| 1:55–2:25 | Suspended world | Sparse solo voice, spacious harmony, lyrical theme | Wonder and vulnerability |
-| 2:25–2:55 | The gathering | Returning pulse, marching percussion, rising strings | Purpose and anticipation |
-| 2:55–3:35 | Apotheosis | Simple motif, full weight, choir, and harmonic pressure | Overwhelming dark grandeur |
-| 3:35–3:55 | Afterglow | Forces recede; the opening signal returns | Release and lingering tension |
+| 0:00–0:24 | The signal | Distant drone, open fifths, and sparse three-note motif | Mystery and scale |
+| 0:24–0:56 | Awakening | Slow chord changes; pulse gradually takes shape | Discovery and motion |
+| 0:56–1:28 | First weight | First full pressure cycle, restrained in register and choir | Confidence with unease |
+| 1:28–1:56 | Fracture | Interrupted pulse, chromatic roots, altered motif | Threat and instability |
+| 1:56–2:28 | Suspended world | Spacious centre with two slow signal statements | Wonder and vulnerability |
+| 2:28–2:55 | The gathering | Familiar chords return; density and weight rise | Purpose and anticipation |
+| 2:55–2:56 | Held breath | Parts release before the final entrance | Anticipation |
+| 2:56–3:36 | Full return / widening | Largest cycle; upper signal register and four-voice choir enter at 3:12 | Dark grandeur |
+| 3:36–3:52 | Afterglow | Final impact, then the opening signal retreats | Release and lingering tension |
+| 3:52–4:00 | Release | Instrument and hall decay | Closure |
+
+These are the authored full-v01 section boundaries at 120 BPM. The audio file is
+4:00 including its eight-second release; composed material ends at 3:52. Treat the
+guide as provisional until the full arrangement has been heard and accepted.
 
 Sections should have clear musical boundaries and meaningful accents for eventual
 visual choreography. Phrase lengths, tempo, key, and metre remain composition choices;
@@ -72,11 +86,12 @@ where the available tools permit. Listening feedback determines whether the musi
 achieves the intended effect. Tool setup and successful rendering alone do not
 establish musical quality.
 
-Prefer MIDI composition in a DAW with sampled and synthesized instruments, then
-rendered audio for the demo. REAPER is a candidate, not a committed dependency.
-Choose the actual authoring and rendering tools after checking local availability.
-Keep the arrangement editable and repeatable; MIDI alone does not preserve instrument
-patches, effects, or mix settings, so retain those with the project.
+The current authoring handoff is FastTracker II Clone, requested by the user after
+the full mix. The initial JSON/MIDI and macOS render workflow remains available to
+reproduce that reference. Continue the composition in versioned XM files; preserve
+the embedded samples and instrument envelopes with the arrangement. The rendered
+mix remains the timbral reference because the XM uses sampled synth snapshots and
+has no live shared hall.
 
 ## Milestones
 
@@ -189,6 +204,15 @@ short sketch before spending time orchestrating the full song if those are weak.
 - Compose transitions and an intentional ending.
 - Establish the tempo map, phrase lengths, section names, and major accents.
 
+Current draft: [full-v01.json](../soundtrack/alternate/full-v01.json), generated
+from approved proof v03 by `compose_full.py`; its four-minute render and cue-level
+measurements are in `build/soundtrack/full-v01/`. The score contains 844 notes on
+the same six tracks/patches and mix as v03, with the full arc and revised ending
+velocities. This is an authored sketch, not an accepted composition: listening
+feedback is still required before marking milestone 3 complete. Initial full
+playback and revised-ending playback both completed with exit 0; playback
+completion does not record musical acceptance.
+
 Done when: the entire piece works as a continuous listening experience, every section
 has a distinct mood, and the finale feels larger than the first peak.
 
@@ -201,6 +225,14 @@ has a distinct mood, and the finale feels larger than the first peak.
 - Preserve melodic clarity and the difference between intimate and massive passages.
 - Check the complete render for clipping, accidental clicks, and obscured melody.
 - Audition on headphones and speakers where available; record any listening limitations.
+
+Current mix candidate: [mix-v01.json](../soundtrack/alternate/mix-v01.json) keeps
+full-v01's notes, timing, patches, track volumes, master gain, and reverb. It adds
+parallel midband tanh saturation before the shared hall, with dry low end retained:
+deep drone drive 20 dB / wet mix 0.30 over 160–3000 Hz, and growling pulse drive
+24 dB / wet mix 0.40 over 180–3800 Hz. The render is complete and technical checks
+passed; full-length playback completed with exit 0. No perceptual, headphone, or speaker assessment
+has been recorded yet.
 
 Done when: a complete stereo render holds up without visuals and has the intended
 dynamic range. Keep the editable project and instrument settings with the revision.
@@ -218,6 +250,12 @@ dynamic range. Keep the editable project and instrument settings with the revisi
   spectrum analysis, and ending behavior against the soundtrack.
 - Update controls/workflow documentation and run the project build, CTest, and a
   manual audiovisual demo check when integration changes code or playback.
+
+The draft package from mix-v01 is prepared with `prepare_delivery.py`. It contains
+the WAV, MIDI, project, render manifest, cue sheet, and delivery manifest. The cue
+sheet has 11 sections spanning the full 240 seconds; verified manifest hashes bind
+the cues to the audio. Musical acceptance is pending. Runtime playback and visual
+timing integration are also pending.
 
 Done when: the demo follows the accepted composition and musical cues stay aligned
 through playback and seeking.
@@ -240,14 +278,16 @@ does not require regenerating or replacing them.
 - [x] Establish tools and palette.
 - [x] Produce the short proof of direction.
 - [x] Assess and refine the proof from listening feedback (v03 approved).
-- [ ] Complete the full composition sketch.
-- [ ] Complete orchestration and mix.
-- [ ] Integrate the accepted soundtrack with the demo.
+- [x] Author and render the complete four-minute composition sketch (full-v01).
+- [x] Prepare the grit mix candidate and validate its draft delivery package (mix-v01).
+- [ ] Record listening feedback and approval for the full composition and mix.
+- [ ] Integrate the accepted soundtrack with the demo and verify runtime/visual timing.
 
-Next action: expand approved proof v03 into the approximately four-minute arc,
-retaining the six voices, simple signal, and E5–C5–F5–E5 harmonic backbone. Develop
-the threatening variation, quiet space, transitions, and two distinct peaks.
-Extra dirt/grit remains a mix-stage task.
+Next action: continue editing the full song in FastTracker, using mix-v01 as the
+sound reference, and record timestamped feedback before
+treating the candidate delivery as accepted. The full sketch retains the six
+voices, simple signal, and E5–C5–F5–E5 harmonic backbone, with a chromatic fracture,
+quiet centre, restrained first weight, and larger final return.
 
 Open choices: DAW/piano-roll authoring, final instruments, composition tempo/key,
 final duration, and delivery format. Resolve them when their milestone needs them.
@@ -526,6 +566,113 @@ audio. Section markers continue to export to MIDI.
   completed successfully. Debug configure/build and all 16 CTest cases passed.
 - Listening feedback (2026-09-21): the user approved this part and requested a
   commit, then continued work on the music.
+- Approval commit: `0706588`.
 - Decision: v03 is the accepted proof of direction and the baseline for milestone
   3. Preserve this revision while expanding into the full composition. Its approval
   covers the foundation, not the later full arrangement or final mix.
+
+### Full sketch v01 — 2026-09-22
+
+- Source: [full-v01.json](../soundtrack/alternate/full-v01.json), authored from
+  approved proof v03 by [compose_full.py](../soundtrack/alternate/compose_full.py).
+  The render, MIDI, source snapshot, manifest, and section measurements are in
+  `build/soundtrack/full-v01/`. The source recipe refuses to overwrite an existing
+  score; preserve this revision and write future drafts to a new filename.
+- Arrangement: 0:00 signal; 0:24 awakening; 0:56 first weight; 1:28 fracture;
+  1:56 suspended world; 2:28 gathering; 2:55 held breath; 2:56 full return;
+  3:12 widening; 3:36 afterglow; 3:52 release. Musical events end at 3:52 and
+  the eight-second release makes the WAV exactly 4:00.
+- Changes: expanded the approved three-note signal and E5–C5–F5–E5 power-chord
+  backbone into the complete arc, including a chromatic fracture, quiet centre,
+  two pressure peaks, upper-register/choir widening, and intentional retreat.
+  The six track patches and mix settings carry over from proof v03; final-return
+  note velocities were updated in this revision.
+- Original render command from the repository root:
+
+  ```sh
+  python3 soundtrack/alternate/render.py soundtrack/alternate/full-v01.json \
+    --output build/soundtrack/full-v01 --name soundtrack
+  afplay build/soundtrack/full-v01/soundtrack.wav
+  ```
+
+  The existing output directory is populated; repeat renders need a fresh output
+  path, for example `build/soundtrack/full-v01-rerender`.
+
+  Section markers are MIDI markers. For this fixed 120 BPM score, one beat is
+  0.5 seconds; the source `sections` and `harmony` arrays include seconds for
+  timestamp lookup. The `section-levels.json` report is additional local QA, not
+  output generated by `render.py`.
+- Technical QA: 240.0-second stereo render, peak −4.42 dBFS, whole-file RMS
+  −22.03 dBFS, zero clipped samples. Section measurements show the suspended
+  world at −31.61 dBFS RMS and full return at −17.51 dBFS RMS. Native MIDI import
+  read all 844 notes across six instrument tracks plus the marker track. Updated
+  final render was checked clean. All 16 CTest cases passed.
+- Listening feedback: initial full playback and revised-ending playback both
+  completed with exit 0. Listening assessment and musical acceptance remain pending.
+- Decision: milestone 3 is authored but not accepted. Keep milestone 4 mixing and
+  milestone 5 integration open; neither musical acceptance nor final mix/integration
+  is complete.
+
+### Mix candidate v01 and draft delivery — 2026-09-22
+
+- Source: [mix-v01.json](../soundtrack/alternate/mix-v01.json), based on full-v01.
+  All 844 notes, timings, patches, track settings, master gain, and reverb are
+  preserved. The MIDI export is byte-identical to full-v01. A rerender of approved
+  proof v03 with the updated renderer also matched its baseline WAV byte for byte.
+- Processing: parallel midband tanh saturation is applied before the shared hall,
+  retaining the dry low end. Deep drone: 20 dB drive, 0.30 wet, 160–3000 Hz band.
+  Growling pulse: 24 dB drive, 0.40 wet, 180–3800 Hz band.
+- Render command, from repository root (use a new output directory for rerenders):
+
+  ```sh
+  python3 soundtrack/alternate/render.py soundtrack/alternate/mix-v01.json \
+    --output build/soundtrack/mix-v01 --name soundtrack
+  afplay build/soundtrack/mix-v01/soundtrack.wav
+  ```
+
+- Draft delivery command (also choose a new output directory when rerunning):
+
+  ```sh
+  python3 soundtrack/alternate/prepare_delivery.py \
+    --render build/soundtrack/mix-v01 \
+    --output build/soundtrack/delivery-mix-v01
+  ```
+
+  The package contains `soundtrack.wav`, `soundtrack.mid`, `project.json`,
+  `render-manifest.json`, `cue-sheet.json`, and `delivery-manifest.json`. The 11
+  cues cover all 240 seconds / 11,520,000 audio frames; delivery hashes were
+  verified and bind cue data to the audio.
+- Technical checks: 240 seconds, peak −4.39 dBFS, RMS −22.14 dBFS, zero clipped
+  samples, zero opening sample, and silent final second. Quiet centre RMS is
+  −31.61 dBFS; first peak RMS −21.08 dBFS; full return (176–192 s) −18.23 dBFS;
+  widening (192–216 s) −17.34 dBFS.
+- Playback check: full mix `afplay` completed with exit 0. No
+  perceptual assessment or headphone/speaker review is recorded.
+- Project checks: current build passed. CTest passed 14 of 16; the two GPU checks
+  could not create a GLFW graphics context because no monitor was available, even
+  outside the sandbox. An earlier full 16/16 CTest run remains recorded with the
+  full-v01 verification above.
+- Decision: milestone 4 has a rendered, technically checked mix candidate awaiting
+  listening acceptance. A draft delivery package is prepared; milestone 5 runtime
+  playback and visual timing integration remain pending.
+
+### FastTracker editing handoff — 2026-09-22
+
+- User decision: continue editing the full song in FastTracker II Clone. The
+  editable file is `soundtrack/alternate/fasttracker/v01/below-the-surface.xm`;
+  the adjacent [guide](../soundtrack/alternate/fasttracker/README.md) maps its
+  channels, instrument slots, and section patterns.
+- Transfer: all 844 note attacks, ten instruments with 55 embedded samples,
+  22 channels, and 33 patterns. The eleven section boundaries remain exact at
+  120 BPM / speed 6. Note attacks and melodic key-offs round to the nearest tick
+  (at most 10.42 ms); drums use complete one-shots. A silent end pattern follows
+  the four-minute arrangement.
+- Sound: the synth grit is sampled, filters use a fixed middle-of-song setting,
+  stereo samples are folded to mono and panned, and the shared hall is omitted.
+  This is an editable adaptation; keep mix-v01 as the sound reference. FastTracker
+  edits become the working composition and do not update the old JSON/MIDI files.
+- Verification: independent XM inspection confirmed the notes, key-offs, cue
+  positions, and sample data. The bundled decoder rendered the full song with
+  no clipping and a silent ending hold. The XM opened in FastTracker and was
+  visually checked; manual playback of the rendered final minute completed.
+  Debug configure/build and all 16 CTest cases passed.

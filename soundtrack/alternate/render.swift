@@ -6,10 +6,18 @@ struct Track: Decodable {
     let name: String
     let program: UInt8?
     let synth: SynthPatch?
+    let postprocess: SynthPostprocess?
     let channel: UInt8
     let volume: UInt8
     let pan: UInt8
     let notes: [[Double]] // beat, duration in beats, MIDI pitch, velocity
+}
+
+struct SynthPostprocess: Decodable {
+    let drive_db: Double
+    let wet_mix: Double
+    let low_hz: Double
+    let high_hz: Double
 }
 
 // Original oscillator patches; settings live in the project, with no sample bank dependency.
@@ -89,6 +97,27 @@ func synthesize(_ track: Track, project: Project, format: AVAudioFormat) -> AVAu
                     sum += ((1 - patch.sub_mix) * filter2 + patch.sub_mix * sub) * envelope
                 }
                 data[side][start + frame] += Float(sum * 0.5 * scale)
+            }
+        }
+    }
+    if let postprocess = track.postprocess {
+        // Parallel mid-band saturation pass: keep the dry signal, especially its low end.
+        let drive = pow(10, postprocess.drive_db / 20)
+        let rate = project.sample_rate
+        for side in 0..<2 {
+            var highBand = 0.0
+            var lowBand = 0.0
+            var difference = 0.0
+            let highCoefficient = 1 - exp(-2 * .pi * postprocess.high_hz / rate)
+            let lowCoefficient = 1 - exp(-2 * .pi * postprocess.low_hz / rate)
+            for frame in 0..<length {
+                let dry = Double(data[side][frame])
+                highBand += highCoefficient * (dry - highBand)
+                lowBand += lowCoefficient * (dry - lowBand)
+                let band = highBand - lowBand
+                let saturated = tanh(drive * band) / drive
+                difference += highCoefficient * ((saturated - band) - difference)
+                data[side][frame] = Float(dry + postprocess.wet_mix * difference)
             }
         }
     }

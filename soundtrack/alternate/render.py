@@ -22,6 +22,10 @@ def validate(project):
     def number(value, low, high):
         return isinstance(value, (float, int)) and math.isfinite(value) and low <= value <= high
 
+    def postprocess_number(value, low, high):
+        return (type(value) in (float, int) and math.isfinite(value)
+                and low <= value <= high)
+
     for field, low, high in [('bpm', 20, 300), ('beats', 1, 4096), ('tail_seconds', 0.1, 30),
                              ('master_gain', 0.001, 1), ('reverb_percent', 0, 100)]:
         if not number(project[field], low, high):
@@ -46,7 +50,21 @@ def validate(project):
                     raise ValueError(f'invalid synth {field} in {track["name"]}')
             if patch['release'] > project['tail_seconds']:
                 raise ValueError('tail_seconds must accommodate the synth release')
+            if 'postprocess' in track:
+                postprocess = track['postprocess']
+                if not isinstance(postprocess, dict):
+                    raise ValueError(f'postprocess must be an object in {track["name"]}')
+                ranges = [('drive_db', 0, 36), ('wet_mix', 0, 1),
+                          ('low_hz', 30, 1000), ('high_hz', 500, 8000)]
+                for field, low, high in ranges:
+                    if (field not in postprocess
+                            or not postprocess_number(postprocess[field], low, high)):
+                        raise ValueError(f'invalid postprocess {field} in {track["name"]}')
+                if postprocess['low_hz'] >= postprocess['high_hz']:
+                    raise ValueError(f'postprocess low_hz must be below high_hz in {track["name"]}')
         else:
+            if 'postprocess' in track:
+                raise ValueError(f'postprocess requires a custom synth in {track["name"]}')
             keys.append('program')
         for key in keys:
             maximum = 15 if key == 'channel' else 127
