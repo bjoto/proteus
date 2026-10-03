@@ -200,13 +200,7 @@ bool waterfront_draw(
 {
     WaterfrontSceneFrame frame;
     waterfront_scene_evaluate(time, short_route, &frame);
-    for (int y = 0; y < height; ++y) {
-        int band = y * 7 / height;
-        Color sky = { (unsigned char)(20 + band * 5), (unsigned char)(29 + band * 5),
-            (unsigned char)(52 + band * 6), 255 };
-        for (int x = 0; x < width; ++x)
-            pixels[y * width + x] = sky;
-    }
+    waterfront_sky_draw(pixels, width, height, frame.camera);
     if (!renderer3d_begin(
             r, pixels, width, height, frame.camera, (Vector3) { -0.4f, 0.85f, -0.35f }))
         return false;

@@ -124,20 +124,6 @@ failed:
     return false;
 }
 
-static void gpu_draw_sky(RenderTexture2D target)
-{
-    BeginTextureMode(target);
-    ClearBackground(BLACK);
-    for (int y = 0; y < target.texture.height; ++y) {
-        float t = target.texture.height > 1 ? (float)y / (float)(target.texture.height - 1) : 0;
-        DrawRectangle(0, y, target.texture.width, 1,
-            (Color) { (unsigned char)roundf(Lerp(20, 50, t)),
-                (unsigned char)roundf(Lerp(29, 59, t)), (unsigned char)roundf(Lerp(52, 88, t)),
-                255 });
-    }
-    EndTextureMode();
-}
-
 static void gpu_draw_frame(
     WaterfrontGpuScene *gpu_scene, GpuFramebuffer framebuffer, float scene_time)
 {
@@ -145,7 +131,6 @@ static void gpu_draw_frame(
     waterfront_scene_evaluate(scene_time, true, &frame);
     RenderTexture2D target
         = framebuffer.supersampled.id != 0 ? framebuffer.supersampled : framebuffer.target;
-    gpu_draw_sky(target);
     BeginTextureMode(target);
     waterfront_gpu_scene_draw(gpu_scene, &frame, target.texture.width, target.texture.height);
     EndTextureMode();

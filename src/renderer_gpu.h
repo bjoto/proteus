@@ -59,6 +59,8 @@ typedef struct {
     Shader shader;
     Shader shadow_shader;
     Shader water_shader;
+    Shader sky_shader;
+    Texture2D sky_texture;
     RenderTexture2D shadow_map;
     RenderTexture2D reflection;
     Matrix light_view_projection;

@@ -6,6 +6,89 @@
 
 #include "../assets/geometry/eriksberg/geometry.h"
 
+static Vector3 sky_mix(Vector3 a, Vector3 b, float t)
+{
+    t = Clamp(t, 0, 1);
+    return Vector3Lerp(a, b, t * t * (3 - 2 * t));
+}
+
+Image waterfront_sky_image(void)
+{
+    enum { WIDTH = 1024, HEIGHT = 512 };
+    static Color pixels[WIDTH * HEIGHT];
+    static bool ready;
+    if (!ready) {
+        for (int y = 0; y < HEIGHT; ++y) {
+            float elevation = 1 - 2 * ((float)y + .5f) / HEIGHT;
+            for (int x = 0; x < WIDTH; ++x) {
+                float azimuth = (((float)x + .5f) / WIDTH - .5f) * 2 * PI;
+                float warmth = .5f + .5f * cosf(azimuth - .3f);
+                Vector3 horizon = { 119 + 43 * warmth, 93 + 15 * warmth, 116 - 12 * warmth };
+                Vector3 violet = { 76, 64, 100 };
+                Vector3 indigo = { 28, 34, 65 };
+                Vector3 color = elevation < .16f
+                    ? sky_mix(horizon, violet, elevation / .16f)
+                    : sky_mix(violet, indigo, (elevation - .16f) / .38f);
+                color = sky_mix(color, (Vector3) { 15, 23, 46 }, (elevation - .54f) / .46f);
+                // Small, fixed moon toward the opening street view; no screen-space drift.
+                float moon_x = remainderf(azimuth - 3.04f, 2 * PI) * .95f;
+                float moon_y = elevation - .32f;
+                float moon_distance = sqrtf(moon_x * moon_x + moon_y * moon_y);
+                color = sky_mix(color, (Vector3) { 147, 145, 163 },
+                    .12f * (1 - Clamp(moon_distance / .065f, 0, 1)));
+                color = sky_mix(color, (Vector3) { 222, 214, 192 },
+                    Clamp((.017f - moon_distance) / .003f, 0, 1));
+                // Broken, elongated cloud banks wrap seamlessly around the panorama.
+                for (int layer = 0; layer < 3; ++layer) {
+                    float phase = azimuth + layer * 1.7f;
+                    float center
+                        = .095f + layer * .115f + .016f * sinf(phase * 3) + .008f * sinf(phase * 7);
+                    float thickness = .009f + .009f * (.5f + .5f * sinf(phase * 5));
+                    float edge = (elevation - center) / thickness;
+                    float coverage
+                        = Clamp((sinf(phase * 2) + .45f * sinf(phase * 5) - .05f) * 2, 0, 1);
+                    float density = (1 - Clamp(fabsf(edge), 0, 1)) * coverage;
+                    Vector3 cloud = sky_mix((Vector3) { 43, 40, 64 }, (Vector3) { 141, 94, 102 },
+                        Clamp(-edge, 0, 1) * warmth * .7f);
+                    color = sky_mix(color, cloud, density * .85f);
+                }
+                // Subtle ordered grain at panorama resolution, fixed to the sky itself.
+                float grain = ((x & 1) == (y & 1)) ? .6f : -.6f;
+                pixels[y * WIDTH + x] = (Color) { (unsigned char)roundf(color.x + grain),
+                    (unsigned char)roundf(color.y + grain), (unsigned char)roundf(color.z + grain),
+                    255 };
+            }
+        }
+        ready = true;
+    }
+    return (Image) { .data = pixels,
+        .width = WIDTH,
+        .height = HEIGHT,
+        .mipmaps = 1,
+        .format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 };
+}
+
+void waterfront_sky_draw(Color *pixels, int width, int height, View3D camera)
+{
+    Image sky = waterfront_sky_image();
+    const Color *colors = sky.data;
+    Vector3 forward = Vector3Normalize(Vector3Subtract(camera.target, camera.position));
+    Vector3 right = Vector3Normalize(Vector3CrossProduct(camera.up, forward));
+    Vector3 up = Vector3CrossProduct(forward, right);
+    float scale = 2 * tanf(camera.vertical_fov * .5f) / height;
+    for (int y = 0; y < height; ++y) {
+        Vector3 row = Vector3Add(forward, Vector3Scale(up, (height * .5f - y - .5f) * scale));
+        for (int x = 0; x < width; ++x) {
+            Vector3 ray = Vector3Normalize(
+                Vector3Add(row, Vector3Scale(right, (x + .5f - width * .5f) * scale)));
+            float u = atan2f(ray.x, ray.z) / (2 * PI) + .5f;
+            int sx = (int)(u * sky.width) % sky.width;
+            int sy = (int)Clamp((1 - ray.y) * .5f * sky.height, 0, sky.height - 1);
+            pixels[y * width + x] = colors[sy * sky.width + sx];
+        }
+    }
+}
+
 typedef struct {
     Vector3 position;
     Vector3 target;

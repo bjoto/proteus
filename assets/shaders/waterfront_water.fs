@@ -35,5 +35,5 @@ void main()
     vec3 viewDirection = normalize(cameraPosition - fragWorldPosition);
     float viewDot = max(0.0, dot(normalize(fragWorldNormal), viewDirection));
     float reflectionAmount = mix(0.10, 0.42, (1.0 - viewDot) * (1.0 - viewDot));
-    finalColor = vec4(mix(base, reflection * vec3(0.45, 0.56, 0.72), reflectionAmount), 1.0);
+    finalColor = vec4(mix(base, reflection * vec3(0.65, 0.62, 0.72), reflectionAmount), 1.0);
 }

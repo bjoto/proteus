@@ -508,6 +508,17 @@ static Shader load_water_shader(const char *fragment_shader_path)
     return LoadShader(vertex_shader_path, fragment_path);
 }
 
+static Shader load_sky_shader(const char *fragment_shader_path)
+{
+    const char *slash = strrchr(fragment_shader_path, '/');
+    if (slash == NULL || (size_t)(slash - fragment_shader_path) > 900)
+        return (Shader) { 0 };
+    char path[1024];
+    snprintf(path, sizeof(path), "%.*s/waterfront_sky.fs", (int)(slash - fragment_shader_path),
+        fragment_shader_path);
+    return LoadShader(NULL, path);
+}
+
 static bool create_shadow_map(RenderTexture2D *target, int size)
 {
     *target = (RenderTexture2D) { 0 };
@@ -545,10 +556,16 @@ bool waterfront_gpu_scene_init(WaterfrontGpuScene *scene, const char *fragment_s
     scene->shader = load_city_shader(fragment_shader_path);
     scene->shadow_shader = load_shadow_shader(fragment_shader_path);
     scene->water_shader = load_water_shader(fragment_shader_path);
+    scene->sky_shader = load_sky_shader(fragment_shader_path);
     if (!IsShaderValid(scene->shader) || scene->shader.id == rlGetShaderIdDefault()
         || !IsShaderValid(scene->shadow_shader) || scene->shadow_shader.id == rlGetShaderIdDefault()
-        || !IsShaderValid(scene->water_shader) || scene->water_shader.id == rlGetShaderIdDefault())
+        || !IsShaderValid(scene->water_shader) || scene->water_shader.id == rlGetShaderIdDefault()
+        || !IsShaderValid(scene->sky_shader) || scene->sky_shader.id == rlGetShaderIdDefault())
         goto failed;
+    scene->sky_texture = LoadTextureFromImage(waterfront_sky_image());
+    if (!IsTextureValid(scene->sky_texture))
+        goto failed;
+    SetTextureFilter(scene->sky_texture, TEXTURE_FILTER_POINT);
     scene->city_material = LoadMaterialDefault();
     scene->life_material = LoadMaterialDefault();
     scene->shadow_material = LoadMaterialDefault();
@@ -876,11 +893,11 @@ static void set_lighting_uniforms(WaterfrontGpuScene *scene)
 
 static void set_atmosphere_uniforms(WaterfrontGpuScene *scene, Vector3 camera_position)
 {
-    static const float fog_color[] = { 50.0f / 255.0f, 59.0f / 255.0f, 88.0f / 255.0f };
+    static const float fog_color[] = { 136.0f / 255.0f, 100.0f / 255.0f, 113.0f / 255.0f };
     float camera[] = { camera_position.x, camera_position.y, camera_position.z };
     float fog_start = 145.0f;
     float fog_end = 620.0f;
-    float fog_opacity = .76f;
+    float fog_opacity = .62f;
     int atmosphere_enabled = scene->atmosphere_enabled;
     int location = GetShaderLocation(scene->shader, "cameraPosition");
     if (location >= 0)
@@ -1027,15 +1044,23 @@ static void restore_framebuffer(unsigned int framebuffer, int width, int height)
     rlSetFramebufferHeight(height);
 }
 
-static void draw_reflection_sky(RenderTexture2D target)
+static void draw_sky(const WaterfrontGpuScene *scene, View3D camera, int width, int height)
 {
-    for (int y = 0; y < target.texture.height; ++y) {
-        float t = target.texture.height > 1 ? (float)y / (float)(target.texture.height - 1) : 0;
-        DrawRectangle(0, y, target.texture.width, 1,
-            (Color) { (unsigned char)roundf(Lerp(20, 50, t)),
-                (unsigned char)roundf(Lerp(29, 59, t)), (unsigned char)roundf(Lerp(52, 88, t)),
-                255 });
-    }
+    Vector3 forward = Vector3Normalize(Vector3Subtract(camera.target, camera.position));
+    Vector3 right = Vector3Normalize(Vector3CrossProduct(forward, camera.up));
+    Vector3 up = Vector3CrossProduct(right, forward);
+    float scale[]
+        = { tanf(camera.vertical_fov * .5f) * width / height, tanf(camera.vertical_fov * .5f) };
+    Shader shader = scene->sky_shader;
+    SetShaderValue(shader, GetShaderLocation(shader, "skyForward"), &forward, SHADER_UNIFORM_VEC3);
+    SetShaderValue(shader, GetShaderLocation(shader, "skyRight"), &right, SHADER_UNIFORM_VEC3);
+    SetShaderValue(shader, GetShaderLocation(shader, "skyUp"), &up, SHADER_UNIFORM_VEC3);
+    SetShaderValue(shader, GetShaderLocation(shader, "skyScale"), scale, SHADER_UNIFORM_VEC2);
+    BeginShaderMode(shader);
+    DrawTexturePro(scene->sky_texture,
+        (Rectangle) { 0, 0, scene->sky_texture.width, scene->sky_texture.height },
+        (Rectangle) { 0, 0, width, height }, (Vector2) { 0 }, 0, WHITE);
+    EndShaderMode();
 }
 
 static void draw_ground(const WaterfrontGpuScene *scene, Material material)
@@ -1087,7 +1112,11 @@ static void render_reflection(WaterfrontGpuScene *scene, const WaterfrontSceneFr
     int previous_height = rlGetFramebufferHeight();
     BeginTextureMode(scene->reflection);
     ClearBackground(BLACK);
-    draw_reflection_sky(scene->reflection);
+    View3D sky_camera = frame->camera;
+    sky_camera.position = camera.position;
+    sky_camera.target = camera.target;
+    sky_camera.up = camera.up;
+    draw_sky(scene, sky_camera, scene->reflection.texture.width, scene->reflection.texture.height);
     BeginMode3D(camera);
     rlSetMatrixProjection(MatrixPerspective(frame->camera.vertical_fov,
         (float)scene->reflection.texture.width / (float)scene->reflection.texture.height,
@@ -1193,6 +1222,8 @@ void waterfront_gpu_scene_draw(
         render_reflection(scene, frame);
     }
     set_atmosphere_uniforms(scene, frame->camera.position);
+    ClearBackground(BLACK);
+    draw_sky(scene, frame->camera, width, height);
     BeginMode3D(camera);
     rlSetMatrixProjection(MatrixPerspective(frame->camera.vertical_fov,
         (float)width / (float)height, frame->camera.near_plane, frame->camera.far_plane));
@@ -1312,6 +1343,10 @@ void waterfront_gpu_scene_destroy(WaterfrontGpuScene *scene)
         scene->water_material.shader.id = rlGetShaderIdDefault();
         UnloadMaterial(scene->water_material);
     }
+    if (scene->sky_texture.id != 0)
+        UnloadTexture(scene->sky_texture);
+    if (scene->sky_shader.id != 0 && scene->sky_shader.id != rlGetShaderIdDefault())
+        UnloadShader(scene->sky_shader);
     if (scene->roof_texture.id != 0)
         UnloadTexture(scene->roof_texture);
     if (scene->shadow_map.id != 0)

@@ -213,20 +213,6 @@ static bool parse_options(int argc, char **argv, FixtureOptions *options)
     return true;
 }
 
-static void draw_city_sky(RenderTexture2D target)
-{
-    BeginTextureMode(target);
-    ClearBackground(BLACK);
-    for (int y = 0; y < target.texture.height; ++y) {
-        float t = target.texture.height > 1 ? (float)y / (float)(target.texture.height - 1) : 0;
-        DrawRectangle(0, y, target.texture.width, 1,
-            (Color) { (unsigned char)roundf(Lerp(20, 50, t)),
-                (unsigned char)roundf(Lerp(29, 59, t)), (unsigned char)roundf(Lerp(52, 88, t)),
-                255 });
-    }
-    EndTextureMode();
-}
-
 static bool verify_facade_mapping(const Mesh *mesh)
 {
     int families[WATERFRONT_FACADE_COUNT] = { 0 };
@@ -443,7 +429,6 @@ static bool draw_city(RenderTexture2D target, WaterfrontGpuScene *scene, Fixture
     }
     WaterfrontSceneFrame frame;
     waterfront_scene_evaluate(options.time, true, &frame);
-    draw_city_sky(target);
     BeginTextureMode(target);
     waterfront_gpu_scene_draw(scene, &frame, target.texture.width, target.texture.height);
     EndTextureMode();

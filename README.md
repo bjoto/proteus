@@ -108,7 +108,7 @@ ctest --test-dir build -L gpu --output-on-failure
 The review command captures the `cube` scene at local times 0, 1.7, 2.7, 5, 7.5, 10, and 15 seconds
 with both renderers. It writes `build/gpu-review/contact-sheet.png` (CPU | GPU | amplified visual
 diff), all source captures, and `manifest.json` with the build and OpenGL renderer details. It checks
-dimensions, city coverage, sky-band presence/order, and broad lit moving-object regions with
+dimensions, city coverage, exposed dusk sky, and broad lit moving-object regions with
 tolerances; it never compares CPU/GPU image hashes. The GPU fixture in the same command checks
 render target dimensions, orientation, depth, winding, normal submission, and shader rejection.
 
@@ -125,7 +125,11 @@ the light-frustum depth map for review:
 ./build/gpu_fixture --city --time 5 --shadow-map --screenshot build/shadow-depth.png
 ```
 
-Distance atmosphere is also enabled by default. Compare its cool dusk haze at the same scene time
+The sky fades from indigo through violet to a peach sunset horizon, with dark cloud streaks
+and a small pale moon. CPU and GPU share a fixed world panorama, so the sky follows camera
+rotation naturally; GPU water reflections use the same sky through the mirrored camera.
+
+Distance atmosphere is also enabled by default. Compare its muted rose dusk haze at the same scene time
 with `--gpu-atmosphere off` in the demo or `--atmosphere off` in the fixture.
 
 The GPU water plane uses a 160x120 reflected scene pass by default. Compare it with

@@ -44,13 +44,6 @@ static int gpu_storyboard(
         waterfront_scene_evaluate(fminf(duration, time + (float)i / 60), short_route, &frame);
         BeginTextureMode(target);
         ClearBackground(BLACK);
-        for (int y = 0; y < height; ++y) {
-            float t = (float)y / (height - 1);
-            DrawRectangle(0, y, width, 1,
-                (Color) { (unsigned char)roundf(Lerp(20, 50, t)),
-                    (unsigned char)roundf(Lerp(29, 59, t)), (unsigned char)roundf(Lerp(52, 88, t)),
-                    255 });
-        }
         waterfront_gpu_scene_draw(&scene, &frame, width, height);
         EndTextureMode();
         if (screenshot && i == 0) {

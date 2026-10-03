@@ -101,50 +101,42 @@ def semantic_check(path, renderer, time):
     if (width, height) != (WIDTH, HEIGHT):
         failures.append(f"dimensions are {width}x{height}, expected {WIDTH}x{HEIGHT}")
         return failures, {}
-    sky_counts = [0] * 7
-    sky_row_sums = [0] * 7
-    city_pixels = 0
+    # Trace the exposed dusk sky from the upper edge. Restrict its colour envelope to
+    # indigo/violet/peach and the pale moon; disconnected city lights are not sky.
+    def sky_color(index):
+        r, g, b = pixels[index * 4 : index * 4 + 3]
+        dusk = 14 <= r <= 165 and 22 <= g <= 110 and 45 <= b <= 118
+        dusk = dusk and b >= g + 8 and -8 <= r - g <= 58
+        moon = 140 <= r <= 224 and 135 <= g <= 216 and 145 <= b <= 194
+        return dusk or moon
+
+    sky = set()
+    pending = [x for x in range(width) if sky_color(x)]
+    while pending:
+        index = pending.pop()
+        if index in sky or not sky_color(index):
+            continue
+        sky.add(index)
+        x, y = index % width, index // width
+        if x > 0:
+            pending.append(index - 1)
+        if x + 1 < width:
+            pending.append(index + 1)
+        if y > 0:
+            pending.append(index - width)
+        if y + 1 < height:
+            pending.append(index + width)
+    city_pixels = width * height - len(sky)
     bright_lower_pixels = 0
-    for y in range(height):
-        for x in range(width):
-            offset = (y * width + x) * 4
-            pixel = tuple(pixels[offset : offset + 3])
-            # GPU atmosphere uses a continuous sky gradient; CPU retains seven bands.
-            # Compare the expected row colour before counting non-sky coverage. Looking
-            # for CPU band colours in the GPU image misclassified almost all of its sky.
-            if renderer == "gpu":
-                expected = tuple(int(base + 30 * y / (height - 1) + 0.5)
-                                 for base in (20, 29, 52))
-                if pixel == expected:
-                    band = min(6, int(7 * y / height))
-                    sky_counts[band] += 1
-                    sky_row_sums[band] += y
-                else:
-                    city_pixels += 1
-                if y >= height // 3 and max(pixel) >= 145 and pixel[0] >= pixel[2]:
-                    bright_lower_pixels += 1
-                continue
-            for band in range(7):
-                if pixel == (20 + band * 5, 29 + band * 5, 52 + band * 6):
-                    sky_counts[band] += 1
-                    sky_row_sums[band] += y
-                    break
-            else:
-                city_pixels += 1
-            if y >= height // 3 and max(pixel) >= 145 and pixel[0] >= pixel[2]:
-                bright_lower_pixels += 1
-    visible_bands = sum(count > 12 for count in sky_counts)
-    mean_rows = [sky_row_sums[band] / count for band, count in enumerate(sky_counts) if count > 12]
-    sky_ordered = all(a < b for a, b in zip(mean_rows, mean_rows[1:]))
+    for index in range(width * (height // 3), width * height):
+        pixel = pixels[index * 4 : index * 4 + 3]
+        if index not in sky and max(pixel) >= 145 and pixel[0] >= pixel[2]:
+            bright_lower_pixels += 1
     coverage = city_pixels / (width * height)
     # City pixels include buildings, quay, traffic, boat and lights. Broad bounds leave room for
     # driver rasterization differences while rejecting a cleared, flipped, or missing city target.
-    # Dense context can occlude every lower band in the downward-looking t=5 shot.
-    # Require the top sky colour and ordered exposed rows, rather than prescribing how
-    # many bands the architecture leaves visible. Coverage and the separate asymmetric
-    # GPU fixture still check a missing scene and incorrect image orientation.
-    if visible_bands < 1 or sky_counts[0] < 12 or not sky_ordered:
-        failures.append(f"sky bands are not visibly ordered ({visible_bands}/7 exposed)")
+    if len(sky) < 12:
+        failures.append(f"exposed dusk sky has only {len(sky)} pixels")
     if not 0.04 <= coverage <= 0.96:
         failures.append(f"city coverage {coverage:.1%} is outside the 4%-96% review range")
     # Lit traffic/boat/lamp regions intentionally move with this route. This checks their broad,
@@ -155,9 +147,7 @@ def semantic_check(path, renderer, time):
         "renderer": renderer,
         "time_seconds": time,
         "dimensions": [width, height],
-        "sky_band_pixels": sky_counts,
-        "visible_sky_bands": visible_bands,
-        "sky_bands_ordered": sky_ordered,
+        "exposed_sky_pixels": len(sky),
         "city_coverage": round(coverage, 6),
         "moving_object_region_pixels": bright_lower_pixels,
     }
