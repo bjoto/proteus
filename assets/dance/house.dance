@@ -1,0 +1,39 @@
+# Fast feet with a slower upper-body groove. Tempo remains the music's 125 BPM.
+# Step columns: move, lead, travel metres, lift metres, beats, join.
+# Flow carries stance/support forward. Alternate feet, then recover to neutral.
+phrase rush
+    groove jack 0.75
+    arms counter left 0.8 0.14 4
+    shuffle left  0.12 0.05 0.5 flow
+    shuffle right 0.12 0.05 0.5 flow
+    shuffle left  0.12 0.05 0.5 flow
+    shuffle right 0.12 0.05 0.5 flow
+    shuffle left  0.22 0.09 1 flow
+    shuffle right 0.22 0.09 1 flow
+    # One broad sweep over four beats, independent of the quick steps.
+    arms sweep left 0.9 0.14 4
+    shuffle left  0.14 0.05 0.5 flow
+    shuffle right 0.14 0.05 0.5 flow
+    shuffle left  0.14 0.05 0.5 flow
+    shuffle right 0.14 0.05 0.5 flow
+    recover 2
+end
+
+phrase lateral
+    groove jack 0.95
+    arms sweep right 1.0 0.16 4
+    side_step left  0.16 0.07 1 flow
+    side_step right 0.16 0.07 1 flow
+    side_step left  0.16 0.07 1 flow
+    side_step right 0.16 0.07 1 flow
+    arms pull left 0.95 0.12 4
+    shuffle left  0.14 0.06 0.5 flow
+    shuffle right 0.14 0.06 0.5 flow
+    shuffle left  0.14 0.06 0.5 flow
+    shuffle right 0.14 0.06 0.5 flow
+    recover 2
+end
+
+# Four eight-beat phrases = eight bars / 15.36 seconds.
+play rush 1
+play lateral 2

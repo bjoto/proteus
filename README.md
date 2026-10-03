@@ -67,6 +67,15 @@ Controls:
 The image is always scaled by a whole number with nearest-neighbour filtering.
 Unused screen space is letterboxed.
 
+## Dance study
+
+For a procedural house-inspired shuffle, run `./build/dance_study`. Edit
+[`assets/dance/house.dance`](assets/dance/house.dance) to arrange named phrases, then press `L`
+to reload. The default pairs fast footwork with slower torso and arm phrasing. Compare the
+relaxed version with `--choreography assets/dance/house-groove.dance`, or use `--classic`
+for the earlier cross-and-reach study. See the
+[dance study notes](docs/DANCE_STUDY.md) for the language, controls and screenshots.
+
 ## Capture a screenshot
 
 Render a PNG without opening a window from the CPU-side framebuffer:

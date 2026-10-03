@@ -87,6 +87,39 @@ target_compile_options(validate_audio_spectrum PRIVATE
 )
 
 enable_testing()
+add_executable(dance_study tools/dance_study.c src/dance.c src/choreography.c src/renderer3d.c src/xm_audio.c)
+target_include_directories(dance_study PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(dance_study PRIVATE raylib)
+target_compile_definitions(dance_study PRIVATE
+  PROTEUS_ASSET_DIR="$<TARGET_FILE_DIR:dance_study>/assets"
+)
+target_compile_options(dance_study PRIVATE
+  $<$<C_COMPILER_ID:AppleClang,Clang,GNU>:-Wall;-Wextra;-Wpedantic>
+)
+add_dependencies(dance_study proteus_assets)
+
+add_executable(validate_dance tools/validate_dance.c src/dance.c src/choreography.c src/renderer3d.c)
+target_include_directories(validate_dance PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(validate_dance PRIVATE raylib)
+target_compile_options(validate_dance PRIVATE
+  $<$<C_COMPILER_ID:AppleClang,Clang,GNU>:-Wall;-Wextra;-Wpedantic>
+)
+add_test(NAME dance_constraints COMMAND validate_dance)
+add_test(NAME house_dance_constraints COMMAND validate_dance ${CMAKE_CURRENT_SOURCE_DIR}/assets/dance/house.dance)
+add_test(NAME house_groove_constraints COMMAND validate_dance ${CMAKE_CURRENT_SOURCE_DIR}/assets/dance/house-groove.dance)
+add_executable(validate_choreography tools/validate_choreography.c src/choreography.c
+  src/dance.c src/renderer3d.c)
+target_include_directories(validate_choreography PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(validate_choreography PRIVATE raylib)
+target_compile_options(validate_choreography PRIVATE
+  $<$<C_COMPILER_ID:AppleClang,Clang,GNU>:-Wall;-Wextra;-Wpedantic>
+)
+add_test(NAME choreography_language COMMAND validate_choreography
+  ${CMAKE_CURRENT_BINARY_DIR}/choreography-validation.dance)
+add_test(NAME dance_screenshot
+  COMMAND dance_study --time 8.8 --screenshot ${CMAKE_CURRENT_BINARY_DIR}/dance-screenshot.png
+)
+
 add_executable(validate_waterfront_actors tools/validate_waterfront_actors.c src/waterfront_scene.c)
 target_include_directories(validate_waterfront_actors PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(validate_waterfront_actors PRIVATE raylib)
