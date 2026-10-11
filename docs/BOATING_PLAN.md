@@ -1,7 +1,37 @@
 # Gothenburg boating playground
 
-Status: working design, saved 2026-10-11. This describes a proposed direction, not implemented
-features. Revise it as we discover what is enjoyable to play.
+Status: working design, saved 2026-10-11. Stage 1 and the wake/spray portion of stage 2 are implemented
+as `boat_study`; other features remain proposals. Revise this plan as we discover what is enjoyable
+to play.
+
+## Current prototype
+
+Run `./build/boat_study`. Left/right or A/D adjust a persistent wheel setting, clamped from full
+left to full right. Centre to either limit takes one second. Releasing keys holds the wheel;
+opposite input brings it back through centre. A rotating wheel and left/right percentage show
+the setting. Up/W raises the throttle, down/S lowers it; releasing the keys holds the setting.
+The throttle range is 0% (idle) to 100%, with two seconds of held
+input covering the full range. A percentage and bar show the setting independently of speed.
+Lower to idle to coast; reverse is not implemented. R resets the boat, centres the wheel, and idles
+the throttle; Esc exits.
+The silent handling sketch has a fixed elevated camera, stern-applied engine thrust, rotational
+inertia, water resistance at two hull stations, and forgiving basin-wall collisions. Steering
+angles the outboard; its lateral thrust pushes the stern and creates torque. The outboard holds
+the wheel setting when keys are released. Returning the wheel to centre lets rotation settle
+through water resistance. Countersteering can catch
+a turn. At idle there is no powered steering, and a stationary boat cannot turn. Propeller wash
+moves opposite the thrust direction, independently of the spreading wake. The model uses normalized
+mass and tunable forces, not calibrated hydrodynamics; passive skeg/rudder lift is not modelled.
+A spreading, fading wake traces the travelled path; lateral
+slip throws turning spray from the sliding side of the hull. Two orange markers provide turning
+references but do not collide. Rendering is 320x200 with nearest-neighbour integer scaling. Losing
+focus pauses movement.
+
+The simulation uses fixed 120 Hz ticks. Handling constants live in `src/boat.c`. Screenshot mode
+runs a deterministic example without a graphics context; see the README for commands.
+The basin is a handling test area, not yet a representation of Gothenburg. Geographical scenery,
+collision splashes, and timed courses belong to later stages. Player evaluation of handling is the
+next design input: especially steering responsiveness, the amount of slide, and coasting into a turn.
 
 ## Direction
 
@@ -34,10 +64,12 @@ selected separately. An enjoyable harbour and one island route would already be 
 ## First playable version
 
 - One craft, one compact area, free driving, and instant reset.
-- Left/right steering and up for thrust; a separate reset key.
-- Momentum persists through turns. Heading changes faster than travel direction, producing a
-  controllable slide. Water resistance slows the craft; sideways grip keeps it manageable.
-- Releasing thrust helps tighten turns. Defer a dedicated brake until play suggests it is needed.
+- Left/right adjust a persistent wheel setting; up/down adjust a persistent throttle within
+  0..100%; a separate reset key centres the wheel and idles the throttle.
+- Momentum persists through turns. Stern thrust creates torque, and rotation builds with inertia.
+  Water resistance along the hull damps sliding and rotation.
+- Throttle affects both forward push and turning force. Reducing it cuts thrust; momentum remains.
+  Defer a dedicated brake until play suggests it is needed.
 - Shore and buoy collisions cause forgiving bumps and splashes, with quick recovery.
 - Begin with a fixed, elevated camera that makes the test area easy to read. Revisit a following
   camera when exploring larger areas becomes the next concrete task.
@@ -92,6 +124,24 @@ Develop in a separate launch mode initially, reusing rendering and audio where u
 actual command-line interface during implementation and document it then. Preserve the existing
 demo and its soundtrack timeline while this direction is experimental.
 
+## Later water-physics experiments
+
+Explore these individually after the wake and spray make the existing handling easy to read.
+Keep calm water as a baseline for comparisons. These are proposed gameplay models to try, not a
+commitment to a comprehensive boat simulation or claims of physically accurate behaviour.
+
+- **Speed-dependent steering:** build on stern thrust and distributed water resistance. Explore
+  passive skeg forces and speed-dependent hull resistance for more nuanced coasting and low-speed
+  manoeuvring. The current model uses throttle-driven torque, not a prescribed speed-to-turn curve.
+- **Planing:** explore a distinct acceleration transition, with the bow rising and then settling
+  into a faster glide. Test whether reaching open water becomes more satisfying.
+- **Current:** introduce drift that makes routes through channels and approaches to shore matter.
+- **Waves:** experiment with boat motion and handling that depend on travel direction relative to
+  waves. Compare sheltered water with an exposed crossing.
+
+Judge each experiment through driving before combining it with the others. Wake and spray should
+help reveal movement through water as these models evolve.
+
 ## Scope boundaries
 
 The first complete game can be one arena, one craft, one course, one music track, free driving, and
@@ -116,3 +166,8 @@ turning is satisfying, since they would materially change course design.
   with handling first and an optional short arcade challenge.
 - 2026-10-11: Make boating around Gothenburg and its surrounding archipelago a central aspiration.
   Keep the first prototype local and small, and preserve free exploration alongside timed play.
+- 2026-10-11: Keep planing, refined speed-dependent steering, currents, and waves as future
+  experiments. Implement wake and turning spray first to make the current movement easier to read.
+- 2026-10-11: Replace direct heading control with steerable stern thrust, yaw inertia, and water
+  resistance at bow/stern stations. Show the thrust direction through an outboard and propeller wash.
+  Physical motivation: directed thrust in the [Coast Guard Boat Crew Handbook](https://rdept.cgaux.org/documents/BoatCrewHandbooks/BoatCrewBCH16114.4.pdf).

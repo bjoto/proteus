@@ -90,6 +90,19 @@ target_compile_options(validate_audio_spectrum PRIVATE
 )
 
 enable_testing()
+add_executable(boat_study tools/boat_study.c src/boat.c src/renderer3d.c)
+add_executable(validate_boat tools/validate_boat.c src/boat.c src/renderer3d.c)
+foreach(target boat_study validate_boat)
+  target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+  target_link_libraries(${target} PRIVATE raylib)
+  target_compile_options(${target} PRIVATE
+    $<$<C_COMPILER_ID:AppleClang,Clang,GNU>:-Wall;-Wextra;-Wpedantic>
+  )
+endforeach()
+add_test(NAME boat_handling COMMAND validate_boat)
+add_test(NAME boat_screenshot COMMAND boat_study --time 3
+  --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-screenshot.png)
+
 add_executable(dance_study tools/dance_study.c src/dance.c src/choreography.c src/renderer3d.c src/xm_audio.c)
 target_include_directories(dance_study PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(dance_study PRIVATE raylib)

@@ -70,6 +70,45 @@ Controls:
 The image is always scaled by a whole number with nearest-neighbour filtering.
 Unused screen space is letterboxed.
 
+## Boating sketch
+
+Run `./build/boat_study` for the first handling prototype: a small craft in a simple basin,
+viewed by a fixed elevated camera. Hold left/right (or A/D) to turn the wheel; release to hold its
+position. One second moves it from centre to either limit; opposite input brings it back through
+centre. The HUD shows a rotating wheel and its left/right percentage. Hold up/W to raise the throttle
+and down/S to lower it, between 0% and 100%; releasing the keys holds the setting. Full-range
+adjustment takes two seconds. The HUD shows throttle separately from speed. Lower the throttle to
+0% to coast (there is no reverse). R resets the boat, centres the wheel, and idles the throttle.
+Esc closes the window.
+The simulation pauses when the window loses focus. The view remains 320x200 with integer scaling.
+
+Steering angles the outboard at the stern. Its off-centre thrust pushes the stern sideways and
+builds rotation; water resistance at the bow and stern damps sliding and turning. The engine follows
+the held wheel setting. Bring the wheel back to centre or countersteer to catch a turn. At idle,
+turning the engine cannot start a turn from rest. Propeller wash shows the water being pushed in the
+opposite direction to thrust. This is a simplified planar model with tunable forces and inertia.
+
+The basin walls bounce the craft back gently; the two orange markers are visual turning references
+and have no collision yet. A spreading wake traces your path and fades; hard turns throw spray
+according to sideways slip. Reset clears both effects. This sketch is silent, with no scoring or
+geographic scenery.
+The [boating plan](docs/BOATING_PLAN.md) tracks the next steps toward Gothenburg and the archipelago.
+
+For display-free captures of a scripted acceleration and right turn, or a windowed smoke check:
+
+```sh
+./build/boat_study --screenshot build/boat-start.png
+./build/boat_study --screenshot build/boat-turn.png --time 3
+./build/boat_study --frames 180
+./build/boat_study --demo --frames 720
+```
+
+`--demo` previews the same scripted run as screenshots: raise throttle for two seconds, turn after
+one second, hold wheel and throttle until six seconds, then centre the wheel, lower throttle to idle,
+and coast. R replays it.
+Screenshot `--time` selects a point in that run (0..60 seconds). The water effects use the same
+fixed simulation ticks as handling.
+
 ## Dance study
 
 For a procedural house-inspired shuffle, run `./build/dance_study`. Edit
