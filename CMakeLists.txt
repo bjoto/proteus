@@ -43,6 +43,9 @@ add_custom_target(proteus_assets
   COMMAND ${CMAKE_COMMAND} -E copy_directory
           ${CMAKE_CURRENT_SOURCE_DIR}/assets
           $<TARGET_FILE_DIR:proteus>/assets
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          ${CMAKE_CURRENT_SOURCE_DIR}/soundtrack/alternate/fasttracker/v01/below-the-surface.xm
+          $<TARGET_FILE_DIR:proteus>/assets/music/below-the-surface.xm
 )
 add_dependencies(proteus proteus_assets)
 
@@ -161,13 +164,16 @@ add_test(NAME renderer3d_is_valid COMMAND validate_renderer3d)
 add_test(NAME starter_xm_is_valid
   COMMAND validate_xm ${CMAKE_CURRENT_SOURCE_DIR}/assets/music/starter.xm
 )
+add_test(NAME soundtrack_xm_is_valid
+  COMMAND validate_xm ${CMAKE_CURRENT_SOURCE_DIR}/soundtrack/alternate/fasttracker/v01/below-the-surface.xm --soundtrack
+)
 add_test(NAME audio_spectrum_is_valid
   COMMAND validate_audio_spectrum
 )
-add_test(NAME fire_profile_report
-  COMMAND proteus --renderer cpu --profile fire --frames 10 --warmup 2
+add_test(NAME cube_profile_report
+  COMMAND proteus --renderer cpu --profile cube --frames 10 --warmup 2
 )
-set_tests_properties(fire_profile_report PROPERTIES
+set_tests_properties(cube_profile_report PROPERTIES
   PASS_REGULAR_EXPRESSION "proteus_profile_end=1"
 )
 add_test(NAME cube_screenshot
@@ -175,7 +181,7 @@ add_test(NAME cube_screenshot
           --scene cube --time 1.5
 )
 set_tests_properties(cube_screenshot PROPERTIES
-  PASS_REGULAR_EXPRESSION "timeline_time=47.580"
+  PASS_REGULAR_EXPRESSION "timeline_time=1.500"
 )
 
 add_test(NAME interactive_timeline_options
@@ -185,19 +191,13 @@ set_tests_properties(interactive_timeline_options PROPERTIES
   PASS_REGULAR_EXPRESSION "Usage:"
 )
 
-set(starscroll_checksum e7e36b86f9776e7d)
-set(fire_checksum fd61ac9ce25e71a6)
-set(plasma_checksum cac9c63d222163d3)
-# Reviewed CPU reference with a world-aligned dusk panorama and moon.
-set(cube_checksum 5fc0b73587b9a9ed)
-foreach(scene starscroll fire plasma cube)
-  add_test(NAME ${scene}_render_checksum
-    COMMAND proteus --renderer cpu --profile ${scene} --frames 1 --warmup 0
-  )
-  set_tests_properties(${scene}_render_checksum PROPERTIES
-    PASS_REGULAR_EXPRESSION "final_framebuffer_checksum=${${scene}_checksum}"
-  )
-endforeach()
+# Reviewed CPU reference for the opening five-gull follow shot.
+add_test(NAME cube_render_checksum
+  COMMAND proteus --renderer cpu --profile cube --frames 1 --warmup 0
+)
+set_tests_properties(cube_render_checksum PROPERTIES
+  PASS_REGULAR_EXPRESSION "final_framebuffer_checksum=735e6a86373c4347"
+)
 
 add_test(NAME cube_start_screenshot
   COMMAND proteus --renderer cpu --screenshot ${CMAKE_CURRENT_BINARY_DIR}/cube-start.png

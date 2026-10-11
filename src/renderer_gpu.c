@@ -155,6 +155,22 @@ static Mesh builder_finish(MeshBuilder *builder)
     return mesh;
 }
 
+static bool build_gull(Mesh *mesh, int part)
+{
+    MeshBuilder builder = { 0 };
+    const Mesh3D *source = waterfront_gull_mesh(part);
+    for (size_t i = 0; i < source->triangle_count; ++i) {
+        const Triangle3D *t = &source->triangles[i];
+        if (!builder_triangle(&builder, source->vertices[t->vertices[0]],
+                source->vertices[t->vertices[1]], source->vertices[t->vertices[2]], t->color)) {
+            builder_destroy(&builder);
+            return false;
+        }
+    }
+    *mesh = builder_finish(&builder);
+    return mesh->vaoId != 0;
+}
+
 typedef enum {
     CITY_SURFACE_FLAT,
     CITY_SURFACE_FACADE,
@@ -584,6 +600,9 @@ bool waterfront_gpu_scene_init(WaterfrontGpuScene *scene, const char *fragment_s
             &scene->corner, &scene->corner_emissive)
         || !build_windows(&scene->windows) || !build_crane(&scene->crane))
         goto failed;
+    for (int part = 0; part < WATERFRONT_GULL_PARTS; ++part)
+        if (!build_gull(&scene->gull[part], part))
+            goto failed;
     if (!build_unit_cube(&scene->bridge) || !build_unit_cube(&scene->cube)
         || !build_unit_plane(&scene->plane))
         goto failed;
@@ -993,6 +1012,9 @@ static void draw_life(const WaterfrontGpuScene *scene, Material material,
             }
         }
     }
+    for (int i = 0; i < frame->gull_count; ++i)
+        for (int part = 0; part < WATERFRONT_GULL_PARTS; ++part)
+            draw_colored_mesh(scene->gull[part], material, frame->gulls[i][part], WHITE, true);
     const WaterfrontBoatState *boat = &frame->boat;
     draw_colored_mesh(scene->cube, material, boat->hull, (Color) { 164, 177, 185, 255 }, false);
     draw_colored_mesh(scene->cube, material, boat->cabin, (Color) { 69, 91, 111, 255 }, false);
@@ -1319,6 +1341,9 @@ void waterfront_gpu_scene_destroy(WaterfrontGpuScene *scene)
         UnloadMesh(scene->crane);
     if (scene->bridge.vaoId != 0)
         UnloadMesh(scene->bridge);
+    for (int part = 0; part < WATERFRONT_GULL_PARTS; ++part)
+        if (scene->gull[part].vaoId != 0)
+            UnloadMesh(scene->gull[part]);
     if (scene->cube.vaoId != 0)
         UnloadMesh(scene->cube);
     if (scene->plane.vaoId != 0)

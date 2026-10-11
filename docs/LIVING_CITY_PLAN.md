@@ -50,7 +50,7 @@ report what remains. A purely documentary step does not require a new manual dem
 | 08 | Add sparse room activity, coordinated lamp flicker, and selective vehicle lighting. Verify stills, motion, and direct-seek consistency. | Pending |
 | 09 | Stage a ferry proxy in a visible river shot and validate scale, route clearance, and camera composition before detailed modelling. Preserve the music slot. | Pending |
 | 10 | Finish the ferry silhouette, livery, deck lights, wake, and reflection, plus selected quay details. Review the complete harbour shot. | Pending |
-| 11 | Add gulls: a few perched birds and a small number of circling/gliding silhouettes. Keep flight paths deterministic and readable against the sky at 320x200. | Pending |
+| 11 | Add gulls: a few perched birds and a small number of circling/gliding silhouettes. Keep flight paths deterministic and readable against the sky at 320x200. | Flying flock implemented; perched birds pending |
 | 12 | Refine remaining weak areas after the city-wide coverage pass and add restrained atmosphere. Review both routes, all resolutions, seeking, and final performance. | Pending |
 
 Steps 02–04 establish the city in a frozen frame before the new moving cast arrives.
@@ -426,3 +426,16 @@ Recommended first implementation sequence: execution steps 01–04 establish cov
 density, and one complete street corner. Review these still frames before adding the new
 moving cast. Reserve a place for the ferry during the initial composition audit, then
 test its proxy in step 09 before modelling the vessel in detail.
+
+## Soundtrack and flock follow pass (2026-10-11)
+
+The demo now consists solely of `cube`, using the working Below the surface XM
+(120 BPM, speed 6, four minutes). Five gulls provide a subject for a new camera
+circuit: street departure, river crossing, dock return, and a held ending. The camera
+trails the flock with a stable horizon; wingbeats and formation drift are staggered.
+The shared frame evaluation drives CPU, GPU, reflection, and shadow geometry and
+supports deterministic direct seeking. Perched gulls remain pending.
+
+The earlier short/long storyboard routes remain diagnostic references. Main-demo
+scene switching and the starscroll, fire, and plasma implementations were removed.
+The starter XM remains for the independent dance study and sample-generation workflow.

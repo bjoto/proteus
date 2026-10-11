@@ -141,6 +141,8 @@ static void evaluate_life(float time, WaterfrontSceneFrame *frame)
             // Preserve the original arithmetic, phase, speed, lane, and wrap behavior.
             float distance
                 = fmodf(car * length / 10 + time * (5.5f + street) * sign + length, length);
+            if (distance < 0)
+                distance += length;
             Vector3 forward;
             Vector3 p = waterfront_scene_street_position(route, distance, &forward);
             forward = Vector3Scale(forward, (float)sign);
@@ -262,4 +264,117 @@ Vector3 waterfront_scene_street_position(
         distance -= length;
     }
     return street.points[0];
+}
+
+// A sparse, low-poly gull: pointed body, swept wings, and charcoal outer feathers.
+// Nose is local +X so wingbeats/banking rotate around X before heading around Y.
+const Mesh3D *waterfront_gull_mesh(int part)
+{
+    static const Vector3 body[] = { { .65f, 0, 0 }, { -.55f, 0, 0 }, { 0, .16f, 0 },
+        { 0, -.13f, 0 }, { 0, 0, .14f }, { 0, 0, -.14f } };
+    static const Triangle3D body_faces[] = {
+        { { 0, 2, 4 }, { 226, 225, 216, 255 } },
+        { { 0, 5, 2 }, { 226, 225, 216, 255 } },
+        { { 0, 4, 3 }, { 183, 190, 197, 255 } },
+        { { 0, 3, 5 }, { 183, 190, 197, 255 } },
+        { { 1, 4, 2 }, { 226, 225, 216, 255 } },
+        { { 1, 2, 5 }, { 226, 225, 216, 255 } },
+        { { 1, 3, 4 }, { 183, 190, 197, 255 } },
+        { { 1, 5, 3 }, { 183, 190, 197, 255 } },
+    };
+    static const Vector3 left[] = { { .18f, 0, 0 }, { -.3f, 0, 0 }, { .08f, 0, -.8f },
+        { -.34f, 0, -.9f }, { -.45f, 0, -1.35f } };
+    static const Vector3 right[] = { { .18f, 0, 0 }, { -.3f, 0, 0 }, { .08f, 0, .8f },
+        { -.34f, 0, .9f }, { -.45f, 0, 1.35f } };
+    // Both sides are explicit so wings remain visible through a bank or upstroke.
+    static const Triangle3D wing_faces[] = {
+        { { 0, 1, 2 }, { 220, 222, 217, 255 } },
+        { { 2, 1, 0 }, { 185, 195, 204, 255 } },
+        { { 1, 3, 2 }, { 220, 222, 217, 255 } },
+        { { 2, 3, 1 }, { 185, 195, 204, 255 } },
+        { { 2, 3, 4 }, { 54, 63, 76, 255 } },
+        { { 4, 3, 2 }, { 54, 63, 76, 255 } },
+    };
+    static const Mesh3D meshes[] = {
+        { body, body_faces, sizeof(body_faces) / sizeof(body_faces[0]) },
+        { left, wing_faces, sizeof(wing_faces) / sizeof(wing_faces[0]) },
+        { right, wing_faces, sizeof(wing_faces) / sizeof(wing_faces[0]) },
+    };
+    return &meshes[part];
+}
+
+// Broad circuit above the street, out over the river, and back across the dock.
+// Cue times follow Below the surface's arrangement; Hermite tangents keep turns smooth.
+static const Vector3 flock_keys[]
+    = { { -85, 62, 170 }, { -78, 69, 30 }, { -85, 95, -170 }, { 150, 100, -190 }, { 195, 100, 20 },
+          { 175, 100, 245 }, { 80, 100, 335 }, { -90, 85, 290 }, { -130, 75, 110 } };
+static const float flock_times[] = { 0, 24, 56, 88, 116, 148, 176, 216, 240 };
+
+static Vector3 flock_tangent(int index)
+{
+    int before = index > 0 ? index - 1 : index;
+    int after = index < 8 ? index + 1 : index;
+    return Vector3Scale(Vector3Subtract(flock_keys[after], flock_keys[before]),
+        1 / (flock_times[after] - flock_times[before]));
+}
+
+static Vector3 flock_position(float time)
+{
+    // Linear end extensions make the trailing camera and heading well-defined at either end.
+    if (time < 0)
+        return Vector3Add(flock_keys[0], Vector3Scale(flock_tangent(0), time));
+    if (time > WATERFRONT_DEMO_DURATION)
+        return Vector3Add(
+            flock_keys[8], Vector3Scale(flock_tangent(8), time - WATERFRONT_DEMO_DURATION));
+    int i = 0;
+    while (i < 7 && time > flock_times[i + 1])
+        ++i;
+    float span = flock_times[i + 1] - flock_times[i];
+    float u = (time - flock_times[i]) / span;
+    float u2 = u * u, u3 = u2 * u;
+    return Vector3Add(Vector3Add(Vector3Scale(flock_keys[i], 2 * u3 - 3 * u2 + 1),
+                          Vector3Scale(flock_keys[i + 1], -2 * u3 + 3 * u2)),
+        Vector3Add(Vector3Scale(flock_tangent(i), (u3 - 2 * u2 + u) * span),
+            Vector3Scale(flock_tangent(i + 1), (u3 - u2) * span)));
+}
+
+void waterfront_demo_evaluate(float time, WaterfrontSceneFrame *frame)
+{
+    time = Clamp(time, 0, WATERFRONT_DEMO_DURATION);
+    waterfront_scene_evaluate(0, true, frame);
+    frame->time = time;
+    evaluate_life(time, frame);
+    Vector3 center = flock_position(time);
+    Vector3 forward = Vector3Normalize(
+        Vector3Subtract(flock_position(time + .25f), flock_position(time - .25f)));
+    Vector3 side = Vector3Normalize(Vector3CrossProduct(forward, (Vector3) { 0, 1, 0 }));
+    // Follow the route's recent history, with a stable horizon and a gentle look ahead.
+    // This is stateless: direct seeks give exactly the same shot as continuous playback.
+    Vector3 behind = Vector3Normalize(Vector3Subtract(center, flock_position(time - 3)));
+    frame->camera.position
+        = Vector3Add(center, Vector3Add(Vector3Scale(behind, -22), (Vector3) { 0, 2, 0 }));
+    frame->camera.target = Vector3Add(center, Vector3Scale(forward, 10));
+    frame->camera.vertical_fov = 58 * DEG2RAD;
+    frame->gull_count = WATERFRONT_GULL_COUNT;
+    static const Vector3 offsets[]
+        = { { 0, 0, 2 }, { -3.5f, 1, -2 }, { 3, -.6f, -1 }, { -6.5f, -.3f, -5 }, { 6, 1.4f, -4 } };
+    float yaw = atan2f(-forward.z, forward.x);
+    Vector3 next = Vector3Normalize(Vector3Subtract(flock_position(time + 1), center));
+    float bank = Clamp(Vector3CrossProduct(forward, next).y * -6, -.45f, .45f);
+    for (int i = 0; i < WATERFRONT_GULL_COUNT; ++i) {
+        float phase = time + i * 1.37f;
+        Vector3 p = Vector3Add(center,
+            Vector3Add(Vector3Scale(side, offsets[i].x + .35f * sinf(phase * .6f)),
+                Vector3Scale(forward, offsets[i].z + .5f * sinf(phase * .37f))));
+        p.y += offsets[i].y + .3f * sinf(phase * .8f);
+        // A two-second flapping burst followed by six seconds of gliding, staggered by bird.
+        float burst = fmodf(phase, 8);
+        float flap = burst < 2 ? .6f * sinf(burst * PI * 3) * sinf(burst * PI / 2) : 0;
+        for (int part = 0; part < WATERFRONT_GULL_PARTS; ++part) {
+            float wing = part == 1 ? -.12f - flap : part == 2 ? .12f + flap : 0;
+            frame->gulls[i][part] = (Transform3D) {
+                .position = p, .rotation = { bank + wing, yaw, 0 }, .scale = { 1, 1, 1 }
+            };
+        }
+    }
 }

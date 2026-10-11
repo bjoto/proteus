@@ -9,7 +9,7 @@ iterating on effects, timing, audio, and presentation.
 ## Layout
 
 - `src/main.c`: command-line modes, application loop, virtual framebuffer, and presentation.
-- `src/scenes.c`: scene timing and software-rendered visual effects.
+- `src/scenes.c`: single-scene timing and software-rendered waterfront entry point.
 - `src/profiler.c`: runtime profiling statistics, reports, and overlay.
 - `src/audio_spectrum.c`: PCM capture, FFT analysis, and smoothed frequency-band levels.
 - `src/xm_audio.c`: XM-specific playback helpers layered over raylib's bundled decoder.
@@ -60,8 +60,9 @@ xcrun xctrace record --template 'Time Profiler' --output build/cube.trace \
 - Format C with the checked-in `.clang-format`; use four spaces and keep lines near 100 columns.
 - Keep the project warning-clean under the compiler flags in `CMakeLists.txt`.
 - Preserve nearest-neighbour, integer-scaled rendering unless a change explicitly targets it.
-- Keep animation timing synchronized with the 125 BPM, speed-6 XM timeline when changing scenes or
-  arrangement.
+- Keep the main demo synchronized with Below the surface’s 120 BPM, speed-6, four-minute timeline
+  when changing the arrangement or flock camera cues. The separate dance study uses the original
+  125 BPM starter XM.
 - Treat `assets/music/starter.xm` and the sample WAVs as generated outputs. Running
   `python3 tools/generate_audio.py` overwrites them; do so only when the generated audio is meant to
   change, and validate the resulting XM.

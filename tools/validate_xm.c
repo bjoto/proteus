@@ -1,18 +1,58 @@
+#include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "xm_audio.h"
 
 #define JAR_XM_IMPLEMENTATION
 #include "jar_xm.h"
 
+// Reproduce raylib's LoadMusicStream lifecycle: its length scan mutates the decoder,
+// then its partial reset leaves pending pattern jumps and channel/effect state behind.
+static bool check_loaded_start(const char *path)
+{
+    jar_xm_context_t *xm = NULL;
+    if (jar_xm_create_context_from_file(&xm, 48000, path) != 0)
+        return false;
+    jar_xm_get_remaining_samples(xm);
+    jar_xm_reset(xm);
+    Music music = { .stream.sampleRate = 48000, .ctxData = xm };
+    if (!xm_music_start_at(&music, path, 0)) {
+        jar_xm_free_context(xm);
+        return false;
+    }
+    xm = music.ctxData;
+    float frames[48000 * 2];
+    double late_energy = 0;
+    uint8_t order = 0;
+    for (int second = 0; second < 5; ++second) {
+        jar_xm_generate_samples(xm, frames, 48000);
+        if (second >= 2)
+            for (size_t i = 0; i < sizeof(frames) / sizeof(frames[0]); ++i)
+                late_energy += (double)frames[i] * frames[i];
+    }
+    jar_xm_get_position(xm, &order, NULL, NULL, NULL);
+    jar_xm_free_context(xm);
+    if (order != 0 || late_energy < .001) {
+        fprintf(stderr,
+            "Loaded soundtrack jumped away from intro or went silent: order=%u energy=%g\n", order,
+            late_energy);
+        return false;
+    }
+    return true;
+}
+
 int main(int argc, char **argv)
 {
-    if (argc != 2) {
-        fprintf(stderr, "usage: %s module.xm\n", argv[0]);
+    bool soundtrack = argc == 3 && strcmp(argv[2], "--soundtrack") == 0;
+    if (argc != 2 && !soundtrack) {
+        fprintf(stderr, "usage: %s module.xm [--soundtrack]\n", argv[0]);
         return 2;
     }
+    if (soundtrack && !check_loaded_start(argv[1]))
+        return 1;
     jar_xm_context_t *xm = NULL;
     int result = jar_xm_create_context_from_file(&xm, 48000, argv[1]);
     if (result != 0) {
@@ -27,11 +67,12 @@ int main(int argc, char **argv)
         .stream.sampleRate = 48000,
         .ctxData = xm,
     };
-    if (!xm_music_start_at(music, seek_time)) {
+    if (!xm_music_start_at(&music, argv[1], seek_time)) {
         fprintf(stderr, "unable to seek XM decoder\n");
         jar_xm_free_context(xm);
         return 1;
     }
+    xm = music.ctxData;
     uint8_t pattern_index = 0;
     uint64_t generated_frames = 0;
     jar_xm_get_position(xm, &pattern_index, NULL, NULL, &generated_frames);
@@ -47,9 +88,35 @@ int main(int argc, char **argv)
     printf("seek %.2f seconds: pattern %u, frame %llu\n", seek_time, pattern_index,
         (unsigned long long)generated_frames);
 
-    jar_xm_reset(xm);
+    // Seek backward on the same stream before rendering the complete song.
+    if (!xm_music_start_at(&music, argv[1], 0)) {
+        jar_xm_free_context(xm);
+        return 1;
+    }
+    xm = music.ctxData;
     float frames[48000 * 2];
-    jar_xm_generate_samples(xm, frames, 48000);
+    double energy = 0;
+    float peak = 0, ending_peak = 0;
+    for (int second = 0; second < (soundtrack ? 244 : 1); ++second) {
+        jar_xm_generate_samples(xm, frames, 48000);
+        for (size_t i = 0; i < sizeof(frames) / sizeof(frames[0]); ++i) {
+            if (!isfinite(frames[i]) || fabsf(frames[i]) > 1) {
+                fprintf(stderr, "Nonfinite or clipped audio at second %d\n", second);
+                jar_xm_free_context(xm);
+                return 1;
+            }
+            energy += (double)frames[i] * frames[i];
+            peak = fmaxf(peak, fabsf(frames[i]));
+            if (second >= 241)
+                ending_peak = fmaxf(ending_peak, fabsf(frames[i]));
+        }
+    }
+    if (energy <= 0 || (soundtrack && ending_peak > .0001f)) {
+        fprintf(stderr, "Empty audio or nonsilent ending hold: %.6f\n", ending_peak);
+        jar_xm_free_context(xm);
+        return 1;
+    }
+    printf("rendered_audio_peak=%.6f ending_peak=%.6f\n", peak, ending_peak);
     jar_xm_free_context(xm);
     return 0;
 }

@@ -1,4 +1,21 @@
-# Working on the starter XM
+# Working on the music
+
+The demo now plays the working [Below the surface XM](../soundtrack/alternate/fasttracker/v01/below-the-surface.xm)
+at 120 BPM, speed 6. See its [tracker guide](../soundtrack/alternate/fasttracker/README.md).
+Rebuild after editing it to refresh the bundled runtime copy. The four-minute waterfront
+and flock camera hold at 4:00; the XM has a silent end hold. If the arrangement length or
+section cues change, update `WATERFRONT_DEMO_DURATION` and the flock route cue times in
+`src/waterfront_scene.c` / `src/waterfront_scene.h` alongside the audio.
+
+The playback helper reconstructs the XM decoder from its source before starting or
+seeking. Raylib's duration scan leaves a pending jump to the silent ending which its
+partial decoder reset does not clear; reusing that state would play only the first
+sound. The XM validation covers that loader sequence and backward seeking as well as
+full-song decoding. Call the helper only while the audio stream is stopped.
+
+## Archived starter sketch
+
+The notes below describe the original starter XM, retained for the separate dance study.
 
 For the new composition's brief, milestones, and listening criteria, see the
 [alternate soundtrack plan](SOUNDTRACK_PLAN.md).

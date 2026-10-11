@@ -15,6 +15,13 @@ edits in FastTracker do not update the earlier JSON/MIDI sources. Keep this firs
 transfer and the original WAV mix as references. The exporter refuses to overwrite
 a populated directory, including one containing your tracker edits.
 
+## Runtime playback
+
+Proteus now plays this working XM. `cmake --build build -j` copies it into the build
+asset directory without modifying the source. The sole `cube` scene follows a small
+flock for four minutes, then holds its last shot while the song ends in silence.
+Rebuild after tracker edits; update the demo duration/camera cues if the arrangement changes.
+
 ## Finding the parts
 
 Tempo is **120 BPM, speed 6**. Four rows make a beat, 16 rows a bar, and a normal

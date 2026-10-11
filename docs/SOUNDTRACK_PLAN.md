@@ -1,5 +1,11 @@
 # Alternate soundtrack plan
 
+> Runtime integration, 2026-10-11: the demo now uses the working
+> `soundtrack/alternate/fasttracker/v01/below-the-surface.xm`, copied into the build
+> assets by CMake. The sole `cube` scene follows five gulls across its four-minute
+> 120 BPM timeline and holds the final shot. Earlier draft/acceptance notes below
+> record the composition history; future tracker revisions remain possible.
+
 Status: the user requested a FastTracker editing handoff on 2026-09-22. The full
 song is now available as an editable [XM and tracker guide](../soundtrack/alternate/fasttracker/README.md),
 with embedded instruments and separate note/chord voices. Continue musical edits
@@ -8,14 +14,14 @@ in the XM; the JSON/MIDI sources and original WAV mix remain reference versions.
 Proof v03 is the current approved direction (commit `0706588`). Full sketch
 v01 has been played through; musical feedback and milestone 3 acceptance remain
 pending. Mix candidate v01 has rendered and its draft delivery package is prepared;
-full mix playback completed successfully. Listening acceptance and runtime/visual timing
-integration remain open. Milestones 1 and 2 are complete. The approved dark synth
+full mix playback completed successfully. Final listening acceptance remains open; the current working XM is now integrated
+with the four-minute waterfront. Milestones 1 and 2 are complete. The approved dark synth
 palette, restrained motif, dynamics, and grunge-influenced chord movement remain
 the foundation.
 
 This is the working plan for an original Proteus soundtrack. Update it as we listen,
 choose directions, and complete milestones. The existing demo timeline does not
-constrain the composition; visual scenes will follow the music later.
+constrain the composition; the current waterfront follows the working XM.
 
 ## Musical brief
 
@@ -281,7 +287,7 @@ does not require regenerating or replacing them.
 - [x] Author and render the complete four-minute composition sketch (full-v01).
 - [x] Prepare the grit mix candidate and validate its draft delivery package (mix-v01).
 - [ ] Record listening feedback and approval for the full composition and mix.
-- [ ] Integrate the accepted soundtrack with the demo and verify runtime/visual timing.
+- [x] Integrate the current working XM with the demo and its four-minute visual timeline.
 
 Next action: continue editing the full song in FastTracker, using mix-v01 as the
 sound reference, and record timestamped feedback before

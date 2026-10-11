@@ -33,6 +33,8 @@ static bool legacy_matches(const WaterfrontSceneFrame *frame)
             if (lamp_count >= frame->lamp_count)
                 return false;
             const WaterfrontLampState *lamp = &frame->lamps[lamp_count++];
+            if (distance < 0)
+                distance += length;
             Vector3 forward;
             Vector3 p = waterfront_scene_street_position(route, distance, &forward);
             Vector3 right = { forward.z, 0, -forward.x };
@@ -50,6 +52,8 @@ static bool legacy_matches(const WaterfrontSceneFrame *frame)
             int sign = i % 2 ? 1 : -1;
             float distance
                 = fmodf(i * length / 10 + frame->time * (5.5f + street) * sign + length, length);
+            if (distance < 0)
+                distance += length;
             Vector3 forward;
             Vector3 p = waterfront_scene_street_position(route, distance, &forward);
             forward = Vector3Scale(forward, (float)sign);
@@ -172,6 +176,10 @@ static uint64_t snapshot_hash(const WaterfrontSceneFrame *f)
         hash_float(&hash, f->boat.wake[i].z_start);
         hash_float(&hash, f->boat.wake[i].z_center);
     }
+    hash_float(&hash, (float)f->gull_count);
+    for (int i = 0; i < f->gull_count; ++i)
+        for (int part = 0; part < WATERFRONT_GULL_PARTS; ++part)
+            hash_transform(&hash, f->gulls[i][part]);
     return hash;
 }
 
@@ -222,12 +230,55 @@ static bool check_route(bool short_route)
     return ok;
 }
 
+static bool check_flock(void)
+{
+    WaterfrontSceneFrame frame, previous, sought;
+    waterfront_demo_evaluate(0, &previous);
+    for (int sample = 0; sample <= (int)(WATERFRONT_DEMO_DURATION * 60); ++sample) {
+        float time = sample / 60.0f;
+        waterfront_demo_evaluate(time, &frame);
+        if (frame.gull_count != WATERFRONT_GULL_COUNT || !legacy_matches(&frame))
+            return false;
+        Vector3 forward
+            = Vector3Normalize(Vector3Subtract(frame.camera.target, frame.camera.position));
+        Vector3 right = Vector3Normalize(Vector3CrossProduct(frame.camera.up, forward));
+        Vector3 up = Vector3CrossProduct(forward, right);
+        for (int i = 0; i < frame.gull_count; ++i) {
+            Vector3 p = frame.gulls[i][0].position;
+            Vector3 relative = Vector3Subtract(p, frame.camera.position);
+            float depth = Vector3DotProduct(relative, forward);
+            float half_height = depth * tanf(frame.camera.vertical_fov * .5f);
+            if (!isfinite(depth) || depth < 8 || depth > 40
+                || fabsf(Vector3DotProduct(relative, right)) > half_height * 1.25f
+                || fabsf(Vector3DotProduct(relative, up)) > half_height * .8f
+                || Vector3Distance(p, previous.gulls[i][0].position) > .3f)
+                return false;
+            for (int j = 0; j < i; ++j)
+                if (Vector3Distance(p, frame.gulls[j][0].position) < 3)
+                    return false;
+        }
+        if (Vector3Distance(frame.camera.position, previous.camera.position) > .3f
+            || Vector3Distance(frame.camera.target, previous.camera.target) > .3f)
+            return false;
+        // Exercise backward/direct seeks, including across all cue boundaries.
+        waterfront_demo_evaluate(WATERFRONT_DEMO_DURATION - time, &sought);
+        waterfront_demo_evaluate(time, &sought);
+        if (snapshot_hash(&frame) != snapshot_hash(&sought))
+            return false;
+        previous = frame;
+    }
+    waterfront_demo_evaluate(300, &sought);
+    return snapshot_hash(&previous) == snapshot_hash(&sought);
+}
+
 int main(void)
 {
-    if (!check_route(true) || !check_route(false)) {
-        fputs("Actor legacy/seek regression failed\n", stderr);
+    if (!check_route(true) || !check_route(false) || !check_flock()) {
+        fputs("Actor motion, flock framing/continuity, or seek regression failed\n", stderr);
         return 1;
     }
+    puts(
+        "Five-gull framing, spacing, camera continuity, and direct seeks pass across 240 seconds.");
     printf("Actor snapshots match legacy motion and forward/backward/direct seeks on both routes.\n"
            "%d cars, 25 lamps, one boat, %d wake patches; snapshot=%zu bytes.\n",
         WATERFRONT_CAR_COUNT, WATERFRONT_WAKE_COUNT, sizeof(WaterfrontSceneFrame));

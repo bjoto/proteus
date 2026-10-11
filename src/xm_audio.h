@@ -5,7 +5,8 @@
 
 #include <stdbool.h>
 
-// Advance a freshly loaded, stopped XM stream to reconstruct its playback state.
-bool xm_music_start_at(Music music, float position);
+// Recreate a stopped XM stream's decoder from its source, then advance to the position.
+// Replaces ctxData on success; leaves the original decoder intact on failure.
+bool xm_music_start_at(Music *music, const char *path, float position);
 
 #endif

@@ -31,7 +31,6 @@ typedef struct {
     bool profile_enabled;
     bool visible;
     bool show_help;
-    bool scene_selected;
     bool gpu_lighting;
     bool gpu_shadows;
     bool gpu_atmosphere;
@@ -128,7 +127,7 @@ static void gpu_draw_frame(
     WaterfrontGpuScene *gpu_scene, GpuFramebuffer framebuffer, float scene_time)
 {
     WaterfrontSceneFrame frame;
-    waterfront_scene_evaluate(scene_time, true, &frame);
+    waterfront_demo_evaluate(scene_time, &frame);
     RenderTexture2D target
         = framebuffer.supersampled.id != 0 ? framebuffer.supersampled : framebuffer.target;
     BeginTextureMode(target);
@@ -186,7 +185,7 @@ static void print_usage(const char *program)
     printf("Usage: %s [--time SECONDS] [--scene SCENE] [--resolution WIDTHxHEIGHT]\n", program);
     printf("       %s [--profile SCENE [options]]\n", program);
     printf("       %s --screenshot FILE [--time SECONDS] [--scene SCENE] [options]\n", program);
-    printf("Scenes: starscroll, fire, plasma, cube\n");
+    printf("Scenes: cube\n");
     printf("Profile options:\n");
     printf("  --frames N              measured frames (default: 600)\n");
     printf("  --warmup N              unmeasured warm-up frames (default: 60)\n");
@@ -207,7 +206,7 @@ static void print_usage(const char *program)
 static bool parse_options(int argc, char **argv, ProgramOptions *options)
 {
     *options = (ProgramOptions) {
-        .scene_id = SCENE_STARSCROLL,
+        .scene_id = SCENE_CUBE,
         .frames = 600,
         .warmup_frames = 60,
         .size_index = 1,
@@ -290,7 +289,6 @@ static bool parse_options(int argc, char **argv, ProgramOptions *options)
             }
         } else if (strcmp(argv[i], "--scene") == 0 && i + 1 < argc) {
             timeline_option = true;
-            options->scene_selected = true;
             if (!scene_parse(argv[++i], &options->scene_id)) {
                 fprintf(stderr, "Unknown scene: %s\n", argv[i]);
                 return false;
@@ -338,11 +336,7 @@ static bool parse_options(int argc, char **argv, ProgramOptions *options)
 
 static float requested_timeline_time(ProgramOptions options)
 {
-    if (!options.scene_selected)
-        return options.start_time;
-
-    float local_time = fmodf(options.start_time, scene_duration(options.scene_id));
-    return scene_start_time(options.scene_id) + local_time;
+    return fminf(options.start_time, scene_timeline_duration());
 }
 
 static Rectangle integer_scaled_destination(int screen_width, int screen_height, VirtualSize size)
@@ -360,28 +354,6 @@ static Rectangle integer_scaled_destination(int screen_width, int screen_height,
         width,
         height,
     };
-}
-
-static SceneId adjacent_scene(SceneId scene, int direction)
-{
-    static const SceneId order[] = {
-        SCENE_STARSCROLL,
-        SCENE_FIRE,
-        SCENE_PLASMA,
-        SCENE_CUBE,
-    };
-    for (size_t i = 0; i < sizeof(order) / sizeof(order[0]); ++i) {
-        if (order[i] != scene)
-            continue;
-        int next = (int)i + direction;
-        int count = (int)(sizeof(order) / sizeof(order[0]));
-        if (next < 0)
-            next += count;
-        if (next >= count)
-            next -= count;
-        return order[next];
-    }
-    return SCENE_STARSCROLL;
 }
 
 static bool dump_live_screenshot(VirtualFramebuffer cpu_framebuffer, GpuFramebuffer gpu_framebuffer,
@@ -477,8 +449,7 @@ static int run_screenshot(ProgramOptions options)
         return 1;
     }
 
-    float beat = timeline_time * 125.0f / 60.0f;
-    scene_draw(pixels, size, scene, timeline_time, beat);
+    scene_draw(pixels, size, scene);
 
     Image image = {
         .data = pixels,
@@ -624,10 +595,10 @@ static int run_profile(ProgramOptions options)
             .time = local_time,
             .progress = local_time / duration,
         };
-        float beat = timeline_time * 125.0f / 60.0f;
+
         double frame_started_at = profile_time();
         double generation_started_at = profile_time();
-        scene_draw(pixels, size, scene, timeline_time, beat);
+        scene_draw(pixels, size, scene);
         float generation_ms = (float)((profile_time() - generation_started_at) * 1000.0);
         float upload_ms = 0.0f;
         float present_ms = 0.0f;
@@ -676,7 +647,6 @@ static int run_profile(ProgramOptions options)
     printf("graphics_enabled=%s\n", options.visible ? "true" : "false");
     printf("pacing=unbounded\n");
     printf("timeline_step_seconds=0.016666667\n");
-    printf("noise_table_bytes=%zu\n", scenes_noise_table_bytes());
     printf("framebuffer_bytes=%zu\n", pixel_count * sizeof(Color));
     printf("final_framebuffer_checksum=%016llx\n", (unsigned long long)checksum);
     printf("generation_scope=cpu_scene_generation\n");
@@ -708,7 +678,6 @@ int main(int argc, char **argv)
         return 0;
     }
 
-    scenes_initialize();
     atexit(scenes_shutdown);
     if (options.profile_enabled)
         return run_profile(options);
@@ -759,20 +728,26 @@ int main(int argc, char **argv)
     Music music = { 0 };
     bool music_ready = false;
     bool spectrum_attached = false;
-    if (FileExists("assets/music/starter.xm")) {
-        music = LoadMusicStream("assets/music/starter.xm");
+    if (FileExists(PROTEUS_ASSET_DIR "/music/below-the-surface.xm")) {
+        music = LoadMusicStream(PROTEUS_ASSET_DIR "/music/below-the-surface.xm");
         music_ready = IsMusicValid(music);
+        if (music_ready
+            && !xm_music_start_at(
+                &music, PROTEUS_ASSET_DIR "/music/below-the-surface.xm", timeline_start)) {
+            TraceLog(LOG_WARNING, "Unable to seek XM music to %.3f seconds", timeline_start);
+            UnloadMusicStream(music);
+            music_ready = false;
+        }
         if (music_ready) {
-            music.looping = true;
-            float music_start = fmodf(timeline_start, scene_timeline_duration());
-            if (!xm_music_start_at(music, music_start))
-                TraceLog(LOG_WARNING, "Unable to seek XM music to %.3f seconds", music_start);
+            music.looping = false;
             spectrum_attached = audio_spectrum_attach(music.stream);
             if (!spectrum_attached)
                 TraceLog(LOG_WARNING, "Unable to attach the audio spectrum analyzer");
             PlayMusicStream(music);
         }
     }
+    if (!music_ready)
+        TraceLog(LOG_WARNING, "Below the surface soundtrack could not be loaded");
     // XM playback position advances by decoded audio buffers, so use a monotonic
     // clock for per-frame animation and align it with the start of playback.
     double animation_start_time = GetTime();
@@ -802,15 +777,6 @@ int main(int argc, char **argv)
             profiler_visible = !profiler_visible;
             if (profiler_visible)
                 next_snapshot_time = 0.0;
-        }
-        int scene_direction = IsKeyPressed(KEY_LEFT) ? -1 : IsKeyPressed(KEY_RIGHT) ? 1 : 0;
-        if (scene_direction != 0) {
-            float current_time = timeline_start + (float)(GetTime() - animation_start_time);
-            SceneId next_scene = adjacent_scene(scene_at(current_time).id, scene_direction);
-            timeline_start = scene_start_time(next_scene);
-            animation_start_time = GetTime();
-            if (music_ready && !xm_music_start_at(music, timeline_start))
-                TraceLog(LOG_WARNING, "Unable to seek XM music to %.3f seconds", timeline_start);
         }
         bool save_frame = IsKeyPressed(KEY_F2);
 
@@ -848,14 +814,14 @@ int main(int argc, char **argv)
         if (spectrum_attached)
             audio_spectrum_update(&spectrum, GetFrameTime());
         float time = timeline_start + (float)(GetTime() - animation_start_time);
-        float beat = time * 125.0f / 60.0f;
+
         SceneFrame scene = scene_at(time);
         double scene_started_at = GetTime();
         bool use_gpu = gpu_ready && scene.id == SCENE_CUBE;
         if (use_gpu)
             gpu_draw_frame(&gpu_scene, gpu_framebuffer, scene.time);
         else {
-            scene_draw(framebuffer.pixels, size, scene, time, beat);
+            scene_draw(framebuffer.pixels, size, scene);
             UpdateTexture(framebuffer.texture, framebuffer.pixels);
         }
         previous_scene_ms = (float)((GetTime() - scene_started_at) * 1000.0);
@@ -881,10 +847,9 @@ int main(int argc, char **argv)
             destination, (Vector2) { 0, 0 }, 0, WHITE);
         if (profiler_visible)
             profiler_draw(&profiler, &snapshot, size);
-        DrawText(
-            TextFormat("%dx%d  |  Left/Right scene  F2 screenshot  1/2/3 resolution  F3 profiler  "
-                       "F11 fullscreen  Esc quit",
-                size.width, size.height),
+        DrawText(TextFormat("%dx%d  |  F2 screenshot  1/2/3 resolution  F3 profiler  "
+                            "F11 fullscreen  Esc quit",
+                     size.width, size.height),
             12, screen_height - 28, 16, RAYWHITE);
         EndDrawing();
         previous_present_ms = (float)((GetTime() - present_started_at) * 1000.0);

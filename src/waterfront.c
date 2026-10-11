@@ -200,17 +200,26 @@ bool waterfront_draw(
 {
     WaterfrontSceneFrame frame;
     waterfront_scene_evaluate(time, short_route, &frame);
-    waterfront_sky_draw(pixels, width, height, frame.camera);
+    return waterfront_draw_frame(r, pixels, width, height, &frame);
+}
+
+bool waterfront_draw_frame(
+    Renderer3D *r, Color *pixels, int width, int height, const WaterfrontSceneFrame *frame)
+{
+    waterfront_sky_draw(pixels, width, height, frame->camera);
     if (!renderer3d_begin(
-            r, pixels, width, height, frame.camera, (Vector3) { -0.4f, 0.85f, -0.35f }))
+            r, pixels, width, height, frame->camera, (Vector3) { -0.4f, 0.85f, -0.35f }))
         return false;
     renderer3d_draw_mesh(r, waterfront_scene_city_mesh(), (Transform3D) { .scale = { 1, 1, 1 } });
     // Dockbron: approximate mapped endpoints and assumed deck elevation, for composition.
-    renderer3d_draw_box(r, frame.bridge, frame.bridge_color);
+    renderer3d_draw_box(r, frame->bridge, frame->bridge_color);
     windows(r);
-    street_life(r, &frame);
-    harbour_life(r, &frame.boat);
+    street_life(r, frame);
+    harbour_life(r, &frame->boat);
     crane(r);
+    for (int i = 0; i < frame->gull_count; ++i)
+        for (int part = 0; part < WATERFRONT_GULL_PARTS; ++part)
+            renderer3d_draw_emissive_mesh(r, waterfront_gull_mesh(part), frame->gulls[i][part]);
     return true;
 }
 
@@ -245,13 +254,18 @@ static float triangle_distance_squared(Vector3 p, Vector3 a, Vector3 b, Vector3 
 bool waterfront_check_routes(void)
 {
     const Mesh3D *city = waterfront_scene_city_mesh();
-    for (int route = 0; route < 2; ++route) {
+    for (int route = 0; route < 3; ++route) {
         bool short_route = route != 0;
-        float duration = waterfront_duration(short_route);
+        float duration = route == 2 ? WATERFRONT_DEMO_DURATION : waterfront_duration(short_route);
         int steps = (int)ceilf(duration * 120);
         for (int i = 0; i <= steps; ++i) {
             float time = duration * (float)i / (float)steps;
-            Vector3 p = waterfront_camera(time, short_route).position;
+            WaterfrontSceneFrame frame;
+            if (route == 2)
+                waterfront_demo_evaluate(time, &frame);
+            else
+                waterfront_scene_evaluate(time, short_route, &frame);
+            Vector3 p = frame.camera.position;
             if (!waterfront_corner_clear(p, 2)) {
                 fprintf(stderr, "Route %s at %.3f s is within 2 m of the city dressing\n",
                     short_route ? "short" : "long", time);
@@ -280,6 +294,6 @@ bool waterfront_check_routes(void)
                 return false;
         }
     }
-    puts("Both storyboard paths clear mapped surfaces by 2 m at 120 samples/second.");
+    puts("Storyboard and flock camera paths clear mapped surfaces by 2 m at 120 samples/second.");
     return true;
 }

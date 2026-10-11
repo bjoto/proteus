@@ -3,6 +3,9 @@
 The brief, palette provenance, render commands, listening guide, and revision
 decisions live in [SOUNDTRACK_PLAN.md](../../docs/SOUNDTRACK_PLAN.md).
 
+**Runtime:** Proteus now bundles the working XM below at build time and plays it
+with the four-minute gull-follow waterfront. Rebuild after tracker edits.
+
 **Current editing handoff:** open
 [fasttracker/v01/below-the-surface.xm](fasttracker/v01/below-the-surface.xm) in
 FastTracker II Clone. The [tracker guide](fasttracker/README.md) maps the channels,
@@ -120,7 +123,7 @@ The package contains `soundtrack.wav`, `soundtrack.mid`, `project.json`,
 `render-manifest.json`, `cue-sheet.json`, and `delivery-manifest.json`. Its 11 cues
 cover the complete 240-second audio (11,520,000 frames); verified manifest hashes
 bind the cue sheet to the audio. This is a draft delivery pending listening
-acceptance. Runtime playback and visual timing integration remain to be done.
+acceptance. Runtime integration uses the editable XM below, with a four-minute waterfront timeline.
 
 `--name` selects the WAV/MIDI filename stem (default `palette`). The proof's
 `sections` array stores beat positions and a listening guide; the exporter uses

@@ -9,7 +9,9 @@ float waterfront_duration(bool short_route);
 View3D waterfront_camera(float time, bool short_route);
 bool waterfront_draw(
     Renderer3D *renderer, Color *pixels, int width, int height, float time, bool short_route);
-// Samples both routes against the storyboard's surfaces with a two-metre camera radius.
+bool waterfront_draw_frame(
+    Renderer3D *renderer, Color *pixels, int width, int height, const WaterfrontSceneFrame *frame);
+// Samples storyboard and flock routes against the city with a two-metre camera radius.
 // This validates the proxy geometry only, not real-world clearance.
 bool waterfront_check_routes(void);
 

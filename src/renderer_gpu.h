@@ -56,6 +56,7 @@ typedef struct {
     Mesh bridge;
     Mesh cube;
     Mesh plane;
+    Mesh gull[WATERFRONT_GULL_PARTS];
     Shader shader;
     Shader shadow_shader;
     Shader water_shader;

@@ -1,9 +1,10 @@
 # Proteus
 
 A small native C/raylib demo playground with deliberately low-resolution output
-and tracker music.
+and tracker music. The demo is now a single four-minute Eriksberg waterfront journey,
+following five gulls to the 120 BPM “Below the surface” soundtrack.
 
-## Generate the original sample pack and starter XM
+## Generate the original sample pack and starter XM (archived sketch)
 
 ```sh
 python3 tools/generate_audio.py
@@ -34,7 +35,7 @@ Start at a global timeline position, or select a scene and use a scene-local tim
 The music seeks with the visuals so their timing remains synchronized. These options have the same
 meaning in interactive and screenshot modes.
 
-The `cube` waterfront uses the GPU renderer by default. Other scenes remain CPU-rendered.
+The sole scene, `cube`, uses the GPU renderer by default.
 `--renderer cpu` selects the deterministic software reference; `--renderer gpu` is available for
 explicit GPU comparison. GPU waterfront screenshots and profiles create a raylib/OpenGL context,
 while CPU screenshots remain display-free.
@@ -50,7 +51,7 @@ The city renders at 4× width and height (1280x800 at the default 320x200), then
 each 4x4 block into one virtual pixel. This shades 16 times as many main-pass pixels;
 shadow and reflection map sizes stay fixed. The final image still uses nearest-neighbour,
 integer-scaled presentation. The flag applies to playback, screenshots, and `--profile cube`,
-including resolution changes; CPU scenes are unaffected. GPU profiles report `gpu_aa` and
+including resolution changes; the CPU renderer is unaffected. GPU profiles report `gpu_aa` and
 the internal render dimensions, with the downsampling pass included in submission timing.
 
 Controls:
@@ -58,7 +59,6 @@ Controls:
 - `1`: 320x180
 - `2`: 320x200
 - `3`: 320x240
-- `Left` / `Right`: jump to the previous / next scene and seek the music with it
 - `F2`: save the current virtual frame as `proteus-SCENE-MILLISECONDS.png`
 - `F3`: toggle the debug profiler overlay
 - `F11`: toggle fullscreen
@@ -164,14 +164,14 @@ Run one scene against a deterministic 60 FPS timeline and print a machine-readab
 key/value report:
 
 ```sh
-./build/proteus --profile fire
+./build/proteus --renderer cpu --profile cube
 ```
 
 The default CPU run is headless and measures 600 frames after 60 warm-up frames. Use
 `--frames`, `--warmup`, and `--resolution` to change the workload. For example:
 
 ```sh
-./build/proteus --profile plasma --frames 1200 --warmup 120 --resolution 320x240
+./build/proteus --renderer cpu --profile cube --frames 1200 --warmup 120 --resolution 320x240
 ```
 
 Add `--visible` to create a graphics context and include texture-upload and presentation
@@ -188,42 +188,43 @@ For function-level CPU sampling on macOS, the built-in `sample` command can atta
 longer headless run. Start the sampler in one terminal, then the workload in another:
 
 ```sh
-sample -wait proteus 10 1 -file build/fire.sample.txt
-./build/proteus --profile fire --frames 100000
+sample -wait proteus 10 1 -file build/cube.sample.txt
+./build/proteus --renderer cpu --profile cube --frames 100000
 ```
 
 With full Xcode selected as the active developer directory, Instruments can instead record
 a Time Profiler trace directly:
 
 ```sh
-xcrun xctrace record --template 'Time Profiler' --output build/fire.trace \
-  --launch -- ./build/proteus --profile fire --frames 100000
+xcrun xctrace record --template 'Time Profiler' --output build/cube.trace \
+  --launch -- ./build/proteus --renderer cpu --profile cube --frames 100000
 ```
 
 ## Editing the music
 
-Open `assets/music/starter.xm` in FastTracker II Clone. The instruments are:
+The runtime uses [below-the-surface.xm](soundtrack/alternate/fasttracker/v01/below-the-surface.xm).
+CMake copies that working XM into the build's `assets/music/` directory on every build;
+rebuild after saving tracker edits. Playback uses the bundled asset path, so it also works
+when launched outside the repository root. See the [tracker guide](soundtrack/alternate/fasttracker/README.md)
+for its instruments, channels, and section cues. The starter XM remains an archived sketch
+and is still used by the separate dance study.
 
-1. Kick
-2. Snare
-3. Closed hi-hat
-4. Bass
-5. Synth
+The waterfront runs from 0:00 through the four-minute ending at 120 BPM, speed 6.
+Both `--time` and `--scene cube --time` now address the same timeline; times beyond
+240 seconds hold the final shot. The song plays once and retains its silent ending.
+There is no scene switching. Close and relaunch to replay.
 
-See `docs/MUSIC.md` for the pattern arrangement, channel layout, and a practical
-first editing session.
+Five low-poly gulls glide in a loose formation with staggered wingbeats and gentle banking.
+The camera trails the flock with a stable horizon, following a broad circuit over the street,
+river, and dock. Turns follow the soundtrack's section cues. Bird, camera, and actor positions
+are deterministic functions of time, so direct seeks match continuous playback. The flock is
+shared by CPU and GPU rendering, including GPU reflections and shadows. The original short/long
+camera routes remain available in the standalone `waterfront_storyboard` diagnostic.
 
-The virtual framebuffer defaults to 320x200. Resolution is intentionally not an
-architectural decision: try all three shapes while the demo runs.
-
-The visuals follow the eight-pattern music loop. Two patterns each are given to
-the starfield, fire, and plasma. The final two show a 15.36-second Eriksberg waterfront
-fly-by: follow evening traffic along Monsungatan, pass lit apartments, and look back
-across the dock, with the crane in the background. The `cube`
-scene name is retained for screenshots and profiling. It uses bundled geographic geometry and an
-authored crane; the GPU route is the default for this scene and the CPU route remains the reference.
-See [the 3D renderer notes](docs/3D.md).
-The proposed next visual pass is described in [the living city plan](docs/LIVING_CITY_PLAN.md).
+The virtual framebuffer defaults to 320x200 with integer scaling; try all three shapes while
+it runs. The `cube` name is retained for screenshots and profiling. The city uses bundled
+geographic geometry and an authored crane. See [the 3D renderer notes](docs/3D.md) and
+[the living city plan](docs/LIVING_CITY_PLAN.md).
 
 Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright),
 [ODbL 1.0](https://opendatacommons.org/licenses/odbl/1-0/). The retained snapshot and

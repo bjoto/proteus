@@ -18,16 +18,16 @@ static void usage(void)
          "--frames closes playback after COUNT frames, for a manual smoke check.");
 }
 
-static bool seek_music(Music music, float time, bool paused, float speed)
+static bool seek_music(Music *music, float time, bool paused, float speed)
 {
-    StopMusicStream(music);
-    if (!xm_music_start_at(music, time))
+    StopMusicStream(*music);
+    if (!xm_music_start_at(music, PROTEUS_ASSET_DIR "/music/starter.xm", time))
         return false;
-    SetMusicPitch(music, speed);
-    PlayMusicStream(music);
-    UpdateMusicStream(music);
+    SetMusicPitch(*music, speed);
+    PlayMusicStream(*music);
+    UpdateMusicStream(*music);
     if (paused)
-        PauseMusicStream(music);
+        PauseMusicStream(*music);
     return true;
 }
 
@@ -120,7 +120,7 @@ int main(int argc, char **argv)
         if (audio_ready) {
             music = LoadMusicStream(PROTEUS_ASSET_DIR "/music/starter.xm");
             music_ready = IsMusicValid(music);
-            if (music_ready && !seek_music(music, time, false, speed)) {
+            if (music_ready && !seek_music(&music, time, false, speed)) {
                 UnloadMusicStream(music);
                 music_ready = false;
             }
@@ -180,7 +180,7 @@ int main(int argc, char **argv)
         }
         if (music_ready) {
             if (seek) {
-                if (!seek_music(music, time, paused, speed)) {
+                if (!seek_music(&music, time, paused, speed)) {
                     result = 1;
                     break;
                 }
