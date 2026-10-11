@@ -4,6 +4,9 @@ A small native C/raylib demo playground with deliberately low-resolution output
 and tracker music. The demo is now a single four-minute Eriksberg waterfront journey,
 following five gulls to the 120 BPM “Below the surface” soundtrack.
 
+The [Gothenburg boating plan](docs/BOATING_PLAN.md) records the proposed interactive direction:
+a small boating playground, with free exploration and an optional arcade challenge.
+
 ## Generate the original sample pack and starter XM (archived sketch)
 
 ```sh
