@@ -83,10 +83,16 @@ Esc closes the window.
 The simulation pauses when the window loses focus. The view remains 320x200 with integer scaling.
 
 Steering angles the outboard at the stern. Its off-centre thrust pushes the stern sideways and
-builds rotation; water resistance at the bow and stern damps sliding and turning. The engine follows
+builds rotation; speed-dependent resistance at the bow and stern damps sliding and turning. The engine follows
 the held wheel setting. Bring the wheel back to centre or countersteer to catch a turn. At idle,
 turning the engine cannot start a turn from rest. Propeller wash shows the water being pushed in the
 opposite direction to thrust. This is a simplified planar model with tunable forces and inertia.
+
+While coasting, water flowing across the angled outboard creates a passive steering force.
+It fades as the boat slows; no flow means no coasting steering. Forward drag includes a quadratic
+term, while hull grip grows with forward speed and local sideways slip. Try building speed,
+lowering the throttle to 0%, and holding a modest wheel angle through the coast. These are tunable
+approximations for calm water, without planing or waves.
 
 The basin walls bounce the craft back gently; the two orange markers are visual turning references
 and have no collision yet. A spreading wake traces your path and fades; hard turns throw spray
@@ -104,8 +110,8 @@ For display-free captures of a scripted acceleration and right turn, or a window
 ```
 
 `--demo` previews the same scripted run as screenshots: raise throttle for two seconds, turn after
-one second, hold wheel and throttle until six seconds, then centre the wheel, lower throttle to idle,
-and coast. R replays it.
+one second, hold wheel and throttle until six seconds, then lower throttle to idle by eight seconds
+and coast with the wheel still turned. R replays it.
 Screenshot `--time` selects a point in that run (0..60 seconds). The water effects use the same
 fixed simulation ticks as handling.
 

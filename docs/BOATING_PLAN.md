@@ -21,7 +21,12 @@ the wheel setting when keys are released. Returning the wheel to centre lets rot
 through water resistance. Countersteering can catch
 a turn. At idle there is no powered steering, and a stationary boat cannot turn. Propeller wash
 moves opposite the thrust direction, independently of the spreading wake. The model uses normalized
-mass and tunable forces, not calibrated hydrodynamics; passive skeg/rudder lift is not modelled.
+mass and tunable forces, not calibrated hydrodynamics. Forward drag combines linear and quadratic
+terms. Lateral resistance at each hull station increases with forward speed and local sideways
+velocity, including rotation. A passive force across the angled submerged outboard uses the local
+stern velocity and acts at the stern, producing both drag and turning torque. It works at idle
+while moving and fades to zero with water-relative motion. Calm water remains the baseline;
+planing, currents, and waves are not implemented.
 A spreading, fading wake traces the travelled path; lateral
 slip throws turning spray from the sliding side of the hull. Two orange markers provide turning
 references but do not collide. Rendering is 320x200 with nearest-neighbour integer scaling. Losing
@@ -130,9 +135,9 @@ Explore these individually after the wake and spray make the existing handling e
 Keep calm water as a baseline for comparisons. These are proposed gameplay models to try, not a
 commitment to a comprehensive boat simulation or claims of physically accurate behaviour.
 
-- **Speed-dependent steering:** build on stern thrust and distributed water resistance. Explore
-  passive skeg forces and speed-dependent hull resistance for more nuanced coasting and low-speed
-  manoeuvring. The current model uses throttle-driven torque, not a prescribed speed-to-turn curve.
+- **Speed-dependent steering (first approximation implemented):** tune stern thrust, passive
+  outboard resistance, and speed-dependent hull resistance through coasting turns and low-speed
+  manoeuvring. The current model uses forces and torque, not a prescribed speed-to-turn curve.
 - **Planing:** explore a distinct acceleration transition, with the bow rising and then settling
   into a faster glide. Test whether reaching open water becomes more satisfying.
 - **Current:** introduce drift that makes routes through channels and approaches to shore matter.
@@ -171,3 +176,8 @@ turning is satisfying, since they would materially change course design.
 - 2026-10-11: Replace direct heading control with steerable stern thrust, yaw inertia, and water
   resistance at bow/stern stations. Show the thrust direction through an outboard and propeller wash.
   Physical motivation: directed thrust in the [Coast Guard Boat Crew Handbook](https://rdept.cgaux.org/documents/BoatCrewHandbooks/BoatCrewBCH16114.4.pdf).
+- 2026-10-13: Add nonlinear hull resistance and passive coasting steering from water crossing the
+  angled outboard. Keep these forces dissipative, including their rotational work. The scripted
+  preview now holds its wheel angle while lowering throttle to show an unpowered turning coast.
+  Quadratic drag is motivated by the [standard fluid drag equation](https://www1.grc.nasa.gov/beginners-guide-to-aeronautics/drag-equation/);
+  coefficients remain gameplay tuning parameters, not measured properties of a specific boat.

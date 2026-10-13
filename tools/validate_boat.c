@@ -20,8 +20,64 @@ static int particles(const Boat *boat, bool spray)
     return count;
 }
 
+static float kinetic_energy(const Boat *boat)
+{
+    // Normalized mass 1 and yaw inertia 2.2; total energy includes rotation.
+    return 0.5f * (boat->velocity.x * boat->velocity.x + boat->velocity.y * boat->velocity.y)
+        + 1.1f * boat->yaw_velocity * boat->yaw_velocity;
+}
+
+static int validate_coasting(void)
+{
+    Boat fast = { .velocity = { 0, -10 }, .wheel = 0.6f, .engine_angle = 0.33f };
+    Boat slow = { .velocity = { 0, -2 }, .wheel = 0.6f, .engine_angle = 0.33f };
+    Boat left = { .velocity = { 0, -10 }, .wheel = -0.6f, .engine_angle = -0.33f };
+    Boat straight = { .velocity = { 0, -10 } };
+    float energy = kinetic_energy(&fast);
+    boat_step(&fast, 0, 0);
+    boat_step(&slow, 0, 0);
+    boat_step(&left, 0, 0);
+    boat_step(&straight, 0, 0);
+    CHECK(fast.throttle == 0 && fast.yaw_velocity > 0);
+    CHECK(fast.yaw_velocity > slow.yaw_velocity * 10);
+    CHECK(fabsf(left.yaw_velocity + fast.yaw_velocity) < 0.0001f);
+    CHECK(straight.yaw_velocity == 0 && straight.velocity.x == 0);
+    CHECK(kinetic_energy(&fast) < energy);
+    // A sustained unpowered turn changes heading while always losing total kinetic energy.
+    for (int i = 0; i < 120; ++i) {
+        energy = kinetic_energy(&fast);
+        boat_step(&fast, 0, 0);
+        CHECK(kinetic_energy(&fast) <= energy + 0.00001f);
+    }
+    CHECK(fast.heading > 0.1f);
+    CHECK(fabsf(fast.position.x) < BOAT_LIMIT_X && fabsf(fast.position.y) < BOAT_LIMIT_Z);
+
+    // Broad drift, backwards motion, and spin must not turn passive resistance into propulsion.
+    for (int direction = -1; direction <= 1; direction += 2) {
+        for (int wheel = -1; wheel <= 1; ++wheel) {
+            Boat drift = { .velocity = { 7, direction * 8 },
+                .yaw_velocity = direction * 2,
+                .wheel = wheel,
+                .engine_angle = wheel * 0.55f };
+            for (int i = 0; i < 600; ++i) {
+                energy = kinetic_energy(&drift);
+                boat_step(&drift, 0, 0);
+                CHECK(kinetic_energy(&drift) <= energy + 0.00001f);
+            }
+        }
+    }
+    // Straight-line drag grows more than linearly with speed.
+    fast = (Boat) { .velocity = { 0, -10 } };
+    slow = (Boat) { .velocity = { 0, -2 } };
+    boat_step(&fast, 0, 0);
+    boat_step(&slow, 0, 0);
+    CHECK((10 + fast.velocity.y) / 10 > (2 + slow.velocity.y) / 2);
+    return 0;
+}
+
 int main(void)
 {
+    CHECK(validate_coasting() == 0);
     Boat boat;
     boat_reset(&boat);
     // Wheel adjustments are bounded, persistent, reversible, and cleared by reset.
@@ -60,12 +116,12 @@ int main(void)
         boat_step(&boat, 1, 0);
     CHECK(particles(&boat, false) > 0);
     CHECK(boat.water[0].velocity.x > 0 && boat.water[0].velocity.y > 0);
-    // Cutting power removes engine torque, but angular momentum decays rather than snapping off.
-    float yaw = boat.yaw_velocity;
+    // Cutting power leaves angular momentum and passive steering; energy must still decay.
+    float energy = kinetic_energy(&boat);
     boat.throttle = 0;
     boat_step(&boat, 0, 0);
-    CHECK(boat.yaw_velocity > 0 && boat.yaw_velocity < yaw);
-    for (int i = 0; i < 600; ++i)
+    CHECK(boat.yaw_velocity > 0 && kinetic_energy(&boat) < energy);
+    for (int i = 0; i < 2400; ++i)
         boat_step(&boat, 0, 0);
     CHECK(boat.wheel > 0 && boat.engine_angle > 0 && fabsf(boat.yaw_velocity) < 0.001f);
     boat_reset(&boat);

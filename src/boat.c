@@ -8,6 +8,9 @@ static const float ENGINE_ARM = 1.6f;
 static const float MAX_ENGINE_ANGLE = 0.55f;
 static const float ENGINE_THRUST = 11.0f;
 static const float YAW_INERTIA = 2.2f;
+static const float HULL_DRAG_LINEAR = 0.22f;
+static const float HULL_DRAG_QUADRATIC = 0.025f;
+static const float SKEG_RESISTANCE = 0.10f;
 
 static Vector2 thrust_direction(const Boat *boat)
 {
@@ -132,15 +135,30 @@ void boat_step(Boat *boat, float wheel_change, float throttle_change)
     Vector2 force = Vector2Scale(thrust_direction(boat), ENGINE_THRUST * boat->throttle);
     // Torque = lever arm x force: a portward stern force produces starboard yaw.
     float torque = -ENGINE_ARM * Vector2DotProduct(force, right);
-    force = Vector2Subtract(force, Vector2Scale(forward, 0.55f * along));
+    float drag = (HULL_DRAG_LINEAR + HULL_DRAG_QUADRATIC * fabsf(along)) * along;
+    force = Vector2Subtract(force, Vector2Scale(forward, drag));
     // Two hull stations resist their own lateral water velocity, including rotation.
     // This produces both lateral grip and yaw damping rather than prescribing a turn rate.
     for (int end = -1; end <= 1; end += 2) {
         float arm = end * 1.2f;
-        float lateral_force = -1.1f * (sideways + boat->yaw_velocity * arm);
+        float lateral_speed = sideways + boat->yaw_velocity * arm;
+        float grip = 0.7f + 0.055f * fabsf(along) + 0.10f * fabsf(lateral_speed);
+        float lateral_force = -grip * lateral_speed;
         force = Vector2Add(force, Vector2Scale(right, lateral_force));
         torque += arm * lateral_force;
     }
+    // Calm water: point velocity is relative to stationary water, including stern rotation.
+    // The submerged outboard resists flow across its angled plane. Apply both components of
+    // this force and its stern torque: it can redirect a coast, but cannot add kinetic energy.
+    Vector2 stern_velocity
+        = Vector2Subtract(boat->velocity, Vector2Scale(right, ENGINE_ARM * boat->yaw_velocity));
+    Vector2 skeg_normal = Vector2Add(Vector2Scale(right, cosf(boat->engine_angle)),
+        Vector2Scale(forward, sinf(boat->engine_angle)));
+    float cross_flow = Vector2DotProduct(stern_velocity, skeg_normal);
+    Vector2 skeg_force
+        = Vector2Scale(skeg_normal, -SKEG_RESISTANCE * Vector2Length(stern_velocity) * cross_flow);
+    force = Vector2Add(force, skeg_force);
+    torque -= ENGINE_ARM * Vector2DotProduct(skeg_force, right);
     torque -= 0.45f * boat->yaw_velocity;
     boat->velocity = Vector2Add(boat->velocity, Vector2Scale(force, BOAT_STEP));
     boat->yaw_velocity += torque / YAW_INERTIA * BOAT_STEP;

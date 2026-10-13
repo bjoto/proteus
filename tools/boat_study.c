@@ -17,7 +17,8 @@ static void usage(void)
 
 static void demo_step(Boat *boat, int tick)
 {
-    float target_wheel = tick >= 120 && tick < 720 ? 0.65f : 0;
+    // Keep the wheel turned after lowering throttle to demonstrate passive coasting steering.
+    float target_wheel = tick >= 120 ? 0.65f : 0;
     float wheel_change = fmaxf(-1, fminf(1, (target_wheel - boat->wheel) / BOAT_STEP));
     boat_step(boat, wheel_change, tick < 240 ? 1 : tick >= 720 ? -1 : 0);
 }
