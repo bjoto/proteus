@@ -10,6 +10,9 @@ static void usage(void)
     puts("Usage: boat_study [--demo] [--frames COUNT] [--screenshot FILE [--time SECONDS]]\n"
          "Left/Right or A/D: adjust wheel | Up/Down or W/S: adjust throttle (0..100%)\n"
          "Wheel and throttle hold when released. R: reset and centre wheel | Esc: close\n"
+         "+/-: closer/farther | PageUp/PageDown: raise/lower camera | C: reset view\n"
+         "--camera-distance UNITS: 8..48 (default 20)\n"
+         "--camera-height UNITS: 4..36 (default 14)\n"
          "Screenshots run a deterministic handling example without a window.\n"
          "--time is screenshot-only (0..60); --frames limits an interactive smoke run.\n"
          "--demo drives the screenshot example in a window; R restarts it.");
@@ -48,6 +51,7 @@ int main(int argc, char **argv)
 {
     const char *screenshot = NULL;
     float time = 0;
+    BoatCamera camera_settings = BOAT_CAMERA_DEFAULT;
     bool time_set = false, demo = false;
     int frame_limit = 0;
     for (int i = 1; i < argc; ++i) {
@@ -65,6 +69,20 @@ int main(int argc, char **argv)
             if (end == value || *end || !isfinite(time) || time < 0 || time > 60)
                 goto invalid;
             time_set = true;
+        } else if ((strcmp(argv[i], "--camera-distance") == 0
+                       || strcmp(argv[i], "--camera-height") == 0)
+            && i + 1 < argc) {
+            bool distance = strcmp(argv[i], "--camera-distance") == 0;
+            char *end;
+            const char *value = argv[++i];
+            float parsed = strtof(value, &end);
+            if (end == value || *end || !isfinite(parsed) || parsed < (distance ? 8 : 4)
+                || parsed > (distance ? 48 : 36))
+                goto invalid;
+            if (distance)
+                camera_settings.distance = parsed;
+            else
+                camera_settings.height = parsed;
         } else if (strcmp(argv[i], "--frames") == 0 && i + 1 < argc) {
             char *end;
             const char *value = argv[++i];
@@ -80,7 +98,7 @@ int main(int argc, char **argv)
         goto invalid;
 
     SetTraceLogLevel(LOG_WARNING);
-    enum { WIDTH = 320, HEIGHT = 200, HUD_HEIGHT = 160 };
+    enum { WIDTH = 320, HEIGHT = 200, HUD_HEIGHT = 200 };
     Color *pixels = malloc(WIDTH * HEIGHT * sizeof(*pixels));
     if (!pixels)
         return 1;
@@ -92,7 +110,7 @@ int main(int argc, char **argv)
         for (int tick = 0; tick < (int)roundf(time / BOAT_STEP); ++tick)
             demo_step(&boat, tick);
     }
-    if (!boat_draw(&renderer, pixels, WIDTH, HEIGHT, &boat))
+    if (!boat_draw(&renderer, pixels, WIDTH, HEIGHT, &boat, camera_settings))
         goto cleanup;
     Image image = { pixels, WIDTH, HEIGHT, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 };
     if (screenshot) {
@@ -116,6 +134,18 @@ int main(int argc, char **argv)
     int frames = 0, demo_tick = 0;
     result = 0;
     while (!WindowShouldClose() && (!frame_limit || frames < frame_limit)) {
+        if (IsWindowFocused()) {
+            float dt = fminf(GetFrameTime(), 0.1f);
+            int zoom = (IsKeyDown(KEY_MINUS) || IsKeyDown(KEY_KP_SUBTRACT))
+                - (IsKeyDown(KEY_EQUAL) || IsKeyDown(KEY_KP_ADD));
+            int elevation = IsKeyDown(KEY_PAGE_UP) - IsKeyDown(KEY_PAGE_DOWN);
+            camera_settings.distance
+                = fmaxf(8, fminf(48, camera_settings.distance + zoom * 12 * dt));
+            camera_settings.height
+                = fmaxf(4, fminf(36, camera_settings.height + elevation * 8 * dt));
+            if (IsKeyPressed(KEY_C))
+                camera_settings = BOAT_CAMERA_DEFAULT;
+        }
         if (IsKeyPressed(KEY_R)) {
             boat_reset(&boat);
             accumulator = 0;
@@ -136,7 +166,7 @@ int main(int argc, char **argv)
         } else {
             accumulator = 0;
         }
-        if (!boat_draw(&renderer, pixels, WIDTH, HEIGHT, &boat)) {
+        if (!boat_draw(&renderer, pixels, WIDTH, HEIGHT, &boat, camera_settings)) {
             result = 1;
             break;
         }
@@ -166,6 +196,10 @@ int main(int argc, char **argv)
             12, hud_y + 113, 12, LIGHTGRAY);
         DrawText(demo ? "R: replay | Esc: close" : "Both hold | R: reset + centre | Esc: close", 12,
             hud_y + 131, 12, LIGHTGRAY);
+        DrawText(TextFormat("View %.1f back / %.1f high | +/-: zoom", camera_settings.distance,
+                     camera_settings.height),
+            12, hud_y + 153, 12, LIGHTGRAY);
+        DrawText("PgUp/PgDn: height | C: reset view", 12, hud_y + 171, 12, LIGHTGRAY);
         if (!IsWindowFocused())
             DrawText("PAUSED", 12, 12, 20, RAYWHITE);
         EndDrawing();

@@ -14,7 +14,7 @@ The throttle range is 0% (idle) to 100%, with two seconds of held
 input covering the full range. A percentage and bar show the setting independently of speed.
 Lower to idle to coast; reverse is not implemented. R resets the boat, centres the wheel, and idles
 the throttle; Esc exits.
-The silent handling sketch has a fixed elevated camera, stern-applied engine thrust, rotational
+The silent handling sketch has a third-person follow camera, stern-applied engine thrust, rotational
 inertia, water resistance at two hull stations, and forgiving basin-wall collisions. Steering
 angles the outboard; its lateral thrust pushes the stern and creates torque. The outboard holds
 the wheel setting when keys are released. Returning the wheel to centre lets rotation settle
@@ -34,7 +34,13 @@ focus pauses movement.
 
 The simulation uses fixed 120 Hz ticks. Handling constants live in `src/boat.c`. Screenshot mode
 runs a deterministic example without a graphics context; see the README for commands.
-The basin is a handling test area, not yet a representation of Gothenburg. Geographical scenery,
+The 240x160-world-unit basin is a handling test area, not yet a representation of Gothenburg.
+It is four times wider and deeper than the original basin. The camera follows the boat from
+20 units behind and 14 units above, looking 5 units ahead. Its heading eases through turns on fixed
+simulation ticks, including angle wraparound. `-`/`+` adjust distance (8..48), PageUp/PageDown adjust
+height (4..36), and `C` restores the default view. The HUD shows both values; `R` resets the boat
+without changing them. Settings are per-run; `--camera-distance` and `--camera-height` also configure
+interactive runs and screenshots. Geographical scenery,
 collision splashes, and timed courses belong to later stages. Player evaluation of handling is the
 next design input: especially steering responsiveness, the amount of slide, and coasting into a turn.
 
@@ -76,8 +82,7 @@ selected separately. An enjoyable harbour and one island route would already be 
 - Throttle affects both forward push and turning force. Reducing it cuts thrust; momentum remains.
   Defer a dedicated brake until play suggests it is needed.
 - Shore and buoy collisions cause forgiving bumps and splashes, with quick recovery.
-- Begin with a fixed, elevated camera that makes the test area easy to read. Revisit a following
-  camera when exploring larger areas becomes the next concrete task.
+- Follow the boat from behind and above, with a stable horizon and gently smoothed heading.
 
 The first success criterion: driving in circles and carving around a buoy is enjoyable for a minute,
 even without a score. Tune movement before adding content if this does not hold.
@@ -162,7 +167,7 @@ turning is satisfying, since they would materially change course design.
 - Does relaxed exploration or fast gate running become the stronger experience?
 - Which small piece of Gothenburg should be the first recognisable playable place?
 - How much geographic fidelity contributes to the pleasure of being there?
-- When is a following camera needed, and what angle best balances scenery and steering clarity?
+- What follow-camera distance and angle best balance scenery and steering clarity?
 - Can a few carefully shaped routes provide enough variety without more systems?
 
 ## Decision record

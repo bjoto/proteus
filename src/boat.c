@@ -51,8 +51,9 @@ static void water_step(Boat *boat)
             p->lift -= 12 * BOAT_STEP;
             p->height += p->lift * BOAT_STEP;
         }
-        if (p->age >= p->lifetime || p->height < 0 || fabsf(p->position.x) > 29.7f
-            || fabsf(p->position.y) > 19.7f)
+        if (p->age >= p->lifetime || p->height < 0
+            || fabsf(p->position.x) > BOAT_BASIN_HALF_X - 0.3f
+            || fabsf(p->position.y) > BOAT_BASIN_HALF_Z - 0.3f)
             p->lifetime = 0;
     }
 
@@ -166,6 +167,9 @@ void boat_step(Boat *boat, float wheel_change, float throttle_change)
     boat->position = Vector2Add(boat->position, Vector2Scale(boat->velocity, BOAT_STEP));
     boundary(&boat->position.x, &boat->velocity.x, BOAT_LIMIT_X);
     boundary(&boat->position.y, &boat->velocity.y, BOAT_LIMIT_Z);
+    float camera_delta = remainderf(boat->heading - boat->camera_heading, 2 * PI);
+    boat->camera_heading
+        = remainderf(boat->camera_heading + camera_delta * (1 - expf(-6 * BOAT_STEP)), 2 * PI);
     water_step(boat);
 }
 
@@ -174,24 +178,32 @@ static void box(Renderer3D *renderer, Vector3 position, Vector3 scale, Color col
     renderer3d_draw_box(renderer, (Transform3D) { .position = position, .scale = scale }, color);
 }
 
-bool boat_draw(Renderer3D *renderer, Color *pixels, int width, int height, const Boat *boat)
+bool boat_draw(Renderer3D *renderer, Color *pixels, int width, int height, const Boat *boat,
+    BoatCamera camera_settings)
 {
     for (int i = 0; i < width * height; ++i)
         pixels[i] = (Color) { 21, 36, 48, 255 };
-    View3D camera = { .position = { 0, 60, 40 },
-        .target = { 0, 0, 0 },
+    Vector3 boat_position = { -boat->position.x, 0, boat->position.y };
+    Vector3 follow = { -sinf(boat->camera_heading), 0, -cosf(boat->camera_heading) };
+    Vector3 eye = Vector3Subtract(boat_position, Vector3Scale(follow, camera_settings.distance));
+    eye.y = camera_settings.height;
+    Vector3 look_at = Vector3Add(boat_position, Vector3Scale(follow, 5));
+    look_at.y = 0.6f;
+    View3D camera = { .position = eye,
+        .target = look_at,
         .up = { 0, 1, 0 },
-        .vertical_fov = 45 * DEG2RAD,
-        .near_plane = 1,
-        .far_plane = 180 };
+        .vertical_fov = 55 * DEG2RAD,
+        .near_plane = 0.3f,
+        .far_plane = 350 };
     if (!renderer3d_begin(renderer, pixels, width, height, camera, (Vector3) { -1, 3, 2 }))
         return false;
 
-    box(renderer, (Vector3) { 0, -0.6f, 0 }, (Vector3) { 62, 1, 42 },
+    box(renderer, (Vector3) { 0, -0.6f, 0 },
+        (Vector3) { 2 * BOAT_BASIN_HALF_X, 1, 2 * BOAT_BASIN_HALF_Z },
         (Color) { 36, 107, 125, 255 });
     // Static water marks provide a speed reference.
-    for (int z = -18; z <= 18; z += 6)
-        for (int x = -27; x <= 27; x += 6)
+    for (int z = -(int)BOAT_BASIN_HALF_Z + 4; z < BOAT_BASIN_HALF_Z; z += 8)
+        for (int x = -(int)BOAT_BASIN_HALF_X + 4; x < BOAT_BASIN_HALF_X; x += 8)
             box(renderer, (Vector3) { x + (z % 4), -0.08f, z }, (Vector3) { 1.3f, 0.04f, 0.12f },
                 (Color) { 62, 132, 142, 255 });
     for (int i = 0; i < BOAT_WATER_PARTICLES; ++i) {
@@ -206,10 +218,12 @@ bool boat_draw(Renderer3D *renderer, Color *pixels, int width, int height, const
             (Vector3) { size, p->spray ? size : 0.015f, size }, color);
     }
     Color quay = { 148, 151, 137, 255 };
-    box(renderer, (Vector3) { -32, 0, 0 }, (Vector3) { 4, 1.8f, 46 }, quay);
-    box(renderer, (Vector3) { 32, 0, 0 }, (Vector3) { 4, 1.8f, 46 }, quay);
-    box(renderer, (Vector3) { 0, 0, -22 }, (Vector3) { 60, 1.8f, 4 }, quay);
-    box(renderer, (Vector3) { 0, 0, 22 }, (Vector3) { 60, 1.8f, 4 }, quay);
+    for (int side = -1; side <= 1; side += 2) {
+        box(renderer, (Vector3) { side * (BOAT_BASIN_HALF_X + 2), 0, 0 },
+            (Vector3) { 4, 1.8f, 2 * BOAT_BASIN_HALF_Z + 8 }, quay);
+        box(renderer, (Vector3) { 0, 0, side * (BOAT_BASIN_HALF_Z + 2) },
+            (Vector3) { 2 * BOAT_BASIN_HALF_X, 1.8f, 4 }, quay);
+    }
     // Only the basin walls collide in this sketch; markers are visual turning references.
     for (int side = -1; side <= 1; side += 2) {
         box(renderer, (Vector3) { side * 12, 0.4f, 0 }, (Vector3) { 0.8f, 1, 0.8f },
@@ -226,8 +240,7 @@ bool boat_draw(Renderer3D *renderer, Color *pixels, int width, int height, const
         { { 0, 4, 1 }, hull }, { { 0, 2, 5 }, hull }, { { 0, 5, 3 }, hull }, { { 1, 4, 5 }, hull },
         { { 1, 5, 2 }, hull } };
     Mesh3D mesh = { vertices, triangles, sizeof(triangles) / sizeof(triangles[0]) };
-    // This renderer's +Z-forward view basis puts world -X on screen right from this camera.
-    // Reflect simulation X and heading together so right steering is clockwise on screen.
+    // Reflect simulation X and heading together to match the renderer's view handedness.
     Transform3D transform = { .position = { -boat->position.x, 0, boat->position.y },
         .rotation = { 0, boat->heading, 0 },
         .scale = { 1.4f, 1.4f, 1.4f } };

@@ -4,9 +4,17 @@
 #include "renderer3d.h"
 
 #define BOAT_STEP (1.0f / 120.0f)
-#define BOAT_LIMIT_X 27.5f
-#define BOAT_LIMIT_Z 17.5f
+#define BOAT_BASIN_HALF_X 120.0f
+#define BOAT_BASIN_HALF_Z 80.0f
+#define BOAT_LIMIT_X (BOAT_BASIN_HALF_X - 2.5f)
+#define BOAT_LIMIT_Z (BOAT_BASIN_HALF_Z - 2.5f)
 #define BOAT_WATER_PARTICLES 384
+#define BOAT_CAMERA_DEFAULT ((BoatCamera) { 20, 14 })
+
+typedef struct {
+    float distance; // Horizontal distance behind the boat, 8..48 world units.
+    float height; // Height above the water, 4..36 world units.
+} BoatCamera;
 
 typedef struct {
     Vector2 position, velocity;
@@ -23,6 +31,7 @@ typedef struct {
     float wheel; // Held steering setting, -1 (full port) to 1 (full starboard).
     float engine_angle; // Radians of thrust deflection; positive pushes stern to port.
     float yaw_velocity; // Heading change in radians/second, integrated from stern torque.
+    float camera_heading; // Smoothed follow direction, updated on fixed simulation ticks.
     BoatWaterParticle water[BOAT_WATER_PARTICLES];
     unsigned int next_particle, emission;
     float wake_distance, spray_time, propeller_time;
@@ -31,6 +40,7 @@ typedef struct {
 void boat_reset(Boat *boat);
 // Advance one fixed tick. Inputs are adjustment rates in -1..1; zero holds each setting.
 void boat_step(Boat *boat, float wheel_change, float throttle_change);
-bool boat_draw(Renderer3D *renderer, Color *pixels, int width, int height, const Boat *boat);
+bool boat_draw(Renderer3D *renderer, Color *pixels, int width, int height, const Boat *boat,
+    BoatCamera camera_settings);
 
 #endif

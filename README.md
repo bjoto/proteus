@@ -73,7 +73,10 @@ Unused screen space is letterboxed.
 ## Boating sketch
 
 Run `./build/boat_study` for the first handling prototype: a small craft in a simple basin,
-viewed by a fixed elevated camera. Hold left/right (or A/D) to turn the wheel; release to hold its
+viewed by a third-person camera following behind and above the boat. The basin is 240x160 world
+units (four times wider and deeper than the original). The camera follows position immediately,
+smooths heading changes, and looks ahead along the course. Hold left/right (or A/D) to turn the
+wheel; release to hold its
 position. One second moves it from centre to either limit; opposite input brings it back through
 centre. The HUD shows a rotating wheel and its left/right percentage. Hold up/W to raise the throttle
 and down/S to lower it, between 0% and 100%; releasing the keys holds the setting. Full-range
@@ -81,6 +84,16 @@ adjustment takes two seconds. The HUD shows throttle separately from speed. Lowe
 0% to coast (there is no reverse). R resets the boat, centres the wheel, and idles the throttle.
 Esc closes the window.
 The simulation pauses when the window loses focus. The view remains 320x200 with integer scaling.
+
+The follow camera defaults to 20 units back and 14 units above the water. Hold `-` to pull back,
+`+` (or `=`) to move closer, and PageUp/PageDown to raise/lower the camera. `C` restores the default
+view; `R` resets the boat while keeping your view settings. Distance is limited to 8..48 and height
+to 4..36. Settings last for the current run; reuse a preferred view with command-line options,
+which also work for screenshots:
+
+```sh
+./build/boat_study --camera-distance 24 --camera-height 18
+```
 
 Steering angles the outboard at the stern. Its off-centre thrust pushes the stern sideways and
 builds rotation; speed-dependent resistance at the bow and stern damps sliding and turning. The engine follows

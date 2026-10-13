@@ -80,6 +80,14 @@ int main(void)
     CHECK(validate_coasting() == 0);
     Boat boat;
     boat_reset(&boat);
+    // Follow the short arc across the +/-pi boundary, without a full camera orbit.
+    boat.heading = -3.13f;
+    boat.camera_heading = 3.13f;
+    boat_step(&boat, 0, 0);
+    float camera_turn = remainderf(boat.camera_heading - 3.13f, 6.2831853f);
+    CHECK(camera_turn > 0 && camera_turn < 0.01f);
+    boat_reset(&boat);
+    CHECK(boat.camera_heading == 0);
     // Wheel adjustments are bounded, persistent, reversible, and cleared by reset.
     for (int i = 0; i < 60; ++i)
         boat_step(&boat, 1, 0);
@@ -188,6 +196,7 @@ int main(void)
         boat_step(&boat, sinf(i * 0.003f), 1);
         CHECK(isfinite(boat.heading) && isfinite(boat.velocity.x) && isfinite(boat.velocity.y));
         CHECK(isfinite(boat.yaw_velocity) && fabsf(boat.yaw_velocity) < 4);
+        CHECK(isfinite(boat.camera_heading));
         CHECK(fabsf(boat.position.x) <= BOAT_LIMIT_X);
         CHECK(fabsf(boat.position.y) <= BOAT_LIMIT_Z);
         CHECK(hypotf(boat.velocity.x, boat.velocity.y) < 21);
