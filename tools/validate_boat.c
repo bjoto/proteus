@@ -83,7 +83,7 @@ static int validate_signed_propulsion(void)
     boat_reset(&forward);
     boat_reset(&reverse);
     forward.throttle = 1;
-    reverse.reverse = 1;
+    reverse.throttle = -1;
     for (int i = 0; i < 240; ++i) {
         boat_step(&forward, 0, 0);
         boat_step(&reverse, 0, 0);
@@ -94,7 +94,7 @@ static int validate_signed_propulsion(void)
     boat_reset(&forward_turn);
     boat_reset(&reverse_turn);
     forward_turn.throttle = 1;
-    reverse_turn.reverse = 1;
+    reverse_turn.throttle = -1;
     forward_turn.wheel = reverse_turn.wheel = .6f;
     for (int i = 0; i < 240; ++i) {
         boat_step(&forward_turn, 0, 0);
@@ -102,14 +102,14 @@ static int validate_signed_propulsion(void)
     }
     CHECK(forward_turn.yaw_velocity > 0 && reverse_turn.yaw_velocity < 0);
 
-    Boat saturated = { .throttle = 4, .reverse = 4 };
+    Boat saturated = { .throttle = 4 };
     boat_step(&saturated, 0, 0);
-    CHECK(saturated.throttle == 1 && saturated.reverse == 1 && saturated.engine_response == 0);
-    saturated.reverse = -1;
+    CHECK(saturated.throttle == 1 && saturated.engine_response > 0);
+    saturated.throttle = -4;
     boat_step(&saturated, 0, 0);
-    CHECK(saturated.reverse == 0 && saturated.engine_response > 0);
+    CHECK(saturated.throttle == -1 && saturated.engine_response <= 0);
 
-    Boat deterministic_a = { .throttle = .8f, .reverse = .15f };
+    Boat deterministic_a = { .throttle = -.8f };
     Boat deterministic_b = deterministic_a;
     for (int i = 0; i < 720; ++i) {
         boat_step(&deterministic_a, 0, 0);
@@ -117,7 +117,7 @@ static int validate_signed_propulsion(void)
     }
     CHECK(memcmp(&deterministic_a, &deterministic_b, sizeof(Boat)) == 0);
 
-    Boat sustained = { .reverse = 1 };
+    Boat sustained = { .throttle = -1 };
     for (int i = 0; i < 120 * 120; ++i) {
         boat_step(&sustained, 0, 0);
         CHECK(isfinite(sustained.engine_response));
@@ -125,6 +125,27 @@ static int validate_signed_propulsion(void)
         CHECK(sustained.engine_response >= -1 && sustained.engine_response <= 1);
         CHECK(hypotf(sustained.velocity.x, sustained.velocity.y) < 21);
     }
+    return 0;
+}
+
+static int validate_signed_throttle(void)
+{
+    Boat boat;
+    boat_reset(&boat);
+    for (int i = 0; i < 120; ++i)
+        boat_step(&boat, 0, 1);
+    CHECK(boat.throttle > .49f);
+    for (int i = 0; i < 240; ++i)
+        boat_step(&boat, 0, -1);
+    CHECK(boat.throttle < -.49f && boat.engine_response < 0);
+    for (int i = 0; i < 240; ++i)
+        boat_step(&boat, 0, -1);
+    CHECK(boat.throttle == -1);
+    for (int i = 0; i < 1200; ++i)
+        boat_step(&boat, 0, 1);
+    CHECK(boat.throttle == 1);
+    boat_reset(&boat);
+    CHECK(fabsf(boat.throttle) < .001f);
     return 0;
 }
 
@@ -183,6 +204,7 @@ int main(void)
     boat_map_destroy();
     CHECK(validate_coasting() == 0);
     CHECK(validate_signed_propulsion() == 0);
+    CHECK(validate_signed_throttle() == 0);
     Boat boat;
     boat_reset(&boat);
     // Follow the short arc across the +/-pi boundary, without a full camera orbit.
@@ -254,9 +276,9 @@ int main(void)
     for (int i = 0; i < 600; ++i)
         boat_step(&boat, 0, 1);
     CHECK(boat.throttle == 1);
-    for (int i = 0; i < 600; ++i)
+    for (int i = 0; i < 240; ++i)
         boat_step(&boat, 0, -1);
-    CHECK(boat.throttle == 0);
+    CHECK(fabsf(boat.throttle) < .001f);
     boat.throttle = 0.75f;
     boat_reset(&boat);
     CHECK(boat.throttle == 0);
@@ -318,7 +340,7 @@ int main(void)
     CHECK(boat.position.x == 0 && boat.position.y == 10);
     CHECK(boat.heading == 0 && boat.velocity.x == 0 && boat.velocity.y == 0);
     CHECK(boat.wheel == 0 && boat.engine_angle == 0 && boat.yaw_velocity == 0);
-    CHECK(boat.throttle == 0 && boat.reverse == 0 && boat.engine_response == 0);
+    CHECK(boat.throttle == 0 && boat.engine_response == 0);
     CHECK(particles(&boat, false) == 0 && particles(&boat, true) == 0);
     puts("boat_handling=ok");
     return 0;

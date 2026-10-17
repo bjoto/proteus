@@ -22,12 +22,12 @@ rest of Gothenburg or the archipelago. Source attribution is retained in the HUD
 Run `./build/boat_study`. Left/right or A/D adjust a persistent wheel setting, clamped from full
 left to full right. Centre to either limit takes one second. Releasing keys holds the wheel;
 opposite input brings it back through centre. A rotating wheel and left/right percentage show
-the setting. Up/W raises the throttle, down/S lowers it; releasing the keys holds the setting.
-The throttle range is 0% (idle) to 100%, with two seconds of held
-input covering the full range. A percentage and bar show the setting independently of speed.
-Lower to idle to coast. Reverse control and its player-facing feedback are planned next; the
-simulation already has a bounded reverse command and a short engine spool. R resets the boat,
-centres the wheel, and idles the throttle; Esc exits.
+the setting. Up/W raises signed thrust and down/S lowers it; releasing the keys holds the setting.
+The thrust range is -100% (reverse) through 0% (idle) to 100% (forward), with four seconds of
+held input covering the full range. A signed percentage and centred bar show the setting
+independently of speed, and the HUD shows actual signed engine response separately. Lowering
+thrust passes smoothly through idle and continues into reverse only while Down/S remains held.
+R resets to neutral thrust, centres the wheel, and clears effects; Esc exits.
 The silent handling sketch has a third-person follow camera, stern-applied engine thrust, rotational
 inertia, water resistance at two hull stations, and forgiving basin-wall collisions. Steering
 angles the outboard; its lateral thrust pushes the stern and creates torque. The outboard holds

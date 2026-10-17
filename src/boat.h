@@ -30,8 +30,7 @@ typedef struct {
     float time;
     Vector2 velocity;
     float heading; // Zero faces north (-Z); positive turns right.
-    float throttle; // Forward command, 0 (idle) to 1 (full power).
-    float reverse; // Reverse command, 0 (idle) to 1 (full power).
+    float throttle; // Signed thrust command, -1 (reverse) through 0 (idle) to 1 (forward).
     // Actual signed propulsion after deterministic engine response, -1..1.
     float engine_response;
     float wheel; // Held steering setting, -1 (full port) to 1 (full starboard).

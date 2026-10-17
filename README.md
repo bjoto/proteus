@@ -101,11 +101,11 @@ units (four times wider and deeper than the original). The camera follows positi
 smooths heading changes, and looks ahead along the course. Hold left/right (or A/D) to turn the
 wheel; release to hold its
 position. One second moves it from centre to either limit; opposite input brings it back through
-centre. The HUD shows a rotating wheel and its left/right percentage. Hold up/W to raise the throttle
-and down/S to lower it, between 0% and 100%; releasing the keys holds the setting. Full-range
-adjustment takes two seconds. The HUD shows throttle separately from speed. Lower the throttle to
-0% to coast (there is no reverse). R resets the boat, centres the wheel, and idles the throttle.
-Esc closes the window.
+centre. The HUD shows a rotating wheel and its left/right percentage. Hold up/W to increase thrust
+and down/S to reduce it, from -100% reverse through 0% neutral to 100% forward; releasing keys
+holds the setting. Full-range adjustment takes four seconds. The HUD shows signed thrust and actual
+engine response separately from speed. Passing through neutral is deliberate and smooth; R resets
+to neutral thrust and centres the wheel. Esc closes the window.
 The simulation pauses when the window loses focus. The view remains 320x200 with integer scaling.
 
 The follow camera defaults to 20 units back and 14 units above the water. Hold `-` to pull back,
@@ -145,9 +145,8 @@ For display-free captures of a scripted acceleration and right turn, or a window
 ./build/boat_study --demo --frames 720
 ```
 
-`--demo` previews the same scripted run as screenshots: raise throttle for two seconds, turn after
-one second, hold wheel and throttle until six seconds, then lower throttle to idle by eight seconds
-and coast with the wheel still turned. R replays it.
+`--demo` previews the same scripted run as screenshots: raise thrust for two seconds, turn after
+one second, then lower it through neutral into reverse. R replays it.
 Screenshot `--time` selects a point in that run (0..60 seconds). The water effects use the same
 fixed simulation ticks as handling.
 

@@ -137,11 +137,10 @@ void boat_step(Boat *boat, float wheel_change, float throttle_change)
     boat->time += BOAT_STEP;
     // One second from centre to either lock. Opposite inputs cancel before this call.
     boat->wheel = Clamp(boat->wheel + Clamp(wheel_change, -1, 1) * BOAT_STEP, -1, 1);
-    // Two seconds end to end; integrate on simulation ticks, independent of keyboard repeat.
-    boat->throttle = Clamp(boat->throttle + Clamp(throttle_change, -1, 1) * 0.5f * BOAT_STEP, 0, 1);
-    boat->reverse = Clamp(boat->reverse, 0, 1);
-    // A2 will expose a gear selector. Keep the existing throttle input forward-only until then.
-    float engine_target = Clamp(boat->throttle - boat->reverse, -1, 1);
+    // Four seconds end to end through neutral; integrate on fixed ticks, not keyboard repeat.
+    boat->throttle
+        = Clamp(boat->throttle + Clamp(throttle_change, -1, 1) * 0.5f * BOAT_STEP, -1, 1);
+    float engine_target = boat->throttle;
     boat->engine_response += Clamp(engine_target - boat->engine_response,
         -ENGINE_RESPONSE_RATE * BOAT_STEP, ENGINE_RESPONSE_RATE * BOAT_STEP);
     // The outboard follows the held wheel position; releasing keys does not centre it.

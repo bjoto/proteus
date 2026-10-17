@@ -10,8 +10,8 @@
 static void usage(void)
 {
     puts("Usage: boat_study [--demo] [--frames COUNT] [--screenshot FILE [--time SECONDS]]\n"
-         "Left/Right or A/D: adjust wheel | Up/Down or W/S: adjust throttle (0..100%)\n"
-         "Wheel and throttle hold when released. R: reset and centre wheel | Esc: close\n"
+         "Left/Right or A/D: adjust wheel | Up/Down or W/S: adjust thrust (-100..100%)\n"
+         "Wheel and thrust hold when released. R: reset and centre wheel | Esc: close\n"
          "+/-: closer/farther | PageUp/PageDown: raise/lower camera | C: reset view\n"
          "--camera-distance UNITS: 8..48 (default 20)\n"
          "--camera-height UNITS: 4..36 (default 14)\n"
@@ -24,10 +24,11 @@ static void usage(void)
 
 static void demo_step(Boat *boat, int tick)
 {
-    // Keep the wheel turned after lowering throttle to demonstrate passive coasting steering.
+    // Ease through neutral into reverse with the same held steering.
     float target_wheel = tick >= 120 ? 0.65f : 0;
     float wheel_change = fmaxf(-1, fminf(1, (target_wheel - boat->wheel) / BOAT_STEP));
-    boat_step(boat, wheel_change, tick < 240 ? 1 : tick >= 720 ? -1 : 0);
+    float throttle_change = tick < 240 ? 1 : tick < 720 ? -1 : 0;
+    boat_step(boat, wheel_change, throttle_change);
 }
 
 static void draw_wheel(float setting, int hud_y)
@@ -237,13 +238,16 @@ int main(int argc, char **argv)
         DrawText(eriksberg ? "ERIKSBERG" : "BOATING SKETCH", 12, hud_y, 20, RAYWHITE);
         DrawText(TextFormat("Speed %.1f", hypotf(boat.velocity.x, boat.velocity.y)), 210, hud_y + 3,
             16, (Color) { 232, 180, 102, 255 });
-        DrawText(TextFormat("Throttle %3.0f%%", boat.throttle * 100), 12, hud_y + 27, 16, RAYWHITE);
+        DrawText(TextFormat("Thrust %+.0f%%", boat.throttle * 100), 12, hud_y + 27, 16, RAYWHITE);
         DrawRectangle(150, hud_y + 28, 156, 12, (Color) { 40, 58, 68, 255 });
-        DrawRectangle(
-            150, hud_y + 28, (int)(156 * boat.throttle), 12, (Color) { 232, 180, 102, 255 });
+        int thrust_width = (int)(78 * fabsf(boat.throttle));
+        DrawRectangle(228 + (boat.throttle < 0 ? -thrust_width : 0), hud_y + 28, thrust_width, 12,
+            boat.throttle < 0 ? (Color) { 104, 190, 220, 255 } : (Color) { 232, 180, 102, 255 });
+        DrawText(TextFormat("Engine %+.0f%%", boat.engine_response * 100), 12, hud_y + 47, 16,
+            (Color) { 232, 180, 102, 255 });
         draw_wheel(boat.wheel, hud_y);
-        DrawText(demo ? "DEMO: throttle up, turn, throttle down"
-                      : "Left/Right A/D: wheel | Up/Down W/S: throttle",
+        DrawText(demo ? "DEMO: forward, neutral, reverse"
+                      : "Left/Right A/D: wheel | Up/Down W/S: thrust",
             12, hud_y + 113, 12, LIGHTGRAY);
         DrawText(demo ? "R: replay | Esc: close" : "Both hold | R: reset + centre | Esc: close", 12,
             hud_y + 131, 12, LIGHTGRAY);

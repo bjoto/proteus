@@ -1,6 +1,6 @@
 # Boat physics: learnable handling
 
-Accepted direction: 2026-10-17. Planning only; none of the tasks below is complete yet.
+Accepted direction: 2026-10-17. Tasks are completed incrementally and recorded below.
 Parent design and current controls: [Boating playground](BOATING_PLAN.md).
 
 ## Experience to build toward
@@ -83,12 +83,12 @@ Reusable prompt for a smaller coding model:
   Acceptance: forward and reverse impulses and steering torque have the expected signs; idle cannot
   turn a stationary boat; commands saturate; engine response and reset are deterministic; sustained
   reverse stays finite and bounded. Retain current forward-handling tests.
-- [ ] **A2: Controls and readable feedback.** Recommended starting interface: retain Up/Down for
-  held throttle magnitude and add an explicit forward/neutral/reverse selector. Choose and document
-  an unused key, with a safe idle-only shift rule. Show selected gear and engine response separately
-  from speed. Update the deterministic preview to demonstrate stopping and backing up. Acceptance:
-  lowering throttle alone never unexpectedly selects reverse; reverse steering and wash match stern
-  thrust; focus loss pauses; reset returns to forward gear at idle; CPU/GPU agree.
+- [x] **A2: Controls and readable feedback.** Use Up/Down for held signed thrust, with neutral at
+  zero and reverse below it. Show signed thrust and engine response separately from speed. Update
+  the deterministic preview to demonstrate stopping and backing up. Acceptance: releasing input
+  never changes direction; held Down passes smoothly through neutral before selecting reverse;
+  reverse steering and wash match stern thrust; focus loss pauses; reset returns to neutral;
+  CPU/GPU agree.
 - [ ] **A3: Hull-aware shoreline contact.** Replace or refine the circular clearance with a simple
   oriented hull footprint, reusing existing water boundaries. Use damped, forgiving contacts and
   contact torque; do not add damage or overhead-structure collisions. Acceptance: bow/stern clearance
@@ -174,11 +174,16 @@ These motivate models, not exact coefficients or a requirement to adopt another 
 
 ## Handoff log
 
-- 2026-10-17: A1 complete. Added bounded `reverse` command and signed, rate-limited
-  `engine_response` in `src/boat.[ch]`; thrust and wash now use the response at the stern.
-  Existing keyboard throttle stays forward-only until A2. `validate_boat` covers forward/reverse
-  signs, saturation, deterministic response/reset, and a sustained reverse run. Remaining A1
-  limitation: no player-facing reverse selector or gear feedback (A2).
-- 2026-10-17: Plan saved. Next task: A1. No physics changes made as part of planning.
-  Control recommendations and coefficients remain proposals until their respective implementation
-  step. Each play gate needs user feedback before starting the next phase.
+- 2026-10-17: A1 complete. Added bounded reverse propulsion and signed, rate-limited
+  `engine_response` in `src/boat.[ch]`; thrust and wash use the response at the stern.
+  Before A2, keyboard throttle remained forward-only. `validate_boat` covers forward/reverse signs,
+  saturation, deterministic response/reset, and a sustained reverse run. A2 adds player controls
+  and feedback.
+- 2026-10-17: A2 complete. Replaced the proposed selector with held signed thrust in `src/boat.[ch]`:
+  Up/W moves toward forward and Down/S moves through neutral into reverse. The HUD shows signed
+  thrust and engine response, while the deterministic preview demonstrates the transition.
+  `validate_boat` covers the signed range, reversal, saturation, and reset; CPU/GPU continue to
+  consume the same `Boat` pose through `boat_scene_frame`. Focus loss retains the existing
+  fixed-tick pause.
+- 2026-10-17: Plan saved. Control recommendations and coefficients remain proposals until their
+  respective implementation step. Each play gate needs user feedback before starting the next phase.
