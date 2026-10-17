@@ -195,6 +195,25 @@ static void harbour_life(Renderer3D *r, const WaterfrontBoatState *boat)
     }
 }
 
+static void waterline_details(Renderer3D *r)
+{
+    size_t count;
+    const WaterfrontCornerBox *boxes = waterfront_corner_boxes(&count);
+    const unsigned int faces[][3]
+        = { { 0, 2, 1 }, { 0, 3, 2 }, { 5, 7, 4 }, { 5, 6, 7 }, { 4, 3, 0 }, { 4, 7, 3 },
+              { 1, 6, 5 }, { 1, 2, 6 }, { 3, 6, 2 }, { 3, 7, 6 }, { 4, 1, 5 }, { 4, 0, 1 } };
+    for (size_t i = 0; i < count; ++i) {
+        if (!boxes[i].waterline)
+            continue;
+        Triangle3D triangles[12];
+        for (int f = 0; f < 12; ++f)
+            triangles[f]
+                = (Triangle3D) { { faces[f][0], faces[f][1], faces[f][2] }, boxes[i].color };
+        Mesh3D mesh = { boxes[i].vertices, triangles, 12 };
+        renderer3d_draw_mesh(r, &mesh, (Transform3D) { .scale = { 1, 1, 1 } });
+    }
+}
+
 bool waterfront_draw(
     Renderer3D *r, Color *pixels, int width, int height, float time, bool short_route)
 {
@@ -212,6 +231,7 @@ bool waterfront_draw_frame(
     renderer3d_draw_mesh(r, waterfront_scene_city_mesh(), (Transform3D) { .scale = { 1, 1, 1 } });
     // Dockbron: approximate mapped endpoints and assumed deck elevation, for composition.
     renderer3d_draw_box(r, frame->bridge, frame->bridge_color);
+    waterline_details(r);
     windows(r);
     street_life(r, frame);
     harbour_life(r, &frame->boat);
@@ -243,6 +263,7 @@ bool waterfront_draw_boating(
     WaterfrontSceneFrame frame;
     waterfront_scene_evaluate(0, true, &frame);
     renderer3d_draw_box(r, frame.bridge, frame.bridge_color);
+    waterline_details(r);
     windows(r);
     crane(r);
     return true;

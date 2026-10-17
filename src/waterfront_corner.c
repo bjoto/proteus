@@ -480,6 +480,48 @@ static void build_forecourts(const Mesh3D *city)
     }
 }
 
+// Local heights are relative to the 3.5 m quay. These fittings hug the mapped wall
+// (at most 0.42 m outboard); no new obstacle or berth extends into the boat channel.
+static void waterline(float span, bool access)
+{
+    size_t first = count;
+    const Color wet = { 56, 77, 77, 255 };
+    const Color rubber = { 40, 49, 54, 255 };
+    const Color rope = { 151, 132, 98, 255 };
+    // A submerged toe and a restrained tide stain, on the wall rather than floating foam.
+    box((Vector3) { 0, -3.28f, -.025f }, (Vector3) { span, .7f, .06f }, wet, false);
+    box((Vector3) { 0, -2.83f, -.018f }, (Vector3) { span, .2f, .045f },
+        (Color) { 94, 109, 96, 255 }, false);
+    if (access) {
+        // Ladder reaches below water; raised return handles mark the rail opening.
+        for (int side = -1; side <= 1; side += 2) {
+            float u = side * .46f;
+            beam((Vector3) { u, -3.85f, -.24f }, (Vector3) { u, .75f, -.24f }, .12f,
+                (Color) { 185, 157, 92, 255 });
+            beam((Vector3) { u, .75f, -.24f }, (Vector3) { u, .75f, .35f }, .12f, metal);
+            beam((Vector3) { u, .75f, .35f }, (Vector3) { u, .12f, .35f }, .12f, metal);
+        }
+        for (int rung = 0; rung < 12; ++rung) {
+            float y = -3.65f + rung * .34f;
+            beam((Vector3) { -.46f, y, -.24f }, (Vector3) { .46f, y, -.24f }, .11f,
+                (Color) { 179, 167, 124, 255 });
+        }
+    } else {
+        // Paired hanging rubbing blocks, with short ropes to dedicated mooring cleats.
+        for (int side = -1; side <= 1; side += 2) {
+            float u = side * span * .26f;
+            box((Vector3) { u, -2.05f, -.22f }, (Vector3) { .52f, 1.65f, .4f }, rubber, false);
+            box((Vector3) { u, -2.05f, -.395f }, (Vector3) { .31f, 1.35f, .05f },
+                (Color) { 61, 69, 70, 255 }, false);
+            beam((Vector3) { u, -1.25f, -.25f }, (Vector3) { u, .23f, .32f }, .075f, rope);
+            box((Vector3) { u, .22f, .4f }, (Vector3) { .23f, .4f, .25f }, metal, false);
+            box((Vector3) { u, .42f, .4f }, (Vector3) { .65f, .14f, .28f }, metal, false);
+        }
+    }
+    for (size_t i = first; i < count; ++i)
+        boxes[i].waterline = true;
+}
+
 static void build_quays(const Mesh3D *city)
 {
     for (size_t i = 0; i < city->triangle_count; ++i) {
@@ -504,10 +546,15 @@ static void build_quays(const Mesh3D *city)
                 || !space(0, 1.5f, span, 2.5f))
                 continue;
             ++quay_sections;
+            // One equipment station per ~16 m, with access ladders every ~48 m.
+            // Leave intervening wall clear so the harbour keeps its quiet character.
+            if (quay_sections % 4 == 0)
+                waterline(span, quay_sections % 12 == 0);
             box((Vector3) { 0, .065f, 1.5f }, (Vector3) { span, .13f, 2.5f }, stone, false);
             box((Vector3) { 0, .14f, .26f }, (Vector3) { span, .28f, .22f }, cream, false);
-            box((Vector3) { 0, .52f, .6f }, (Vector3) { .24f, .9f, .24f }, metal, false);
-            box((Vector3) { 0, .9f, .6f }, (Vector3) { .5f, .16f, .28f }, metal, false);
+            float post = quay_sections % 12 == 0 ? span * .4f : 0;
+            box((Vector3) { post, .52f, .6f }, (Vector3) { .24f, .9f, .24f }, metal, false);
+            box((Vector3) { post, .9f, .6f }, (Vector3) { .5f, .16f, .28f }, metal, false);
             if (quay_sections % 7 == 0 && space(0, 12, 10, 8) && !furnished(0, 12, 10, 8))
                 garden_court(12);
             // Rail sections alternate with mooring/access openings, not a sealed fence.

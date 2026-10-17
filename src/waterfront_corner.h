@@ -10,6 +10,7 @@ typedef struct {
     Vector3 vertices[8];
     Color color;
     bool emissive;
+    bool waterline; // Wall fittings also drawn by the software reference.
 } WaterfrontCornerBox;
 
 const WaterfrontCornerBox *waterfront_corner_boxes(size_t *count);

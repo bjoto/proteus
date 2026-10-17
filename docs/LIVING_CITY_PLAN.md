@@ -1,7 +1,8 @@
 # Living Eriksberg city plan
 
 Status: execution steps 01–04 and follow-ups 04b–04d complete, 2026-09-19.
-Boat-view water audit 04e and surface pass 04f complete, 2026-10-17: step 04g is next;
+Boat-view water audit 04e, surface pass 04f, and selected waterline pass 04g complete,
+2026-10-17;
 step 05 remains the prerequisite for new interacting actors. This is the
 visual-development plan after the [GPU migration](GPU_WATERFRONT_PLAN.md).
 
@@ -47,7 +48,7 @@ report what remains. A purely documentary step does not require a new manual dem
 | 04d | Rework facade materials around the existing window geometry, with building-aligned brick, plaster, and panel variation. Inspect near and distant views without changing the low-resolution style. | Complete |
 | 04e | Audit water from the playable boat: dock, basin mouth, river crossing, quay approach, and view toward the exposed reach. Record matching flat/wave stills, motion, shoreline and map-boundary issues, and a performance baseline. | Complete; see WATER_REVIEW.md |
 | 04f | Reduce unnecessary distant wave geometry and give sheltered dock/exposed river water distinct visual surface character. Preserve current physical waves and handling; use the bounded brief in WATER_REVIEW.md. | Complete |
-| 04g | Finish selected waterline edges: quay contact, fenders, ladders, moorings, and restrained local disturbance. Inspect alongside the boat and approaching shore. | Next; use 04e shore findings |
+| 04g | Finish selected waterline edges: quay contact, fenders, ladders, moorings, and restrained local disturbance. Inspect alongside the boat and approaching shore. | Complete; selected wall fittings, see WATER_REVIEW.md |
 | 05 | Consolidate the actor evaluation needed for city life into the shared scene layer. Preserve existing behaviour and verify direct seeks before adding actors. | Pending |
 | 06 | Distribute a small cast of pedestrians and cyclists between street destinations and both quays, with readable silhouettes and deterministic paths. Avoid concentrating all life at the cafe. Inspect motion and occlusion. | Pending |
 | 07 | Add varied vehicles and one authored interaction, such as a bus stop or yielding car. Verify spacing, stops, and hidden route wraps. | Pending |
@@ -74,18 +75,43 @@ To start, use this prompt in the current or a fresh session:
 
 ```text
 Read AGENTS.md, docs/LIVING_CITY_PLAN.md, and docs/WATER_REVIEW.md.
-Complete execution step 04g only, using the water review's shore findings.
-Use the existing GPU renderer and retained geographic data. Finish selected visible
-waterline edges while preserving navigable space, surface rendering, and handling.
+Complete execution step 05 only: finish the shared actor evaluation needed for city life.
+Use the existing GPU renderer and retained geographic data. Preserve current actor
+behaviour and verify direct seeks before adding new actors.
 Follow the plan's verification requirements, record findings and artifact paths in its
 progress log, and commit the completed step. Preserve unrelated changes. Do not implement
 later steps. Report the commit, findings, and any remaining verification limitations.
 ```
 
-For subsequent work, replace `04g` and the task-specific sentence with the next step's
+For subsequent work, replace `05` and the task-specific sentence with the next step's
 deliverable, or request a range such as `02–04, with one commit per step`.
 
 ### Progress log
+
+- 2026-10-17, **04g selected waterline edges**: added 80 wall equipment stations across
+  the existing map-validated quay sections: 26 access ladders and 54 paired fender/cleat
+  groups with suspension ropes, plus localized wet/toe bands. Moved posts clear of ladder
+  openings. Fittings project at most 0.42 m into the water and add no channel-spanning
+  geometry. GPU batches them into the existing opaque mesh for colour, shadow, and
+  reflection; CPU draws the same wall fittings. Added 1,168 boxes / 14,016 triangles,
+  with no additional GPU mesh submissions. Water material, waves, handling, and music
+  are unchanged. Static fittings need no time/history state.
+  Debug configure/build and all 43 CTest checks passed (12 GPU). Attachment validation
+  checks every below-quay fitting vertex against actual retained quay segments within
+  0.5 m. Route clearance and repeated/direct CPU seeks pass. Inspected matching close
+  CPU/GPU views, both boat-route water presets, and 22 timeline framing captures at
+  0/2.5/5/10/15 s in 320x200 and 320x240, plus 320x180. The opening CPU image changes
+  44 quay pixels; reviewed and updated its checksum to `283e8c24b6393cac`. Both legacy
+  GPU storyboard routes completed windowed passes (`storyboard-motion.log`).
+  Artifacts: `build/living-city/waterline/`, including `detail-{cpu,gpu}.png`, the
+  diagnostic `detail_capture.c`, `framing.png`, `gpu-flat/`, `gpu-waves/`, `cpu-flat/`,
+  and `windowed-waves/`. GPU+AA flat submission mean/p95: 5.365/5.867 ms; wave:
+  5.879/8.625 ms. Windowed wave circuit completed at 60 Hz: 5.497/6.067 ms submission.
+  These are CPU submission samples, not GPU execution measurements or speedup claims.
+  No Instruments trace was warranted for this small static geometry pass. Arbitrary
+  cameras and interactive input/audio were not manually assessed. Moored craft and
+  vessel mooring lines remain for the later harbour actor pass; this step uses ropes
+  supporting wall fenders. No new foam is justified on these sheltered stationary walls.
 
 - Step 04f (2026-10-17): replaced the GPU's all-map dense wave mesh with an exact
   shoreline-clipped near patch and the existing 266-triangle flat far surface. A fixed
@@ -335,6 +361,7 @@ deliverable, or request a range such as `02–04, with one commit per step`.
   in that configuration; fresh GPU captures, live route review, and performance baseline
   remain work for step 01. No runtime changes.
 
+
 ## What exists and what feels missing
 
 The current GPU scene already has static apartment windows, 20 moving cars on two street
@@ -567,9 +594,8 @@ turn small details into distracting pixel noise.
   Report CPU submission and GPU timing separately where available, plus draw counts and
   memory growth; establish a performance target from measurements on the target machine.
 
-Current implementation priority: waterline pass 04g follows the completed surface pass
-and boat-view audit's shore findings. Step 05 still precedes new interacting
-actors. The ferry proxy in 09 can follow that foundation if the boat review prioritizes
+Current implementation priority: step 05 follows the completed selected waterline
+pass 04g and still precedes new interacting actors. The ferry proxy in 09 can follow that foundation if the boat review prioritizes
 harbour activity; inspect its scale and route before modelling the vessel in detail.
 
 ## Soundtrack and flock follow pass (2026-10-11)

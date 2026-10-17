@@ -250,7 +250,7 @@ add_test(NAME cube_render_checksum
   COMMAND proteus --renderer cpu --profile cube --frames 1 --warmup 0
 )
 set_tests_properties(cube_render_checksum PROPERTIES
-  PASS_REGULAR_EXPRESSION "final_framebuffer_checksum=ff0eb2590bd954c2"
+  PASS_REGULAR_EXPRESSION "final_framebuffer_checksum=283e8c24b6393cac"
 )
 
 add_test(NAME cube_start_screenshot

@@ -293,3 +293,52 @@ the expensive full CPU wave reference remain. Distant GPU wave heights now delib
 flatten, so CPU/GPU surface geometry differs beyond the near field. GPU execution cost,
 driver memory, and shimmer across arbitrary player views are not certified by this pass.
 Waterline dressing belongs to 04g; currents and physical crossing wakes remain physics D.
+
+
+## 04g implementation: selected waterline edges
+
+Map-validated quay sections now carry equipment stations about every 16 metres,
+with access ladders about every 48 metres. The station cadence follows accepted
+sections, so gaps and corners interrupt it. Yellowed metal ladders extend below
+water and return above the deck at existing rail openings. Other stations have
+paired rubber rubbing blocks suspended by ropes from small cleats. Dark wet toes
+and muted tide stains sit on these selected wall stretches; there is no white surf
+strip. These are authored harbour fittings, not surveyed local equipment.
+
+All 1,168 added boxes stay close to the original shore. Below-quay vertices are
+validated within 0.5 m of a retained quay segment; the largest outboard projection
+is 0.42 m. Existing navigability and camera-clearance checks pass. No craft or new
+collision behaviour is introduced. Vessel mooring lines and moored craft remain
+with later harbour work; the new ropes suspend fenders. Surface shading and the
+physical wave model remain the completed 04f implementation.
+
+GPU colour, reflection, and shadow passes share the existing resident opaque kit,
+adding 14,016 triangles and no new mesh submissions. Position, normal, UV, and
+colour buffer payload grows by 1,513,728 bytes (about 1.44 MiB), also retained on the
+CPU by raylib. This is calculated geometry payload, not measured driver memory.
+The software reference draws the same wall fittings; other street-kit details
+remain GPU-only. CPU water retains its existing simpler appearance.
+
+Reproduce the route captures with the existing commands, changing output directories:
+
+```sh
+./build/boat_water_review --output build/living-city/waterline/gpu-flat
+./build/boat_water_review --output build/living-city/waterline/gpu-waves --waves
+./build/boat_water_review --output build/living-city/waterline/cpu-flat --renderer cpu
+./build/boat_water_review --output build/living-city/waterline/windowed-waves --waves --visible
+```
+
+Inspected the close station view from world (34, 3.3, 48) towards (44, 1.2, 58),
+55-degree vertical FOV: `detail-gpu.png` and `detail-cpu.png` under that directory.
+The temporary diagnostic source is retained as `detail_capture.c`. Ladders, fender
+suspension, rail openings, and reflections read clearly here; they are deliberately
+subtle from the normal mid-channel chase camera. `framing.png` collects 22 CPU/GPU
+opening-timeline captures at the supported aspect ratios. Existing route captures
+include both camera heights and approaches to shore. The windowed wave circuit
+completed; static attachment tests and all 43 CTest checks pass. See the living-city
+progress log for timing samples and CPU checksum review.
+
+Limits: no manual interactive input/audio assessment, no new Instruments trace or
+GPU execution measurement, and no certification of arbitrary shore-hugging cameras.
+Existing wave crests can cover the lower ladder rungs and wet bands. The rest of
+the wall stays clear; no extra animated foam is warranted for fixed sheltered fittings.
