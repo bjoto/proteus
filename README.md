@@ -72,6 +72,9 @@ Unused screen space is letterboxed.
 
 ## Boating sketch
 
+For a downloadable Windows executable built on GitHub Actions, see
+[Windows boat study builds](docs/WINDOWS_BUILD.md).
+
 Explore the bundled Eriksberg waterfront with the same boat and controls:
 
 ```sh

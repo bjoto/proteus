@@ -1,0 +1,67 @@
+name: Windows boat study
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Configure release with static raylib and C runtime
+        run: >-
+          cmake -S . -B build-win -G "Visual Studio 17 2022" -A x64
+          -DBUILD_SHARED_LIBS=OFF -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+
+      - name: Build boat study and handling validator
+        run: cmake --build build-win --config Release --target boat_study validate_boat --parallel
+
+      - name: Run boat CPU checks
+        run: >-
+          ctest --test-dir build-win -C Release --output-on-failure
+          -R '^(boat_handling|boat_screenshot|boat_eriksberg_screenshot)$'
+
+      - name: Package portable boat study
+        run: |
+          $package = 'build-win/package/boat-study-windows-x64'
+          New-Item -ItemType Directory -Force -Path "$package/assets" | Out-Null
+          Copy-Item build-win/Release/boat_study.exe $package
+          Copy-Item build-win/Release/assets/shaders "$package/assets" -Recurse
+          Copy-Item build-win/Release/assets/textures "$package/assets" -Recurse
+          New-Item -ItemType Directory -Force -Path "$package/assets/geometry/eriksberg" | Out-Null
+          Copy-Item assets/geometry/eriksberg/manifest.json "$package/assets/geometry/eriksberg"
+          Copy-Item tools/windows/launch.bat $package
+          Copy-Item tools/windows/README.txt $package
+          Copy-Item build-win/_deps/raylib-src/LICENSE "$package/raylib-LICENSE.txt"
+          Copy-Item build-win/_deps/raylib-src/src/external/glfw/LICENSE.md "$package/glfw-LICENSE.md"
+          Set-Content -Path "$package/build.txt" -Value "Commit: $env:GITHUB_SHA" -Encoding utf8
+
+      - name: Check relocated executable from another working directory
+        run: |
+          $exe = (Resolve-Path build-win/package/boat-study-windows-x64/boat_study.exe).Path
+          Push-Location $env:RUNNER_TEMP
+          try {
+            & $exe --location eriksberg --time 3 --screenshot boat-portable.png
+            if ($LASTEXITCODE -ne 0) { throw "Relocated boat study failed: $LASTEXITCODE" }
+          } finally {
+            Pop-Location
+          }
+
+      - name: Upload Windows package
+        uses: actions/upload-artifact@v4
+        with:
+          name: boat-study-windows-x64
+          path: build-win/package/boat-study-windows-x64/
+          if-no-files-found: error
+          retention-days: 30

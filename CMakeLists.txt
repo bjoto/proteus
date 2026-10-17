@@ -92,7 +92,6 @@ target_compile_options(validate_audio_spectrum PRIVATE
 enable_testing()
 add_executable(boat_study tools/boat_study.c src/boat.c src/renderer3d.c)
 target_sources(boat_study PRIVATE src/boat_gpu.c src/renderer_gpu.c)
-target_compile_definitions(boat_study PRIVATE PROTEUS_ASSET_DIR="$<TARGET_FILE_DIR:boat_study>/assets")
 add_dependencies(boat_study proteus_assets)
 add_executable(validate_boat tools/validate_boat.c src/boat.c src/renderer3d.c)
 foreach(target boat_study validate_boat)
