@@ -1,5 +1,9 @@
 # Eriksberg coverage inspection and camera approaches
 
+For the proposed boat route to Älvsborgsbron and expanded river coverage, see the
+[bridge expansion survey](bridge/README.md). It uses a separate source extract and
+does not change the bundled runtime scene.
+
 Survey date: 2026-09-09. The survey below records the initial planning findings.
 As of 2026-09-12, Route A and the evening city-life pass are integrated into `cube`; see
 [the renderer notes](../3D.md) for playback commands. The music arrangement is unchanged.

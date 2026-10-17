@@ -1,0 +1,88 @@
+{
+  "source": "osm-survey.json.gz",
+  "source_sha256": "688c7cf277af904c44ce820c941b83cd23f383b9d5a492040edcf46cfcb6778a",
+  "retrieved_utc": "2026-10-17",
+  "origin_epsg3007": [
+    144570.57938487717,
+    6397583.370403226
+  ],
+  "current_crop_wsen": [
+    -700.0,
+    -600.0,
+    950.0,
+    800.0
+  ],
+  "proposed_crop_wsen": [
+    -1500,
+    -1600,
+    950,
+    800
+  ],
+  "geographic_bounds_wsen": [
+    11.883771792914722,
+    57.6830052943218,
+    11.924910548102483,
+    57.704585659327435
+  ],
+  "bridge_relation": 5776295,
+  "bridge_tags_unverified": {
+    "bridge:structure": "suspension",
+    "height": "107.6",
+    "layer": "1",
+    "length": "900.6",
+    "man_made": "bridge",
+    "maxheight:marine": "45",
+    "name": "Älvsborgsbron",
+    "start_date": "1966-11-08",
+    "type": "bridge",
+    "wikidata": "Q254996",
+    "wikipedia": "sv:Älvsborgsbron"
+  },
+  "bridge_outline_bounds_wsen": [
+    -591.6323043612356,
+    -1191.2884994661435,
+    -255.00460190552985,
+    -297.23439949098974
+  ],
+  "route_east_north": [
+    [
+      12.0,
+      60.0
+    ],
+    [
+      24.0,
+      -70.0
+    ],
+    [
+      15.0,
+      -180.0
+    ],
+    [
+      -250.0,
+      -500.0
+    ],
+    [
+      -650.0,
+      -850.0
+    ],
+    [
+      -1100.0,
+      -950.0
+    ]
+  ],
+  "route_length_m": 1648.9,
+  "route_shore_clearance_m": 27.6,
+  "route_bridge_crossing_east_north": [
+    -453.5253118405029,
+    -678.0846478604401
+  ],
+  "water_area_m2": 1282286,
+  "building_way_outlines": 1466,
+  "artificial_closures_outside_crop": true,
+  "omitted_bank_fragments_outside_crop": true,
+  "limitations": [
+    "Building ways are contextual outlines, not deduplicated building counts",
+    "Route checks only mapped water and crop containment in 2D",
+    "OSM elevation, height and clearance tags are not surveyed dimensions"
+  ]
+}
