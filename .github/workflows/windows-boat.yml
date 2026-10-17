@@ -25,7 +25,18 @@ jobs:
           -DBUILD_SHARED_LIBS=OFF -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
 
       - name: Build boat study and handling validator
-        run: cmake --build build-win --config Release --target boat_study validate_boat --parallel
+        run: |
+          cmake --build build-win --config Release --target boat_study validate_boat --parallel 2>&1 |
+            Tee-Object -FilePath build-win/build.log
+          if ($LASTEXITCODE -ne 0) {
+            Get-Content build-win/build.log |
+              Where-Object { $_ -match '\berror\b|fatal' } |
+              ForEach-Object {
+                $message = $_.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+                Write-Output "::error::$message"
+              }
+            exit 1
+          }
 
       - name: Run boat CPU checks
         run: >-
