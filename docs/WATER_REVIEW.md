@@ -1,7 +1,8 @@
 # Boat-level Eriksberg water review
 
 Execution step 04e of [the living city plan](LIVING_CITY_PLAN.md), 2026-10-17.
-This is an audit and a brief for 04f; the water renderer and boat handling are unchanged.
+The 04e audit did not change rendering or handling. The implementation record for 04f
+follows the original findings and baseline below.
 
 ## Review route and reproduction
 
@@ -121,7 +122,7 @@ This checks shoreline/crop containment, not overhead bridge or crane collisions.
    reason to scatter more foam over the whole river. Evidence:
    `compare-quay-approach.png`, `compare-quay-alongside.png`, CPU wave originals.
 
-## Bounded next implementation: 04f
+## Bounded implementation brief: 04f
 
 Start with the existing playable crop and preserve current handling, flat-water mode,
 the three physical wave components, camera, music, and wake/spray behaviour.
@@ -187,3 +188,108 @@ The saved movies contain the complete route at 10 Hz. Sampled image review canno
 60 Hz temporal stability, all possible player cameras, night-time lighting, or exact
 GPU direct-seek parity with history-dependent light selection. No new visual effect or
 handling change is claimed by this audit. Surface implementation belongs to 04f.
+
+## 04f implementation: boat-level surface and bounded geometry
+
+The GPU now keeps the original 266-triangle Eriksberg water footprint as a flat far
+surface and draws a clipped, moving near patch separately. The patch is a 192-metre
+square on a fixed 1.5-metre world grid. It recentres in 12-metre steps, replacing only
+cells outside the rendered disk; overlapping triangles retain their world coordinates.
+It clips against the original water triangles, including shoreline and map-crop edges.
+There is no rectangular overlay extending onto land and no new mask texture.
+
+The existing three waves displace the patch fully within 48 metres of the boat, then
+fade smoothly to zero at 80 metres. The fragment passes meet at that flat 80-metre
+boundary. Both use the same boating albedo; the brighter legacy timeline water remains
+separate. Analytic wave normals continue into the far field. Near-hull interpolation
+retains the existing 3.5 cm error bound. This is a rendering approximation at distance;
+physical waves, buoyancy, foam/spray poses, and handling are unchanged.
+
+An authored shader field shelters the narrow dock and opens gradually across its
+mouth, from approximately world Z -55 to -190. It follows the dock axis and leaves
+the rest of the river exposed. It controls subtle blue/green body-colour variation,
+reflection strength and breakup, and small wind-aligned shading ripples. Dock reflections
+are steadier, river reflections more broken, and the old broad bright glint is restrained.
+Small normal detail fades with projected native-pixel footprint, accounting for 4x4 AA.
+The field changes neither physical wave height nor current velocity. It is artistic
+staging, not measured local wind, shelter, salinity, or current data.
+
+The patch uses a reusable position-only GPU buffer. Geometry is clipped one row at a
+time and uploaded on recentering; the vertex shader displaces it from explicit scene
+time. This adds one main-view water submission; reflection
+and shadow passes still exclude the water surface. The CPU renderer retains its original
+full tessellation and appearance as a reference. No new game controls or assets.
+
+Reproduce the captures and before/after sheets with:
+
+```sh
+python3 tools/boat_water_review.py --output build/living-city/water-surface \
+  --sequence --movies --compare build/living-city/water-review
+./build/boat_water_review --check-gpu
+./build/boat_water_review --output build/living-city/water-surface/windowed-waves --waves --visible
+./build/boat_water_review --output build/living-city/water-surface/default-waves --waves --default-view --sequence
+```
+
+`--visible` now plays the complete route at 60 Hz; hidden sequences remain 10 Hz.
+`--default-view` selects the higher 20/14 follow camera for sequences and playback;
+the usual sequence uses 12/6. Named captures always include both cameras.
+Before/after sheets place 04e on the left and 04f on the right, with close/default views
+above/below. Useful examples are `before-after-waves-dock.png`,
+`before-after-waves-exposed.png`, and `before-after-waves-quay-alongside.png`.
+
+| Wave-mode geometry / buffer | 04e | 04f |
+| --- | ---: | ---: |
+| Peak dense triangles on the review circuit | 1,069,001 | 36,316 |
+| Separate flat far triangles | 0 | 266 |
+| Calculated allocated GPU vertex payload | 89,796,084 bytes | 2,359,296 bytes |
+| Main-view water submissions | 1 | 2 |
+
+That is about 96.6% fewer submitted water triangles at peak and 97.4% less allocated
+wave-vertex payload. The new number includes unused capacity in the reusable buffer;
+it excludes the small existing far mesh and driver overhead. Neither number is a
+measurement of driver memory. The route rebuilt the patch 126 times.
+
+At 10 Hz with the same Debug capture harness, flat GPU submission mean/p95 was
+5.319/5.706 ms; waves was 5.815/8.472 ms, versus 04e's 5.341/5.818 ms for waves.
+The geometry reduction trades a small average submission increase and occasional
+patch-update cost for much lower resident geometry. It is not a measured GPU speedup.
+At 60 Hz, the completed wave playback had 4,695 frames (120 discarded), submission
+mean/p95 5.388/5.922 ms, and maximum 9.268 ms, including 128 patch updates. The different
+sampling rate and warm-up duration make this a separate observation, not an A/B speedup.
+
+Xcode Time Profiler completed a 9.84-second deterministic wave-route recording:
+`water.trace`, `water-time-profile.xml`, and `instruments-summary.txt`. Main-thread
+sample weight included about 276 ms in `boat_water_patch` (roughly 3% of the 9,025 ms
+sampled main-thread total). This diagnostic includes startup, CPU route-clearance
+checks, and captures; it is not an interactive game benchmark or GPU execution timing.
+To repeat, choose a fresh output trace path:
+
+```sh
+xcrun xctrace record --template 'Time Profiler' \
+  --output build/living-city/water-surface/water-next.trace --time-limit 10s \
+  --launch -- ./build/boat_water_review \
+  --output build/living-city/water-surface/instruments-next --waves
+```
+
+Verification covers both complete driven circuits, default/close stills, adjacent-frame
+motion strips, CPU near-surface interpolation and sampled coverage against the imported
+water, and invariant overlapping geometry across a cache recenter. A new GPU probe checks
+actual colour agreement inside/outside the patch and a smooth shelter-to-river colour
+transition with reflections/shadows disabled. All four 04e pose CSVs and all 32 CPU key
+images compare exactly unchanged. Full build/test and windowed playback results follow.
+
+Final verification: Debug configure/build and all 43 CTest checks passed, including
+12 GPU checks and the new `gpu_water_surface` probe. Both complete GPU water presets
+have before/after stills and 10 Hz movies; an additional higher-camera wave sequence
+and `default-waves.mp4` cover its motion. Inspected the matching dock, mouth, crossing,
+exposed reach, quay, and return views plus adjacent-frame strips at both heights.
+Also inspected a native 320x200 wave capture without AA (`native-waves.png`).
+The complete close-view wave route finished in a 60 Hz windowed pass with the submission
+figures above. Python compilation, artifact assembly, movie encoding, Instruments
+record/export, and `git diff --check` passed. Step 04f is complete; 04g is next.
+
+Remaining limitations: planar reflection projection, the finite geographic crop, and
+the expensive full CPU wave reference remain. Distant GPU wave heights now deliberately
+flatten, so CPU/GPU surface geometry differs beyond the near field. GPU execution cost,
+driver memory, and shimmer across arbitrary player views are not certified by this pass.
+Waterline dressing belongs to 04g; currents and physical crossing wakes remain physics D.

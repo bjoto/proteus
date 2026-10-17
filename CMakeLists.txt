@@ -262,6 +262,8 @@ set_tests_properties(cube_start_screenshot PROPERTIES
 )
 
 if(PROTEUS_GPU_TESTS)
+  add_test(NAME gpu_water_surface COMMAND boat_water_review --check-gpu)
+  set_tests_properties(gpu_water_surface PROPERTIES LABELS "gpu" RUN_SERIAL TRUE)
   add_test(NAME boat_ghost_gpu_screenshot COMMAND boat_study --gpu-aa
     --ghost ${BOAT_REPLAY_TEST_DIR}/replay-fixture.run --time 0
     --data-dir ${BOAT_REPLAY_TEST_DIR}/profile

@@ -2,6 +2,7 @@
 #include "raymath.h"
 #include "rlgl.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -80,43 +81,55 @@ void boat_gpu_draw_with_ghost(
         gpu->scene.water = gpu->basin_water;
     }
     if (boat->water_settings.amplitude != 0) {
+        Vector2 center
+            = { roundf(-boat->position.x / 12) * 12, roundf(boat->position.y / 12) * 12 };
         Mesh *mesh = &gpu->wave_mesh;
-        if (!mesh->vaoId) {
-            // Upload topology once. The water vertex shader evaluates the same explicit waves
-            // as boat_water_query; no per-frame mesh transfers or CPU wave tessellation.
-            const Mesh3D *surface = boat_water_surface((BoatWater) { 0 }, 0, boat->eriksberg);
+        if (!mesh->vaoId || !Vector2Equals(center, gpu->wave_center)
+            || boat->eriksberg != gpu->wave_eriksberg) {
+            const Mesh3D *surface = boat_water_patch(
+                (Vector2) { -boat->position.x, boat->position.y }, boat->eriksberg);
             if (!surface)
-                return;
-            mesh->vertexCount = (int)surface->triangle_count * 3;
-            mesh->triangleCount = (int)surface->triangle_count;
-            mesh->vertices = MemAlloc((unsigned int)mesh->vertexCount * 3 * sizeof(float));
-            mesh->normals = MemAlloc((unsigned int)mesh->vertexCount * 3 * sizeof(float));
-            mesh->colors = MemAlloc((unsigned int)mesh->vertexCount * 4);
-            if (!mesh->vertices || !mesh->normals || !mesh->colors) {
-                UnloadMesh(*mesh);
+                goto restore_water;
+            int count = (int)surface->triangle_count * 3;
+            if (count > gpu->wave_capacity || !mesh->vaoId) {
+                if (mesh->vaoId)
+                    UnloadMesh(*mesh);
                 *mesh = (Mesh) { 0 };
-                return;
-            }
-            for (size_t i = 0; i < surface->triangle_count; ++i) {
-                Triangle3D t = surface->triangles[i];
-                for (int j = 0; j < 3; ++j) {
-                    Vector3 v = surface->vertices[t.vertices[j]];
-                    Vector3 normal = { 0, 1, 0 };
-                    Color color = { 45, 79, 104, 255 };
-                    size_t index = i * 3 + (size_t)j;
-                    memcpy(&mesh->vertices[index * 3], &v, sizeof(v));
-                    memcpy(&mesh->normals[index * 3], &normal, sizeof(normal));
-                    memcpy(&mesh->colors[index * 4], &color, sizeof(color));
+                gpu->wave_capacity = 3072;
+                while (gpu->wave_capacity < count)
+                    gpu->wave_capacity *= 2;
+                mesh->vertexCount = gpu->wave_capacity;
+                mesh->triangleCount = gpu->wave_capacity / 3;
+                mesh->vertices = MemAlloc((unsigned int)gpu->wave_capacity * 3 * sizeof(float));
+                if (!mesh->vertices) {
+                    UnloadMesh(*mesh);
+                    *mesh = (Mesh) { 0 };
+                    goto restore_water;
                 }
+                memset(mesh->vertices, 0, (size_t)gpu->wave_capacity * 3 * sizeof(float));
+                UploadMesh(mesh, true);
             }
-            UploadMesh(mesh, false);
+            for (int i = 0; i < count; ++i) {
+                Vector3 v = surface->vertices[surface->triangles[i / 3].vertices[i % 3]];
+                memcpy(&mesh->vertices[i * 3], &v, sizeof(v));
+            }
+            UpdateMeshBuffer(*mesh, 0, mesh->vertices, count * 3 * (int)sizeof(float), 0);
+            mesh->vertexCount = count;
+            mesh->triangleCount = count / 3;
+            gpu->wave_center = center;
+            gpu->wave_eriksberg = boat->eriksberg;
+            gpu->wave_peak_triangles
+                = count / 3 > gpu->wave_peak_triangles ? count / 3 : gpu->wave_peak_triangles;
+            ++gpu->wave_rebuilds;
         }
-        gpu->scene.water = *mesh;
+        gpu->scene.near_water = *mesh;
     }
     BeginTextureMode(target);
     waterfront_gpu_scene_draw(&gpu->scene, &frame, target.texture.width, target.texture.height);
     EndTextureMode();
+restore_water:
     gpu->scene.water = original_water;
+    gpu->scene.near_water = (Mesh) { 0 };
     if (gpu->supersampled.id) {
         BeginTextureMode(gpu->target);
         ClearBackground(BLACK);

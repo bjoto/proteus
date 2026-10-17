@@ -9,6 +9,9 @@ typedef struct {
     Shader downsample;
     Mesh wave_mesh;
     Mesh basin_water;
+    Vector2 wave_center;
+    bool wave_eriksberg;
+    int wave_capacity, wave_peak_triangles, wave_rebuilds;
 
 } BoatGpu;
 

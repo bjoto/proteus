@@ -264,3 +264,10 @@ This remains a support-spring/normal-damping model, without displaced hull volum
 currents, ventilation, or capsize behavior. The user accepted Phase C after playtesting; preserve
 this baseline for Phase D. See
 [the physics plan](BOAT_PHYSICS_PLAN.md#phase-c--buoyancy-and-gentle-waves).
+
+The GPU's boat-level water pass now uses a clipped near patch and a much smaller flat
+far surface with analytic wave shading. In Eriksberg, shading shifts gradually from
+quieter dock reflections to more broken river water. This is visual exposure only;
+physical waves and existing recordings are unchanged. The CPU renderer retains the full
+wave reference. Geometry, comparisons, and verification are in the
+[04f water-surface record](WATER_REVIEW.md#04f-implementation-boat-level-surface-and-bounded-geometry).

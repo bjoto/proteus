@@ -120,6 +120,7 @@ def main():
     parser.add_argument("--assemble", action="store_true")
     parser.add_argument("--sequence", action="store_true")
     parser.add_argument("--movies", action="store_true")
+    parser.add_argument("--compare", type=Path, help="previous capture root for before/after sheets")
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     if not args.assemble:
@@ -145,6 +146,13 @@ def main():
         sheet(items, args.output / f"compare-{stop}.png", 3, NOTES[stop])
     sheet([(f"{stop} {preset}", args.output / preset / f"{stop}-close.png")
            for stop in STOPS for preset in ("flat", "waves")], args.output / "overview.png", 2)
+    if args.compare:
+        for stop in STOPS:
+            for preset in ("flat", "waves"):
+                items = [(f"{label} {preset} {stop} {view}", root / preset / f"{stop}-{view}.png")
+                         for view in ("close", "default")
+                         for label, root in (("before", args.compare), ("after", args.output))]
+                sheet(items, args.output / f"before-after-{preset}-{stop}.png", 2)
     rows = {}
     for preset in ("flat", "waves", "cpu-flat", "cpu-waves"):
         with (args.output / preset / "route.csv").open() as stream:

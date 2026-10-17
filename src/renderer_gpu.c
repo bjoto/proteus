@@ -949,6 +949,13 @@ static void set_water_uniforms(WaterfrontGpuScene *scene, const WaterfrontSceneF
     int physical_waves = frame->player_active && water.amplitude != 0;
     SetShaderValue(scene->water_shader, GetShaderLocation(scene->water_shader, "physicalWaves"),
         &physical_waves, SHADER_UNIFORM_INT);
+    int waterfront_water = frame->player_active && !frame->boating_basin;
+    SetShaderValue(scene->water_shader, GetShaderLocation(scene->water_shader, "waterfrontWater"),
+        &waterfront_water, SHADER_UNIFORM_INT);
+    float patch[] = { frame->player.hull.position.x, frame->player.hull.position.z,
+        BOAT_WATER_PATCH_FULL, BOAT_WATER_PATCH_RADIUS };
+    SetShaderValue(scene->water_shader, GetShaderLocation(scene->water_shader, "wavePatch"), patch,
+        SHADER_UNIFORM_VEC4);
     if (physical_waves) {
         BoatWave waves[]
             = { { water.amplitude, water.wavelength, water.angular_speed, water.direction },
@@ -1344,6 +1351,25 @@ static void render_shadow_map(WaterfrontGpuScene *scene, const WaterfrontSceneFr
     scene->light_view_projection = MatrixMultiply(view, projection);
 }
 
+static void draw_water(WaterfrontGpuScene *scene, const WaterfrontSceneFrame *frame, int width)
+{
+    set_object_color(scene->water_shader, WHITE);
+    set_water_uniforms(scene, frame);
+    float pixel_scale = fmaxf(1, width / 320.0f);
+    SetShaderValue(scene->water_shader, GetShaderLocation(scene->water_shader, "surfacePixelScale"),
+        &pixel_scale, SHADER_UNIFORM_FLOAT);
+    int pass = scene->near_water.vaoId ? 1 : 0;
+    int location = GetShaderLocation(scene->water_shader, "waterPatchPass");
+    SetShaderValue(scene->water_shader, location, &pass, SHADER_UNIFORM_INT);
+    DrawMesh(scene->water, scene->water_material, MatrixIdentity());
+    if (pass) {
+        pass = 2;
+        set_object_color(scene->water_shader, WHITE);
+        SetShaderValue(scene->water_shader, location, &pass, SHADER_UNIFORM_INT);
+        DrawMesh(scene->near_water, scene->water_material, MatrixIdentity());
+    }
+}
+
 void waterfront_gpu_scene_draw(
     WaterfrontGpuScene *scene, const WaterfrontSceneFrame *frame, int width, int height)
 {
@@ -1371,9 +1397,7 @@ void waterfront_gpu_scene_draw(
     rlEnableBackfaceCulling();
     if (frame->boating_basin) {
         draw_basin(scene, frame, material);
-        set_object_color(scene->water_shader, WHITE);
-        set_water_uniforms(scene, frame);
-        DrawMesh(scene->water, scene->water_material, MatrixIdentity());
+        draw_water(scene, frame, width);
         rlDisableBackfaceCulling();
         draw_life(scene, life_material, frame, true);
         draw_ghost(scene, life_material, frame, width);
@@ -1387,9 +1411,7 @@ void waterfront_gpu_scene_draw(
     DrawMesh(scene->roofs, scene->roof_material, MatrixIdentity());
     draw_ground(scene, material);
     DrawMesh(scene->corner, material, MatrixIdentity());
-    set_object_color(scene->water_shader, WHITE);
-    set_water_uniforms(scene, frame);
-    DrawMesh(scene->water, scene->water_material, MatrixIdentity());
+    draw_water(scene, frame, width);
     set_emissive(scene->shader, true);
     DrawMesh(scene->windows, material, MatrixIdentity());
     DrawMesh(scene->corner_emissive, material, MatrixIdentity());

@@ -1,7 +1,7 @@
 # Living Eriksberg city plan
 
 Status: execution steps 01–04 and follow-ups 04b–04d complete, 2026-09-19.
-Boat-view water audit 04e complete, 2026-10-17: step 04f is next, followed by 04g;
+Boat-view water audit 04e and surface pass 04f complete, 2026-10-17: step 04g is next;
 step 05 remains the prerequisite for new interacting actors. This is the
 visual-development plan after the [GPU migration](GPU_WATERFRONT_PLAN.md).
 
@@ -46,8 +46,8 @@ report what remains. A purely documentary step does not require a new manual dem
 | 04c | Separate asphalt, paving, quay concrete, and planting finishes; correct real-world scale and filter subpixel detail. Verify and commit independently of facade work. | Complete |
 | 04d | Rework facade materials around the existing window geometry, with building-aligned brick, plaster, and panel variation. Inspect near and distant views without changing the low-resolution style. | Complete |
 | 04e | Audit water from the playable boat: dock, basin mouth, river crossing, quay approach, and view toward the exposed reach. Record matching flat/wave stills, motion, shoreline and map-boundary issues, and a performance baseline. | Complete; see WATER_REVIEW.md |
-| 04f | Reduce unnecessary distant wave geometry and give sheltered dock/exposed river water distinct visual surface character. Preserve current physical waves and handling; use the bounded brief in WATER_REVIEW.md. | Next |
-| 04g | Finish selected waterline edges: quay contact, fenders, ladders, moorings, and restrained local disturbance. Inspect alongside the boat and approaching shore. | Pending; scope from 04e |
+| 04f | Reduce unnecessary distant wave geometry and give sheltered dock/exposed river water distinct visual surface character. Preserve current physical waves and handling; use the bounded brief in WATER_REVIEW.md. | Complete |
+| 04g | Finish selected waterline edges: quay contact, fenders, ladders, moorings, and restrained local disturbance. Inspect alongside the boat and approaching shore. | Next; use 04e shore findings |
 | 05 | Consolidate the actor evaluation needed for city life into the shared scene layer. Preserve existing behaviour and verify direct seeks before adding actors. | Pending |
 | 06 | Distribute a small cast of pedestrians and cyclists between street destinations and both quays, with readable silhouettes and deterministic paths. Avoid concentrating all life at the cafe. Inspect motion and occlusion. | Pending |
 | 07 | Add varied vehicles and one authored interaction, such as a bus stop or yielding car. Verify spacing, stops, and hidden route wraps. | Pending |
@@ -74,18 +74,48 @@ To start, use this prompt in the current or a fresh session:
 
 ```text
 Read AGENTS.md, docs/LIVING_CITY_PLAN.md, and docs/WATER_REVIEW.md.
-Complete execution step 04f only, following the water review's bounded implementation brief.
-Use the existing GPU renderer and retained geographic data. Reduce unnecessary distant
-wave geometry, then distinguish sheltered and exposed water visually. Preserve handling.
+Complete execution step 04g only, using the water review's shore findings.
+Use the existing GPU renderer and retained geographic data. Finish selected visible
+waterline edges while preserving navigable space, surface rendering, and handling.
 Follow the plan's verification requirements, record findings and artifact paths in its
 progress log, and commit the completed step. Preserve unrelated changes. Do not implement
 later steps. Report the commit, findings, and any remaining verification limitations.
 ```
 
-For subsequent work, replace `04f` and the task-specific sentence with the next step's
+For subsequent work, replace `04g` and the task-specific sentence with the next step's
 deliverable, or request a range such as `02–04, with one commit per step`.
 
 ### Progress log
+
+- Step 04f (2026-10-17): replaced the GPU's all-map dense wave mesh with an exact
+  shoreline-clipped near patch and the existing 266-triangle flat far surface. A fixed
+  1.5 m world grid recentres in 12 m steps; wave displacement is full within 48 m and
+  fades to zero at 80 m. Both passes share boating albedo and analytic wave normals.
+  The position-only dynamic buffer retains capacity across updates. Added smooth,
+  shader-only shelter/exposure variation, filtered directional ripples, restrained
+  highlights, and native-pixel filtering that accounts for AA. Physics, wave presets,
+  boat/replay poses, CPU reference images, timeline water, and music remain unchanged.
+  Full implementation details and reproduction are in [WATER_REVIEW.md](WATER_REVIEW.md#04f-implementation-boat-level-surface-and-bounded-geometry).
+  Review-route peak: 36,316 near triangles plus 266 far, versus 1,069,001; allocated
+  wave vertex payload 2,359,296 bytes (2.25 MiB), versus 89,796,084 bytes. This is about
+  96.6% fewer triangles and 97.4% less vertex payload, with one extra main-view water
+  submission. It is not a driver-memory measurement or a GPU speedup claim.
+  Debug configure/build and all 43 CTest checks passed (12 GPU). New checks cover patch
+  coverage, bounded height interpolation, invariant overlap at recentering, matching
+  near/far GPU colour, and smooth exposure. All four pose CSVs and 32 CPU keyframes
+  match 04e exactly. Captured both full water presets and both camera heights, inspected
+  before/after stills and motion strips, and completed the 60 Hz windowed wave route.
+  Artifacts: `build/living-city/water-surface/`, including three movies, comparisons,
+  `default-waves/`, `windowed-waves/`, and the Xcode `water.trace` plus XML/summary.
+  At 10 Hz, wave submission mean/p95 was 5.815/8.472 ms versus 04e's 5.341/5.818:
+  dynamic clipping/upload adds occasional CPU cost. At 60 Hz it was 5.388/5.922 ms,
+  max 9.268 ms (4,695 frames, 120 warm-up), with 128 patch updates. Those different
+  sampling rates are separate observations. Time Profiler sampled about 276 ms in
+  patch generation across the diagnostic run; see the audit for context and limits.
+  Python compilation/assembly, ffmpeg encoding, and `git diff --check` passed.
+  Remaining: planar reflections, crop coverage, the expensive CPU wave reference,
+  measured GPU execution/driver memory, and arbitrary-camera shimmer review. Step 04g
+  is next; physical currents/crossing wakes remain separate physics work.
 
 - Step 04e (2026-10-17): completed the boat-level audit in
   [WATER_REVIEW.md](WATER_REVIEW.md). Added `boat_water_review` and its Python capture/
@@ -352,7 +382,7 @@ frame cost and water geometry size before adding detail. Rank findings by how mu
 screen space and play time they affect. Deliver an annotated capture set and a bounded
 04f implementation brief; this audit does not require new traffic or fluid simulation.
 
-### 04f — make the surface describe the place
+### 04f — make the surface describe the place (complete)
 
 - Keep the dock visually sheltered; give the exposed reach stronger directional
   surface movement, with a gradual transition at the mouth. The perfectly flat preset
@@ -537,8 +567,8 @@ turn small details into distracting pixel noise.
   Report CPU submission and GPU timing separately where available, plus draw counts and
   memory growth; establish a performance target from measurements on the target machine.
 
-Current implementation priority: surface pass 04f follows the completed boat-view
-audit's bounded brief; waterline pass 04g follows its shore findings. Step 05 still precedes new interacting
+Current implementation priority: waterline pass 04g follows the completed surface pass
+and boat-view audit's shore findings. Step 05 still precedes new interacting
 actors. The ferry proxy in 09 can follow that foundation if the boat review prioritizes
 harbour activity; inspect its scale and route before modelling the vessel in detail.
 

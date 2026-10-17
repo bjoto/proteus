@@ -102,36 +102,133 @@ static bool capture(BoatGpu *gpu, Renderer3D *cpu, const Boat *boat, BoatCamera 
     return ok;
 }
 
+// A quiet, reflection-free probe exposes mismatched near/far albedo and field bindings.
+static int check_gpu_water(void)
+{
+    SetConfigFlags(FLAG_WINDOW_HIDDEN);
+    InitWindow(320, 200, "Water surface probe");
+    if (!IsWindowReady())
+        return 1;
+    BoatGpu gpu = { 0 };
+    int result = 1;
+    if (!boat_gpu_init(&gpu, false))
+        goto cleanup;
+    waterfront_gpu_scene_set_reflections_enabled(&gpu.scene, false);
+    waterfront_gpu_scene_set_shadows_enabled(&gpu.scene, false);
+    Boat boat;
+    boat_reset(&boat);
+    boat.position = (Vector2) { 0, 0 };
+    boat.water_settings = boat_water_gentle();
+    boat.water_settings.amplitude = 1e-8f;
+    boat.water_settings.crossing[0].amplitude = boat.water_settings.crossing[1].amplitude = 0;
+    const BoatCamera view = { 48, 36 };
+    boat_gpu_draw(&gpu, &boat, view);
+    Image image = LoadImageFromTexture(gpu.target.texture);
+    if (!image.data)
+        goto cleanup;
+    ImageFlipVertical(&image);
+    ImageFlipHorizontal(&image);
+    WaterfrontSceneFrame frame;
+    boat_scene_frame(&boat, view, &frame);
+    Camera3D camera = { frame.camera.position, frame.camera.target, frame.camera.up,
+        frame.camera.vertical_fov * RAD2DEG, CAMERA_PERSPECTIVE };
+    const Vector3 samples[] = { { 0, 0, -20 }, { 45, 0, -45 }, { 60, 0, -55 } };
+    bool same = true;
+    for (size_t i = 0; i < sizeof(samples) / sizeof(*samples); ++i) {
+        Vector2 p = GetWorldToScreenEx(samples[i], camera, 320, 200);
+        int x = 319 - (int)roundf(p.x), y = (int)roundf(p.y);
+        if (x < 0 || x >= 320 || y < 0 || y >= 200) {
+            same = false;
+            continue;
+        }
+        Color color = GetImageColor(image, x, y);
+        printf("water probe %zu: pixel=%d,%d rgb=%d,%d,%d\n", i, x, y, color.r, color.g, color.b);
+        same &= abs(color.r - 33) <= 1 && abs(color.g - 71) <= 1 && abs(color.b - 99) <= 1;
+    }
+    UnloadImage(image);
+    if (!same)
+        goto cleanup;
+    // In the real waterfront, the authored field must vary the surface even with
+    // reflections/shadows disabled, and cross the mouth without an abrupt colour step.
+    boat.eriksberg = true;
+    boat.position.x = -12;
+    Color first = { 0 }, previous = { 0 }, last = { 0 };
+    for (int z = 60; z >= -260; z -= 10) {
+        boat.position.y = (float)z;
+        boat_gpu_draw(&gpu, &boat, view);
+        image = LoadImageFromTexture(gpu.target.texture);
+        if (!image.data)
+            goto cleanup;
+        ImageFlipVertical(&image);
+        ImageFlipHorizontal(&image);
+        boat_scene_frame(&boat, view, &frame);
+        camera.position = frame.camera.position;
+        camera.target = frame.camera.target;
+        Vector2 p = GetWorldToScreenEx((Vector3) { 12, 0, z - 20 }, camera, 320, 200);
+        Color color = GetImageColor(image, 319 - (int)roundf(p.x), (int)roundf(p.y));
+        UnloadImage(image);
+        if (z == 60)
+            first = color;
+        else if (abs(color.r - previous.r) > 1 || abs(color.g - previous.g) > 1
+            || abs(color.b - previous.b) > 1) {
+            fprintf(stderr, "Abrupt water-field transition at Z=%d\n", z);
+            goto cleanup;
+        }
+        previous = last = color;
+    }
+    if (last.g <= first.g || last.b >= first.b) {
+        fprintf(stderr, "Water exposure field did not reach both surface treatments.\n");
+        goto cleanup;
+    }
+    puts("gpu_water_surface=ok");
+    result = 0;
+cleanup:
+    boat_gpu_destroy(&gpu);
+    CloseWindow();
+    boat_water_destroy();
+    return result;
+}
+
 int main(int argc, char **argv)
 {
     const char *output = NULL;
     bool use_gpu = true, waves = false, check = false, sequence = false, visible = false;
+    bool gpu_check = false;
+    bool default_view = false;
     for (int i = 1; i < argc; ++i) {
         if (strcmp(argv[i], "--output") == 0 && i + 1 < argc)
             output = argv[++i];
         else if (strcmp(argv[i], "--waves") == 0)
             waves = true;
+        else if (strcmp(argv[i], "--check-gpu") == 0)
+            gpu_check = true;
         else if (strcmp(argv[i], "--check") == 0)
             check = true;
         else if (strcmp(argv[i], "--sequence") == 0)
             sequence = true;
         else if (strcmp(argv[i], "--visible") == 0)
             visible = true;
+        else if (strcmp(argv[i], "--default-view") == 0)
+            default_view = true;
         else if (strcmp(argv[i], "--renderer") == 0 && i + 1 < argc) {
             const char *name = argv[++i];
             if (strcmp(name, "cpu") != 0 && strcmp(name, "gpu") != 0)
                 return 2;
             use_gpu = strcmp(name, "gpu") == 0;
         } else {
-            puts("Usage: boat_water_review --check [--waves]\n"
+            puts("Usage: boat_water_review --check [--waves] | --check-gpu\n"
                  "       boat_water_review --output DIR [--renderer cpu|gpu] [--waves]\n"
-                 "                         [--sequence] [--visible]\n"
+                 "                         [--sequence] [--visible] [--default-view]\n"
                  "GPU uses existing 4x AA. GPU sequence: 10 Hz; CPU samples: five seconds.\n"
-                 "Both modes use the existing 120 Hz boat simulation.\n"
+                 "Visible GPU playback uses 60 Hz; simulation remains 120 Hz.\n"
                  "Named captures use both default and close follow cameras.\n"
                  "Map data (c) OpenStreetMap contributors, ODbL 1.0.");
             return strcmp(argv[i], "--help") == 0 ? 0 : 2;
         }
+    }
+    if (gpu_check) {
+        SetTraceLogLevel(LOG_WARNING);
+        return check_gpu_water();
     }
     if (!check && !output)
         return 2;
@@ -170,12 +267,14 @@ int main(int argc, char **argv)
             if (!IsWindowReady() || !boat_gpu_init(&gpu, true))
                 goto cleanup;
             if (visible)
-                SetTargetFPS(10);
+                SetTargetFPS(60);
         }
     }
     size_t destination = 0, captured_destination = 0;
+    const BoatCamera review_camera = default_view ? BOAT_CAMERA_DEFAULT : (BoatCamera) { 12, 6 };
+    printf("sequence_camera=%.1f/%.1f\n", review_camera.distance, review_camera.height);
     int frames = 0, ticks = 0, timing_count = 0;
-    double timings[MAX_TICKS / SAMPLE_TICKS + 1], total = 0;
+    double timings[MAX_TICKS / 2 + 1], total = 0;
     for (ticks = 0; ticks <= MAX_TICKS; ++ticks) {
         if (!hull_clear(&boat)) {
             fprintf(stderr, "Route too close to shore at tick %d: %.3f %.3f\n", ticks,
@@ -205,7 +304,7 @@ int main(int argc, char **argv)
         }
         // CPU wave tessellation is deliberately expensive: sample five-second intervals
         // plus every named stop. GPU captures the continuous ten-Hz review sequence.
-        int sample_ticks = use_gpu ? SAMPLE_TICKS : 600;
+        int sample_ticks = use_gpu ? (visible ? 2 : SAMPLE_TICKS) : 600;
         if (!check && (ticks % sample_ticks == 0 || finished)) {
             fprintf(csv, "%d,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.3f,%zu\n", ticks,
                 ticks * (double)BOAT_STEP, boat.position.x, boat.position.y, boat.heading,
@@ -213,11 +312,11 @@ int main(int argc, char **argv)
                 boat.roll, shore_distance(boat.position), destination);
             double start = now();
             if (use_gpu) {
-                boat_gpu_draw(&gpu, &boat, (BoatCamera) { 12, 6 });
+                boat_gpu_draw(&gpu, &boat, review_camera);
                 rlDrawRenderBatchActive();
             } else {
                 Color pixels[320 * 200];
-                if (!boat_draw(&cpu, pixels, 320, 200, &boat, (BoatCamera) { 12, 6 }))
+                if (!boat_draw(&cpu, pixels, 320, 200, &boat, review_camera))
                     goto cleanup;
             }
             double ms = (now() - start) * 1000;
@@ -228,7 +327,7 @@ int main(int argc, char **argv)
             }
             if (sequence) {
                 snprintf(path, sizeof(path), "%s/frame-%05d.png", output, frames);
-                if (!capture(&gpu, &cpu, &boat, (BoatCamera) { 12, 6 }, use_gpu, path))
+                if (!capture(&gpu, &cpu, &boat, review_camera, use_gpu, path))
                     goto cleanup;
             }
             if (visible && use_gpu) {
@@ -253,11 +352,12 @@ int main(int argc, char **argv)
     }
     if (!check) {
         qsort(timings, (size_t)timing_count, sizeof(*timings), compare_double);
-        printf("renderer=%s preset=%s frames=%d warmup=%d mean_ms=%.3f p95_ms=%.3f\n",
+        printf("renderer=%s preset=%s frames=%d warmup=%d mean_ms=%.3f p95_ms=%.3f max_ms=%.3f\n",
             use_gpu ? "gpu-aa submission" : "cpu", waves ? "waves" : "flat", frames,
             use_gpu ? 120 : 2, timing_count ? total / timing_count : 0,
-            timing_count ? timings[(timing_count - 1) * 95 / 100] : 0);
-        const Mesh3D *surface = boat_water_surface((BoatWater) { 0 }, 0, true);
+            timing_count ? timings[(timing_count - 1) * 95 / 100] : 0,
+            timing_count ? timings[timing_count - 1] : 0);
+        const Mesh3D *surface = use_gpu ? NULL : boat_water_surface((BoatWater) { 0 }, 0, true);
         const Mesh3D *city = waterfront_scene_city_mesh();
         size_t water_count = 0;
         while (water_count < city->triangle_count) {
@@ -268,8 +368,14 @@ int main(int argc, char **argv)
             ++water_count;
         }
         printf("water_base_triangles=%zu wave_triangles=%zu gpu_wave_vertex_bytes=%zu\n",
-            water_count, surface ? surface->triangle_count : 0,
-            surface ? surface->triangle_count * 3 * (6 * sizeof(float) + 4) : 0);
+            water_count,
+            use_gpu       ? (size_t)gpu.wave_peak_triangles
+                : surface ? surface->triangle_count
+                          : 0,
+            use_gpu ? (size_t)gpu.wave_capacity * 3 * sizeof(float) : 0);
+        if (use_gpu)
+            printf("wave_patch_rebuilds=%d vertex_capacity=%d\n", gpu.wave_rebuilds,
+                gpu.wave_capacity);
     }
     result = 0;
 cleanup:

@@ -27,9 +27,13 @@ BoatWaterSample boat_water_query(BoatWater water, Vector2 position, float time);
 Vector3 boat_water_resistance(
     BoatWaterSample water, Vector3 point_velocity, float damping, float support);
 // Borrowed, tessellated surface; renderer X is reflected from simulation X. NULL on allocation
-// failure. CPU draws the colors; GPU uploads topology once and evaluates the shared waves in
-// its water shader. Each call updates borrowed storage.
+// failure. CPU reference draws the colors and full displaced surface. Each call updates storage.
 const Mesh3D *boat_water_surface(BoatWater water, float time, bool eriksberg);
+// GPU-only rest topology, clipped to the original shoreline. World X/Z, not simulation X.
+// Cached on a fixed 1.5 m grid; shifts by 12 m outside the visible displacement radius.
+#define BOAT_WATER_PATCH_FULL 48.0f
+#define BOAT_WATER_PATCH_RADIUS 80.0f
+const Mesh3D *boat_water_patch(Vector2 world_center, bool eriksberg);
 void boat_water_destroy(void);
 
 #endif

@@ -49,6 +49,7 @@ typedef struct {
     Mesh roofs;
     Mesh quay; // All ground materials, including authored pavement tops.
     Mesh water;
+    Mesh near_water; // Borrowed boat wave patch; owned by BoatGpu, never unloaded here.
     Mesh windows;
     Mesh corner;
     Mesh corner_emissive;

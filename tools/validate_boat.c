@@ -3,6 +3,7 @@
 #include "raymath.h"
 
 #include <math.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -749,8 +750,97 @@ static int shared_water(void)
     return 0;
 }
 
+static bool patch_contains(const Mesh3D *mesh, Vector2 p)
+{
+    for (size_t i = 0; i < mesh->triangle_count; ++i) {
+        Vector3 a = mesh->vertices[mesh->triangles[i].vertices[0]];
+        Vector3 b = mesh->vertices[mesh->triangles[i].vertices[1]];
+        Vector3 c = mesh->vertices[mesh->triangles[i].vertices[2]];
+        if (p.x < fminf(a.x, fminf(b.x, c.x)) || p.x > fmaxf(a.x, fmaxf(b.x, c.x))
+            || p.y < fminf(a.z, fminf(b.z, c.z)) || p.y > fmaxf(a.z, fmaxf(b.z, c.z)))
+            continue;
+        float ab = (b.x - a.x) * (p.y - a.z) - (b.z - a.z) * (p.x - a.x);
+        float bc = (c.x - b.x) * (p.y - b.z) - (c.z - b.z) * (p.x - b.x);
+        float ca = (a.x - c.x) * (p.y - c.z) - (a.z - c.z) * (p.x - c.x);
+        if ((ab >= -1e-5f && bc >= -1e-5f && ca >= -1e-5f)
+            || (ab <= 1e-5f && bc <= 1e-5f && ca <= 1e-5f))
+            return true;
+    }
+    return false;
+}
+
+static uint64_t patch_overlap(const Mesh3D *mesh)
+{
+    uint64_t hash = UINT64_C(14695981039346656037);
+    for (size_t i = 0; i < mesh->triangle_count; ++i) {
+        bool inside = true;
+        for (int j = 0; j < 3; ++j) {
+            Vector3 p = mesh->vertices[mesh->triangles[i].vertices[j]];
+            inside &= fabsf(p.x) < 40 && p.z > -280 && p.z < -220;
+        }
+        if (!inside)
+            continue;
+        for (int j = 0; j < 3; ++j) {
+            Vector3 p = mesh->vertices[mesh->triangles[i].vertices[j]];
+            hash = (hash ^ (uint32_t)lrintf(p.x * 1000)) * UINT64_C(1099511628211);
+            hash = (hash ^ (uint32_t)lrintf(p.z * 1000)) * UINT64_C(1099511628211);
+        }
+    }
+    return hash;
+}
+
+static int validate_water_patch(void)
+{
+    BoatWater water = boat_water_gentle();
+    const Vector2 centers[]
+        = { { 12, 60 }, { 12, -125 }, { 170, -250 }, { -80, -455 }, { -60, -175 }, { 940, 100 } };
+    for (int location = 0; location < 2; ++location)
+        for (size_t k = 0; k < sizeof(centers) / sizeof(*centers); ++k) {
+            if (!location && k > 1)
+                break;
+            Vector2 center = location ? centers[k] : (Vector2) { k ? 100 : 0, 0 };
+            const Mesh3D *mesh = boat_water_patch(center, location);
+            CHECK(mesh && mesh->triangle_count > 0 && mesh->triangle_count < 50000);
+            for (size_t i = 0; i < mesh->triangle_count; ++i) {
+                Vector3 centroid = { 0 };
+                float height = 0;
+                for (int j = 0; j < 3; ++j) {
+                    Vector3 p = mesh->vertices[mesh->triangles[i].vertices[j]];
+                    Vector3 q = mesh->vertices[mesh->triangles[i].vertices[(j + 1) % 3]];
+                    CHECK(p.y == 0 && isfinite(p.x) && isfinite(p.z));
+                    CHECK(Vector3Distance(p, q) <= 2.122f);
+                    centroid = Vector3Add(centroid, Vector3Scale(p, 1.0f / 3));
+                    height += boat_water_query(water, (Vector2) { -p.x, p.z }, .7f).height / 3;
+                }
+                float exact
+                    = boat_water_query(water, (Vector2) { -centroid.x, centroid.z }, .7f).height;
+                CHECK(fabsf(height - exact) < .035f);
+            }
+            // Sample the entire visible disk against the original water, including land,
+            // narrow dock edges, the southern bank, and the artificial map crop.
+            for (int z = -78; z <= 78; z += 6)
+                for (int x = -78; x <= 78; x += 6) {
+                    if (x * x + z * z > 78 * 78)
+                        continue;
+                    Vector2 p = { center.x + x + .17f, center.y + z + .23f };
+                    bool expected = location ? boat_map_water((Vector2) { -p.x, p.y }, 0)
+                                             : fabsf(p.x) <= 120 && fabsf(p.y) <= 80;
+                    CHECK(patch_contains(mesh, p) == expected);
+                }
+        }
+    const Mesh3D *mesh = boat_water_patch((Vector2) { 5.99f, -250 }, true);
+    CHECK(mesh);
+    uint64_t before = patch_overlap(mesh);
+    mesh = boat_water_patch((Vector2) { 6.01f, -250 }, true);
+    CHECK(mesh && before == patch_overlap(mesh));
+    // Recentring changes only cells beyond the rendered disk, not overlapping world geometry.
+    boat_water_destroy();
+    return 0;
+}
+
 int main(void)
 {
+    CHECK(validate_water_patch() == 0);
     CHECK(shared_water() == 0);
     CHECK(validate_buoyancy() == 0);
     CHECK(validate_wave_resistance() == 0);
