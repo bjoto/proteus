@@ -23,6 +23,10 @@ This first integration has static scenery, no overhead
 structure collisions, and no camera occlusion handling near buildings. It does not include the
 rest of Gothenburg or the archipelago. Source attribution is retained in the HUD and README.
 
+The boat-level [water review](WATER_REVIEW.md) records a repeatable dock/river/quay circuit
+and the next visual surface pass. It complements the physics roadmap; it adds no handling
+changes or new playable geography.
+
 Run `./build/boat_study`. Left/right or A/D adjust the wheel, clamped from full
 left to full right. Centre to either limit takes one second. Releasing keys lets an overdamped
 spring return the wheel smoothly to centre without overshooting; opposite input brings it back

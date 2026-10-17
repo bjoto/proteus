@@ -1,0 +1,189 @@
+# Boat-level Eriksberg water review
+
+Execution step 04e of [the living city plan](LIVING_CITY_PLAN.md), 2026-10-17.
+This is an audit and a brief for 04f; the water renderer and boat handling are unchanged.
+
+## Review route and reproduction
+
+`boat_water_review` drives the existing 120 Hz boat simulation with a small waypoint
+controller. It starts at the normal Eriksberg spawn, leaves the basin, crosses toward
+the southern bank, turns toward the exposed southwest view, approaches the northern
+quay, follows it northeast, and returns to the basin mouth. This is a review circuit,
+not a new gameplay mode or an assertion about real navigation channels.
+
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+cmake --build build -j
+./build/boat_water_review --check
+./build/boat_water_review --check --waves
+python3 tools/boat_water_review.py --sequence --movies
+```
+
+The Python tool needs only the standard library; `--movies` additionally needs ffmpeg.
+GPU runs require a desktop graphics context. Omit `--movies` to retain PNG sequences
+without an encoder. `--assemble --movies` rebuilds sheets, the route map, and videos
+from existing captures without rerunning the simulation. For a windowed route pass:
+
+```sh
+./build/boat_water_review --output build/living-city/water-review/windowed-waves --waves --visible
+```
+
+Artifacts live under `build/living-city/water-review/`:
+
+- `route.svg`: north-up map of the exact imported water triangles and both driven paths;
+  the grid is 100 metres. Orange is flat, white is waves.
+- `flat/route.csv`, `waves/route.csv`: simulation tick, nominal tick time, position,
+  heading, smoothed camera heading, speed, heave/pitch/roll, sampled distance to the
+  nearest water boundary, and next waypoint. Headings are radians; zero faces -Z.
+  Simulation X is the negative of map east. CSV time is tick / 120; the existing
+  simulation's accumulated float time drives wave evaluation.
+- `compare-<stop>.png`: annotated comparisons, GPU flat / GPU waves / CPU flat;
+  close camera above, default camera below. The originals remain separate PNGs.
+- `overview.png`, `motion-<preset>-<second>.png`: all key views and consecutive 0.1 s
+  filmstrips around the mouth, crossing, exposed reach, and quay section.
+- `flat.mp4`, `waves.mp4`: complete close-camera 10 Hz review sequences, when requested.
+- `cpu-flat/`, `cpu-waves/`: geometry and hull/surface checks, including both cameras.
+  CPU does not have scene reflections and is not the material reference.
+- `<preset>.log`, `summary.json`: named arrivals, timing and geometry baseline, and
+  sampled clearance/speed summaries.
+
+The default camera is 20 units behind / 14 high; the close view is 12 behind / 6 high.
+Both look five units ahead with the existing smoothed heading and stable horizon.
+Images are 320x200; GPU uses the existing 1280x800 supersampling/downsample path.
+
+The controller uses the same waypoint targets, steering rule, and thrust targets for
+both water presets, allowing their physical responses to differ. These are matching
+situations, not pixel-aligned A/B images: wave mode arrives up to 0.25 seconds later,
+with slightly different positions, headings, and wave phase. Reproduce with the same
+preset and build for before/after comparisons. Do not infer material differences from
+individual wake pixels between the two presets.
+
+| Stop | Flat time | Waves time | Flat simulation X / Z | Flat heading | Purpose |
+| --- | ---: | ---: | --- | ---: | --- |
+| dock | 0.000 | 0.000 | -12.000 / 60.000 | 0.000 | Idle and reflected quay/crane |
+| mouth | 13.050 | 13.042 | -12.000 / -113.181 | -0.000 | Basin-to-river transition |
+| crossing | 25.867 | 25.958 | -160.129 / -243.523 | -0.989 | Water-dominated view across the river |
+| south-bank | 32.208 | 32.325 | -166.207 / -324.902 | 0.447 | Turn toward the exposed southwest reach |
+| exposed | 48.658 | 48.775 | 69.206 / -450.203 | 1.153 | Broad water surface and scene extent |
+| quay-approach | 62.450 | 62.617 | 166.280 / -291.150 | 2.819 | Return toward the working waterfront |
+| quay-alongside | 72.733 | 72.958 | 69.782 / -181.617 | -2.173 | Contact, scale, and reflection continuity |
+| return | 77.975 | 78.225 | -2.164 / -131.838 | -2.178 | Basin-mouth landmarks on return |
+
+Stops are recorded when the boat enters a 12-unit waypoint radius; they are not
+teleports to the targets. At every simulation tick, an enclosing 5 x 2.4-unit rectangle
+with 0.5-unit shore clearance must remain navigable. This is more conservative than
+the playable hull footprint. Both presets complete the circuit without violating it.
+This checks shoreline/crop containment, not overhead bridge or crane collisions.
+
+## Findings, in order of impact
+
+1. **The river surface is now foreground scenery.** From crossing through exposed,
+   water occupies most of the close view. Flat mode reads largely as bright reflected
+   sky/cloud patches; wave mode is darker and breaks the reflections more convincingly.
+   The moving hull and wake are readable, but the dock, river, and exposed reach share
+   the same material and global waves. Improving this large continuous surface will
+   affect more of a boat trip than adding small distant actors. Evidence:
+   `compare-crossing.png`, `compare-exposed.png`, and the corresponding filmstrips.
+
+2. **Wave geometry is much denser than the image needs at distance.** Imported water
+   has 266 triangles; wave mode subdivides the whole crop to 1,069,001 triangles
+   (3,207,003 non-indexed vertices). Position/normal/colour payload alone is
+   89,796,084 bytes, about 85.6 MiB, on the GPU, with additional retained CPU arrays,
+   surface storage, and other scene resources. This is calculated buffer payload,
+   not measured driver memory. CPU wave rendering is expensive. An all-map dense
+   mesh is a poor foundation for adding more visible water; reduce distant geometry
+   while retaining shoreline coverage and the same near-hull physical surface.
+
+3. **The exposed view is not a modelled river mouth or an ocean route.** The bundled
+   crop is map east [-700, 950], north [-600, 800] metres. Water at its outer edges
+   stops at an artificial collision boundary. At the exposed stop, the southern
+   crop edge is only about 150 metres away in Z. Sparse bank/context geometry and
+   the nearly empty horizon make the view appear ocean-like; they do not establish
+   real open-water coverage. The existing circuit is reachable. A continuous trip
+   toward the sea or archipelago needs a separate map/context decision. Evidence:
+   `route.svg`, `compare-south-bank.png`, `compare-exposed.png`.
+
+4. **Reflections anchor the dock; preserve them while changing the surface.** Crane
+   supports and buildings have useful reflections near the quay. The wave treatment
+   makes them less mirror-like, but the source remains a low-resolution planar
+   reflection projected onto displaced water. Broad cloud patches and pale highlights
+   can dominate the exposed view. Inspect normal strength and distance filtering
+   before adding more ripple frequencies or brighter glints. The sampled sequences
+   show continuous wake trails and moving reflection breakup; they do not establish
+   freedom from 60 Hz shimmer or planar-projection sliding in every viewing angle.
+   Evidence: `compare-dock.png`, `compare-quay-alongside.png`, `motion-waves-72.png`.
+
+5. **Waterline detail is a separate pass after surface readability.** The quay wall
+   remains attached in the reviewed views; no obvious open seam appears in the
+   inspected samples. Alongside, long bare wall stretches could gain fenders, ladders,
+   moorings, and stronger contact cues. Current wake/spray already communicate speed
+   and turns; retain their clear hull contrast. These are step 04g findings, not a
+   reason to scatter more foam over the whole river. Evidence:
+   `compare-quay-approach.png`, `compare-quay-alongside.png`, CPU wave originals.
+
+## Bounded next implementation: 04f
+
+Start with the existing playable crop and preserve current handling, flat-water mode,
+the three physical wave components, camera, music, and wake/spray behaviour.
+
+1. Replace uniform all-map wave tessellation with a bounded near-field/far-field
+   representation, or a simpler measured alternative. Keep the imported shoreline
+   mask and avoid cracks or popping as the boat moves. Near the hull, visible crests
+   must still agree with `boat_water_query`; distant normals can retain analytic
+   shading on coarser geometry. Record actual triangle and buffer reductions and
+   compare the complete route before extending water coverage.
+2. Add one smooth, authored **visual exposure field**: sheltered basin through river
+   mouth to exposed river. Use it to tune shading-scale ripple strength, colour, and
+   reflection breakup. Keep the water-body palette related across the transition,
+   with recognizable reflected buildings near shore and restrained highlights in
+   the crossing. Small detail must fade with projected pixel footprint. This first
+   pass changes surface presentation; it does not attenuate physical wave heights
+   or introduce current forces.
+3. Review matching same-preset captures and both full circuits. Judge sheltered/exposed
+   identity in stills, continuity through the mouth, hull/foam attachment, quay seams,
+   and motion stability at the two camera heights. Use the existing quiet physical
+   baseline. If physical shelter variation is later warranted, scope it separately
+   with matching height/normal/velocity derivatives and buoyancy validation.
+
+Acceptance: a measurable reduction in wave geometry/payload, preserved navigability and
+near-hull alignment, a readable dock-to-river change, and no new obvious shoreline gaps,
+transition seams, or high-frequency glitter in the reviewed motion. Report CPU submission
+and GPU execution separately; do not treat one as the other. Do not add ferry AI,
+currents, crossable traffic wakes, new map downloads, or archipelago geography in 04f.
+
+## Verification and limits
+
+Debug baseline on this machine, with the complete route and existing scene passes:
+
+| Renderer / preset | Samples / discarded warm-up | Mean ms | p95 ms |
+| --- | --- | ---: | ---: |
+| GPU + AA, flat | 781 / 120 | 5.221 | 5.605 |
+| GPU + AA, waves | 784 / 120 | 5.341 | 5.818 |
+| CPU, flat | 17 / 2 | 18.074 | 20.346 |
+| CPU, waves | 17 / 2 | 869.671 | 907.149 |
+
+GPU numbers measure CPU-side draw submission, including any driver waits, with the batch
+flushed but no GPU completion query. CPU numbers include complete software rendering;
+they sample five-second intervals plus the finish because tessellating/evaluating the
+whole wave surface is expensive. Named captures and image export are outside the timed
+regions. These small/noisy Debug samples are a reproducible starting point, not GPU
+execution measurements or a frame-rate guarantee. Do not compare them with old fly-through
+profiles, which use a different camera, render size, and workload. No Instruments trace
+or measured driver-memory result was collected; use those for deeper performance work.
+
+Both 120 Hz route checks passed. At 10 Hz, sampled minimum boat-centre distance to the
+water boundary was 17.70 units flat / 17.64 waves; the conservative hull check runs at
+every tick. These route clearances do not establish safe travel beyond the crop.
+
+Debug configure/build and all 42 CTest checks passed, including 11 GPU checks. The two
+new route checks also passed after adding preset metadata to the tool's logs. Python
+compilation, artifact assembly, optional ffmpeg encoding, and `git diff --check` passed.
+Inspected all eight annotated key views at both camera heights, selected CPU wave views,
+and adjacent-frame filmstrips at the mouth, crossing, exposed turn, and quay.
+The complete GPU+AA wave circuit also finished in a windowed playback run:
+`windowed-waves.log` and `windowed-waves/` retain its metadata and captures.
+
+The saved movies contain the complete route at 10 Hz. Sampled image review cannot certify
+60 Hz temporal stability, all possible player cameras, night-time lighting, or exact
+GPU direct-seek parity with history-dependent light selection. No new visual effect or
+handling change is claimed by this audit. Surface implementation belongs to 04f.

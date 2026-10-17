@@ -1,7 +1,8 @@
 # Living Eriksberg city plan
 
 Status: execution steps 01–04 and follow-ups 04b–04d complete, 2026-09-19.
-Step 05 is next. This is the
+Boat-view water audit 04e complete, 2026-10-17: step 04f is next, followed by 04g;
+step 05 remains the prerequisite for new interacting actors. This is the
 visual-development plan after the [GPU migration](GPU_WATERFRONT_PLAN.md).
 
 ## Direction
@@ -44,6 +45,9 @@ report what remains. A purely documentary step does not require a new manual dem
 | 04b | Bring the street-treatment expansion forward: distribute entrances, shopfronts, pavements, planted forecourts, parked vehicles, and quay furniture across the visible neighbourhood. Compare both whole routes, not just the cafe shot. | Complete |
 | 04c | Separate asphalt, paving, quay concrete, and planting finishes; correct real-world scale and filter subpixel detail. Verify and commit independently of facade work. | Complete |
 | 04d | Rework facade materials around the existing window geometry, with building-aligned brick, plaster, and panel variation. Inspect near and distant views without changing the low-resolution style. | Complete |
+| 04e | Audit water from the playable boat: dock, basin mouth, river crossing, quay approach, and view toward the exposed reach. Record matching flat/wave stills, motion, shoreline and map-boundary issues, and a performance baseline. | Complete; see WATER_REVIEW.md |
+| 04f | Reduce unnecessary distant wave geometry and give sheltered dock/exposed river water distinct visual surface character. Preserve current physical waves and handling; use the bounded brief in WATER_REVIEW.md. | Next |
+| 04g | Finish selected waterline edges: quay contact, fenders, ladders, moorings, and restrained local disturbance. Inspect alongside the boat and approaching shore. | Pending; scope from 04e |
 | 05 | Consolidate the actor evaluation needed for city life into the shared scene layer. Preserve existing behaviour and verify direct seeks before adding actors. | Pending |
 | 06 | Distribute a small cast of pedestrians and cyclists between street destinations and both quays, with readable silhouettes and deterministic paths. Avoid concentrating all life at the cafe. Inspect motion and occlusion. | Pending |
 | 07 | Add varied vehicles and one authored interaction, such as a bus stop or yielding car. Verify spacing, stops, and hidden route wraps. | Pending |
@@ -69,18 +73,53 @@ to step 09 unless explicitly brought forward.
 To start, use this prompt in the current or a fresh session:
 
 ```text
-Read AGENTS.md and docs/LIVING_CITY_PLAN.md. Complete execution step 01 only.
-Use the existing GPU renderer and retained geographic data. Inspect both camera routes
-and identify the concrete changes needed to make the city convincing in a frozen frame.
+Read AGENTS.md, docs/LIVING_CITY_PLAN.md, and docs/WATER_REVIEW.md.
+Complete execution step 04f only, following the water review's bounded implementation brief.
+Use the existing GPU renderer and retained geographic data. Reduce unnecessary distant
+wave geometry, then distinguish sheltered and exposed water visually. Preserve handling.
 Follow the plan's verification requirements, record findings and artifact paths in its
 progress log, and commit the completed step. Preserve unrelated changes. Do not implement
 later steps. Report the commit, findings, and any remaining verification limitations.
 ```
 
-For subsequent work, replace `01` and the task-specific sentence with the next step's
+For subsequent work, replace `04f` and the task-specific sentence with the next step's
 deliverable, or request a range such as `02–04, with one commit per step`.
 
 ### Progress log
+
+- Step 04e (2026-10-17): completed the boat-level audit in
+  [WATER_REVIEW.md](WATER_REVIEW.md). Added `boat_water_review` and its Python capture/
+  assembly wrapper: a driven 78-second dock/river/quay circuit, eight named stops,
+  default/close cameras, flat/wave presets, CSV poses/clearances, and timing/geometry
+  baselines. Conservative hull clearance is checked at every 120 Hz tick; both routes
+  pass. Artifacts: `build/living-city/water-review/`, including 64 named GPU/CPU images,
+  annotated comparisons, a route SVG, adjacent-frame filmstrips, and two 10 Hz movies.
+  Reproduce with `python3 tools/boat_water_review.py --sequence --movies` (ffmpeg optional).
+  Inspected all eight comparison sheets and selected wave/adjacent-frame views; the
+  complete windowed GPU+AA wave circuit also finished successfully.
+  Debug configure/build and all 42 CTest checks passed (11 GPU), including two new route
+  guards. Python compilation, assembly, movie encoding, and `git diff --check` passed.
+  GPU submission mean/p95: flat 5.221/5.605 ms, waves 5.341/5.818 ms. CPU: flat
+  18.074/20.346 ms, waves 869.671/907.149 ms, with fewer CPU samples; see the audit's
+  measurement limits. Water grows from 266 to 1,069,001 triangles in wave mode, with
+  about 85.6 MiB of calculated GPU vertex payload alone. No renderer/handling changes.
+  Next 04f: reduce distant wave geometry and add smooth visual shelter/exposure variation.
+  Map/crop context and waterline dressing are separate findings. GPU execution timing,
+  driver memory, 60 Hz shimmer across arbitrary player views, and exact GPU seek parity
+  remain unverified; the review artifacts sample at 10 Hz.
+
+- Water-plan review (2026-10-17): brought boat-level water coverage ahead of street actors.
+  The current boating prototype already has shared analytic waves, buoyancy, wake and
+  spray; currents and crossing wakes remain physics Phase D proposals. Added 04e–04g
+  and the water sequence below. Initial low-camera GPU flat/wave captures and a CPU
+  reference are under `build/living-city/water-review/`. These are dock samples, not a
+  completed river-route audit; 04e remains next. No renderer or handling changes.
+  Inspected `dock-flat.png`, `dock-waves.png`, and `dock-cpu.png`: GPU reflections
+  establish the quay/crane relationship, and waves plus player foam already provide
+  surface motion. The flat CPU reference has no scene reflections. The two GPU views
+  use different times (0 and 2.9 s), so they are examples, not a matched comparison.
+  Debug configure/build, all 40 CTest checks (including 11 GPU checks), and
+  `git diff --check` passed. Full river coverage and live motion review remain for 04e.
 
 - Step 04d (2026-09-19): stopped loading the old facade bitmap with its second painted
   window grid. Existing window geometry, positions, and room colours are unchanged.
@@ -284,6 +323,81 @@ map, generated mesh, and camera views. Simply enabling an assumed unused context
 will not solve this. Check omitted building parts, height assumptions, ground treatment,
 and coverage beyond the crop before choosing extensions.
 
+## Boat-view water sequence (added 2026-10-17)
+
+Extend the inhabited-city direction out onto the water: leaving a sheltered dock,
+passing the working waterfront, and reaching a more exposed river view should each
+have a distinct character. Use Gothenburg's river-mouth setting as the artistic brief.
+Do not apply ocean swell uniformly inside the basin or require an archipelago expansion
+before improving the existing playable area. Exposure zones and flow are authored
+approximations until supported by references, not measured local conditions.
+
+### 04e — establish the water route and baseline (complete)
+
+Results and the bounded 04f brief are in [the boat-level water review](WATER_REVIEW.md).
+
+Review from the normal follow camera and the closer `--camera-distance 12
+--camera-height 6` view. Cover five situations: resting in the dock, leaving its mouth,
+crossing the river, running parallel to a quay, and looking toward open water. Check
+which are actually reachable within the current imported water/collision boundary;
+identify missing coverage before promising a longer playable route. The existing
+scripted screenshot manoeuvre turns and reverses; it does not establish a river transect.
+Use a repeatable review route and record positions, headings, simulation times, camera
+settings, and water preset so the same views can be compared after each change.
+
+Capture flat and gentle-wave views at native 320x200, with GPU as the visual reference
+and CPU as a geometry/handling check. Inspect motion for shimmering highlights,
+reflection sliding, repeated wave bands, foam ordering, and water/quay gaps. Record
+frame cost and water geometry size before adding detail. Rank findings by how much
+screen space and play time they affect. Deliver an annotated capture set and a bounded
+04f implementation brief; this audit does not require new traffic or fluid simulation.
+
+### 04f — make the surface describe the place
+
+- Keep the dock visually sheltered; give the exposed reach stronger directional
+  surface movement, with a gradual transition at the mouth. The perfectly flat preset
+  remains available. First improve colour, reflection breakup, and surface readability;
+  add physical exposure variation only if the review justifies it.
+- Balance cool water body colour, reflected sky, and broken building/light reflections.
+  Preserve dark contact at the quay and readable hull/wake contrast. Small ripples must
+  filter away with distance instead of turning the river into sparkling pixel noise.
+- Reuse `boat_water.[ch]` and the existing water shaders. Any change to displaced waves
+  must provide matching height, normal, and velocity queries for buoyancy and effects;
+  blending wave heights also requires consistent derivatives through the transition.
+  Fine visual ripples can remain shading-only. Retain the documented planar-reflection
+  approximation unless the low boat view shows a concrete need to replace it.
+
+Acceptance: the dock and river read differently from the boat, the hull stays attached
+to the visible surface, and the transition has no visible seam or abrupt handling change.
+Inspect idle, acceleration, turns, and parallel-quay travel in flat and wave modes.
+
+### 04g — connect water, shore, and use
+
+Dress a few clearly visible stretches with ladders, fenders, bollards, mooring lines,
+and selected moored craft. Ground them at the waterline and preserve navigable space.
+Use restrained contact darkening and local foam/disturbance where justified; avoid a
+continuous white surf strip around harbour walls. Quays should show scale and purpose
+from alongside the hull, as well as from the old aerial routes.
+
+### Then add relationships on the water
+
+After shared actor evaluation in 05, bring the existing ferry proxy task 09 forward if
+the boat route would benefit from a moving landmark. Review its route from a freely
+moving player as well as from the demo camera. Give it a clear, separate channel and
+decide player contact behaviour before putting it into playable traffic. Start with one
+legible encounter; defer a general harbour traffic system. Finish its silhouette,
+lights, reflection, and visible wake in 10.
+
+Coordinate physical current and crossable wakes with
+[physics tasks D1–D2](BOAT_PHYSICS_PLAN.md#phase-d--currents-and-crossing-wakes).
+Use one shared wake source for rendering and the water query if the wake affects the
+boat. Surface streaks, foam, or buoys should make authored flow understandable before
+it alters handling. Retain calm practice water. Currents, ferry traffic, and exposed
+water are separate deliverables, so each can be judged independently.
+
+Later, tie sparse gulls, flags, and distant harbour activity to the same sense of wind
+and direction. Additional water audio remains a separate design decision.
+
 ## Implementation sequence
 
 ### 1. Make the city continue beyond the camera
@@ -394,7 +508,8 @@ turn small details into distracting pixel noise.
 
 ## Technical boundaries and checks
 
-- Keep the existing 15.36-second music slot and 30.72-second storyboard. City activity
+- Keep the current four-minute main demo and its soundtrack/flock cues. The legacy
+  15.36-second and 30.72-second storyboard routes remain diagnostic references. City activity
   runs at plausible independent speeds; compose key moments against musical phrases.
   Do not make every window, walk cycle, or lamp pulse with the beat.
 - Keep authored paths, stable IDs, schedules, and evaluated object states in the shared
@@ -422,10 +537,10 @@ turn small details into distracting pixel noise.
   Report CPU submission and GPU timing separately where available, plus draw counts and
   memory growth; establish a performance target from measurements on the target machine.
 
-Recommended first implementation sequence: execution steps 01–04 establish coverage,
-density, and one complete street corner. Review these still frames before adding the new
-moving cast. Reserve a place for the ferry during the initial composition audit, then
-test its proxy in step 09 before modelling the vessel in detail.
+Current implementation priority: surface pass 04f follows the completed boat-view
+audit's bounded brief; waterline pass 04g follows its shore findings. Step 05 still precedes new interacting
+actors. The ferry proxy in 09 can follow that foundation if the boat review prioritizes
+harbour activity; inspect its scale and route before modelling the vessel in detail.
 
 ## Soundtrack and flock follow pass (2026-10-11)
 

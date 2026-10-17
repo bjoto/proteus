@@ -84,6 +84,11 @@ Explore the bundled Eriksberg waterfront with the same boat and controls:
 ./build/boat_study --renderer cpu --location eriksberg --screenshot build/eriksberg-boat.png --time 3
 ```
 
+For the repeatable boat-level water audit, run `python3 tools/boat_water_review.py --sequence`.
+It captures a driven dock/river/quay circuit in both water presets and camera heights;
+GPU captures need a desktop graphics context. Findings, artifact names, optional movie
+encoding, and the next surface pass are in [the water review](docs/WATER_REVIEW.md).
+
 Run `./build/boat_study --course` for the first timed S course in the basin. Cross the
 start line northbound to start the clock, pass the two offset buoy gates in order, then cross
 the chequered finish line to freeze the time. Yellow marks the next gate; the small route map

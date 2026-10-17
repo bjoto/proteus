@@ -1,0 +1,286 @@
+// Deterministic boat-level water audit. Uses the playable simulation, not a camera spline.
+#include "boat.h"
+#include "boat_gpu.h"
+#include "boat_map.h"
+#include "raymath.h"
+#include "rlgl.h"
+
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+
+typedef struct {
+    const char *name;
+    Vector2 position; // Simulation X (west positive), Z (north positive).
+} Stop;
+static const Stop stops[] = { { "mouth", { -12, -125 } }, { "crossing", { -170, -250 } },
+    { "south-bank", { -160, -335 } }, { "exposed", { 80, -455 } },
+    { "quay-approach", { 170, -280 } }, { "quay-alongside", { 60, -175 } },
+    { "return", { -12, -125 } } };
+#define STOP_COUNT (sizeof(stops) / sizeof(*stops))
+#define MAX_TICKS (240 * 120)
+#define SAMPLE_TICKS 12 // 10 Hz capture sequence; simulation remains 120 Hz.
+
+static double now(void)
+{
+    struct timespec t;
+    timespec_get(&t, TIME_UTC);
+    return (double)t.tv_sec + t.tv_nsec * 1e-9;
+}
+
+static void drive(Boat *boat, size_t *destination)
+{
+    Vector2 delta = Vector2Subtract(stops[*destination].position, boat->position);
+    if (Vector2Length(delta) < 12 && *destination + 1 < STOP_COUNT) {
+        ++*destination;
+        delta = Vector2Subtract(stops[*destination].position, boat->position);
+    }
+    float target = atan2f(delta.x, -delta.y);
+    float error = remainderf(target - boat->heading, 2 * PI);
+    float wheel = Clamp(1.5f * error - .8f * boat->yaw_velocity, -.65f, .65f);
+    float thrust = fabsf(error) > .5f ? .25f : .6f;
+    boat_step(boat, Clamp((wheel - boat->wheel) / BOAT_STEP, -1, 1),
+        Clamp((thrust - boat->throttle) / (.5f * BOAT_STEP), -1, 1));
+}
+
+static bool hull_clear(const Boat *boat)
+{
+    Vector2 forward = { sinf(boat->heading), -cosf(boat->heading) };
+    Vector2 right = { cosf(boat->heading), sinf(boat->heading) };
+    // Conservative enclosing rectangle, larger than the playable hull footprint.
+    for (int end = -1; end <= 1; end += 2)
+        for (int side = -1; side <= 1; side += 2) {
+            Vector2 p = Vector2Add(boat->position,
+                Vector2Add(Vector2Scale(forward, end * 2.5f), Vector2Scale(right, side * 1.2f)));
+            if (!boat_map_water(p, .5f))
+                return false;
+        }
+    return true;
+}
+
+static int compare_double(const void *a, const void *b)
+{
+    double x = *(const double *)a, y = *(const double *)b;
+    return (x > y) - (x < y);
+}
+
+static float shore_distance(Vector2 position)
+{
+    float low = 0, high = 1000;
+    for (int i = 0; i < 14; ++i) {
+        float mid = (low + high) * .5f;
+        if (boat_map_water(position, mid))
+            low = mid;
+        else
+            high = mid;
+    }
+    return low;
+}
+
+static bool capture(BoatGpu *gpu, Renderer3D *cpu, const Boat *boat, BoatCamera camera,
+    bool use_gpu, const char *path)
+{
+    Image image;
+    Color pixels[320 * 200];
+    if (use_gpu) {
+        boat_gpu_draw(gpu, boat, camera);
+        image = LoadImageFromTexture(gpu->target.texture);
+        if (!image.data)
+            return false;
+        ImageFlipVertical(&image);
+        ImageFlipHorizontal(&image);
+    } else {
+        if (!boat_draw(cpu, pixels, 320, 200, boat, camera))
+            return false;
+        image = (Image) { pixels, 320, 200, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 };
+    }
+    bool ok = ExportImage(image, path);
+    if (use_gpu)
+        UnloadImage(image);
+    return ok;
+}
+
+int main(int argc, char **argv)
+{
+    const char *output = NULL;
+    bool use_gpu = true, waves = false, check = false, sequence = false, visible = false;
+    for (int i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "--output") == 0 && i + 1 < argc)
+            output = argv[++i];
+        else if (strcmp(argv[i], "--waves") == 0)
+            waves = true;
+        else if (strcmp(argv[i], "--check") == 0)
+            check = true;
+        else if (strcmp(argv[i], "--sequence") == 0)
+            sequence = true;
+        else if (strcmp(argv[i], "--visible") == 0)
+            visible = true;
+        else if (strcmp(argv[i], "--renderer") == 0 && i + 1 < argc) {
+            const char *name = argv[++i];
+            if (strcmp(name, "cpu") != 0 && strcmp(name, "gpu") != 0)
+                return 2;
+            use_gpu = strcmp(name, "gpu") == 0;
+        } else {
+            puts("Usage: boat_water_review --check [--waves]\n"
+                 "       boat_water_review --output DIR [--renderer cpu|gpu] [--waves]\n"
+                 "                         [--sequence] [--visible]\n"
+                 "GPU uses existing 4x AA. GPU sequence: 10 Hz; CPU samples: five seconds.\n"
+                 "Both modes use the existing 120 Hz boat simulation.\n"
+                 "Named captures use both default and close follow cameras.\n"
+                 "Map data (c) OpenStreetMap contributors, ODbL 1.0.");
+            return strcmp(argv[i], "--help") == 0 ? 0 : 2;
+        }
+    }
+    if (!check && !output)
+        return 2;
+    SetTraceLogLevel(LOG_WARNING);
+    Boat boat;
+    boat_reset_location(&boat, true);
+    boat.water_settings = waves ? boat_water_gentle() : (BoatWater) { 0 };
+    BoatWater water = boat.water_settings;
+    const BoatWave components[]
+        = { { water.amplitude, water.wavelength, water.angular_speed, water.direction },
+              water.crossing[0], water.crossing[1] };
+    printf(
+        "preset=%s cameras=20/14,12/6 resolution=320x200 gpu_aa=4x4\n", waves ? "waves" : "flat");
+    for (int i = 0; i < 3; ++i)
+        printf("wave[%d] amplitude=%.6f wavelength=%.6f angular_speed=%.6f direction=%.6f,%.6f\n",
+            i, components[i].amplitude, components[i].wavelength, components[i].angular_speed,
+            components[i].direction.x, components[i].direction.y);
+    BoatGpu gpu = { 0 };
+    Renderer3D cpu = { 0 };
+    FILE *csv = NULL;
+    char path[2048];
+    int result = 1;
+    if (!check) {
+        if (!DirectoryExists(output) && MakeDirectory(output) != 0)
+            goto cleanup;
+        snprintf(path, sizeof(path), "%s/route.csv", output);
+        csv = fopen(path, "w");
+        if (!csv)
+            goto cleanup;
+        fputs("tick,time,x,z,heading,camera_heading,speed,height,pitch,roll,shore_distance,"
+              "destination\n",
+            csv);
+        if (use_gpu) {
+            SetConfigFlags(visible ? 0 : FLAG_WINDOW_HIDDEN);
+            InitWindow(960, 600, "Proteus / boat water review");
+            if (!IsWindowReady() || !boat_gpu_init(&gpu, true))
+                goto cleanup;
+            if (visible)
+                SetTargetFPS(10);
+        }
+    }
+    size_t destination = 0, captured_destination = 0;
+    int frames = 0, ticks = 0, timing_count = 0;
+    double timings[MAX_TICKS / SAMPLE_TICKS + 1], total = 0;
+    for (ticks = 0; ticks <= MAX_TICKS; ++ticks) {
+        if (!hull_clear(&boat)) {
+            fprintf(stderr, "Route too close to shore at tick %d: %.3f %.3f\n", ticks,
+                boat.position.x, boat.position.y);
+            goto cleanup;
+        }
+        bool arrival = destination != captured_destination;
+        bool finished = destination == STOP_COUNT - 1
+            && Vector2Distance(boat.position, stops[destination].position) < 12;
+        const char *name = ticks == 0 ? "dock"
+            : finished                ? "return"
+            : arrival                 ? stops[destination - 1].name
+                                      : NULL;
+        if (name) {
+            printf("%s tick=%d time=%.3f x=%.3f z=%.3f heading=%.3f\n", name, ticks,
+                ticks * (double)BOAT_STEP, boat.position.x, boat.position.y, boat.heading);
+            captured_destination = destination;
+            if (!check) {
+                const BoatCamera cameras[] = { BOAT_CAMERA_DEFAULT, { 12, 6 } };
+                for (int view = 0; view < 2; ++view) {
+                    snprintf(path, sizeof(path), "%s/%s-%s.png", output, name,
+                        view ? "close" : "default");
+                    if (!capture(&gpu, &cpu, &boat, cameras[view], use_gpu, path))
+                        goto cleanup;
+                }
+            }
+        }
+        // CPU wave tessellation is deliberately expensive: sample five-second intervals
+        // plus every named stop. GPU captures the continuous ten-Hz review sequence.
+        int sample_ticks = use_gpu ? SAMPLE_TICKS : 600;
+        if (!check && (ticks % sample_ticks == 0 || finished)) {
+            fprintf(csv, "%d,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.3f,%zu\n", ticks,
+                ticks * (double)BOAT_STEP, boat.position.x, boat.position.y, boat.heading,
+                boat.camera_heading, Vector2Length(boat.velocity), boat.height, boat.pitch,
+                boat.roll, shore_distance(boat.position), destination);
+            double start = now();
+            if (use_gpu) {
+                boat_gpu_draw(&gpu, &boat, (BoatCamera) { 12, 6 });
+                rlDrawRenderBatchActive();
+            } else {
+                Color pixels[320 * 200];
+                if (!boat_draw(&cpu, pixels, 320, 200, &boat, (BoatCamera) { 12, 6 }))
+                    goto cleanup;
+            }
+            double ms = (now() - start) * 1000;
+            int warmup = use_gpu ? 120 : 2;
+            if (frames >= warmup) {
+                timings[timing_count++] = ms;
+                total += ms;
+            }
+            if (sequence) {
+                snprintf(path, sizeof(path), "%s/frame-%05d.png", output, frames);
+                if (!capture(&gpu, &cpu, &boat, (BoatCamera) { 12, 6 }, use_gpu, path))
+                    goto cleanup;
+            }
+            if (visible && use_gpu) {
+                if (WindowShouldClose())
+                    goto cleanup;
+                BeginDrawing();
+                ClearBackground(BLACK);
+                DrawTexturePro(gpu.target.texture, (Rectangle) { 0, 0, -320, -200 },
+                    (Rectangle) { 0, 0, 960, 600 }, (Vector2) { 0 }, 0, WHITE);
+                EndDrawing();
+            }
+            ++frames;
+        }
+        if (finished)
+            break;
+        drive(&boat, &destination);
+    }
+    if (ticks > MAX_TICKS) {
+        fprintf(stderr, "Route did not finish; destination=%zu position=%.3f %.3f\n", destination,
+            boat.position.x, boat.position.y);
+        goto cleanup;
+    }
+    if (!check) {
+        qsort(timings, (size_t)timing_count, sizeof(*timings), compare_double);
+        printf("renderer=%s preset=%s frames=%d warmup=%d mean_ms=%.3f p95_ms=%.3f\n",
+            use_gpu ? "gpu-aa submission" : "cpu", waves ? "waves" : "flat", frames,
+            use_gpu ? 120 : 2, timing_count ? total / timing_count : 0,
+            timing_count ? timings[(timing_count - 1) * 95 / 100] : 0);
+        const Mesh3D *surface = boat_water_surface((BoatWater) { 0 }, 0, true);
+        const Mesh3D *city = waterfront_scene_city_mesh();
+        size_t water_count = 0;
+        while (water_count < city->triangle_count) {
+            const Triangle3D *t = &city->triangles[water_count];
+            if (city->vertices[t->vertices[0]].y != 0 || city->vertices[t->vertices[1]].y != 0
+                || city->vertices[t->vertices[2]].y != 0)
+                break;
+            ++water_count;
+        }
+        printf("water_base_triangles=%zu wave_triangles=%zu gpu_wave_vertex_bytes=%zu\n",
+            water_count, surface ? surface->triangle_count : 0,
+            surface ? surface->triangle_count * 3 * (6 * sizeof(float) + 4) : 0);
+    }
+    result = 0;
+cleanup:
+    if (csv)
+        fclose(csv);
+    renderer3d_destroy(&cpu);
+    if (!check && use_gpu && IsWindowReady()) {
+        boat_gpu_destroy(&gpu);
+        CloseWindow();
+    }
+    boat_water_destroy();
+    boat_map_destroy();
+    return result;
+}
