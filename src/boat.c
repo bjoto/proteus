@@ -14,6 +14,13 @@ static const float YAW_INERTIA = 2.2f;
 static const float HULL_DRAG_LINEAR = 0.22f;
 static const float HULL_DRAG_QUADRATIC = 0.025f;
 static const float SKEG_RESISTANCE = 0.10f;
+// Contact samples form an intentionally simple, forgiving hull footprint.
+static const float HULL_BOW = 2.0f;
+static const float HULL_STERN = 1.6f;
+static const float HULL_HALF_BEAM = .75f;
+static const float HULL_SHORE_CLEARANCE = .35f;
+static const float CONTACT_RESTITUTION = .12f;
+static const float CONTACT_TANGENT_DAMPING = .82f;
 
 static Vector2 thrust_direction(const Boat *boat)
 {
@@ -31,17 +38,70 @@ void boat_reset_location(Boat *boat, bool eriksberg)
         boat->position = (Vector2) { -12, 60 };
 }
 
-static void boundary(float *position, float *velocity, float limit)
+typedef struct {
+    Vector2 local, normal;
+} HullContact;
+
+static Vector2 hull_point(Vector2 forward, Vector2 right, Vector2 position, Vector2 local)
 {
-    if (*position > limit) {
-        *position = limit;
-        if (*velocity > 0)
-            *velocity *= -0.3f;
-    } else if (*position < -limit) {
-        *position = -limit;
-        if (*velocity < 0)
-            *velocity *= -0.3f;
+    return Vector2Add(
+        position, Vector2Add(Vector2Scale(forward, local.y), Vector2Scale(right, local.x)));
+}
+
+static bool hull_contact(const Boat *boat, HullContact *contact)
+{
+    static const Vector2 samples[] = { { 0, HULL_BOW }, { -HULL_HALF_BEAM, HULL_BOW },
+        { HULL_HALF_BEAM, HULL_BOW }, { 0, -HULL_STERN }, { -HULL_HALF_BEAM, -HULL_STERN },
+        { HULL_HALF_BEAM, -HULL_STERN } };
+    Vector2 forward = { sinf(boat->heading), -cosf(boat->heading) };
+    Vector2 right = { cosf(boat->heading), sinf(boat->heading) };
+    for (size_t i = 0; i < sizeof(samples) / sizeof(*samples); ++i) {
+        Vector2 point = hull_point(forward, right, boat->position, samples[i]);
+        Vector2 normal = { 0 };
+        bool water;
+        if (boat->eriksberg) {
+            water = boat_map_water_contact(point, HULL_SHORE_CLEARANCE, &normal);
+        } else {
+            water = fabsf(point.x) <= BOAT_BASIN_HALF_X - HULL_SHORE_CLEARANCE
+                && fabsf(point.y) <= BOAT_BASIN_HALF_Z - HULL_SHORE_CLEARANCE;
+            if (!water) {
+                if (fabsf(point.x) - (BOAT_BASIN_HALF_X - HULL_SHORE_CLEARANCE)
+                    > fabsf(point.y) - (BOAT_BASIN_HALF_Z - HULL_SHORE_CLEARANCE))
+                    normal.x = point.x < 0 ? 1 : -1;
+                else
+                    normal.y = point.y < 0 ? 1 : -1;
+            }
+        }
+        if (!water) {
+            *contact = (HullContact) { samples[i], normal };
+            return true;
+        }
     }
+    return false;
+}
+
+static void resolve_hull_contact(Boat *boat, Vector2 safe_position, HullContact contact)
+{
+    boat->position = safe_position;
+    Vector2 forward = { sinf(boat->heading), -cosf(boat->heading) };
+    Vector2 right = { cosf(boat->heading), sinf(boat->heading) };
+    Vector2 arm
+        = Vector2Add(Vector2Scale(right, contact.local.x), Vector2Scale(forward, contact.local.y));
+    Vector2 point_velocity = Vector2Add(
+        boat->velocity, (Vector2) { -boat->yaw_velocity * arm.y, boat->yaw_velocity * arm.x });
+    float normal_speed = Vector2DotProduct(point_velocity, contact.normal);
+    if (normal_speed < 0) {
+        float arm_cross_normal = arm.x * contact.normal.y - arm.y * contact.normal.x;
+        float impulse = -(1 + CONTACT_RESTITUTION) * normal_speed
+            / (1 + arm_cross_normal * arm_cross_normal / YAW_INERTIA);
+        boat->velocity = Vector2Add(boat->velocity, Vector2Scale(contact.normal, impulse));
+        boat->yaw_velocity += arm_cross_normal * impulse / YAW_INERTIA;
+    }
+    float tangent_speed
+        = Vector2DotProduct(boat->velocity, (Vector2) { -contact.normal.y, contact.normal.x });
+    boat->velocity = Vector2Subtract(boat->velocity,
+        Vector2Scale((Vector2) { -contact.normal.y, contact.normal.x },
+            tangent_speed * (1 - CONTACT_TANGENT_DAMPING)));
 }
 
 static void water_emit(Boat *boat, BoatWaterParticle particle)
@@ -183,15 +243,9 @@ void boat_step(Boat *boat, float wheel_change, float throttle_change)
     boat->heading = remainderf(boat->heading + boat->yaw_velocity * BOAT_STEP, 2 * PI);
     Vector2 previous = boat->position;
     boat->position = Vector2Add(previous, Vector2Scale(boat->velocity, BOAT_STEP));
-    if (boat->eriksberg) {
-        if (!boat_map_water(boat->position, 2.5f)) {
-            boat->position = previous;
-            boat->velocity = Vector2Scale(boat->velocity, -0.2f);
-        }
-    } else {
-        boundary(&boat->position.x, &boat->velocity.x, BOAT_LIMIT_X);
-        boundary(&boat->position.y, &boat->velocity.y, BOAT_LIMIT_Z);
-    }
+    HullContact contact;
+    if (hull_contact(boat, &contact))
+        resolve_hull_contact(boat, previous, contact);
     float camera_delta = remainderf(boat->heading - boat->camera_heading, 2 * PI);
     boat->camera_heading
         = remainderf(boat->camera_heading + camera_delta * (1 - expf(-6 * BOAT_STEP)), 2 * PI);

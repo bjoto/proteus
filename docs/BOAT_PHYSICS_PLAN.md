@@ -89,7 +89,7 @@ Reusable prompt for a smaller coding model:
   never changes direction; held Down passes smoothly through neutral before selecting reverse;
   reverse steering and wash match stern thrust; focus loss pauses; reset returns to neutral;
   CPU/GPU agree.
-- [ ] **A3: Hull-aware shoreline contact.** Replace or refine the circular clearance with a simple
+- [x] **A3: Hull-aware shoreline contact.** Replace or refine the circular clearance with a simple
   oriented hull footprint, reusing existing water boundaries. Use damped, forgiving contacts and
   contact torque; do not add damage or overhead-structure collisions. Acceptance: bow/stern clearance
   across several headings, glancing slides, bounded rebound, no energy gain against stationary
@@ -185,5 +185,11 @@ These motivate models, not exact coefficients or a requirement to adopt another 
   `validate_boat` covers the signed range, reversal, saturation, and reset; CPU/GPU continue to
   consume the same `Boat` pose through `boat_scene_frame`. Focus loss retains the existing
   fixed-tick pause.
+- 2026-10-17: A3 complete. Replaced the centre-point clearance with six oriented bow, stern, and
+  beam samples. `boat_map` returns the nearest shoreline normal; contact applies a damped impulse
+  and the associated torque, then preserves the last safe pose. The same footprint contains basin
+  walls. `validate_boat` covers a glancing rebound and all eight cardinal/intercardinal headings;
+  Eriksberg runs retain shoreline and map-crop containment. Contacts remain a deliberately simple
+  footprint, without quay geometry above the waterline or damage.
 - 2026-10-17: Plan saved. Control recommendations and coefficients remain proposals until their
   respective implementation step. Each play gate needs user feedback before starting the next phase.

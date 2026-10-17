@@ -10,8 +10,9 @@ to play.
 physics test area (the default). The Eriksberg spawn is in the dock basin facing the crane and river.
 Buildings, shore, bridge, crane and sky reuse the bundled offline scene. The held controls, follow
 camera, wake, and spray work in either location; R returns to the selected location's spawn.
-Water-triangle boundary edges provide a conservative 2.5-unit hull clearance and map-crop boundary.
-Impacts rebound gently. Eriksberg supports `--gpu --gpu-aa`: the player hull, engine and airborne
+Water-triangle boundary edges constrain an oriented bow, stern, and beam footprint at the shoreline
+and map crop. Glancing impacts scrub speed, turn the craft away, and rebound gently. Eriksberg
+supports `--gpu --gpu-aa`: the player hull, engine and airborne
 spray participate in depth, reflection and shadow passes; surface foam is depth-tested and receives
 shadows without casting solid shadows. Optional AA uses 4×4 supersampling before integer scaling.
 CPU remains the default and the basin renderer; GPU captures need a desktop graphics context.

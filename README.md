@@ -83,8 +83,9 @@ Explore the bundled Eriksberg waterfront with the same boat and controls:
 
 `basin` remains the default. Eriksberg spawns in the dock facing the crane and river; R returns
 there. The map, buildings, Dockbron, crane, and dusk sky reuse the existing offline scene.
-Shoreline collisions use a conservative 2.5-unit hull radius and gentle rebounds; the outer map
-boundary also blocks travel. CPU rendering remains the default. For Eriksberg, `--gpu` enables
+Shoreline collisions use an oriented bow, stern, and beam footprint; glancing contacts scrub speed,
+turn the craft away, and rebound gently. The outer map boundary also blocks travel. CPU rendering
+remains the default. For Eriksberg, `--gpu` enables
 depth-tested player hull, steerable engine, wake and spray, with waterfront reflections and shadows.
 The hull, engine and airborne spray cast shadows; surface foam receives them without casting solid
 slab shadows. `--gpu-aa` implies `--gpu` and averages 4×4 samples per pixel, retaining the 320×200

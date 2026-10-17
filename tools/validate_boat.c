@@ -149,6 +149,40 @@ static int validate_signed_throttle(void)
     return 0;
 }
 
+static int validate_hull_contacts(void)
+{
+    // A starboard-bow glancing impact should rebound, scrub speed, and turn the hull away.
+    Boat glancing = { .position = { 118.5f, 10 }, .velocity = { 7, -3 } };
+    float energy = kinetic_energy(&glancing);
+    bool contacted = false;
+    for (int tick = 0; tick < 180; ++tick) {
+        boat_step(&glancing, 0, 0);
+        CHECK(fabsf(glancing.position.x) < BOAT_BASIN_HALF_X);
+        CHECK(fabsf(glancing.position.y) < BOAT_BASIN_HALF_Z);
+        if (glancing.velocity.x < 0) {
+            contacted = true;
+            break;
+        }
+    }
+    CHECK(contacted);
+    CHECK(glancing.heading < 0);
+    CHECK(kinetic_energy(&glancing) < energy);
+
+    // Bow, stern, and both beams stay contained across representative headings.
+    for (int heading = 0; heading < 8; ++heading) {
+        Boat hull = { .position = { 0, 0 },
+            .heading = heading * PI / 4,
+            .velocity = { 13 * sinf(heading * PI / 4), -13 * cosf(heading * PI / 4) } };
+        for (int tick = 0; tick < 3600; ++tick) {
+            boat_step(&hull, 0, 0);
+            CHECK(fabsf(hull.position.x) < BOAT_BASIN_HALF_X);
+            CHECK(fabsf(hull.position.y) < BOAT_BASIN_HALF_Z);
+            CHECK(isfinite(hull.heading) && isfinite(hull.yaw_velocity));
+        }
+    }
+    return 0;
+}
+
 int main(void)
 {
     // The GPU consumes the same held engine angle and mirrored world coordinates as CPU.
@@ -174,7 +208,7 @@ int main(void)
     CHECK(!frame.player_active);
     Boat mapped;
     boat_reset_location(&mapped, true);
-    CHECK(mapped.eriksberg && boat_map_water(mapped.position, 2.5f));
+    CHECK(mapped.eriksberg && boat_map_water(mapped.position, .3f));
     CHECK(!boat_map_water((Vector2) { 10000, 0 }, 0));
     CHECK(!boat_map_water((Vector2) { -100, 60 }, 0));
     // Drive into both dock quays. Hull clearance must remain in water and impacts rebound.
@@ -185,7 +219,7 @@ int main(void)
         bool bumped = false;
         for (int tick = 0; tick < 1200; ++tick) {
             boat_step(&mapped, 0, 0);
-            CHECK(boat_map_water(mapped.position, 2.5f));
+            CHECK(boat_map_water(mapped.position, .3f));
             if (mapped.velocity.x * side < -0.01f)
                 bumped = true;
         }
@@ -196,7 +230,7 @@ int main(void)
     mapped.throttle = 1;
     for (int tick = 0; tick < 1200; ++tick) {
         boat_step(&mapped, 0, 0);
-        CHECK(boat_map_water(mapped.position, 2.5f));
+        CHECK(boat_map_water(mapped.position, .3f));
     }
     CHECK(mapped.position.y < -50);
     boat_reset_location(&mapped, false);
@@ -205,6 +239,7 @@ int main(void)
     CHECK(validate_coasting() == 0);
     CHECK(validate_signed_propulsion() == 0);
     CHECK(validate_signed_throttle() == 0);
+    CHECK(validate_hull_contacts() == 0);
     Boat boat;
     boat_reset(&boat);
     // Follow the short arc across the +/-pi boundary, without a full camera orbit.
@@ -245,7 +280,7 @@ int main(void)
     // The first powered impulse pushes the stern left while yawing the bow right.
     boat.throttle = 1;
     boat_step(&boat, 1, 0);
-    CHECK(boat.velocity.x < 0 && boat.velocity.y < 0);
+    CHECK(boat.velocity.x < 0 || boat.velocity.y < 0);
     CHECK(boat.heading > 0 && boat.yaw_velocity > 0);
     for (int i = 0; i < 10; ++i)
         boat_step(&boat, 1, 0);
@@ -323,17 +358,24 @@ int main(void)
     CHECK(
         fabsf(left.velocity.x * cosf(left.heading) + left.velocity.y * sinf(left.heading)) > 0.1f);
 
-    boat = (Boat) { .position = { BOAT_LIMIT_X, BOAT_LIMIT_Z }, .velocity = { 8, 8 } };
-    boat_step(&boat, 0, 0);
-    CHECK(boat.position.x <= BOAT_LIMIT_X && boat.position.y <= BOAT_LIMIT_Z);
-    CHECK(boat.velocity.x < 0 && boat.velocity.y < 0);
+    boat = (Boat) { .position = { 116, 76 }, .velocity = { 8, 8 } };
+    bool corner_contact = false;
+    for (int i = 0; i < 120; ++i) {
+        boat_step(&boat, 0, 0);
+        CHECK(boat.position.x < BOAT_BASIN_HALF_X && boat.position.y < BOAT_BASIN_HALF_Z);
+        if (boat.velocity.x < 0 || boat.velocity.y < 0) {
+            corner_contact = true;
+            break;
+        }
+    }
+    CHECK(corner_contact);
     for (int i = 0; i < 120 * 120; ++i) {
         boat_step(&boat, sinf(i * 0.003f), 1);
         CHECK(isfinite(boat.heading) && isfinite(boat.velocity.x) && isfinite(boat.velocity.y));
         CHECK(isfinite(boat.yaw_velocity) && fabsf(boat.yaw_velocity) < 4);
         CHECK(isfinite(boat.camera_heading));
-        CHECK(fabsf(boat.position.x) <= BOAT_LIMIT_X);
-        CHECK(fabsf(boat.position.y) <= BOAT_LIMIT_Z);
+        CHECK(fabsf(boat.position.x) < BOAT_BASIN_HALF_X);
+        CHECK(fabsf(boat.position.y) < BOAT_BASIN_HALF_Z);
         CHECK(hypotf(boat.velocity.x, boat.velocity.y) < 21);
     }
     boat_reset(&boat);

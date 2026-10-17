@@ -65,7 +65,7 @@ static float cross(Vector2 a, Vector2 b, Vector2 p)
     return (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x);
 }
 
-bool boat_map_water(Vector2 position, float clearance)
+bool boat_map_water_contact(Vector2 position, float clearance, Vector2 *water_normal)
 {
     if (!init())
         return false;
@@ -83,18 +83,37 @@ bool boat_map_water(Vector2 position, float clearance)
             break;
         }
     }
-    if (!inside)
-        return false;
+    Vector2 nearest = { 0 };
+    float nearest_distance = INFINITY;
     for (size_t i = 0; i < shore_count; ++i) {
         Vector2 a = point(mesh->vertices[shore[i].a]), b = point(mesh->vertices[shore[i].b]);
         Vector2 ab = Vector2Subtract(b, a);
         float length = Vector2LengthSqr(ab);
         float t
             = length > 0 ? Clamp(Vector2DotProduct(Vector2Subtract(p, a), ab) / length, 0, 1) : 0;
-        if (Vector2DistanceSqr(p, Vector2Add(a, Vector2Scale(ab, t))) < clearance * clearance)
-            return false;
+        Vector2 edge_point = Vector2Add(a, Vector2Scale(ab, t));
+        float distance = Vector2DistanceSqr(p, edge_point);
+        if (distance < nearest_distance) {
+            nearest_distance = distance;
+            nearest = Vector2Subtract(p, edge_point);
+        }
     }
-    return true;
+    if (inside && nearest_distance >= clearance * clearance)
+        return true;
+    if (water_normal) {
+        if (Vector2LengthSqr(nearest) > .000001f)
+            nearest = Vector2Normalize(nearest);
+        else
+            nearest = (Vector2) { 0, 1 };
+        // Convert the map's east coordinate back to simulation X.
+        *water_normal = (Vector2) { -nearest.x, nearest.y };
+    }
+    return false;
+}
+
+bool boat_map_water(Vector2 position, float clearance)
+{
+    return boat_map_water_contact(position, clearance, NULL);
 }
 
 void boat_map_destroy(void)
