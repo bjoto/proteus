@@ -11,15 +11,16 @@
   "attribution": "Map data \u00a9 OpenStreetMap contributors",
   "attribution_url": "https://www.openstreetmap.org/copyright",
   "ground": "Assumed flat quay at 3.5 m above water; terrain samples not used",
+  "quay_bottom": -2,
   "crop": [
     -700.0,
     -600.0,
     950.0,
     800.0
   ],
-  "vertices": 20434,
-  "triangles": 25512,
-  "geometry_sha256": "c59a8a2dbe5e23c9b1aa305e053d953b1a2b0c361ac7b8be3f4f5bdf1e9ea4e3",
+  "vertices": 20706,
+  "triangles": 26056,
+  "geometry_sha256": "21533c82345d57799bde583525e5242eb5366c22b2626722d0a73fd4c793951d",
   "buildings": [
     {
       "osm": "relation/1819228",

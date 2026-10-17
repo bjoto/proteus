@@ -9,7 +9,7 @@
 #define CHECK(condition)                                                                           \
     do {                                                                                           \
         if (!(condition)) {                                                                        \
-            fprintf(stderr, "Boat check failed: %s\n", #condition);                                \
+            fprintf(stderr, "Boat check failed at line %d: %s\n", __LINE__, #condition);           \
             return 1;                                                                              \
         }                                                                                          \
     } while (0)
@@ -260,6 +260,23 @@ static int validate_planing_attitude(void)
     return 0;
 }
 
+static bool footprint_in_water(const Boat *boat)
+{
+    const Vector2 samples[]
+        = { { 0, 2 }, { -.75f, 2 }, { .75f, 2 }, { 0, -1.6f }, { -.75f, -1.6f }, { .75f, -1.6f } };
+    for (size_t i = 0; i < sizeof(samples) / sizeof(*samples); ++i) {
+        Vector2 p = { boat->position.x
+                + (sinf(boat->heading) * samples[i].y + cosf(boat->heading) * samples[i].x),
+            boat->position.y
+                + (-cosf(boat->heading) * samples[i].y + sinf(boat->heading) * samples[i].x) };
+        if (boat->eriksberg
+                ? !boat_map_water(p, .35f)
+                : fabsf(p.x) > BOAT_BASIN_HALF_X - .35f || fabsf(p.y) > BOAT_BASIN_HALF_Z - .35f)
+            return false;
+    }
+    return true;
+}
+
 static int validate_hull_contacts(void)
 {
     // A starboard-bow glancing impact should rebound, scrub speed, and turn the hull away.
@@ -278,6 +295,24 @@ static int validate_hull_contacts(void)
     CHECK(contacted);
     CHECK(glancing.heading < 0);
     CHECK(kinetic_energy(&glancing) < energy);
+
+    // A shallow scrape retains useful forward motion while the contact redirects the hull.
+    Boat sliding = { .position = { 118.89f, 10 }, .velocity = { .3f, -6 } };
+    float sliding_energy = kinetic_energy(&sliding);
+    for (int tick = 0; tick < 60; ++tick) {
+        boat_step(&sliding, 0, 0);
+        CHECK(footprint_in_water(&sliding));
+    }
+    CHECK(sliding.position.y < 8.5f);
+    CHECK(kinetic_energy(&sliding) > sliding_energy * .45f);
+    CHECK(kinetic_energy(&sliding) < sliding_energy);
+
+    // Rotation into a wall used to leave an overlapping hull and block every later move.
+    Boat rotating = { .position = { 118.89f, 10 }, .yaw_velocity = 1 };
+    for (int tick = 0; tick < 120; ++tick) {
+        boat_step(&rotating, 0, 0);
+        CHECK(footprint_in_water(&rotating));
+    }
 
     // Bow, stern, and both beams stay contained across representative headings.
     for (int heading = 0; heading < 8; ++heading) {
@@ -755,11 +790,27 @@ int main(void)
         bool bumped = false;
         for (int tick = 0; tick < 1200; ++tick) {
             boat_step(&mapped, 0, 0);
-            CHECK(boat_map_water(mapped.position, .3f));
+            CHECK(footprint_in_water(&mapped));
             if (mapped.velocity.x * side < -0.01f)
                 bumped = true;
         }
         CHECK(bumped);
+    }
+    for (int side = -1; side <= 1; side += 2) {
+        boat_reset_location(&mapped, true);
+        mapped.heading = mapped.camera_heading = side * PI / 2;
+        mapped.throttle = 1;
+        for (int tick = 0; tick < 900; ++tick) {
+            boat_step(&mapped, tick > 500 ? side : 0, 0);
+            CHECK(footprint_in_water(&mapped));
+        }
+        Vector2 docked = mapped.position;
+        mapped.throttle = -1;
+        for (int tick = 0; tick < 360; ++tick) {
+            boat_step(&mapped, 0, 0);
+            CHECK(footprint_in_water(&mapped));
+        }
+        CHECK(Vector2Distance(docked, mapped.position) > 3);
     }
     // The channel remains navigable through the crane towards the river.
     boat_reset_location(&mapped, true);

@@ -15,7 +15,9 @@ and map crop. Glancing impacts scrub speed, turn the craft away, and rebound gen
 supports `--gpu --gpu-aa`: the player hull, engine and airborne
 spray participate in depth, reflection and shadow passes; surface foam is depth-tested and receives
 shadows without casting solid shadows. Optional AA uses 4×4 supersampling before integer scaling.
-CPU remains the default and the basin renderer; GPU captures need a desktop graphics context.
+GPU is the default for both locations, including the basin course. `--renderer cpu` selects the
+software renderer for window-free captures; GPU captures need a desktop graphics context.
+`--gpu-aa` only enables supersampling and does not select a renderer or location.
 This first integration has static scenery, no overhead
 structure collisions, and no camera occlusion handling near buildings. It does not include the
 rest of Gothenburg or the archipelago. Source attribution is retained in the HUD and README.

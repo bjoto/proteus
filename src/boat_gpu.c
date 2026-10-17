@@ -1,4 +1,5 @@
 #include "boat_gpu.h"
+#include "raymath.h"
 #include "rlgl.h"
 
 #include <stdio.h>
@@ -6,6 +7,8 @@
 
 void boat_gpu_destroy(BoatGpu *gpu)
 {
+    if (gpu->basin_water.vaoId)
+        UnloadMesh(gpu->basin_water);
     if (gpu->wave_mesh.vaoId)
         UnloadMesh(gpu->wave_mesh);
     waterfront_gpu_scene_destroy(&gpu->scene);
@@ -57,6 +60,11 @@ void boat_gpu_draw(BoatGpu *gpu, const Boat *boat, BoatCamera camera)
     boat_scene_frame(boat, camera, &frame);
     RenderTexture2D target = gpu->supersampled.id ? gpu->supersampled : gpu->target;
     Mesh original_water = gpu->scene.water;
+    if (!boat->eriksberg) {
+        if (!gpu->basin_water.vaoId)
+            gpu->basin_water = GenMeshPlane(2 * BOAT_BASIN_HALF_X, 2 * BOAT_BASIN_HALF_Z, 1, 1);
+        gpu->scene.water = gpu->basin_water;
+    }
     if (boat->water_settings.amplitude != 0) {
         Mesh *mesh = &gpu->wave_mesh;
         if (!mesh->vaoId) {

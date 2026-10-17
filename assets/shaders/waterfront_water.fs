@@ -56,13 +56,17 @@ void main()
         sin(fragWorldPosition.z * 0.08 + time * 0.65)
             + sin(fragWorldPosition.x * 0.04 + time * 0.35)) * 0.0025;
     if (physicalWaves != 0) ripple = normal.xz * 0.08;
-    reflectionUv = clamp(reflectionUv + ripple, vec2(0.004), vec2(0.996));
+    reflectionUv += ripple;
+    vec2 edge = min(reflectionUv, vec2(1.0) - reflectionUv);
+    float coverage = smoothstep(0.0, 0.025, min(edge.x, edge.y));
+    if (reflectedPosition.w <= 0.0) coverage = 0.0;
+    reflectionUv = clamp(reflectionUv, vec2(0.004), vec2(0.996));
     vec3 reflection = texture(reflectionTexture, reflectionUv).rgb;
     vec3 viewDirection = normalize(cameraPosition - fragWorldPosition);
     float viewDot = max(0.0, dot(normal, viewDirection));
     float reflectionAmount = mix(0.10, physicalWaves != 0 ? 0.30 : 0.42,
         (1.0 - viewDot) * (1.0 - viewDot));
-    vec3 color = mix(base, reflection * vec3(0.65, 0.62, 0.72), reflectionAmount);
+    vec3 color = mix(base, reflection * vec3(0.65, 0.62, 0.72), reflectionAmount * coverage);
     if (physicalWaves != 0) {
         vec3 halfVector = normalize(viewDirection + normalize(vec3(-0.4, 0.85, -0.35)));
         color += vec3(0.12, 0.14, 0.16) * pow(max(dot(normal, halfVector), 0.0), 96.0);

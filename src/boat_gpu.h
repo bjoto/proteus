@@ -8,6 +8,7 @@ typedef struct {
     RenderTexture2D target, supersampled;
     Shader downsample;
     Mesh wave_mesh;
+    Mesh basin_water;
 
 } BoatGpu;
 

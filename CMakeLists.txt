@@ -103,13 +103,17 @@ foreach(target boat_study validate_boat)
   )
 endforeach()
 add_test(NAME boat_handling COMMAND validate_boat)
-add_test(NAME boat_course_screenshot COMMAND boat_study --course --time 0
+add_test(NAME boat_course_screenshot COMMAND boat_study --renderer cpu --course --time 0
   --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-course.png)
-add_test(NAME boat_wave_screenshot COMMAND boat_study --waves --time 1.8
+add_test(NAME boat_wave_screenshot COMMAND boat_study --renderer cpu --waves --time 1.8
   --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-wave.png)
-add_test(NAME boat_screenshot COMMAND boat_study --time 3
+add_test(NAME boat_screenshot COMMAND boat_study --renderer cpu --time 3
   --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-screenshot.png)
-add_test(NAME boat_eriksberg_screenshot COMMAND boat_study --location eriksberg --time 3
+add_test(NAME boat_cpu_aa_option COMMAND boat_study --renderer cpu --gpu-aa --time 0
+  --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-cpu-aa-option.png)
+add_test(NAME boat_cpu_aa_option_reversed COMMAND boat_study --gpu-aa --renderer cpu --time 0
+  --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-cpu-aa-option-reversed.png)
+add_test(NAME boat_eriksberg_screenshot COMMAND boat_study --renderer cpu --location eriksberg --time 3
   --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-eriksberg.png)
 
 add_executable(dance_study tools/dance_study.c src/dance.c src/choreography.c src/renderer3d.c src/xm_audio.c)
@@ -237,6 +241,17 @@ if(PROTEUS_GPU_TESTS)
   add_test(NAME boat_wave_gpu_screenshot COMMAND boat_study --location eriksberg --gpu-aa --waves
     --camera-distance 12 --camera-height 6 --time 2.9
     --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-wave-gpu.png)
+  add_test(NAME boat_basin_gpu_screenshot COMMAND boat_study --time 0
+    --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-basin-gpu.png)
+  add_test(NAME boat_basin_gpu_aa_screenshot COMMAND boat_study --gpu-aa --time 0
+    --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-basin-gpu-aa.png)
+  add_test(NAME boat_course_gpu_screenshot COMMAND boat_study --course --gpu-aa --time 0
+    --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-course-gpu.png)
+  add_test(NAME boat_basin_wave_gpu_screenshot COMMAND boat_study --waves --gpu-aa --time 1.8
+    --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-basin-wave-gpu.png)
+  set_tests_properties(boat_basin_wave_gpu_screenshot PROPERTIES LABELS "gpu" RUN_SERIAL TRUE)
+  set_tests_properties(boat_basin_gpu_screenshot boat_basin_gpu_aa_screenshot boat_course_gpu_screenshot
+    PROPERTIES LABELS "gpu" RUN_SERIAL TRUE)
   set_tests_properties(boat_gpu_screenshot boat_gpu_aa_screenshot boat_wave_gpu_screenshot
     PROPERTIES LABELS "gpu" RUN_SERIAL TRUE)
   find_package(Python3 REQUIRED COMPONENTS Interpreter)

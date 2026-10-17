@@ -3,6 +3,7 @@
 #include "raymath.h"
 #include "waterfront.h"
 
+#include <assert.h>
 #include <math.h>
 
 // Normalized mass and world units: these are handling parameters, not a calibrated hull.
@@ -44,7 +45,7 @@ static const float HULL_STERN = 1.6f;
 static const float HULL_HALF_BEAM = .75f;
 static const float HULL_SHORE_CLEARANCE = .35f;
 static const float CONTACT_RESTITUTION = .12f;
-static const float CONTACT_TANGENT_DAMPING = .82f;
+static const float CONTACT_FRICTION = .15f;
 
 static Vector2 thrust_direction(const Boat *boat)
 {
@@ -127,12 +128,14 @@ static void resolve_hull_contact(Boat *boat, Vector2 safe_position, HullContact 
             / (1 + arm_cross_normal * arm_cross_normal / YAW_INERTIA);
         boat->velocity = Vector2Add(boat->velocity, Vector2Scale(contact.normal, impulse));
         boat->yaw_velocity += arm_cross_normal * impulse / YAW_INERTIA;
+        // Limit tangential friction by impact strength so shallow scrapes retain momentum.
+        float tangent_speed
+            = Vector2DotProduct(boat->velocity, (Vector2) { -contact.normal.y, contact.normal.x });
+        float friction = fminf(fabsf(tangent_speed), CONTACT_FRICTION * impulse);
+        boat->velocity = Vector2Subtract(boat->velocity,
+            Vector2Scale((Vector2) { -contact.normal.y, contact.normal.x },
+                copysignf(friction, tangent_speed)));
     }
-    float tangent_speed
-        = Vector2DotProduct(boat->velocity, (Vector2) { -contact.normal.y, contact.normal.x });
-    boat->velocity = Vector2Subtract(boat->velocity,
-        Vector2Scale((Vector2) { -contact.normal.y, contact.normal.x },
-            tangent_speed * (1 - CONTACT_TANGENT_DAMPING)));
 }
 
 // Raymath's XYZ Euler order is not local pitch followed by heading. Compose the attachment
@@ -441,12 +444,19 @@ void boat_step(Boat *boat, float wheel_change, float throttle_change)
     torque -= 0.45f * boat->yaw_velocity;
     boat->velocity = Vector2Add(boat->velocity, Vector2Scale(force, BOAT_STEP));
     boat->yaw_velocity += torque / YAW_INERTIA * BOAT_STEP;
-    boat->heading = remainderf(boat->heading + boat->yaw_velocity * BOAT_STEP, 2 * PI);
+    // Accept translation and rotation separately. A rejected rotation must not leave a hull
+    // sample on land, otherwise even an outward move can be rejected on the next tick.
     Vector2 previous = boat->position;
     boat->position = Vector2Add(previous, Vector2Scale(boat->velocity, BOAT_STEP));
     HullContact contact;
     if (hull_contact(boat, &contact))
         resolve_hull_contact(boat, previous, contact);
+    float previous_heading = boat->heading;
+    boat->heading = remainderf(boat->heading + boat->yaw_velocity * BOAT_STEP, 2 * PI);
+    if (hull_contact(boat, &contact)) {
+        resolve_hull_contact(boat, boat->position, contact);
+        boat->heading = previous_heading;
+    }
     float camera_delta = remainderf(boat->heading - boat->camera_heading, 2 * PI);
     boat->camera_heading
         = remainderf(boat->camera_heading + camera_delta * (1 - expf(-6 * BOAT_STEP)), 2 * PI);
@@ -489,6 +499,48 @@ static Transform3D water_particle_pose(const Boat *boat, const BoatWaterParticle
     return pose;
 }
 
+static void basin_box(void *context, Transform3D transform, Color color)
+{
+    WaterfrontSceneFrame *frame = context;
+    assert(frame->scenery_count < (int)(sizeof(frame->scenery) / sizeof(*frame->scenery)));
+    int i = frame->scenery_count++;
+    frame->scenery[i].transform = transform;
+    frame->scenery[i].color = color;
+}
+
+static void basin_scenery(const Boat *boat, WaterfrontSceneFrame *frame)
+{
+    frame->boating_basin = true;
+    frame->lamp_count = 0;
+    Color quay = { 148, 151, 137, 255 };
+    for (int side = -1; side <= 1; side += 2) {
+        basin_box(frame,
+            (Transform3D) { .position = { side * (BOAT_BASIN_HALF_X + 2), 0, 0 },
+                .scale = { 4, 1.8f, 2 * BOAT_BASIN_HALF_Z + 8 } },
+            quay);
+        basin_box(frame,
+            (Transform3D) { .position = { 0, 0, side * (BOAT_BASIN_HALF_Z + 2) },
+                .scale = { 2 * BOAT_BASIN_HALF_X, 1.8f, 4 } },
+            quay);
+        if (!boat->course.enabled) {
+            basin_box(frame,
+                (Transform3D) { .position = { side * 12, .4f, 0 }, .scale = { .8f, 1, .8f } },
+                (Color) { 232, 150, 65, 255 });
+            basin_box(frame,
+                (Transform3D) { .position = { side * 12, 1.1f, 0 }, .scale = { .25f, .5f, .25f } },
+                (Color) { 248, 225, 175, 255 });
+        }
+    }
+    if (boat->water_settings.amplitude == 0)
+        for (int z = -(int)BOAT_BASIN_HALF_Z + 4; z < BOAT_BASIN_HALF_Z; z += 8)
+            for (int x = -(int)BOAT_BASIN_HALF_X + 4; x < BOAT_BASIN_HALF_X; x += 8)
+                basin_box(frame,
+                    (Transform3D) {
+                        .position = { x + (z % 4), .01f, z }, .scale = { 1.3f, .04f, .12f } },
+                    (Color) { 62, 132, 142, 255 });
+    boat_course_visit(&boat->course, basin_box, frame);
+}
+
 void boat_scene_frame(const Boat *boat, BoatCamera camera, WaterfrontSceneFrame *frame)
 {
     _Static_assert(BOAT_WATER_PARTICLES <= WATERFRONT_PLAYER_PARTICLES, "Player particle capacity");
@@ -496,6 +548,8 @@ void boat_scene_frame(const Boat *boat, BoatCamera camera, WaterfrontSceneFrame 
     frame->camera = boat_camera(boat, camera);
     frame->time = boat->time;
     frame->player_active = true;
+    if (!boat->eriksberg)
+        basin_scenery(boat, frame);
     frame->player_water = boat->water_settings;
     WaterfrontPlayerState *p = &frame->player;
     player_pose(boat, p);

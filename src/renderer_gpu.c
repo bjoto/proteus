@@ -738,6 +738,10 @@ static int select_light_class(const WaterfrontGpuScene *scene, const LightCandid
 // approaches. Reserve the cafe light, three crane lights, and nearby moving headlights.
 static void select_local_lights(WaterfrontGpuScene *scene, const WaterfrontSceneFrame *frame)
 {
+    if (frame->boating_basin) {
+        scene->local_light_count = 0;
+        return;
+    }
     LightCandidate candidates[72];
     int candidate_count = 0;
     add_light_candidate(candidates, &candidate_count, 40,
@@ -1117,24 +1121,44 @@ static Camera3D reflection_camera(const WaterfrontSceneFrame *frame)
         .projection = CAMERA_PERSPECTIVE };
 }
 
-static void restore_framebuffer(unsigned int framebuffer, int width, int height)
+typedef struct {
+    unsigned int framebuffer;
+    int width, height;
+    Matrix projection, modelview;
+} RenderTargetState;
+
+static RenderTargetState render_target_state(void)
 {
-    if (framebuffer != 0)
-        rlEnableFramebuffer(framebuffer);
-    else
-        rlDisableFramebuffer();
-    rlViewport(0, 0, width, height);
-    rlSetFramebufferWidth(width);
-    rlSetFramebufferHeight(height);
+    return (RenderTargetState) { .framebuffer = rlGetActiveFramebuffer(),
+        .width = rlGetFramebufferWidth(),
+        .height = rlGetFramebufferHeight(),
+        .projection = rlGetMatrixProjection(),
+        .modelview = rlGetMatrixModelview() };
 }
 
-static void draw_sky(const WaterfrontGpuScene *scene, View3D camera, int width, int height)
+static void restore_render_target(RenderTargetState state)
+{
+    // raylib's EndTextureMode returns to the window, including its 2D matrices. Nested
+    // shadow/reflection passes must restore the caller's matrices as well as its framebuffer:
+    // the sky and subsequent overlays otherwise draw at the window's size inside that target.
+    if (state.framebuffer != 0)
+        rlEnableFramebuffer(state.framebuffer);
+    else
+        rlDisableFramebuffer();
+    rlViewport(0, 0, state.width, state.height);
+    rlSetFramebufferWidth(state.width);
+    rlSetFramebufferHeight(state.height);
+    rlSetMatrixProjection(state.projection);
+    rlSetMatrixModelview(state.modelview);
+}
+
+static void draw_sky(
+    const WaterfrontGpuScene *scene, View3D camera, int width, int height, float aspect)
 {
     Vector3 forward = Vector3Normalize(Vector3Subtract(camera.target, camera.position));
     Vector3 right = Vector3Normalize(Vector3CrossProduct(forward, camera.up));
     Vector3 up = Vector3CrossProduct(right, forward);
-    float scale[]
-        = { tanf(camera.vertical_fov * .5f) * width / height, tanf(camera.vertical_fov * .5f) };
+    float scale[] = { tanf(camera.vertical_fov * .5f) * aspect, tanf(camera.vertical_fov * .5f) };
     Shader shader = scene->sky_shader;
     SetShaderValue(shader, GetShaderLocation(shader, "skyForward"), &forward, SHADER_UNIFORM_VEC3);
     SetShaderValue(shader, GetShaderLocation(shader, "skyRight"), &right, SHADER_UNIFORM_VEC3);
@@ -1167,9 +1191,22 @@ static void draw_facades(const WaterfrontGpuScene *scene, Material material)
     SetShaderValue(scene->shader, location, &enabled, SHADER_UNIFORM_INT);
 }
 
+static void draw_basin(
+    const WaterfrontGpuScene *scene, const WaterfrontSceneFrame *frame, Material material)
+{
+    for (int i = 0; i < frame->scenery_count; ++i)
+        draw_colored_mesh(
+            scene->cube, material, frame->scenery[i].transform, frame->scenery[i].color, false);
+}
+
 static void draw_reflected_scene(const WaterfrontGpuScene *scene, const WaterfrontSceneFrame *frame,
     Material material, Material life)
 {
+    if (frame->boating_basin) {
+        draw_basin(scene, frame, material);
+        draw_life(scene, life, frame, false);
+        return;
+    }
     set_object_color(scene->shader, WHITE);
     set_emissive(scene->shader, false);
     DrawMesh(scene->city, material, MatrixIdentity());
@@ -1188,23 +1225,26 @@ static void draw_reflected_scene(const WaterfrontGpuScene *scene, const Waterfro
     DrawMesh(scene->crane, material, MatrixIdentity());
 }
 
-static void render_reflection(WaterfrontGpuScene *scene, const WaterfrontSceneFrame *frame)
+static void render_reflection(
+    WaterfrontGpuScene *scene, const WaterfrontSceneFrame *frame, float aspect)
 {
     Camera3D camera = reflection_camera(frame);
-    unsigned int previous_framebuffer = rlGetActiveFramebuffer();
-    int previous_width = rlGetFramebufferWidth();
-    int previous_height = rlGetFramebufferHeight();
+    // Cover the output aspect plus 20% overscan for ripples and displaced wave vertices.
+    camera.fovy = 2 * atanf(tanf(frame->camera.vertical_fov * .5f) * 1.2f) * RAD2DEG;
+    RenderTargetState previous = render_target_state();
     BeginTextureMode(scene->reflection);
     ClearBackground(BLACK);
     View3D sky_camera = frame->camera;
     sky_camera.position = camera.position;
     sky_camera.target = camera.target;
     sky_camera.up = camera.up;
-    draw_sky(scene, sky_camera, scene->reflection.texture.width, scene->reflection.texture.height);
+    sky_camera.vertical_fov = camera.fovy * DEG2RAD;
+    // The fixed-size texture stores this wider frustum, independent of its pixel aspect.
+    draw_sky(scene, sky_camera, scene->reflection.texture.width, scene->reflection.texture.height,
+        aspect);
     BeginMode3D(camera);
-    rlSetMatrixProjection(MatrixPerspective(frame->camera.vertical_fov,
-        (float)scene->reflection.texture.width / (float)scene->reflection.texture.height,
-        frame->camera.near_plane, frame->camera.far_plane));
+    rlSetMatrixProjection(MatrixPerspective(
+        camera.fovy * DEG2RAD, aspect, frame->camera.near_plane, frame->camera.far_plane));
     Matrix view = rlGetMatrixModelview();
     Matrix projection = rlGetMatrixProjection();
     // A reflected view reverses the projected winding. Disable culling for this pass so the
@@ -1214,7 +1254,7 @@ static void render_reflection(WaterfrontGpuScene *scene, const WaterfrontSceneFr
     rlEnableBackfaceCulling();
     EndMode3D();
     EndTextureMode();
-    restore_framebuffer(previous_framebuffer, previous_width, previous_height);
+    restore_render_target(previous);
     scene->reflection_view_projection = MatrixMultiply(view, projection);
 }
 
@@ -1242,6 +1282,11 @@ static Camera3D shadow_camera(const WaterfrontGpuScene *scene, const WaterfrontS
 static void draw_shadow_casters(
     const WaterfrontGpuScene *scene, Material material, const WaterfrontSceneFrame *frame)
 {
+    if (frame->boating_basin) {
+        draw_basin(scene, frame, material);
+        draw_life(scene, material, frame, false);
+        return;
+    }
     set_object_color(scene->shadow_shader, WHITE);
     set_emissive(scene->shadow_shader, false);
     rlEnableBackfaceCulling();
@@ -1261,9 +1306,7 @@ static void draw_shadow_casters(
 static void render_shadow_map(WaterfrontGpuScene *scene, const WaterfrontSceneFrame *frame)
 {
     Camera3D camera = shadow_camera(scene, frame);
-    unsigned int previous_framebuffer = rlGetActiveFramebuffer();
-    int previous_width = rlGetFramebufferWidth();
-    int previous_height = rlGetFramebufferHeight();
+    RenderTargetState previous = render_target_state();
     BeginTextureMode(scene->shadow_map);
     ClearBackground(WHITE);
     BeginMode3D(camera);
@@ -1275,15 +1318,7 @@ static void render_shadow_map(WaterfrontGpuScene *scene, const WaterfrontSceneFr
     draw_shadow_casters(scene, scene->shadow_material, frame);
     EndMode3D();
     EndTextureMode();
-    // Begin/EndTextureMode does not stack: ending the depth pass always binds the window target.
-    // Restore the caller's virtual framebuffer before submitting the visible city pass.
-    if (previous_framebuffer != 0)
-        rlEnableFramebuffer(previous_framebuffer);
-    else
-        rlDisableFramebuffer();
-    rlViewport(0, 0, previous_width, previous_height);
-    rlSetFramebufferWidth(previous_width);
-    rlSetFramebufferHeight(previous_height);
+    restore_render_target(previous);
     // raylib composes matrices in this order for its shaders; retain the pinned example's
     // convention so this matrix maps world positions into the depth texture's clip space.
     scene->light_view_projection = MatrixMultiply(view, projection);
@@ -1305,15 +1340,25 @@ void waterfront_gpu_scene_draw(
     set_lighting_uniforms(scene, frame);
     if (scene->reflections_enabled) {
         set_atmosphere_uniforms(scene, reflection_camera(frame).position);
-        render_reflection(scene, frame);
+        render_reflection(scene, frame, (float)width / height);
     }
     set_atmosphere_uniforms(scene, frame->camera.position);
     ClearBackground(BLACK);
-    draw_sky(scene, frame->camera, width, height);
+    draw_sky(scene, frame->camera, width, height, (float)width / height);
     BeginMode3D(camera);
     rlSetMatrixProjection(MatrixPerspective(frame->camera.vertical_fov,
         (float)width / (float)height, frame->camera.near_plane, frame->camera.far_plane));
     rlEnableBackfaceCulling();
+    if (frame->boating_basin) {
+        draw_basin(scene, frame, material);
+        set_object_color(scene->water_shader, WHITE);
+        set_water_uniforms(scene, frame);
+        DrawMesh(scene->water, scene->water_material, MatrixIdentity());
+        rlDisableBackfaceCulling();
+        draw_life(scene, life_material, frame, true);
+        EndMode3D();
+        return;
+    }
     set_object_color(scene->shader, WHITE);
     set_emissive(scene->shader, false);
     DrawMesh(scene->city, material, MatrixIdentity());

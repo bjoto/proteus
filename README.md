@@ -81,7 +81,7 @@ Explore the bundled Eriksberg waterfront with the same boat and controls:
 ./build/boat_study --location eriksberg
 ./build/boat_study --location eriksberg --gpu --gpu-aa
 ./build/boat_study --location basin
-./build/boat_study --location eriksberg --screenshot build/eriksberg-boat.png --time 3
+./build/boat_study --renderer cpu --location eriksberg --screenshot build/eriksberg-boat.png --time 3
 ```
 
 Run `./build/boat_study --course` for the first timed S course in the basin. Cross the
@@ -96,14 +96,18 @@ a fastest-lap list is deferred.
 `basin` remains the default. Eriksberg spawns in the dock facing the crane and river; R returns
 there. The map, buildings, Dockbron, crane, and dusk sky reuse the existing offline scene.
 Shoreline collisions use an oriented bow, stern, and beam footprint; glancing contacts scrub speed,
-turn the craft away, and rebound gently. The outer map boundary also blocks travel. CPU rendering
-remains the default. For Eriksberg, `--gpu` enables
-depth-tested player hull, steerable engine, wake and spray, with waterfront reflections and shadows.
+turn the craft away, and rebound gently while retaining most speed along the dock. Translation
+and rotation keep the entire footprint in water, so a dock contact can be reversed out of. The
+outer map boundary also blocks travel.
+GPU rendering is the default for both locations; `--renderer cpu` selects the software renderer.
+GPU rendering provides a depth-tested player hull, steerable engine, wake and spray, with
+reflections and shadows.
 The hull, engine and airborne spray cast shadows; surface foam receives them without casting solid
-slab shadows. `--gpu-aa` implies `--gpu` and averages 4×4 samples per pixel, retaining the 320×200
-integer-scaled presentation. GPU screenshots require a desktop graphics context; basin remains
-CPU-only. Scenery is static, with no traffic or collision against overhead structures. Follow-camera
-occlusion near buildings is not resolved. This is the local Eriksberg crop, not all of Gothenburg.
+slab shadows. `--gpu-aa` only enables anti-aliasing: it averages 4×4 samples per pixel, retaining
+the 320×200 integer-scaled presentation. It does not select a renderer or location. `--gpu` is an
+alias for `--renderer gpu`. GPU screenshots require a desktop graphics context; use
+`--renderer cpu` for window-free captures. Scenery is static, with no traffic or collision against
+overhead structures. Follow-camera occlusion near buildings is not resolved. This is the local Eriksberg crop, not all of Gothenburg.
 
 Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), ODbL 1.0.
 See the bundled [source manifest](assets/geometry/eriksberg/manifest.json) for provenance.
@@ -160,12 +164,13 @@ and have no collision yet. A spreading wake traces your path and fades; hard tur
 according to sideways slip. Reset clears both effects. This sketch is silent, with no scoring or
 geographic scenery.
 
-Opt in to gentle crossing waves with `--waves` (CPU basin or Eriksberg, including `--gpu-aa`).
+Opt in to gentle crossing waves with `--waves` (basin or Eriksberg, CPU or GPU).
 Flat, still water remains the default. Three low wave components replace the regular colored bands:
 16/9/5.5-unit wavelengths and 0.13/0.06/0.025-unit amplitudes, with different travel directions.
 The hull responds to the same water query that drives the rendered surface; foam follows the
 water and spray starts at the moving hull. GPU water has restrained reflections distorted by the
-physical surface normals. CPU water uses simple, subdued slope shading without scene reflections.
+physical surface normals. Quay walls extend two units below the rest waterline so troughs cannot
+expose gaps beneath the architecture. CPU water uses simple, subdued slope shading without scene reflections.
 For a closer view of the motion:
 
 ```sh
@@ -276,6 +281,8 @@ the light-frustum depth map for review:
 The sky fades from indigo through violet to a peach sunset horizon, with dark cloud streaks
 and a small pale moon. CPU and GPU share a fixed world panorama, so the sky follows camera
 rotation naturally; GPU water reflections use the same sky through the mirrored camera.
+`gpu_fixture --city --check` checks sky coverage and sampling against the CPU panorama at native
+and supersampled sizes, with a resized window and shadows/reflections toggled independently.
 
 Distance atmosphere is also enabled by default. Compare its muted rose dusk haze at the same scene time
 with `--gpu-atmosphere off` in the demo or `--atmosphere off` in the fixture.

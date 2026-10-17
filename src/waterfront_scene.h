@@ -59,6 +59,12 @@ typedef struct {
 typedef struct {
     View3D camera;
     bool player_active;
+    bool boating_basin;
+    int scenery_count;
+    struct {
+        Transform3D transform;
+        Color color;
+    } scenery[704];
     BoatWater player_water; // Zero for timeline scenes; shared analytic boating parameters.
     WaterfrontPlayerState player;
     float time;

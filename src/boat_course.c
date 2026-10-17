@@ -39,7 +39,7 @@ static Color gate_color(const BoatCourse *course, int gate)
     return gate == BOAT_COURSE_GATES - 1 ? RAYWHITE : ORANGE;
 }
 
-void boat_course_draw(const BoatCourse *course, Renderer3D *renderer)
+void boat_course_visit(const BoatCourse *course, BoatCourseBoxDraw draw, void *context)
 {
     if (!course->enabled)
         return;
@@ -48,24 +48,34 @@ void boat_course_draw(const BoatCourse *course, Renderer3D *renderer)
         Color color = gate_color(course, i);
         for (int side = -1; side <= 1; side += 2) {
             float x = -(gate.centre.x + side * gate.half_width);
-            renderer3d_draw_box(renderer,
+            draw(context,
                 (Transform3D) {
                     .position = { x, .6f, gate.centre.y }, .scale = { 1.2f, 1.4f, 1.2f } },
                 color);
-            renderer3d_draw_box(renderer,
+            draw(context,
                 (Transform3D) { .position = { x, 1.6f, gate.centre.y }, .scale = { .2f, 1, .2f } },
                 RAYWHITE);
         }
         // Floating dashes mark the crossing span; the finish has a chequered stripe.
         for (float offset = -gate.half_width; offset < gate.half_width; offset += 2) {
             Color stripe = i == BOAT_COURSE_GATES - 1 && ((int)offset % 4 == 0) ? DARKGRAY : color;
-            renderer3d_draw_box(renderer,
+            draw(context,
                 (Transform3D) {
                     .position = { -(gate.centre.x + offset + .5f), .02f, gate.centre.y },
                     .scale = { 1, .08f, .5f } },
                 stripe);
         }
     }
+}
+
+static void draw_cpu_box(void *context, Transform3D transform, Color color)
+{
+    renderer3d_draw_box(context, transform, color);
+}
+
+void boat_course_draw(const BoatCourse *course, Renderer3D *renderer)
+{
+    boat_course_visit(course, draw_cpu_box, renderer);
 }
 
 void boat_course_hud(const BoatCourse *course, Vector2 position, int width)

@@ -20,7 +20,7 @@ static void usage(void)
          "--location basin|eriksberg (default basin)\n"
          "--waves: gentle crossing waves and a floating hull\n"
          "--course: timed S course in the basin; cross highlighted gates in order | R: retry\n"
-         "--gpu: GPU Eriksberg renderer | --gpu-aa: enable GPU with 4x supersampling\n"
+         "--renderer gpu|cpu (default gpu) | --gpu: select GPU | --gpu-aa: 4x supersampling\n"
          "F3: toggle debug profiler | --profiler: show it on startup\n"
          "CPU screenshots need no window; GPU screenshots require a graphics context.\n"
          "--time is screenshot-only (0..60); --frames limits an interactive smoke run.\n"
@@ -64,7 +64,7 @@ int main(int argc, char **argv)
     BoatCamera camera_settings = BOAT_CAMERA_DEFAULT;
     bool time_set = false, demo = false;
     bool eriksberg = false, course = false, waves = false;
-    bool gpu_enabled = false, gpu_aa = false;
+    bool gpu_enabled = true, gpu_aa = false;
     bool profiler_visible = false;
     int frame_limit = 0;
     for (int i = 1; i < argc; ++i) {
@@ -79,10 +79,18 @@ int main(int argc, char **argv)
                 eriksberg = false;
             else
                 goto invalid;
+        } else if (strcmp(argv[i], "--renderer") == 0 && i + 1 < argc) {
+            const char *name = argv[++i];
+            if (strcmp(name, "gpu") == 0)
+                gpu_enabled = true;
+            else if (strcmp(name, "cpu") == 0)
+                gpu_enabled = false;
+            else
+                goto invalid;
         } else if (strcmp(argv[i], "--gpu") == 0) {
             gpu_enabled = true;
         } else if (strcmp(argv[i], "--gpu-aa") == 0) {
-            gpu_enabled = gpu_aa = true;
+            gpu_aa = true;
         } else if (strcmp(argv[i], "--profiler") == 0) {
             profiler_visible = true;
         } else if (strcmp(argv[i], "--waves") == 0) {
@@ -129,10 +137,6 @@ int main(int argc, char **argv)
         goto invalid;
     if (course && (eriksberg || demo)) {
         fprintf(stderr, "--course requires the basin and cannot be combined with --demo.\n");
-        goto invalid;
-    }
-    if (gpu_enabled && !eriksberg) {
-        fprintf(stderr, "GPU boating requires --location eriksberg.\n");
         goto invalid;
     }
 
