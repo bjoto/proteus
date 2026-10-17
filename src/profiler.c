@@ -55,6 +55,8 @@ ProfilerSnapshot profiler_snapshot(const Profiler *profiler, SceneFrame scene, f
         .present = profile_stats(profiler->present_ms, profiler->next, profiler->count),
         .spectrum = spectrum,
         .scene = scene,
+        .renderer_label = "CPU",
+        .texture_upload_kib = size.width * size.height * (int)sizeof(Color) / 1024,
         .timeline_time = timeline_time,
         .music_played = music_ready ? GetMusicTimePlayed(music) : 0.0f,
         .music_length = music_ready ? GetMusicTimeLength(music) : 0.0f,
@@ -139,11 +141,15 @@ void profiler_draw(const Profiler *profiler, const ProfilerSnapshot *snapshot, V
     DrawRectangle(x, y, width, height, (Color) { 2, 5, 10, 225 });
     DrawRectangleLines(x, y, width, height, (Color) { 150, 175, 195, 255 });
     DrawText("PROFILER [F3]", x + 10, y + 8, 18, RAYWHITE);
-    DrawText(TextFormat("scene %-10s  %5.1f / %5.1f s  (%3.0f%%)   timeline %.1f s",
-                 scene_name(snapshot->scene.id), snapshot->scene.time,
-                 scene_duration(snapshot->scene.id), snapshot->scene.progress * 100.0f,
-                 snapshot->timeline_time),
-        x + 10, y + 31, 14, RAYWHITE);
+    if (snapshot->scene_duration > 0.0f)
+        DrawText(TextFormat("scene %-10s  %5.1f / %5.1f s  (%3.0f%%)   timeline %.1f s",
+                     snapshot->scene_label, snapshot->scene.time, snapshot->scene_duration,
+                     snapshot->scene.progress * 100.0f, snapshot->timeline_time),
+            x + 10, y + 31, 14, RAYWHITE);
+    else
+        DrawText(TextFormat("scene %s  simulation %.1f s  renderer %s", snapshot->scene_label,
+                     snapshot->scene.time, snapshot->renderer_label),
+            x + 10, y + 31, 14, RAYWHITE);
     DrawText(TextFormat("frame ms    now %6.1f  avg %6.1f  p95 %6.1f  min %6.1f  max %6.1f",
                  snapshot->frame.latest, snapshot->frame.average, snapshot->frame.percentile_95,
                  snapshot->frame.minimum, snapshot->frame.maximum),
@@ -167,7 +173,7 @@ void profiler_draw(const Profiler *profiler, const ProfilerSnapshot *snapshot, V
                  snapshot->render_width, snapshot->render_height, snapshot->scale),
         x + 10, y + 128, 14, RAYWHITE);
     DrawText(TextFormat("framebuffer %d KiB  texture upload %d KiB/frame  audio %s %.1f/%.1f s",
-                 snapshot->framebuffer_kib, snapshot->framebuffer_kib,
+                 snapshot->framebuffer_kib, snapshot->texture_upload_kib,
                  snapshot->music_playing ? "playing" : "off", snapshot->music_played,
                  snapshot->music_length),
         x + 10, y + 147, 14, RAYWHITE);
@@ -181,7 +187,7 @@ void profiler_draw(const Profiler *profiler, const ProfilerSnapshot *snapshot, V
                  snapshot->spectrum.bands[AUDIO_SPECTRUM_HIGH], snapshot->spectrum.overall,
                  snapshot->spectrum.onset),
         x + 10, y + 166, 14, (Color) { 220, 150, 255, 255 });
-    DrawText("rolling 240 frames:  frame wall     scene CPU+upload     present/vsync", x + 10,
+    DrawText("rolling 240 frames:  frame wall     scene submit+upload  present/wait", x + 10,
         y + 187, 13, LIGHTGRAY);
     DrawRectangle(x + 111, y + 191, 12, 2, (Color) { 255, 210, 70, 255 });
     DrawRectangle(x + 241, y + 191, 12, 2, (Color) { 80, 245, 135, 255 });

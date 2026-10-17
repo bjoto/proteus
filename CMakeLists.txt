@@ -90,7 +90,7 @@ target_compile_options(validate_audio_spectrum PRIVATE
 )
 
 enable_testing()
-add_executable(boat_study tools/boat_study.c src/boat.c src/renderer3d.c)
+add_executable(boat_study tools/boat_study.c src/boat.c src/renderer3d.c src/profiler.c)
 target_sources(boat_study PRIVATE src/boat_gpu.c src/renderer_gpu.c)
 add_dependencies(boat_study proteus_assets)
 add_executable(validate_boat tools/validate_boat.c src/boat.c src/renderer3d.c)

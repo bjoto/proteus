@@ -837,6 +837,10 @@ int main(int argc, char **argv)
         if (current_frame_started_at >= next_snapshot_time) {
             snapshot = profiler_snapshot(
                 &profiler, scene, time, size, destination, music_ready, music, spectrum);
+            snapshot.scene_label = scene_name(scene.id);
+            snapshot.scene_duration = scene_duration(scene.id);
+            snapshot.renderer_label = use_gpu ? "GPU" : "CPU";
+            snapshot.texture_upload_kib = use_gpu ? 0 : snapshot.framebuffer_kib;
             next_snapshot_time = current_frame_started_at + 0.25;
         }
 

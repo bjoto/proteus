@@ -111,6 +111,11 @@ holds the setting. Full-range adjustment takes four seconds. The HUD shows signe
 engine response separately from speed. Passing through neutral is deliberate and smooth; R resets
 to neutral thrust and centres the wheel. Esc closes the window.
 The simulation pauses when the window loses focus. The view remains 320x200 with integer scaling.
+Press `F3` to toggle the same debug profiler overlay used in the main demo, or pass `--profiler`
+to show it on startup. It shows rolling frame, scene rendering/upload, and presentation timings,
+a frame-time graph, display dimensions, and the active location and CPU/GPU backend. GPU scene
+measurements cover CPU submission, not GPU execution; GPU mode uploads no CPU framebuffer.
+The study is silent, so the shared overlay's audio readings remain off/zero.
 
 The follow camera defaults to 20 units back and 14 units above the water. Hold `-` to pull back,
 `+` (or `=`) to move closer, and PageUp/PageDown to raise/lower the camera. `C` restores the default

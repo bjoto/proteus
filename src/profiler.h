@@ -32,6 +32,10 @@ typedef struct {
     ProfileStats present;
     AudioSpectrum spectrum;
     SceneFrame scene;
+    const char *scene_label;
+    const char *renderer_label;
+    float scene_duration;
+    int texture_upload_kib;
     float timeline_time;
     float observed_fps;
     float music_played;

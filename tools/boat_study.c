@@ -1,6 +1,7 @@
 #include "boat.h"
 #include "boat_gpu.h"
 #include "boat_map.h"
+#include "profiler.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -17,6 +18,7 @@ static void usage(void)
          "--camera-height UNITS: 4..36 (default 14)\n"
          "--location basin|eriksberg (default basin)\n"
          "--gpu: GPU Eriksberg renderer | --gpu-aa: enable GPU with 4x supersampling\n"
+         "F3: toggle debug profiler | --profiler: show it on startup\n"
          "CPU screenshots need no window; GPU screenshots require a graphics context.\n"
          "--time is screenshot-only (0..60); --frames limits an interactive smoke run.\n"
          "--demo drives the screenshot example in a window; R restarts it.");
@@ -60,6 +62,7 @@ int main(int argc, char **argv)
     bool time_set = false, demo = false;
     bool eriksberg = false;
     bool gpu_enabled = false, gpu_aa = false;
+    bool profiler_visible = false;
     int frame_limit = 0;
     for (int i = 1; i < argc; ++i) {
         if (strcmp(argv[i], "--help") == 0) {
@@ -77,6 +80,8 @@ int main(int argc, char **argv)
             gpu_enabled = true;
         } else if (strcmp(argv[i], "--gpu-aa") == 0) {
             gpu_enabled = gpu_aa = true;
+        } else if (strcmp(argv[i], "--profiler") == 0) {
+            profiler_visible = true;
         } else if (strcmp(argv[i], "--demo") == 0) {
             demo = true;
         } else if (strcmp(argv[i], "--screenshot") == 0 && i + 1 < argc) {
@@ -180,8 +185,23 @@ int main(int argc, char **argv)
     SetTextureFilter(texture, TEXTURE_FILTER_POINT);
     double accumulator = 0;
     int frames = 0, demo_tick = 0;
+    Profiler profiler = { 0 };
+    ProfilerSnapshot snapshot = { 0 };
+    VirtualSize size = { WIDTH, HEIGHT };
+    double frame_started_at = GetTime();
+    double next_snapshot_time = 0;
+    float previous_scene_ms = 0, previous_present_ms = 0;
     result = 0;
     while (!WindowShouldClose() && (!frame_limit || frames < frame_limit)) {
+        double current_frame_started_at = GetTime();
+        if (frames > 0)
+            profiler_add(&profiler, (float)((current_frame_started_at - frame_started_at) * 1000),
+                previous_scene_ms, previous_present_ms);
+        frame_started_at = current_frame_started_at;
+        if (IsKeyPressed(KEY_F3)) {
+            profiler_visible = !profiler_visible;
+            next_snapshot_time = 0;
+        }
         if (IsWindowFocused()) {
             float dt = fminf(GetFrameTime(), 0.1f);
             int zoom = (IsKeyDown(KEY_MINUS) || IsKeyDown(KEY_KP_SUBTRACT))
@@ -214,6 +234,7 @@ int main(int argc, char **argv)
         } else {
             accumulator = 0;
         }
+        double scene_started_at = GetTime();
         if (gpu_enabled) {
             boat_gpu_draw(&gpu, &boat, camera_settings);
         } else if (!boat_draw(&renderer, pixels, WIDTH, HEIGHT, &boat, camera_settings)) {
@@ -222,6 +243,7 @@ int main(int argc, char **argv)
         }
         if (!gpu_enabled)
             UpdateTexture(texture, pixels);
+        previous_scene_ms = (float)((GetTime() - scene_started_at) * 1000);
         int scale_x = GetScreenWidth() / WIDTH;
         int scale_y = (GetScreenHeight() - HUD_HEIGHT) / HEIGHT;
         int scale = scale_x < scale_y ? scale_x : scale_y;
@@ -229,6 +251,15 @@ int main(int argc, char **argv)
             scale = 1;
         Rectangle destination = { (GetScreenWidth() - WIDTH * scale) / 2,
             (GetScreenHeight() - HUD_HEIGHT - HEIGHT * scale) / 2, WIDTH * scale, HEIGHT * scale };
+        if (profiler_visible && current_frame_started_at >= next_snapshot_time) {
+            snapshot = profiler_snapshot(&profiler, (SceneFrame) { .time = boat.time }, boat.time,
+                size, destination, false, (Music) { 0 }, (AudioSpectrum) { 0 });
+            snapshot.scene_label = eriksberg ? "eriksberg" : "basin";
+            snapshot.renderer_label = gpu_enabled ? (gpu_aa ? "GPU 4x SSAA" : "GPU") : "CPU";
+            snapshot.texture_upload_kib = gpu_enabled ? 0 : snapshot.framebuffer_kib;
+            next_snapshot_time = current_frame_started_at + 0.25;
+        }
+        double present_started_at = GetTime();
         BeginDrawing();
         ClearBackground((Color) { 14, 23, 32, 255 });
         DrawTexturePro(texture,
@@ -254,12 +285,16 @@ int main(int argc, char **argv)
         DrawText(TextFormat("View %.1f back / %.1f high | +/-: zoom", camera_settings.distance,
                      camera_settings.height),
             12, hud_y + 153, 12, LIGHTGRAY);
-        DrawText("PgUp/PgDn: height | C: reset view", 12, hud_y + 171, 12, LIGHTGRAY);
+        DrawText(
+            "PgUp/PgDn: height | C: reset view | F3: profiler", 12, hud_y + 171, 12, LIGHTGRAY);
         if (!IsWindowFocused())
             DrawText("PAUSED", 12, 12, 20, RAYWHITE);
         if (eriksberg)
             DrawText("Map: OpenStreetMap contributors (ODbL)", 12, 28, 10, RAYWHITE);
+        if (profiler_visible)
+            profiler_draw(&profiler, &snapshot, size);
         EndDrawing();
+        previous_present_ms = (float)((GetTime() - present_started_at) * 1000);
         ++frames;
     }
 cleanup:
