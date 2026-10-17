@@ -6,6 +6,19 @@
 
 #include "../assets/geometry/eriksberg/geometry.h"
 
+const Mesh3D *waterfront_player_hull_mesh(void)
+{
+    static const Vector3 vertices[] = { { 0, .55f, -1.65f }, { -.75f, .55f, .9f },
+        { .75f, .55f, .9f }, { 0, .05f, -1.65f }, { -.75f, .05f, .9f }, { .75f, .05f, .9f } };
+    static const Triangle3D triangles[]
+        = { { { 0, 1, 2 }, { 246, 217, 155, 255 } }, { { 0, 3, 4 }, { 229, 94, 59, 255 } },
+              { { 0, 4, 1 }, { 229, 94, 59, 255 } }, { { 0, 2, 5 }, { 229, 94, 59, 255 } },
+              { { 0, 5, 3 }, { 229, 94, 59, 255 } }, { { 1, 4, 5 }, { 229, 94, 59, 255 } },
+              { { 1, 5, 2 }, { 229, 94, 59, 255 } }, { { 3, 5, 4 }, { 229, 94, 59, 255 } } };
+    static const Mesh3D mesh = { vertices, triangles, sizeof(triangles) / sizeof(triangles[0]) };
+    return &mesh;
+}
+
 static Vector3 sky_mix(Vector3 a, Vector3 b, float t)
 {
     t = Clamp(t, 0, 1);

@@ -155,10 +155,9 @@ static Mesh builder_finish(MeshBuilder *builder)
     return mesh;
 }
 
-static bool build_gull(Mesh *mesh, int part)
+static bool build_source_mesh(Mesh *mesh, const Mesh3D *source)
 {
     MeshBuilder builder = { 0 };
-    const Mesh3D *source = waterfront_gull_mesh(part);
     for (size_t i = 0; i < source->triangle_count; ++i) {
         const Triangle3D *t = &source->triangles[i];
         if (!builder_triangle(&builder, source->vertices[t->vertices[0]],
@@ -601,8 +600,10 @@ bool waterfront_gpu_scene_init(WaterfrontGpuScene *scene, const char *fragment_s
         || !build_windows(&scene->windows) || !build_crane(&scene->crane))
         goto failed;
     for (int part = 0; part < WATERFRONT_GULL_PARTS; ++part)
-        if (!build_gull(&scene->gull[part], part))
+        if (!build_source_mesh(&scene->gull[part], waterfront_gull_mesh(part)))
             goto failed;
+    if (!build_source_mesh(&scene->player_hull, waterfront_player_hull_mesh()))
+        goto failed;
     if (!build_unit_cube(&scene->bridge) || !build_unit_cube(&scene->cube)
         || !build_unit_plane(&scene->plane))
         goto failed;
@@ -790,7 +791,7 @@ static void select_local_lights(WaterfrontGpuScene *scene, const WaterfrontScene
                     .outer_cone_cos = -1 },
                 LIGHT_LAMP);
         }
-        for (int car = 0; car < WATERFRONT_CAR_COUNT; ++car) {
+        for (int car = 0; !frame->player_active && car < WATERFRONT_CAR_COUNT; ++car) {
             const WaterfrontCarState *state = &frame->cars[car];
             if (state->street != street_index)
                 continue;
@@ -824,9 +825,11 @@ static void select_local_lights(WaterfrontGpuScene *scene, const WaterfrontScene
     }
 }
 
-static void set_lighting_uniforms(WaterfrontGpuScene *scene)
+static void set_lighting_uniforms(WaterfrontGpuScene *scene, const WaterfrontSceneFrame *frame)
 {
-    static const float ambient_color[] = { .07f, .09f, .18f };
+    // A little more dusk fill keeps the playable craft readable under the crane.
+    const float ambient_color[] = { frame->player_active ? .24f : .07f,
+        frame->player_active ? .27f : .09f, frame->player_active ? .36f : .18f };
     static const float directional_color[] = { .32f, .38f, .62f };
     float directional_direction[] = { DIRECTIONAL_LIGHT_DIRECTION.x, DIRECTIONAL_LIGHT_DIRECTION.y,
         DIRECTIONAL_LIGHT_DIRECTION.z };
@@ -940,6 +943,21 @@ static void set_atmosphere_uniforms(WaterfrontGpuScene *scene, Vector3 camera_po
 
 static void set_water_uniforms(WaterfrontGpuScene *scene, const WaterfrontSceneFrame *frame)
 {
+    int shadows = scene->shadows_enabled && frame->player_active;
+    int shadow_location = GetShaderLocation(scene->water_shader, "shadowsEnabled");
+    SetShaderValue(scene->water_shader, shadow_location, &shadows, SHADER_UNIFORM_INT);
+    SetShaderValueMatrix(scene->water_shader,
+        GetShaderLocation(scene->water_shader, "lightViewProjection"),
+        scene->light_view_projection);
+    if (shadows) {
+        int slot = 12;
+        rlEnableShader(scene->water_shader.id);
+        rlActiveTextureSlot(slot);
+        rlEnableTexture(scene->shadow_map.depth.id);
+        rlSetUniform(
+            GetShaderLocation(scene->water_shader, "shadowMap"), &slot, SHADER_UNIFORM_INT, 1);
+        rlActiveTextureSlot(0);
+    }
     float camera[]
         = { frame->camera.position.x, frame->camera.position.y, frame->camera.position.z };
     int reflections_enabled = scene->reflections_enabled;
@@ -979,6 +997,30 @@ static void draw_rectangle(const WaterfrontGpuScene *scene, Material material, V
 static void draw_life(const WaterfrontGpuScene *scene, Material material,
     const WaterfrontSceneFrame *frame, bool emissive)
 {
+    if (frame->player_active) {
+        for (int i = 0; i < frame->lamp_count; ++i) {
+            const WaterfrontLampState *lamp = &frame->lamps[i];
+            draw_colored_mesh(
+                scene->cube, material, lamp->pole, (Color) { 58, 66, 79, 255 }, false);
+            if (emissive)
+                draw_colored_mesh(scene->cube, material,
+                    (Transform3D) { .position = lamp->lens, .scale = { .85f, .38f, .85f } },
+                    LAMP_LENS_COLOR, true);
+        }
+        const WaterfrontPlayerState *p = &frame->player;
+        draw_colored_mesh(scene->player_hull, material, p->hull, WHITE, false);
+        draw_colored_mesh(scene->cube, material, p->cabin, (Color) { 44, 60, 70, 255 }, false);
+        draw_colored_mesh(scene->cube, material, p->engine, (Color) { 91, 100, 111, 255 }, false);
+        for (int i = 0; i < p->particle_count; ++i) {
+            // Surface foam receives shadows/depth but does not cast a solid slab shadow.
+            // Airborne spray participates in both the reflection and shadow passes.
+            if (!emissive && !p->particles[i].spray)
+                continue;
+            draw_colored_mesh(
+                scene->cube, material, p->particles[i].transform, p->particles[i].color, false);
+        }
+        return;
+    }
     for (int street_index = 0; street_index < 2; ++street_index) {
         for (int i = 0; i < frame->lamp_count; ++i) {
             const WaterfrontLampState *lamp = &frame->lamps[i];
@@ -1158,7 +1200,7 @@ static void render_reflection(WaterfrontGpuScene *scene, const WaterfrontSceneFr
 
 static Camera3D shadow_camera(const WaterfrontGpuScene *scene, const WaterfrontSceneFrame *frame)
 {
-    const float coverage = 500.0f;
+    const float coverage = frame->player_active ? 96.0f : 500.0f;
     const float texel_size = coverage / scene->shadow_map_size;
     Vector3 light_direction = Vector3Normalize(DIRECTIONAL_LIGHT_DIRECTION);
     Vector3 right = Vector3Normalize(Vector3CrossProduct((Vector3) { 0, 1, 0 }, light_direction));
@@ -1205,7 +1247,9 @@ static void render_shadow_map(WaterfrontGpuScene *scene, const WaterfrontSceneFr
     BeginTextureMode(scene->shadow_map);
     ClearBackground(WHITE);
     BeginMode3D(camera);
-    rlSetMatrixProjection(MatrixOrtho(-250, 250, -250, 250, .25, 1400));
+    float half_coverage = camera.fovy * .5f;
+    rlSetMatrixProjection(
+        MatrixOrtho(-half_coverage, half_coverage, -half_coverage, half_coverage, .25, 1400));
     Matrix view = rlGetMatrixModelview();
     Matrix projection = rlGetMatrixProjection();
     draw_shadow_casters(scene, scene->shadow_material, frame);
@@ -1238,7 +1282,7 @@ void waterfront_gpu_scene_draw(
     if (scene->shadows_enabled)
         render_shadow_map(scene, frame);
     select_local_lights(scene, frame);
-    set_lighting_uniforms(scene);
+    set_lighting_uniforms(scene, frame);
     if (scene->reflections_enabled) {
         set_atmosphere_uniforms(scene, reflection_camera(frame).position);
         render_reflection(scene, frame);
@@ -1346,6 +1390,8 @@ void waterfront_gpu_scene_destroy(WaterfrontGpuScene *scene)
             UnloadMesh(scene->gull[part]);
     if (scene->cube.vaoId != 0)
         UnloadMesh(scene->cube);
+    if (scene->player_hull.vaoId != 0)
+        UnloadMesh(scene->player_hull);
     if (scene->plane.vaoId != 0)
         UnloadMesh(scene->plane);
     if (scene->city_material.maps != NULL) {

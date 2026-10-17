@@ -72,6 +72,29 @@ Unused screen space is letterboxed.
 
 ## Boating sketch
 
+Explore the bundled Eriksberg waterfront with the same boat and controls:
+
+```sh
+./build/boat_study --location eriksberg
+./build/boat_study --location eriksberg --gpu --gpu-aa
+./build/boat_study --location basin
+./build/boat_study --location eriksberg --screenshot build/eriksberg-boat.png --time 3
+```
+
+`basin` remains the default. Eriksberg spawns in the dock facing the crane and river; R returns
+there. The map, buildings, Dockbron, crane, and dusk sky reuse the existing offline scene.
+Shoreline collisions use a conservative 2.5-unit hull radius and gentle rebounds; the outer map
+boundary also blocks travel. CPU rendering remains the default. For Eriksberg, `--gpu` enables
+depth-tested player hull, steerable engine, wake and spray, with waterfront reflections and shadows.
+The hull, engine and airborne spray cast shadows; surface foam receives them without casting solid
+slab shadows. `--gpu-aa` implies `--gpu` and averages 4×4 samples per pixel, retaining the 320×200
+integer-scaled presentation. GPU screenshots require a desktop graphics context; basin remains
+CPU-only. Scenery is static, with no traffic or collision against overhead structures. Follow-camera
+occlusion near buildings is not resolved. This is the local Eriksberg crop, not all of Gothenburg.
+
+Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), ODbL 1.0.
+See the bundled [source manifest](assets/geometry/eriksberg/manifest.json) for provenance.
+
 Run `./build/boat_study` for the first handling prototype: a small craft in a simple basin,
 viewed by a third-person camera following behind and above the boat. The basin is 240x160 world
 units (four times wider and deeper than the original). The camera follows position immediately,

@@ -1,4 +1,6 @@
 #include "boat.h"
+#include "boat_gpu.h"
+#include "boat_map.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -13,7 +15,9 @@ static void usage(void)
          "+/-: closer/farther | PageUp/PageDown: raise/lower camera | C: reset view\n"
          "--camera-distance UNITS: 8..48 (default 20)\n"
          "--camera-height UNITS: 4..36 (default 14)\n"
-         "Screenshots run a deterministic handling example without a window.\n"
+         "--location basin|eriksberg (default basin)\n"
+         "--gpu: GPU Eriksberg renderer | --gpu-aa: enable GPU with 4x supersampling\n"
+         "CPU screenshots need no window; GPU screenshots require a graphics context.\n"
          "--time is screenshot-only (0..60); --frames limits an interactive smoke run.\n"
          "--demo drives the screenshot example in a window; R restarts it.");
 }
@@ -53,11 +57,25 @@ int main(int argc, char **argv)
     float time = 0;
     BoatCamera camera_settings = BOAT_CAMERA_DEFAULT;
     bool time_set = false, demo = false;
+    bool eriksberg = false;
+    bool gpu_enabled = false, gpu_aa = false;
     int frame_limit = 0;
     for (int i = 1; i < argc; ++i) {
         if (strcmp(argv[i], "--help") == 0) {
             usage();
             return 0;
+        } else if (strcmp(argv[i], "--location") == 0 && i + 1 < argc) {
+            const char *location = argv[++i];
+            if (strcmp(location, "eriksberg") == 0)
+                eriksberg = true;
+            else if (strcmp(location, "basin") == 0)
+                eriksberg = false;
+            else
+                goto invalid;
+        } else if (strcmp(argv[i], "--gpu") == 0) {
+            gpu_enabled = true;
+        } else if (strcmp(argv[i], "--gpu-aa") == 0) {
+            gpu_enabled = gpu_aa = true;
         } else if (strcmp(argv[i], "--demo") == 0) {
             demo = true;
         } else if (strcmp(argv[i], "--screenshot") == 0 && i + 1 < argc) {
@@ -96,6 +114,10 @@ int main(int argc, char **argv)
     }
     if ((time_set && !screenshot) || (screenshot && frame_limit))
         goto invalid;
+    if (gpu_enabled && !eriksberg) {
+        fprintf(stderr, "GPU boating requires --location eriksberg.\n");
+        goto invalid;
+    }
 
     SetTraceLogLevel(LOG_WARNING);
     enum { WIDTH = 320, HEIGHT = 200, HUD_HEIGHT = 200 };
@@ -103,31 +125,56 @@ int main(int argc, char **argv)
     if (!pixels)
         return 1;
     Renderer3D renderer = { 0 };
+    BoatGpu gpu = { 0 };
+    Texture2D texture = { 0 };
+    bool window_ready = false;
     Boat boat;
-    boat_reset(&boat);
+    boat_reset_location(&boat, eriksberg);
     int result = 1;
+    if (eriksberg && !boat_map_water(boat.position, 2.5f)) {
+        fprintf(stderr, "Eriksberg spawn is not navigable.\n");
+        goto cleanup;
+    }
     if (screenshot) {
         for (int tick = 0; tick < (int)roundf(time / BOAT_STEP); ++tick)
             demo_step(&boat, tick);
     }
-    if (!boat_draw(&renderer, pixels, WIDTH, HEIGHT, &boat, camera_settings))
+    if (!gpu_enabled && !boat_draw(&renderer, pixels, WIDTH, HEIGHT, &boat, camera_settings))
         goto cleanup;
     Image image = { pixels, WIDTH, HEIGHT, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 };
-    if (screenshot) {
+    if (screenshot && !gpu_enabled) {
         result = ExportImage(image, screenshot) ? 0 : 1;
         goto cleanup;
     }
 
-    SetConfigFlags(FLAG_WINDOW_RESIZABLE);
+    SetConfigFlags(screenshot ? FLAG_WINDOW_HIDDEN : FLAG_WINDOW_RESIZABLE);
     InitWindow(WIDTH * 3, HEIGHT * 3 + HUD_HEIGHT, "Proteus / boating sketch");
     if (!IsWindowReady())
         goto cleanup;
+    window_ready = true;
     SetWindowMinSize(WIDTH, HEIGHT + HUD_HEIGHT);
     SetTargetFPS(60);
-    Texture2D texture = LoadTextureFromImage(image);
-    if (!IsTextureValid(texture)) {
-        CloseWindow();
-        goto cleanup;
+    if (gpu_enabled) {
+        if (!boat_gpu_init(&gpu, gpu_aa)) {
+            fprintf(stderr, "Could not initialize GPU boating resources.\n");
+            goto cleanup;
+        }
+        texture = gpu.target.texture;
+        if (screenshot) {
+            boat_gpu_draw(&gpu, &boat, camera_settings);
+            Image capture = LoadImageFromTexture(texture);
+            // CPU camera basis is horizontally mirrored relative to native OpenGL.
+            // Normalize X here (and in presentation) to preserve steering and map alignment.
+            ImageFlipVertical(&capture);
+            ImageFlipHorizontal(&capture);
+            result = ExportImage(capture, screenshot) ? 0 : 1;
+            UnloadImage(capture);
+            goto cleanup;
+        }
+    } else {
+        texture = LoadTextureFromImage(image);
+        if (!IsTextureValid(texture))
+            goto cleanup;
     }
     SetTextureFilter(texture, TEXTURE_FILTER_POINT);
     double accumulator = 0;
@@ -147,7 +194,7 @@ int main(int argc, char **argv)
                 camera_settings = BOAT_CAMERA_DEFAULT;
         }
         if (IsKeyPressed(KEY_R)) {
-            boat_reset(&boat);
+            boat_reset_location(&boat, eriksberg);
             accumulator = 0;
             demo_tick = 0;
         } else if (IsWindowFocused()) {
@@ -166,11 +213,14 @@ int main(int argc, char **argv)
         } else {
             accumulator = 0;
         }
-        if (!boat_draw(&renderer, pixels, WIDTH, HEIGHT, &boat, camera_settings)) {
+        if (gpu_enabled) {
+            boat_gpu_draw(&gpu, &boat, camera_settings);
+        } else if (!boat_draw(&renderer, pixels, WIDTH, HEIGHT, &boat, camera_settings)) {
             result = 1;
             break;
         }
-        UpdateTexture(texture, pixels);
+        if (!gpu_enabled)
+            UpdateTexture(texture, pixels);
         int scale_x = GetScreenWidth() / WIDTH;
         int scale_y = (GetScreenHeight() - HUD_HEIGHT) / HEIGHT;
         int scale = scale_x < scale_y ? scale_x : scale_y;
@@ -180,10 +230,11 @@ int main(int argc, char **argv)
             (GetScreenHeight() - HUD_HEIGHT - HEIGHT * scale) / 2, WIDTH * scale, HEIGHT * scale };
         BeginDrawing();
         ClearBackground((Color) { 14, 23, 32, 255 });
-        DrawTexturePro(
-            texture, (Rectangle) { 0, 0, WIDTH, HEIGHT }, destination, (Vector2) { 0 }, 0, WHITE);
+        DrawTexturePro(texture,
+            (Rectangle) { 0, 0, gpu_enabled ? -WIDTH : WIDTH, gpu_enabled ? -HEIGHT : HEIGHT },
+            destination, (Vector2) { 0 }, 0, WHITE);
         int hud_y = GetScreenHeight() - HUD_HEIGHT + 10;
-        DrawText("BOATING SKETCH", 12, hud_y, 20, RAYWHITE);
+        DrawText(eriksberg ? "ERIKSBERG" : "BOATING SKETCH", 12, hud_y, 20, RAYWHITE);
         DrawText(TextFormat("Speed %.1f", hypotf(boat.velocity.x, boat.velocity.y)), 210, hud_y + 3,
             16, (Color) { 232, 180, 102, 255 });
         DrawText(TextFormat("Throttle %3.0f%%", boat.throttle * 100), 12, hud_y + 27, 16, RAYWHITE);
@@ -202,12 +253,20 @@ int main(int argc, char **argv)
         DrawText("PgUp/PgDn: height | C: reset view", 12, hud_y + 171, 12, LIGHTGRAY);
         if (!IsWindowFocused())
             DrawText("PAUSED", 12, 12, 20, RAYWHITE);
+        if (eriksberg)
+            DrawText("Map: OpenStreetMap contributors (ODbL)", 12, 28, 10, RAYWHITE);
         EndDrawing();
         ++frames;
     }
-    UnloadTexture(texture);
-    CloseWindow();
 cleanup:
+    if (window_ready) {
+        if (gpu_enabled)
+            boat_gpu_destroy(&gpu);
+        else if (texture.id)
+            UnloadTexture(texture);
+        CloseWindow();
+    }
+    boat_map_destroy();
     renderer3d_destroy(&renderer);
     free(pixels);
     return result;

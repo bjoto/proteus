@@ -1,10 +1,23 @@
 # Gothenburg boating playground
 
-Status: working design, saved 2026-10-11. Stage 1 and the wake/spray portion of stage 2 are implemented
+Status: working design, updated 2026-10-17. Stage 1 and the wake/spray portion of stage 2 are implemented
 as `boat_study`; other features remain proposals. Revise this plan as we discover what is enjoyable
 to play.
 
 ## Current prototype
+
+`--location eriksberg` selects the bundled geographic waterfront; `--location basin` selects the
+physics test area (the default). The Eriksberg spawn is in the dock basin facing the crane and river.
+Buildings, shore, bridge, crane and sky reuse the bundled offline scene. The held controls, follow
+camera, wake, and spray work in either location; R returns to the selected location's spawn.
+Water-triangle boundary edges provide a conservative 2.5-unit hull clearance and map-crop boundary.
+Impacts rebound gently. Eriksberg supports `--gpu --gpu-aa`: the player hull, engine and airborne
+spray participate in depth, reflection and shadow passes; surface foam is depth-tested and receives
+shadows without casting solid shadows. Optional AA uses 4×4 supersampling before integer scaling.
+CPU remains the default and the basin renderer; GPU captures need a desktop graphics context.
+This first integration has static scenery, no overhead
+structure collisions, and no camera occlusion handling near buildings. It does not include the
+rest of Gothenburg or the archipelago. Source attribution is retained in the HUD and README.
 
 Run `./build/boat_study`. Left/right or A/D adjust a persistent wheel setting, clamped from full
 left to full right. Centre to either limit takes one second. Releasing keys holds the wheel;
@@ -12,8 +25,9 @@ opposite input brings it back through centre. A rotating wheel and left/right pe
 the setting. Up/W raises the throttle, down/S lowers it; releasing the keys holds the setting.
 The throttle range is 0% (idle) to 100%, with two seconds of held
 input covering the full range. A percentage and bar show the setting independently of speed.
-Lower to idle to coast; reverse is not implemented. R resets the boat, centres the wheel, and idles
-the throttle; Esc exits.
+Lower to idle to coast. Reverse control and its player-facing feedback are planned next; the
+simulation already has a bounded reverse command and a short engine spool. R resets the boat,
+centres the wheel, and idles the throttle; Esc exits.
 The silent handling sketch has a third-person follow camera, stern-applied engine thrust, rotational
 inertia, water resistance at two hull stations, and forgiving basin-wall collisions. Steering
 angles the outboard; its lateral thrust pushes the stern and creates torque. The outboard holds
@@ -33,15 +47,16 @@ references but do not collide. Rendering is 320x200 with nearest-neighbour integ
 focus pauses movement.
 
 The simulation uses fixed 120 Hz ticks. Handling constants live in `src/boat.c`. Screenshot mode
-runs a deterministic example without a graphics context; see the README for commands.
+runs a deterministic example without a graphics context when using CPU rendering; GPU captures
+require a desktop graphics context. See the README for commands.
 The 240x160-world-unit basin is a handling test area, not yet a representation of Gothenburg.
 It is four times wider and deeper than the original basin. The camera follows the boat from
 20 units behind and 14 units above, looking 5 units ahead. Its heading eases through turns on fixed
 simulation ticks, including angle wraparound. `-`/`+` adjust distance (8..48), PageUp/PageDown adjust
 height (4..36), and `C` restores the default view. The HUD shows both values; `R` resets the boat
 without changing them. Settings are per-run; `--camera-distance` and `--camera-height` also configure
-interactive runs and screenshots. Geographical scenery,
-collision splashes, and timed courses belong to later stages. Player evaluation of handling is the
+interactive runs and screenshots. Eriksberg geographical scenery is implemented;
+collision splashes and timed courses belong to later stages. Player evaluation of handling is the
 next design input: especially steering responsiveness, the amount of slide, and coasting into a turn.
 
 ## Direction
@@ -136,6 +151,11 @@ demo and its soundtrack timeline while this direction is experimental.
 
 ## Later water-physics experiments
 
+The accepted next-step roadmap is [Boat physics implementation plan](BOAT_PHYSICS_PLAN.md).
+It breaks the ambitions below into independently testable tasks suitable for one coding-agent
+session each. Follow that sequence before pursuing the optional timed game; do not implement the
+whole roadmap at once.
+
 Explore these individually after the wake and spray make the existing handling easy to read.
 Keep calm water as a baseline for comparisons. These are proposed gameplay models to try, not a
 commitment to a comprehensive boat simulation or claims of physically accurate behaviour.
@@ -158,7 +178,8 @@ The first complete game can be one arena, one craft, one course, one music track
 one score mode. The archipelago is the direction for expansion, not a requirement to build a vast map.
 
 Defer upgrades, unlocks, economy, building systems, missions, multiplayer, procedural terrain,
-a level editor, complex boat physics, and persistent saves. Jumps and boost also wait until ordinary
+a level editor, full fluid simulation, and persistent saves. Incremental boat physics follows the
+separate physics plan rather than being a prerequisite for a complete game. Jumps and boost wait until ordinary
 turning is satisfying, since they would materially change course design.
 
 ## Questions to revisit through play
@@ -172,6 +193,10 @@ turning is satisfying, since they would materially change course design.
 
 ## Decision record
 
+- 2026-10-17: Prioritize learnable, predictable handling over exhaustive simulation. Adopt the
+  [step-by-step physics roadmap](BOAT_PHYSICS_PLAN.md): reverse and docking, planing, buoyancy and
+  gentle waves, currents and crossing wakes, then optional trim. Keep calm water, forgiving recovery,
+  and stable camera behaviour. Break implementation into bounded tasks with tests and play gates.
 - 2026-10-11: Adopt a small playable boating toy as the proposed successor direction for the demo,
   with handling first and an optional short arcade challenge.
 - 2026-10-11: Make boating around Gothenburg and its surrounding archipelago a central aspiration.

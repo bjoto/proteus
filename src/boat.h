@@ -2,6 +2,7 @@
 #define PROTEUS_BOAT_H
 
 #include "renderer3d.h"
+#include "waterfront_scene.h"
 
 #define BOAT_STEP (1.0f / 120.0f)
 #define BOAT_BASIN_HALF_X 120.0f
@@ -25,9 +26,14 @@ typedef struct {
 
 typedef struct {
     Vector2 position; // Water-plane X/Z coordinates.
+    bool eriksberg;
+    float time;
     Vector2 velocity;
     float heading; // Zero faces north (-Z); positive turns right.
-    float throttle; // Held engine setting, 0 (idle) to 1 (full power).
+    float throttle; // Forward command, 0 (idle) to 1 (full power).
+    float reverse; // Reverse command, 0 (idle) to 1 (full power).
+    // Actual signed propulsion after deterministic engine response, -1..1.
+    float engine_response;
     float wheel; // Held steering setting, -1 (full port) to 1 (full starboard).
     float engine_angle; // Radians of thrust deflection; positive pushes stern to port.
     float yaw_velocity; // Heading change in radians/second, integrated from stern torque.
@@ -38,6 +44,8 @@ typedef struct {
 } Boat;
 
 void boat_reset(Boat *boat);
+void boat_reset_location(Boat *boat, bool eriksberg);
+void boat_scene_frame(const Boat *boat, BoatCamera camera, WaterfrontSceneFrame *frame);
 // Advance one fixed tick. Inputs are adjustment rates in -1..1; zero holds each setting.
 void boat_step(Boat *boat, float wheel_change, float throttle_change);
 bool boat_draw(Renderer3D *renderer, Color *pixels, int width, int height, const Boat *boat,

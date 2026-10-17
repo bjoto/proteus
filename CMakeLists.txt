@@ -91,8 +91,12 @@ target_compile_options(validate_audio_spectrum PRIVATE
 
 enable_testing()
 add_executable(boat_study tools/boat_study.c src/boat.c src/renderer3d.c)
+target_sources(boat_study PRIVATE src/boat_gpu.c src/renderer_gpu.c)
+target_compile_definitions(boat_study PRIVATE PROTEUS_ASSET_DIR="$<TARGET_FILE_DIR:boat_study>/assets")
+add_dependencies(boat_study proteus_assets)
 add_executable(validate_boat tools/validate_boat.c src/boat.c src/renderer3d.c)
 foreach(target boat_study validate_boat)
+  target_sources(${target} PRIVATE src/boat_map.c src/waterfront.c src/waterfront_scene.c src/waterfront_corner.c)
   target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
   target_link_libraries(${target} PRIVATE raylib)
   target_compile_options(${target} PRIVATE
@@ -102,6 +106,8 @@ endforeach()
 add_test(NAME boat_handling COMMAND validate_boat)
 add_test(NAME boat_screenshot COMMAND boat_study --time 3
   --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-screenshot.png)
+add_test(NAME boat_eriksberg_screenshot COMMAND boat_study --location eriksberg --time 3
+  --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-eriksberg.png)
 
 add_executable(dance_study tools/dance_study.c src/dance.c src/choreography.c src/renderer3d.c src/xm_audio.c)
 target_include_directories(dance_study PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -221,6 +227,12 @@ set_tests_properties(cube_start_screenshot PROPERTIES
 )
 
 if(PROTEUS_GPU_TESTS)
+  add_test(NAME boat_gpu_screenshot COMMAND boat_study --location eriksberg --gpu --time 3
+    --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-gpu.png)
+  add_test(NAME boat_gpu_aa_screenshot COMMAND boat_study --location eriksberg --gpu --gpu-aa --time 3
+    --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-gpu-aa.png)
+  set_tests_properties(boat_gpu_screenshot boat_gpu_aa_screenshot
+    PROPERTIES LABELS "gpu" RUN_SERIAL TRUE)
   find_package(Python3 REQUIRED COMPONENTS Interpreter)
   set(PROTEUS_GPU_REVIEW_DIR "${CMAKE_CURRENT_BINARY_DIR}/gpu-review")
   set(PROTEUS_GPU_REVIEW_COMMAND

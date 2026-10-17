@@ -223,6 +223,20 @@ bool waterfront_draw_frame(
     return true;
 }
 
+bool waterfront_draw_boating(Renderer3D *r, Color *pixels, int width, int height, View3D camera)
+{
+    waterfront_sky_draw(pixels, width, height, camera);
+    if (!renderer3d_begin(r, pixels, width, height, camera, (Vector3) { -0.4f, 0.85f, -0.35f }))
+        return false;
+    renderer3d_draw_mesh(r, waterfront_scene_city_mesh(), (Transform3D) { .scale = { 1, 1, 1 } });
+    WaterfrontSceneFrame frame;
+    waterfront_scene_evaluate(0, true, &frame);
+    renderer3d_draw_box(r, frame.bridge, frame.bridge_color);
+    windows(r);
+    crane(r);
+    return true;
+}
+
 static float segment_distance_squared(Vector3 p, Vector3 a, Vector3 b)
 {
     Vector3 ab = Vector3Subtract(b, a);

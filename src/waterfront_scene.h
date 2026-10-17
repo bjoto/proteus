@@ -11,6 +11,19 @@
 #define WATERFRONT_CAR_COUNT 20
 #define WATERFRONT_MAX_LAMPS 32
 #define WATERFRONT_WAKE_COUNT 8
+#define WATERFRONT_PLAYER_PARTICLES 384
+
+typedef struct {
+    Transform3D transform;
+    Color color;
+    bool spray;
+} WaterfrontPlayerParticle;
+
+typedef struct {
+    Transform3D hull, cabin, engine;
+    int particle_count;
+    WaterfrontPlayerParticle particles[WATERFRONT_PLAYER_PARTICLES];
+} WaterfrontPlayerState;
 
 typedef struct {
     int id; // Stable first-headlight ID; the second headlight is id + 1.
@@ -44,6 +57,8 @@ typedef struct {
 // Evaluate once and share it across colour, reflection, shadow, and lighting passes.
 typedef struct {
     View3D camera;
+    bool player_active;
+    WaterfrontPlayerState player;
     float time;
     Transform3D bridge;
     Color bridge_color;
@@ -63,6 +78,7 @@ typedef struct {
 // Four-minute soundtrack route. Deterministic flock and chase camera; holds at the ending.
 void waterfront_demo_evaluate(float time, WaterfrontSceneFrame *frame);
 const Mesh3D *waterfront_gull_mesh(int part);
+const Mesh3D *waterfront_player_hull_mesh(void);
 
 float waterfront_scene_duration(bool short_route);
 void waterfront_scene_evaluate(float time, bool short_route, WaterfrontSceneFrame *frame);

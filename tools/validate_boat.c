@@ -1,7 +1,9 @@
 #include "boat.h"
+#include "boat_map.h"
 
 #include <math.h>
 #include <stdio.h>
+#include <string.h>
 
 #define CHECK(condition)                                                                           \
     do {                                                                                           \
@@ -75,9 +77,112 @@ static int validate_coasting(void)
     return 0;
 }
 
+static int validate_signed_propulsion(void)
+{
+    Boat forward, reverse, forward_turn, reverse_turn;
+    boat_reset(&forward);
+    boat_reset(&reverse);
+    forward.throttle = 1;
+    reverse.reverse = 1;
+    for (int i = 0; i < 240; ++i) {
+        boat_step(&forward, 0, 0);
+        boat_step(&reverse, 0, 0);
+    }
+    CHECK(forward.engine_response > .99f && reverse.engine_response < -.99f);
+    CHECK(forward.velocity.y < -1 && reverse.velocity.y > 1);
+
+    boat_reset(&forward_turn);
+    boat_reset(&reverse_turn);
+    forward_turn.throttle = 1;
+    reverse_turn.reverse = 1;
+    forward_turn.wheel = reverse_turn.wheel = .6f;
+    for (int i = 0; i < 240; ++i) {
+        boat_step(&forward_turn, 0, 0);
+        boat_step(&reverse_turn, 0, 0);
+    }
+    CHECK(forward_turn.yaw_velocity > 0 && reverse_turn.yaw_velocity < 0);
+
+    Boat saturated = { .throttle = 4, .reverse = 4 };
+    boat_step(&saturated, 0, 0);
+    CHECK(saturated.throttle == 1 && saturated.reverse == 1 && saturated.engine_response == 0);
+    saturated.reverse = -1;
+    boat_step(&saturated, 0, 0);
+    CHECK(saturated.reverse == 0 && saturated.engine_response > 0);
+
+    Boat deterministic_a = { .throttle = .8f, .reverse = .15f };
+    Boat deterministic_b = deterministic_a;
+    for (int i = 0; i < 720; ++i) {
+        boat_step(&deterministic_a, 0, 0);
+        boat_step(&deterministic_b, 0, 0);
+    }
+    CHECK(memcmp(&deterministic_a, &deterministic_b, sizeof(Boat)) == 0);
+
+    Boat sustained = { .reverse = 1 };
+    for (int i = 0; i < 120 * 120; ++i) {
+        boat_step(&sustained, 0, 0);
+        CHECK(isfinite(sustained.engine_response));
+        CHECK(isfinite(sustained.velocity.x) && isfinite(sustained.velocity.y));
+        CHECK(sustained.engine_response >= -1 && sustained.engine_response <= 1);
+        CHECK(hypotf(sustained.velocity.x, sustained.velocity.y) < 21);
+    }
+    return 0;
+}
+
 int main(void)
 {
+    // The GPU consumes the same held engine angle and mirrored world coordinates as CPU.
+    Boat player = { .position = { 4, 9 }, .heading = .7f, .engine_angle = .2f, .time = 3 };
+    player.water[0]
+        = (BoatWaterParticle) { .position = { 2, 8 }, .height = .1f, .lifetime = 2, .size = .4f };
+    player.water[1] = (BoatWaterParticle) {
+        .position = { 3, 8 }, .height = 1, .lifetime = 1, .size = .2f, .spray = true
+    };
+    WaterfrontSceneFrame frame;
+    boat_scene_frame(&player, BOAT_CAMERA_DEFAULT, &frame);
+    CHECK(frame.player_active && frame.time == 3);
+    CHECK(frame.player.hull.position.x == -4 && frame.player.hull.position.z == 9);
+    CHECK(fabsf(frame.player.engine.rotation.y - .5f) < .0001f);
+    CHECK(frame.player.particle_count == 2);
+    CHECK(!frame.player.particles[0].spray && frame.player.particles[1].spray);
+    CHECK(frame.player.particles[0].transform.position.x == -2);
+    CHECK(frame.player.particles[1].transform.position.y == 1);
+    boat_reset(&player);
+    boat_scene_frame(&player, BOAT_CAMERA_DEFAULT, &frame);
+    CHECK(frame.time == 0 && frame.player.particle_count == 0);
+    waterfront_scene_evaluate(0, true, &frame);
+    CHECK(!frame.player_active);
+    Boat mapped;
+    boat_reset_location(&mapped, true);
+    CHECK(mapped.eriksberg && boat_map_water(mapped.position, 2.5f));
+    CHECK(!boat_map_water((Vector2) { 10000, 0 }, 0));
+    CHECK(!boat_map_water((Vector2) { -100, 60 }, 0));
+    // Drive into both dock quays. Hull clearance must remain in water and impacts rebound.
+    for (int side = -1; side <= 1; side += 2) {
+        boat_reset_location(&mapped, true);
+        mapped.heading = mapped.camera_heading = side * 1.5707963f;
+        mapped.throttle = 1;
+        bool bumped = false;
+        for (int tick = 0; tick < 1200; ++tick) {
+            boat_step(&mapped, 0, 0);
+            CHECK(boat_map_water(mapped.position, 2.5f));
+            if (mapped.velocity.x * side < -0.01f)
+                bumped = true;
+        }
+        CHECK(bumped);
+    }
+    // The channel remains navigable through the crane towards the river.
+    boat_reset_location(&mapped, true);
+    mapped.throttle = 1;
+    for (int tick = 0; tick < 1200; ++tick) {
+        boat_step(&mapped, 0, 0);
+        CHECK(boat_map_water(mapped.position, 2.5f));
+    }
+    CHECK(mapped.position.y < -50);
+    boat_reset_location(&mapped, false);
+    CHECK(!mapped.eriksberg && mapped.position.y == 10);
+    boat_map_destroy();
     CHECK(validate_coasting() == 0);
+    CHECK(validate_signed_propulsion() == 0);
     Boat boat;
     boat_reset(&boat);
     // Follow the short arc across the +/-pi boundary, without a full camera orbit.
@@ -124,9 +229,15 @@ int main(void)
         boat_step(&boat, 1, 0);
     CHECK(particles(&boat, false) > 0);
     CHECK(boat.water[0].velocity.x > 0 && boat.water[0].velocity.y > 0);
-    // Cutting power leaves angular momentum and passive steering; energy must still decay.
-    float energy = kinetic_energy(&boat);
+    // Cutting the command lets the small engine-response state spool down first.
+    float response = boat.engine_response;
     boat.throttle = 0;
+    boat_step(&boat, 0, 0);
+    CHECK(boat.engine_response > 0 && boat.engine_response < response);
+    while (boat.engine_response > 0)
+        boat_step(&boat, 0, 0);
+    // Once neutral, angular momentum and passive steering remain while energy decays.
+    float energy = kinetic_energy(&boat);
     boat_step(&boat, 0, 0);
     CHECK(boat.yaw_velocity > 0 && kinetic_energy(&boat) < energy);
     for (int i = 0; i < 2400; ++i)
@@ -156,8 +267,10 @@ int main(void)
     CHECK(fabsf(boat.position.x) < 0.001f);
     CHECK(particles(&boat, false) > 0);
     CHECK(particles(&boat, true) == 0);
-    float speed = hypotf(boat.velocity.x, boat.velocity.y);
     boat.throttle = 0;
+    while (boat.engine_response > 0)
+        boat_step(&boat, 0, 0);
+    float speed = hypotf(boat.velocity.x, boat.velocity.y);
     for (int i = 0; i < 120; ++i)
         boat_step(&boat, 0, 0);
     CHECK(hypotf(boat.velocity.x, boat.velocity.y) < speed * 0.7f);
@@ -205,6 +318,7 @@ int main(void)
     CHECK(boat.position.x == 0 && boat.position.y == 10);
     CHECK(boat.heading == 0 && boat.velocity.x == 0 && boat.velocity.y == 0);
     CHECK(boat.wheel == 0 && boat.engine_angle == 0 && boat.yaw_velocity == 0);
+    CHECK(boat.throttle == 0 && boat.reverse == 0 && boat.engine_response == 0);
     CHECK(particles(&boat, false) == 0 && particles(&boat, true) == 0);
     puts("boat_handling=ok");
     return 0;
