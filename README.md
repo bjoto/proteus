@@ -132,7 +132,10 @@ While coasting, water flowing across the angled outboard creates a passive steer
 It fades as the boat slows; no flow means no coasting steering. Forward drag includes a quadratic
 term, while hull grip grows with forward speed and local sideways slip. Try building speed,
 lowering the throttle to 0%, and holding a modest wheel angle through the coast. These are tunable
-approximations for calm water, without planing or waves.
+approximations for calm water. Above a forward speed threshold, a rate-limited planing blend
+gradually reduces hull resistance; it disengages at a lower speed so it cannot chatter around the
+transition. Reverse never planes, and planing currently changes only horizontal handling—bow rise,
+settling, and waves remain later work.
 
 The basin walls bounce the craft back gently; the two orange markers are visual turning references
 and have no collision yet. A spreading wake traces your path and fades; hard turns throw spray

@@ -13,6 +13,13 @@ static const float ENGINE_RESPONSE_RATE = 3.5f;
 static const float YAW_INERTIA = 2.2f;
 static const float HULL_DRAG_LINEAR = 0.22f;
 static const float HULL_DRAG_QUADRATIC = 0.025f;
+// Planing is a deliberately simple horizontal handling approximation.  The separate thresholds
+// prevent a noisy speed trace from repeatedly changing modes; the state itself is rate-limited.
+static const float PLANING_ENTER_SPEED = 6.5f;
+static const float PLANING_EXIT_SPEED = 5.0f;
+static const float PLANING_RISE_RATE = 0.85f;
+static const float PLANING_FALL_RATE = 3.0f;
+static const float PLANING_DRAG_MULTIPLIER = 0.62f;
 static const float SKEG_RESISTANCE = 0.10f;
 // Contact samples form an intentionally simple, forgiving hull footprint.
 static const float HULL_BOW = 2.0f;
@@ -210,10 +217,21 @@ void boat_step(Boat *boat, float wheel_change, float throttle_change)
     Vector2 right = { cosf(boat->heading), sinf(boat->heading) };
     float along = Vector2DotProduct(boat->velocity, forward);
     float sideways = Vector2DotProduct(boat->velocity, right);
+    // Only forward water-relative motion can establish plane.  The presentation and physical
+    // vertical lift are deliberately deferred to B2/C2, respectively.
+    float planing_target = 0;
+    if (along > (boat->planing > 0 ? PLANING_EXIT_SPEED : PLANING_ENTER_SPEED))
+        planing_target = 1;
+    float planing_rate = planing_target > boat->planing ? PLANING_RISE_RATE : PLANING_FALL_RATE;
+    boat->planing = Clamp(boat->planing
+            + Clamp(planing_target - boat->planing, -planing_rate * BOAT_STEP,
+                planing_rate * BOAT_STEP),
+        0, 1);
     Vector2 force = Vector2Scale(thrust_direction(boat), ENGINE_THRUST * boat->engine_response);
     // Torque = lever arm x force: a portward stern force produces starboard yaw.
     float torque = -ENGINE_ARM * Vector2DotProduct(force, right);
-    float drag = (HULL_DRAG_LINEAR + HULL_DRAG_QUADRATIC * fabsf(along)) * along;
+    float drag_multiplier = Lerp(1, PLANING_DRAG_MULTIPLIER, boat->planing);
+    float drag = drag_multiplier * (HULL_DRAG_LINEAR + HULL_DRAG_QUADRATIC * fabsf(along)) * along;
     force = Vector2Subtract(force, Vector2Scale(forward, drag));
     // Two hull stations resist their own lateral water velocity, including rotation.
     // This produces both lateral grip and yaw damping rather than prescribing a turn rate.

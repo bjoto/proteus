@@ -149,6 +149,49 @@ static int validate_signed_throttle(void)
     return 0;
 }
 
+static int validate_planing(void)
+{
+    Boat boat;
+    boat_reset(&boat);
+    boat.velocity.y = -7;
+    boat.throttle = 1;
+    boat.engine_response = 1;
+    float previous_speed = 7;
+    float previous_acceleration = 0;
+    for (int i = 0; i < 300; ++i) {
+        boat_step(&boat, 0, 0);
+        float speed = hypotf(boat.velocity.x, boat.velocity.y);
+        float acceleration = speed - previous_speed;
+        // The rate-limited blend cannot produce a gear-shift-like velocity jump.
+        if (i > 0)
+            CHECK(fabsf(acceleration - previous_acceleration) < .003f);
+        CHECK(boat.planing >= 0 && boat.planing <= 1);
+        previous_speed = speed;
+        previous_acceleration = acceleration;
+    }
+    CHECK(boat.planing > .9f);
+
+    // With the engine at neutral, planing drains away and cannot create kinetic energy.
+    boat.throttle = 0;
+    while (boat.engine_response > 0)
+        boat_step(&boat, 0, 0);
+    for (int i = 0; i < 1200; ++i) {
+        float energy = kinetic_energy(&boat);
+        boat_step(&boat, 0, 0);
+        CHECK(kinetic_energy(&boat) <= energy + .00001f);
+    }
+    CHECK(boat.planing < .01f);
+
+    boat_reset(&boat);
+    boat.velocity.y = 9;
+    boat.throttle = -1;
+    for (int i = 0; i < 480; ++i) {
+        boat_step(&boat, 0, 0);
+        CHECK(boat.planing == 0);
+    }
+    return 0;
+}
+
 static int validate_hull_contacts(void)
 {
     // A starboard-bow glancing impact should rebound, scrub speed, and turn the hull away.
@@ -239,6 +282,7 @@ int main(void)
     CHECK(validate_coasting() == 0);
     CHECK(validate_signed_propulsion() == 0);
     CHECK(validate_signed_throttle() == 0);
+    CHECK(validate_planing() == 0);
     CHECK(validate_hull_contacts() == 0);
     Boat boat;
     boat_reset(&boat);
@@ -330,7 +374,8 @@ int main(void)
     float speed = hypotf(boat.velocity.x, boat.velocity.y);
     for (int i = 0; i < 120; ++i)
         boat_step(&boat, 0, 0);
-    CHECK(hypotf(boat.velocity.x, boat.velocity.y) < speed * 0.7f);
+    // A boat still on plane coasts farther than the displacement-only model, but slows.
+    CHECK(hypotf(boat.velocity.x, boat.velocity.y) < speed * 0.85f);
     CHECK(hypotf(boat.velocity.x, boat.velocity.y) > speed * 0.4f);
 
     Boat left, right;
@@ -376,13 +421,14 @@ int main(void)
         CHECK(isfinite(boat.camera_heading));
         CHECK(fabsf(boat.position.x) < BOAT_BASIN_HALF_X);
         CHECK(fabsf(boat.position.y) < BOAT_BASIN_HALF_Z);
-        CHECK(hypotf(boat.velocity.x, boat.velocity.y) < 21);
+        CHECK(hypotf(boat.velocity.x, boat.velocity.y) < 23);
     }
     boat_reset(&boat);
     CHECK(boat.position.x == 0 && boat.position.y == 10);
     CHECK(boat.heading == 0 && boat.velocity.x == 0 && boat.velocity.y == 0);
     CHECK(boat.wheel == 0 && boat.engine_angle == 0 && boat.yaw_velocity == 0);
     CHECK(boat.throttle == 0 && boat.engine_response == 0);
+    CHECK(boat.planing == 0);
     CHECK(particles(&boat, false) == 0 && particles(&boat, true) == 0);
     puts("boat_handling=ok");
     return 0;

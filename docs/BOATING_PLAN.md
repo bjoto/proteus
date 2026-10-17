@@ -40,8 +40,10 @@ mass and tunable forces, not calibrated hydrodynamics. Forward drag combines lin
 terms. Lateral resistance at each hull station increases with forward speed and local sideways
 velocity, including rotation. A passive force across the angled submerged outboard uses the local
 stern velocity and acts at the stern, producing both drag and turning torque. It works at idle
-while moving and fades to zero with water-relative motion. Calm water remains the baseline;
-planing, currents, and waves are not implemented.
+while moving and fades to zero with water-relative motion. Calm water remains the baseline. A
+rate-limited, hysteretic planing blend reduces forward hull resistance above cruising speed and
+returns smoothly to displacement handling while slowing; it has no vertical lift or visual attitude
+yet. Currents and waves are not implemented.
 A spreading, fading wake traces the travelled path; lateral
 slip throws turning spray from the sliding side of the hull. Two orange markers provide turning
 references but do not collide. Rendering is 320x200 with nearest-neighbour integer scaling. Losing

@@ -100,7 +100,7 @@ controls. Use the basin walls for repeatable practice. Tune before continuing.
 
 ## Phase B — Planing
 
-- [ ] **B1: Smooth handling transition.** Introduce a bounded planing state driven by forward
+- [x] **B1: Smooth handling transition.** Introduce a bounded planing state driven by forward
   water-relative speed, with smooth response and separate enter/exit behaviour if needed to avoid
   chatter. Blend deliberately tuned resistance/lift-response parameters; this is an approximation,
   not a claim of calibrated hydrodynamics. No waves or full vertical dynamics yet. Acceptance:
@@ -191,5 +191,11 @@ These motivate models, not exact coefficients or a requirement to adopt another 
   walls. `validate_boat` covers a glancing rebound and all eight cardinal/intercardinal headings;
   Eriksberg runs retain shoreline and map-crop containment. Contacts remain a deliberately simple
   footprint, without quay geometry above the waterline or damage.
+- 2026-10-17: B1 complete. Added a bounded, rate-limited `planing` blend in `src/boat.[ch]`, driven
+  only by forward speed. Separate 6.5/5.0 unit-per-second enter/exit thresholds prevent chatter;
+  the blend reduces the existing longitudinal resistance to 62% at full plane. This remains a
+  horizontal handling approximation: no visual attitude or vertical lift has been added. The
+  deterministic boat validator covers smooth entry, neutral energy decay, planing decay, and the
+  reverse exclusion; README and boating notes describe the limitation.
 - 2026-10-17: Plan saved. Control recommendations and coefficients remain proposals until their
   respective implementation step. Each play gate needs user feedback before starting the next phase.
