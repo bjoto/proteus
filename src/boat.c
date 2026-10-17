@@ -10,6 +10,8 @@ static const float ENGINE_ARM = 1.6f;
 static const float MAX_ENGINE_ANGLE = 0.55f;
 static const float ENGINE_THRUST = 11.0f;
 static const float ENGINE_RESPONSE_RATE = 3.5f;
+// Overdamped spring return when steering is released; larger values centre faster (1/seconds).
+static const float WHEEL_RETURN_RATE = 3.0f;
 static const float YAW_INERTIA = 2.2f;
 static const float HULL_DRAG_LINEAR = 0.22f;
 static const float HULL_DRAG_QUADRATIC = 0.025f;
@@ -252,14 +254,20 @@ void boat_step(Boat *boat, float wheel_change, float throttle_change)
 {
     boat->time += BOAT_STEP;
     // One second from centre to either lock. Opposite inputs cancel before this call.
-    boat->wheel = Clamp(boat->wheel + Clamp(wheel_change, -1, 1) * BOAT_STEP, -1, 1);
+    if (wheel_change != 0) {
+        boat->wheel = Clamp(boat->wheel + Clamp(wheel_change, -1, 1) * BOAT_STEP, -1, 1);
+    } else {
+        boat->wheel *= expf(-WHEEL_RETURN_RATE * BOAT_STEP);
+        if (fabsf(boat->wheel) < 0.001f)
+            boat->wheel = 0;
+    }
     // Four seconds end to end through neutral; integrate on fixed ticks, not keyboard repeat.
     boat->throttle
         = Clamp(boat->throttle + Clamp(throttle_change, -1, 1) * 0.5f * BOAT_STEP, -1, 1);
     float engine_target = boat->throttle;
     boat->engine_response += Clamp(engine_target - boat->engine_response,
         -ENGINE_RESPONSE_RATE * BOAT_STEP, ENGINE_RESPONSE_RATE * BOAT_STEP);
-    // The outboard follows the held wheel position; releasing keys does not centre it.
+    // The outboard follows the wheel as it turns or springs back to centre.
     float target_angle = boat->wheel * MAX_ENGINE_ANGLE;
     boat->engine_angle += Clamp(target_angle - boat->engine_angle, -2 * BOAT_STEP, 2 * BOAT_STEP);
     Vector2 forward = { sinf(boat->heading), -cosf(boat->heading) };

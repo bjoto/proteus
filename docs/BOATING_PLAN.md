@@ -20,9 +20,11 @@ This first integration has static scenery, no overhead
 structure collisions, and no camera occlusion handling near buildings. It does not include the
 rest of Gothenburg or the archipelago. Source attribution is retained in the HUD and README.
 
-Run `./build/boat_study`. Left/right or A/D adjust a persistent wheel setting, clamped from full
-left to full right. Centre to either limit takes one second. Releasing keys holds the wheel;
-opposite input brings it back through centre. A rotating wheel and left/right percentage show
+Run `./build/boat_study`. Left/right or A/D adjust the wheel, clamped from full
+left to full right. Centre to either limit takes one second. Releasing keys lets an overdamped
+spring return the wheel smoothly to centre without overshooting; opposite input brings it back
+through centre. Return strength is set by `WHEEL_RETURN_RATE` in `src/boat.c` (initially 3/s,
+about 1.5 seconds from full lock to within 1% of centre). A rotating wheel and left/right percentage show
 the setting. Up/W raises signed thrust and down/S lowers it; releasing the keys holds the setting.
 The thrust range is -100% (reverse) through 0% (idle) to 100% (forward), with four seconds of
 held input covering the full range. A signed percentage and centred bar show the setting
@@ -31,8 +33,8 @@ thrust passes smoothly through idle and continues into reverse only while Down/S
 R resets to neutral thrust, centres the wheel, and clears effects; Esc exits.
 The silent handling sketch has a third-person follow camera, stern-applied engine thrust, rotational
 inertia, water resistance at two hull stations, and forgiving basin-wall collisions. Steering
-angles the outboard; its lateral thrust pushes the stern and creates torque. The outboard holds
-the wheel setting when keys are released. Returning the wheel to centre lets rotation settle
+angles the outboard; its lateral thrust pushes the stern and creates torque. The outboard follows
+the wheel as it springs back when keys are released. Returning the wheel to centre lets rotation settle
 through water resistance. Countersteering can catch
 a turn. At idle there is no powered steering, and a stationary boat cannot turn. Propeller wash
 moves opposite the thrust direction, independently of the spreading wake. The model uses normalized
@@ -95,8 +97,8 @@ selected separately. An enjoyable harbour and one island route would already be 
 ## First playable version
 
 - One craft, one compact area, free driving, and instant reset.
-- Left/right adjust a persistent wheel setting; up/down adjust a persistent throttle within
-  0..100%; a separate reset key centres the wheel and idles the throttle.
+- Left/right adjust a spring-centred wheel; up/down adjust a persistent throttle within
+  -100..100%; a separate reset key centres the wheel and idles the throttle.
 - Momentum persists through turns. Stern thrust creates torque, and rotation builds with inertia.
   Water resistance along the hull damps sliding and rotation.
 - Throttle affects both forward push and turning force. Reducing it cuts thrust; momentum remains.

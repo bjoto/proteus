@@ -12,7 +12,8 @@ static void usage(void)
 {
     puts("Usage: boat_study [--demo] [--frames COUNT] [--screenshot FILE [--time SECONDS]]\n"
          "Left/Right or A/D: adjust wheel | Up/Down or W/S: adjust thrust (-100..100%)\n"
-         "Wheel and thrust hold when released. R: reset and centre wheel | Esc: close\n"
+         "Wheel springs to centre when released; thrust holds. R: reset and centre wheel | Esc: "
+         "close\n"
          "+/-: closer/farther | PageUp/PageDown: raise/lower camera | C: reset view\n"
          "--camera-distance UNITS: 8..48 (default 20)\n"
          "--camera-height UNITS: 4..36 (default 14)\n"

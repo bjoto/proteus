@@ -103,8 +103,9 @@ Run `./build/boat_study` for the first handling prototype: a small craft in a si
 viewed by a third-person camera following behind and above the boat. The basin is 240x160 world
 units (four times wider and deeper than the original). The camera follows position immediately,
 smooths heading changes, and looks ahead along the course. Hold left/right (or A/D) to turn the
-wheel; release to hold its
-position. One second moves it from centre to either limit; opposite input brings it back through
+wheel; release to let it spring smoothly back to centre without overshooting. The return is
+stronger farther from centre, reaching within 1% of centre from full lock in about 1.5 seconds.
+One second of held input moves it from centre to either limit; opposite input brings it back through
 centre. The HUD shows a rotating wheel and its left/right percentage. Hold up/W to increase thrust
 and down/S to reduce it, from -100% reverse through 0% neutral to 100% forward; releasing keys
 holds the setting. Full-range adjustment takes four seconds. The HUD shows signed thrust and actual
@@ -129,7 +130,7 @@ which also work for screenshots:
 
 Steering angles the outboard at the stern. Its off-centre thrust pushes the stern sideways and
 builds rotation; speed-dependent resistance at the bow and stern damps sliding and turning. The engine follows
-the held wheel setting. Bring the wheel back to centre or countersteer to catch a turn. At idle,
+the wheel setting. Release steering to let the wheel centre, or countersteer to catch a turn. At idle,
 turning the engine cannot start a turn from rest. Propeller wash shows the water being pushed in the
 opposite direction to thrust. This is a simplified planar model with tunable forces and inertia.
 

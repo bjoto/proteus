@@ -37,7 +37,7 @@ typedef struct {
     float planing;
     // Presentation-only bow rise in radians; C2 replaces this with physical attitude.
     float visual_pitch;
-    float wheel; // Held steering setting, -1 (full port) to 1 (full starboard).
+    float wheel; // Spring-centred steering setting, -1 (full port) to 1 (full starboard).
     float engine_angle; // Radians of thrust deflection; positive pushes stern to port.
     float yaw_velocity; // Heading change in radians/second, integrated from stern torque.
     float camera_heading; // Smoothed follow direction, updated on fixed simulation ticks.
@@ -49,7 +49,8 @@ typedef struct {
 void boat_reset(Boat *boat);
 void boat_reset_location(Boat *boat, bool eriksberg);
 void boat_scene_frame(const Boat *boat, BoatCamera camera, WaterfrontSceneFrame *frame);
-// Advance one fixed tick. Inputs are adjustment rates in -1..1; zero holds each setting.
+// Advance one fixed tick. Inputs are adjustment rates in -1..1; zero centres the wheel and holds
+// throttle.
 void boat_step(Boat *boat, float wheel_change, float throttle_change);
 bool boat_draw(Renderer3D *renderer, Color *pixels, int width, int height, const Boat *boat,
     BoatCamera camera_settings);

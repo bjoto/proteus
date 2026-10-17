@@ -98,8 +98,8 @@ static int validate_signed_propulsion(void)
     reverse_turn.throttle = -1;
     forward_turn.wheel = reverse_turn.wheel = .6f;
     for (int i = 0; i < 240; ++i) {
-        boat_step(&forward_turn, 0, 0);
-        boat_step(&reverse_turn, 0, 0);
+        boat_step(&forward_turn, 1, 0);
+        boat_step(&reverse_turn, 1, 0);
     }
     CHECK(forward_turn.yaw_velocity > 0 && reverse_turn.yaw_velocity < 0);
 
@@ -363,15 +363,27 @@ int main(void)
     CHECK(camera_turn > 0 && camera_turn < 0.01f);
     boat_reset(&boat);
     CHECK(boat.camera_heading == 0);
-    // Wheel adjustments are bounded, persistent, reversible, and cleared by reset.
+    // Wheel adjustments are bounded and reversible; release springs back symmetrically.
     for (int i = 0; i < 60; ++i)
         boat_step(&boat, 1, 0);
     CHECK(fabsf(boat.wheel - 0.5f) < 0.001f);
-    float held_wheel = boat.wheel;
-    float held_engine = boat.engine_angle;
-    for (int i = 0; i < 120; ++i)
+    Boat mirrored = boat;
+    mirrored.wheel = -boat.wheel;
+    mirrored.engine_angle = -boat.engine_angle;
+    for (int i = 0; i < 360; ++i) {
+        float previous = boat.wheel;
         boat_step(&boat, 0, 0);
-    CHECK(boat.wheel == held_wheel && boat.engine_angle == held_engine);
+        boat_step(&mirrored, 0, 0);
+        CHECK(boat.wheel >= 0 && boat.wheel <= previous);
+        CHECK(fabsf(boat.wheel + mirrored.wheel) < 0.000001f);
+        CHECK(fabsf(boat.engine_angle + mirrored.engine_angle) < 0.000001f);
+        if (i == 119)
+            CHECK(boat.wheel > 0.01f && boat.wheel < 0.05f);
+    }
+    CHECK(boat.wheel == 0 && boat.engine_angle == 0);
+    CHECK(mirrored.wheel == 0 && mirrored.engine_angle == 0);
+    boat_step(&boat, 0, 0);
+    CHECK(boat.wheel == 0 && boat.engine_angle == 0);
     for (int i = 0; i < 600; ++i)
         boat_step(&boat, 1, 0);
     CHECK(boat.wheel == 1);
@@ -412,7 +424,7 @@ int main(void)
     CHECK(boat.yaw_velocity > 0 && kinetic_energy(&boat) < energy);
     for (int i = 0; i < 2400; ++i)
         boat_step(&boat, 0, 0);
-    CHECK(boat.wheel > 0 && boat.engine_angle > 0 && fabsf(boat.yaw_velocity) < 0.001f);
+    CHECK(boat.wheel == 0 && boat.engine_angle == 0 && fabsf(boat.yaw_velocity) < 0.001f);
     boat_reset(&boat);
     for (int i = 0; i < 120; ++i)
         boat_step(&boat, 0, 1);
@@ -454,8 +466,8 @@ int main(void)
     left.wheel = -0.5f;
     right.wheel = 0.5f;
     for (int i = 0; i < 180; ++i) {
-        boat_step(&left, 0, 0);
-        boat_step(&right, 0, 0);
+        boat_step(&left, -1, 0);
+        boat_step(&right, 1, 0);
     }
     CHECK(right.position.x > 1 && left.position.x < -1);
     CHECK(fabsf(left.position.x + right.position.x) < 0.001f);
