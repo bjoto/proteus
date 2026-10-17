@@ -602,7 +602,9 @@ bool waterfront_gpu_scene_init(WaterfrontGpuScene *scene, const char *fragment_s
     for (int part = 0; part < WATERFRONT_GULL_PARTS; ++part)
         if (!build_source_mesh(&scene->gull[part], waterfront_gull_mesh(part)))
             goto failed;
-    if (!build_source_mesh(&scene->player_hull, waterfront_player_hull_mesh()))
+    if (!build_source_mesh(&scene->player_hull, waterfront_player_hull_mesh())
+        || !build_source_mesh(&scene->player_cabin, waterfront_player_cabin_mesh())
+        || !build_source_mesh(&scene->player_engine, waterfront_player_engine_mesh()))
         goto failed;
     if (!build_unit_cube(&scene->bridge) || !build_unit_cube(&scene->cube)
         || !build_unit_plane(&scene->plane))
@@ -1030,8 +1032,8 @@ static void draw_ghost(const WaterfrontGpuScene *scene, Material material,
     SetShaderValue(material.shader, pixel_scale, &scale, SHADER_UNIFORM_FLOAT);
     SetShaderValue(material.shader, opacity, &frame->ghost_opacity, SHADER_UNIFORM_FLOAT);
     draw_colored_mesh(scene->player_hull, material, frame->ghost_hull, WHITE, true);
-    draw_colored_mesh(scene->cube, material, frame->ghost_cabin, WHITE, true);
-    draw_colored_mesh(scene->cube, material, frame->ghost_engine, WHITE, true);
+    draw_colored_mesh(scene->player_cabin, material, frame->ghost_cabin, WHITE, true);
+    draw_colored_mesh(scene->player_engine, material, frame->ghost_engine, WHITE, true);
     float zero = 0;
     SetShaderValue(material.shader, opacity, &zero, SHADER_UNIFORM_FLOAT);
 }
@@ -1051,8 +1053,8 @@ static void draw_life(const WaterfrontGpuScene *scene, Material material,
         }
         const WaterfrontPlayerState *p = &frame->player;
         draw_colored_mesh(scene->player_hull, material, p->hull, WHITE, false);
-        draw_colored_mesh(scene->cube, material, p->cabin, (Color) { 44, 60, 70, 255 }, false);
-        draw_colored_mesh(scene->cube, material, p->engine, (Color) { 91, 100, 111, 255 }, false);
+        draw_colored_mesh(scene->player_cabin, material, p->cabin, WHITE, false);
+        draw_colored_mesh(scene->player_engine, material, p->engine, WHITE, false);
         for (int i = 0; i < p->particle_count; ++i) {
             // Surface foam receives shadows/depth but does not cast a solid slab shadow.
             // Airborne spray participates in both the reflection and shadow passes.
@@ -1476,6 +1478,10 @@ void waterfront_gpu_scene_destroy(WaterfrontGpuScene *scene)
         UnloadMesh(scene->cube);
     if (scene->player_hull.vaoId != 0)
         UnloadMesh(scene->player_hull);
+    if (scene->player_cabin.vaoId != 0)
+        UnloadMesh(scene->player_cabin);
+    if (scene->player_engine.vaoId != 0)
+        UnloadMesh(scene->player_engine);
     if (scene->plane.vaoId != 0)
         UnloadMesh(scene->plane);
     if (scene->city_material.maps != NULL) {

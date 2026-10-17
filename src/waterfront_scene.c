@@ -6,16 +6,125 @@
 
 #include "../assets/geometry/eriksberg/geometry.h"
 
+// Tiny, flat-coloured meshes keep the toy-boat details identical in both renderers.
+static void player_box(Vector3 *vertices, Triangle3D *triangles, int *count, Vector3 position,
+    Vector3 size, Color color)
+{
+    static const unsigned int faces[][3]
+        = { { 0, 2, 1 }, { 0, 3, 2 }, { 4, 5, 6 }, { 4, 6, 7 }, { 0, 1, 5 }, { 0, 5, 4 },
+              { 3, 7, 6 }, { 3, 6, 2 }, { 0, 4, 7 }, { 0, 7, 3 }, { 1, 2, 6 }, { 1, 6, 5 } };
+    static const Vector3 corners[] = { { -1, -1, -1 }, { 1, -1, -1 }, { 1, 1, -1 }, { -1, 1, -1 },
+        { -1, -1, 1 }, { 1, -1, 1 }, { 1, 1, 1 }, { -1, 1, 1 } };
+    // Each box owns 36 vertices; this keeps the little mesh builder straightforward.
+    for (int face = 0; face < 12; ++face) {
+        unsigned int base = (unsigned int)*count * 3;
+        for (int v = 0; v < 3; ++v) {
+            Vector3 corner = corners[faces[face][v]];
+            vertices[base + v] = Vector3Add(position,
+                (Vector3) {
+                    corner.x * size.x * .5f, corner.y * size.y * .5f, corner.z * size.z * .5f });
+        }
+        triangles[(*count)++] = (Triangle3D) { { base, base + 1, base + 2 }, color };
+    }
+}
+
 const Mesh3D *waterfront_player_hull_mesh(void)
 {
-    static const Vector3 vertices[] = { { 0, .55f, -1.65f }, { -.75f, .55f, .9f },
-        { .75f, .55f, .9f }, { 0, .05f, -1.65f }, { -.75f, .05f, .9f }, { .75f, .05f, .9f } };
-    static const Triangle3D triangles[]
-        = { { { 0, 1, 2 }, { 246, 217, 155, 255 } }, { { 0, 3, 4 }, { 229, 94, 59, 255 } },
-              { { 0, 4, 1 }, { 229, 94, 59, 255 } }, { { 0, 2, 5 }, { 229, 94, 59, 255 } },
-              { { 0, 5, 3 }, { 229, 94, 59, 255 } }, { { 1, 4, 5 }, { 229, 94, 59, 255 } },
-              { { 1, 5, 2 }, { 229, 94, 59, 255 } }, { { 3, 5, 4 }, { 229, 94, 59, 255 } } };
-    static const Mesh3D mesh = { vertices, triangles, sizeof(triangles) / sizeof(triangles[0]) };
+    static Vector3 vertices[360];
+    static Triangle3D triangles[120];
+    static Mesh3D mesh = { vertices, triangles, 0 };
+    if (mesh.triangle_count == 0) {
+        const Vector2 outline[]
+            = { { 0, -1.65f }, { -.65f, -.85f }, { -.75f, .9f }, { .75f, .9f }, { .65f, -.85f } };
+        // Continue the hull up, across a broad cream lip, and down to the inset deck.
+        const float heights[] = { .05f, .36f, .46f, .55f, .68f, .68f, .55f };
+        const Color colors[]
+            = { { 225, 83, 70, 255 }, { 255, 222, 143, 255 }, { 39, 104, 120, 255 },
+                  { 39, 104, 120, 255 }, { 255, 237, 191, 255 }, { 191, 143, 85, 255 } };
+        for (int ring = 0; ring < 7; ++ring)
+            for (int v = 0; v < 5; ++v) {
+                float taper = ring == 0 || ring >= 5 ? .82f : 1;
+                vertices[ring * 5 + v]
+                    = (Vector3) { outline[v].x * taper, heights[ring], outline[v].y * taper };
+            }
+        for (int ring = 0; ring < 6; ++ring)
+            for (unsigned int v = 0; v < 5; ++v) {
+                unsigned int a = ring * 5 + v, b = ring * 5 + (v + 1) % 5;
+                triangles[mesh.triangle_count++] = (Triangle3D) { { a, b, b + 5 }, colors[ring] };
+                triangles[mesh.triangle_count++]
+                    = (Triangle3D) { { a, b + 5, a + 5 }, colors[ring] };
+            }
+        for (unsigned int v = 1; v < 4; ++v) {
+            triangles[mesh.triangle_count++]
+                = (Triangle3D) { { 30, 30 + v, 31 + v }, { 218, 163, 94, 255 } };
+            triangles[mesh.triangle_count++] = (Triangle3D) { { 0, v + 1, v }, colors[0] };
+        }
+        int count = (int)mesh.triangle_count;
+        // Raised side treads and a little foredeck hatch sit clear of the deck surface.
+        for (int side = -1; side <= 1; side += 2)
+            player_box(vertices, triangles, &count, (Vector3) { side * .49f, .565f, -.05f },
+                (Vector3) { .12f, .03f, 1.1f }, (Color) { 247, 208, 137, 255 });
+        player_box(vertices, triangles, &count, (Vector3) { 0, .57f, -.94f },
+            (Vector3) { .48f, .04f, .42f }, (Color) { 39, 104, 120, 255 });
+        player_box(vertices, triangles, &count, (Vector3) { 0, .6f, -.94f },
+            (Vector3) { .36f, .02f, .3f }, (Color) { 255, 190, 57, 255 });
+        mesh.triangle_count = (size_t)count;
+    }
+    return &mesh;
+}
+
+const Mesh3D *waterfront_player_cabin_mesh(void)
+{
+    static Vector3 vertices[720];
+    static Triangle3D triangles[240];
+    static Mesh3D mesh = { vertices, triangles, 0 };
+    if (mesh.triangle_count == 0) {
+        int count = 0;
+        Color cream = { 255, 237, 191, 255 }, glass = { 55, 166, 181, 255 };
+        Color yellow = { 255, 190, 57, 255 }, coral = { 234, 91, 64, 255 };
+        player_box(
+            vertices, triangles, &count, (Vector3) { 0, 0, 0 }, (Vector3) { 1, 1, 1 }, cream);
+        player_box(vertices, triangles, &count, (Vector3) { 0, .57f, 0 },
+            (Vector3) { 1.2f, .18f, 1.22f }, yellow);
+        for (int side = -1; side <= 1; side += 2) {
+            // Split windscreens and broad side windows, inset in chunky cream frames.
+            for (int pane = -1; pane <= 1; pane += 2)
+                player_box(vertices, triangles, &count,
+                    (Vector3) { pane * .22f, .14f, side * .505f }, (Vector3) { .34f, .48f, .025f },
+                    glass);
+            player_box(vertices, triangles, &count, (Vector3) { side * .505f, .16f, -.03f },
+                (Vector3) { .025f, .44f, .72f }, glass);
+            // A blocky life preserver below each side window.
+            for (int bar = -1; bar <= 1; bar += 2) {
+                player_box(vertices, triangles, &count,
+                    (Vector3) { side * .54f, -.28f + bar * .13f, .08f },
+                    (Vector3) { .08f, .08f, .34f }, coral);
+                player_box(vertices, triangles, &count,
+                    (Vector3) { side * .54f, -.28f, .08f + bar * .13f },
+                    (Vector3) { .08f, .18f, .08f }, yellow);
+            }
+        }
+        mesh.triangle_count = (size_t)count;
+    }
+    return &mesh;
+}
+
+const Mesh3D *waterfront_player_engine_mesh(void)
+{
+    static Vector3 vertices[108];
+    static Triangle3D triangles[36];
+    static Mesh3D mesh = { vertices, triangles, 0 };
+    if (mesh.triangle_count == 0) {
+        int count = 0;
+        // End the body at the cap's underside; coincident top faces cause z-fighting.
+        player_box(vertices, triangles, &count, (Vector3) { 0, -.16f, 0 }, (Vector3) { 1, .68f, 1 },
+            (Color) { 40, 68, 87, 255 });
+        player_box(vertices, triangles, &count, (Vector3) { 0, .34f, 0 },
+            (Vector3) { 1.08f, .32f, 1.04f }, (Color) { 234, 91, 64, 255 });
+        player_box(vertices, triangles, &count, (Vector3) { 0, .1f, .505f },
+            (Vector3) { .72f, .1f, .025f }, (Color) { 255, 237, 191, 255 });
+        mesh.triangle_count = (size_t)count;
+    }
     return &mesh;
 }
 

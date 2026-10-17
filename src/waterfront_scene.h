@@ -89,6 +89,8 @@ typedef struct {
 void waterfront_demo_evaluate(float time, WaterfrontSceneFrame *frame);
 const Mesh3D *waterfront_gull_mesh(int part);
 const Mesh3D *waterfront_player_hull_mesh(void);
+const Mesh3D *waterfront_player_cabin_mesh(void);
+const Mesh3D *waterfront_player_engine_mesh(void);
 
 float waterfront_scene_duration(bool short_route);
 void waterfront_scene_evaluate(float time, bool short_route, WaterfrontSceneFrame *frame);

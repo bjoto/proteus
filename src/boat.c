@@ -642,14 +642,14 @@ bool boat_draw_with_ghost(Renderer3D *renderer, Color *pixels, int width, int he
     WaterfrontPlayerState player = { 0 };
     boat_player_pose(boat, &player);
     renderer3d_draw_mesh(renderer, waterfront_player_hull_mesh(), player.hull);
-    renderer3d_draw_box(renderer, player.cabin, (Color) { 44, 60, 70, 255 });
-    renderer3d_draw_box(renderer, player.engine, (Color) { 91, 100, 111, 255 });
+    renderer3d_draw_mesh(renderer, waterfront_player_cabin_mesh(), player.cabin);
+    renderer3d_draw_mesh(renderer, waterfront_player_engine_mesh(), player.engine);
     if (ghost && opacity > 0) {
         boat_player_pose(ghost, &player);
         renderer->ghost_opacity = opacity;
         renderer3d_draw_mesh(renderer, waterfront_player_hull_mesh(), player.hull);
-        renderer3d_draw_box(renderer, player.cabin, WHITE);
-        renderer3d_draw_box(renderer, player.engine, WHITE);
+        renderer3d_draw_mesh(renderer, waterfront_player_cabin_mesh(), player.cabin);
+        renderer3d_draw_mesh(renderer, waterfront_player_engine_mesh(), player.engine);
         renderer->ghost_opacity = 0;
     }
     return true;
