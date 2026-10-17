@@ -101,14 +101,15 @@ def semantic_check(path, renderer, time):
     if (width, height) != (WIDTH, HEIGHT):
         failures.append(f"dimensions are {width}x{height}, expected {WIDTH}x{HEIGHT}")
         return failures, {}
-    # Trace the exposed dusk sky from the upper edge. Restrict its colour envelope to
-    # indigo/violet/peach and the pale moon; disconnected city lights are not sky.
+    # Trace the blue daytime sky, white clouds, and warm sun from the upper edge.
+    # Disconnected bright building surfaces are excluded by the flood fill below.
     def sky_color(index):
         r, g, b = pixels[index * 4 : index * 4 + 3]
-        dusk = 14 <= r <= 165 and 22 <= g <= 110 and 45 <= b <= 118
-        dusk = dusk and b >= g + 8 and -8 <= r - g <= 58
-        moon = 140 <= r <= 224 and 135 <= g <= 216 and 145 <= b <= 194
-        return dusk or moon
+        blue = 65 <= r <= 188 and 157 <= g <= 231 and 224 <= b <= 246
+        blue = blue and b > g and g > r
+        cloud = 203 <= r <= 255 and 223 <= g <= 254 and 236 <= b <= 244
+        sun = 245 <= r <= 255 and 230 <= g <= 246 and 163 <= b <= 200
+        return blue or cloud or sun
 
     sky = set()
     pending = [x for x in range(width) if sky_color(x)]
@@ -130,19 +131,19 @@ def semantic_check(path, renderer, time):
     bright_lower_pixels = 0
     for index in range(width * (height // 3), width * height):
         pixel = pixels[index * 4 : index * 4 + 3]
-        if index not in sky and max(pixel) >= 145 and pixel[0] >= pixel[2]:
+        if index not in sky and max(pixel) >= 145:
             bright_lower_pixels += 1
     coverage = city_pixels / (width * height)
     # City pixels include buildings, quay, traffic, boat and lights. Broad bounds leave room for
     # driver rasterization differences while rejecting a cleared, flipped, or missing city target.
     if len(sky) < 12:
-        failures.append(f"exposed dusk sky has only {len(sky)} pixels")
+        failures.append(f"exposed daytime sky has only {len(sky)} pixels")
     if not 0.04 <= coverage <= 0.96:
         failures.append(f"city coverage {coverage:.1%} is outside the 4%-96% review range")
-    # Lit traffic/boat/lamp regions intentionally move with this route. This checks their broad,
-    # lower-frame occupancy rather than prescribing their exact cross-driver rasterization.
+    # Daylit traffic, glass, and boat regions move with this route. Include cool highlights
+    # as well as warm materials when checking their broad lower-frame occupancy.
     if bright_lower_pixels < 18:
-        failures.append(f"moving-object/light region has only {bright_lower_pixels} bright pixels")
+        failures.append(f"daylit object region has only {bright_lower_pixels} bright pixels")
     return failures, {
         "renderer": renderer,
         "time_seconds": time,

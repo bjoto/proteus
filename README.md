@@ -136,7 +136,7 @@ Screenshot `--time` accepts up to 600 seconds with `--replay` and clamps to the 
 other screenshot modes retain the 60 second limit.
 
 `basin` remains the default. Eriksberg spawns in the dock facing the crane and river; R returns
-there. The map, buildings, Dockbron, crane, and dusk sky reuse the existing offline scene.
+there. The map, buildings, Dockbron, crane, and daytime sky reuse the existing offline scene.
 Shoreline collisions use an oriented bow, stern, and beam footprint; glancing contacts scrub speed,
 turn the craft away, and rebound gently while retaining most speed along the dock. Translation
 and rotation keep the entire footprint in water, so a dock contact can be reversed out of. The
@@ -303,7 +303,7 @@ ctest --test-dir build -L gpu --output-on-failure
 The review command captures the `cube` scene at local times 0, 1.7, 2.7, 5, 7.5, 10, and 15 seconds
 with both renderers. It writes `build/gpu-review/contact-sheet.png` (CPU | GPU | amplified visual
 diff), all source captures, and `manifest.json` with the build and OpenGL renderer details. It checks
-dimensions, city coverage, exposed dusk sky, and broad lit moving-object regions with
+dimensions, city coverage, exposed daytime sky, and broad lit moving-object regions with
 tolerances; it never compares CPU/GPU image hashes. The GPU fixture in the same command checks
 render target dimensions, orientation, depth, winding, normal submission, and shader rejection.
 
@@ -320,13 +320,15 @@ the light-frustum depth map for review:
 ./build/gpu_fixture --city --time 5 --shadow-map --screenshot build/shadow-depth.png
 ```
 
-The sky fades from indigo through violet to a peach sunset horizon, with dark cloud streaks
-and a small pale moon. CPU and GPU share a fixed world panorama, so the sky follows camera
-rotation naturally; GPU water reflections use the same sky through the mirrored camera.
+The sunny morning sky fades from clear blue to a pale cyan horizon, with cream-white
+flat cloud banks built from square tiles and a warm sun. The sun direction also drives city shadows
+and water highlights. CPU and GPU share a fixed world panorama, so the sky follows camera rotation
+naturally; GPU water reflections use the same sky through the mirrored camera. Cloud tiles form a
+shallow horizontal deck, with pale undersides, blue rims, and smaller patches toward the horizon.
 `gpu_fixture --city --check` checks sky coverage and sampling against the CPU panorama at native
 and supersampled sizes, with a resized window and shadows/reflections toggled independently.
 
-Distance atmosphere is also enabled by default. Compare its muted rose dusk haze at the same scene time
+Distance atmosphere is also enabled by default. Compare its light blue daytime haze at the same scene time
 with `--gpu-atmosphere off` in the demo or `--atmosphere off` in the fixture.
 
 The GPU water plane uses a 160x120 reflected scene pass by default. Compare it with

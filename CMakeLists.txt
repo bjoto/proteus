@@ -240,12 +240,12 @@ set_tests_properties(interactive_timeline_options PROPERTIES
   PASS_REGULAR_EXPRESSION "Usage:"
 )
 
-# Reviewed CPU reference for the opening five-gull follow shot.
+# Reviewed daytime CPU reference for the opening five-gull follow shot.
 add_test(NAME cube_render_checksum
   COMMAND proteus --renderer cpu --profile cube --frames 1 --warmup 0
 )
 set_tests_properties(cube_render_checksum PROPERTIES
-  PASS_REGULAR_EXPRESSION "final_framebuffer_checksum=735e6a86373c4347"
+  PASS_REGULAR_EXPRESSION "final_framebuffer_checksum=ff0eb2590bd954c2"
 )
 
 add_test(NAME cube_start_screenshot

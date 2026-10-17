@@ -101,6 +101,7 @@ Vector3 waterfront_scene_street_position(
 
 // Borrowed static panorama, shared by CPU sky rays and the GPU sky shader. Do not unload.
 // U is atan2(direction.x, direction.z) / (2*pi) + 0.5; V is (1-direction.y) / 2.
+Vector3 waterfront_sun_direction(void);
 Image waterfront_sky_image(void);
 void waterfront_sky_draw(Color *pixels, int width, int height, View3D camera);
 

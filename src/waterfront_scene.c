@@ -3,6 +3,7 @@
 #include "raymath.h"
 
 #include <math.h>
+#include <stdint.h>
 
 #include "../assets/geometry/eriksberg/geometry.h"
 
@@ -134,51 +135,72 @@ static Vector3 sky_mix(Vector3 a, Vector3 b, float t)
     return Vector3Lerp(a, b, t * t * (3 - 2 * t));
 }
 
+Vector3 waterfront_sun_direction(void) { return Vector3Normalize((Vector3) { .10f, .48f, -.87f }); }
+
+// A fixed cloud deck sampled in world X/Z, so square tiles recede toward the horizon.
+static float cloud_hash(int x, int z)
+{
+    uint32_t seed = (uint32_t)x * 374761393u + (uint32_t)z * 668265263u;
+    seed = (seed ^ (seed >> 13)) * 1274126177u;
+    return (float)((seed ^ (seed >> 16)) & 65535u) / 65535;
+}
+
+static bool cloud_tile(float x, float z)
+{
+    int tile_x = (int)floorf(x / .16f), tile_z = (int)floorf(z / .16f);
+    float gx = tile_x / 5.0f, gz = tile_z / 5.0f;
+    int ix = (int)floorf(gx), iz = (int)floorf(gz);
+    float tx = gx - ix, tz = gz - iz;
+    tx = tx * tx * (3 - 2 * tx);
+    tz = tz * tz * (3 - 2 * tz);
+    float a = Lerp(cloud_hash(ix, iz), cloud_hash(ix + 1, iz), tx);
+    float b = Lerp(cloud_hash(ix, iz + 1), cloud_hash(ix + 1, iz + 1), tx);
+    // Broad joined patches, notched edges, holes, and occasional detached little tiles.
+    return Lerp(a, b, tz) * .85f + cloud_hash(tile_x + 137, tile_z - 59) * .15f > .59f;
+}
+
 Image waterfront_sky_image(void)
 {
     enum { WIDTH = 1024, HEIGHT = 512 };
     static Color pixels[WIDTH * HEIGHT];
     static bool ready;
     if (!ready) {
+        Vector3 sun = waterfront_sun_direction();
         for (int y = 0; y < HEIGHT; ++y) {
             float elevation = 1 - 2 * ((float)y + .5f) / HEIGHT;
             for (int x = 0; x < WIDTH; ++x) {
                 float azimuth = (((float)x + .5f) / WIDTH - .5f) * 2 * PI;
-                float warmth = .5f + .5f * cosf(azimuth - .3f);
-                Vector3 horizon = { 119 + 43 * warmth, 93 + 15 * warmth, 116 - 12 * warmth };
-                Vector3 violet = { 76, 64, 100 };
-                Vector3 indigo = { 28, 34, 65 };
-                Vector3 color = elevation < .16f
-                    ? sky_mix(horizon, violet, elevation / .16f)
-                    : sky_mix(violet, indigo, (elevation - .16f) / .38f);
-                color = sky_mix(color, (Vector3) { 15, 23, 46 }, (elevation - .54f) / .46f);
-                // Small, fixed moon toward the opening street view; no screen-space drift.
-                float moon_x = remainderf(azimuth - 3.04f, 2 * PI) * .95f;
-                float moon_y = elevation - .32f;
-                float moon_distance = sqrtf(moon_x * moon_x + moon_y * moon_y);
-                color = sky_mix(color, (Vector3) { 147, 145, 163 },
-                    .12f * (1 - Clamp(moon_distance / .065f, 0, 1)));
-                color = sky_mix(color, (Vector3) { 222, 214, 192 },
-                    Clamp((.017f - moon_distance) / .003f, 0, 1));
-                // Broken, elongated cloud banks wrap seamlessly around the panorama.
-                for (int layer = 0; layer < 3; ++layer) {
-                    float phase = azimuth + layer * 1.7f;
-                    float center
-                        = .095f + layer * .115f + .016f * sinf(phase * 3) + .008f * sinf(phase * 7);
-                    float thickness = .009f + .009f * (.5f + .5f * sinf(phase * 5));
-                    float edge = (elevation - center) / thickness;
-                    float coverage
-                        = Clamp((sinf(phase * 2) + .45f * sinf(phase * 5) - .05f) * 2, 0, 1);
-                    float density = (1 - Clamp(fabsf(edge), 0, 1)) * coverage;
-                    Vector3 cloud = sky_mix((Vector3) { 43, 40, 64 }, (Vector3) { 141, 94, 102 },
-                        Clamp(-edge, 0, 1) * warmth * .7f);
-                    color = sky_mix(color, cloud, density * .85f);
+                Vector3 color = sky_mix(
+                    (Vector3) { 186, 229, 244 }, (Vector3) { 66, 158, 226 }, elevation / .85f);
+                float sun_x
+                    = remainderf(azimuth - atan2f(sun.x, sun.z), 2 * PI) * sqrtf(1 - sun.y * sun.y);
+                float sun_y = (elevation - sun.y) / sqrtf(1 - sun.y * sun.y);
+                float sun_distance = sqrtf(sun_x * sun_x + sun_y * sun_y);
+                // A warm, crisp disc with a quiet halo, anchored to the lighting direction.
+                color = sky_mix(color, (Vector3) { 255, 237, 165 },
+                    .24f * (1 - Clamp(sun_distance / .16f, 0, 1)));
+                color = sky_mix(color, (Vector3) { 255, 244, 184 },
+                    Clamp((.047f - sun_distance) / .004f, 0, 1));
+                if (elevation > .075f) {
+                    float horizontal = sqrtf(1 - elevation * elevation) / elevation;
+                    float cx = sinf(azimuth) * horizontal;
+                    float cz = cosf(azimuth) * horizontal;
+                    // Looking up through a shallow slab: its underside covers the distant rim.
+                    // Two ray/plane samples give the cloud deck a little visible thickness.
+                    bool underside = cloud_tile(cx, cz);
+                    bool rim = cloud_tile(cx * 1.035f, cz * 1.035f);
+                    if (underside || rim) {
+                        Vector3 cloud
+                            = underside ? (Vector3) { 225, 242, 244 } : (Vector3) { 205, 225, 238 };
+                        color = sky_mix(color, cloud, (elevation - .075f) / .10f);
+                    }
                 }
                 // Subtle ordered grain at panorama resolution, fixed to the sky itself.
                 float grain = ((x & 1) == (y & 1)) ? .6f : -.6f;
-                pixels[y * WIDTH + x] = (Color) { (unsigned char)roundf(color.x + grain),
-                    (unsigned char)roundf(color.y + grain), (unsigned char)roundf(color.z + grain),
-                    255 };
+                pixels[y * WIDTH + x]
+                    = (Color) { (unsigned char)roundf(Clamp(color.x + grain, 0, 255)),
+                          (unsigned char)roundf(Clamp(color.y + grain, 0, 255)),
+                          (unsigned char)roundf(Clamp(color.z + grain, 0, 255)), 255 };
             }
         }
         ready = true;

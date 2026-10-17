@@ -11,6 +11,7 @@ uniform vec4 objectColor;
 uniform mat4 reflectionViewProjection;
 uniform vec3 cameraPosition;
 uniform float time;
+uniform vec3 sunDirection;
 uniform int physicalWaves;
 uniform vec4 waveParameters[3];
 uniform int reflectionsEnabled;
@@ -40,9 +41,9 @@ void main()
             slope += w.xy * w.z * cos(dot(w.xy, fragWorldPosition.xz) - w.w * time);
         }
         normal = normalize(vec3(-slope.x, 1.0, -slope.y));
-        base *= vec3(0.55, 0.65, 0.78) * (0.95 + 0.35 * dot(normal.xz, vec2(0.7)));
+        base *= vec3(0.78, 0.94, 1.0) * (0.95 + 0.35 * dot(normal.xz, vec2(0.7)));
     } else {
-        base *= vec3(0.20, 0.25, 0.48);
+        base *= vec3(0.72, 0.90, 1.0);
     }
     if (reflectionsEnabled == 0) {
         finalColor = vec4(base * waterShadow(), 1.0);
@@ -66,10 +67,10 @@ void main()
     float viewDot = max(0.0, dot(normal, viewDirection));
     float reflectionAmount = mix(0.10, physicalWaves != 0 ? 0.30 : 0.42,
         (1.0 - viewDot) * (1.0 - viewDot));
-    vec3 color = mix(base, reflection * vec3(0.65, 0.62, 0.72), reflectionAmount * coverage);
+    vec3 color = mix(base, reflection * vec3(0.96, 0.99, 1.0), reflectionAmount * coverage);
     if (physicalWaves != 0) {
-        vec3 halfVector = normalize(viewDirection + normalize(vec3(-0.4, 0.85, -0.35)));
-        color += vec3(0.12, 0.14, 0.16) * pow(max(dot(normal, halfVector), 0.0), 96.0);
+        vec3 halfVector = normalize(viewDirection + normalize(sunDirection));
+        color += vec3(0.28, 0.25, 0.17) * pow(max(dot(normal, halfVector), 0.0), 96.0);
     }
     finalColor = vec4(color * waterShadow(), 1.0);
 }

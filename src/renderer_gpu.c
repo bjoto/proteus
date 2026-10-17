@@ -18,11 +18,9 @@ typedef struct {
     int capacity;
 } MeshBuilder;
 
-// A low dusk key produces readable building and vehicle shadows at virtual resolution while
-// retaining the cool blue-hour palette. This direction points from a shaded surface to the light.
-static const Vector3 DIRECTIONAL_LIGHT_DIRECTION = { -.45f, .55f, -.35f };
 static const Color LAMP_LENS_COLOR = { 255, 218, 132, 255 };
 static const Color HEADLIGHT_LENS_COLOR = { 255, 246, 202, 255 };
+// The generated map uses this colour as its water material identifier.
 static const Color WATER_COLOR = { 45, 79, 104, 255 };
 
 static void builder_destroy(MeshBuilder *builder)
@@ -290,7 +288,7 @@ static bool build_city(Mesh *city_mesh, Mesh *facades, Mesh *roofs, Mesh *quay, 
         Vector3 b = city->vertices[triangle->vertices[1]];
         Vector3 c = city->vertices[triangle->vertices[2]];
         if (is_water_triangle(triangle)) {
-            if (!builder_triangle(&water_builder, a, b, c, triangle->color))
+            if (!builder_triangle(&water_builder, a, b, c, (Color) { 67, 151, 180, 255 }))
                 goto failed;
             continue;
         }
@@ -355,9 +353,9 @@ static bool build_windows(Mesh *mesh)
             for (int column = 0; 2.5f + column * 4 < length - 1.5f; ++column) {
                 unsigned int seed = (unsigned int)i * 1664525u + (unsigned int)column * 1013904223u
                     + (unsigned int)floor * 374761393u;
-                Color color = seed % 7 < 3 ? (Color) { 230, 169, 88, 255 }
-                    : seed % 7 == 3        ? (Color) { 139, 161, 177, 255 }
-                                           : (Color) { 32, 43, 58, 255 };
+                Color color = seed % 7 < 3 ? (Color) { 138, 185, 204, 255 }
+                    : seed % 7 == 3        ? (Color) { 181, 211, 221, 255 }
+                                           : (Color) { 66, 100, 120, 255 };
                 Vector3 p = Vector3Add(Vector3Add(a, Vector3Scale(along, 2.5f + column * 4)),
                     Vector3Scale(normal, .035f));
                 p.y = 5.0f + floor * 3.2f;
@@ -831,14 +829,12 @@ static void select_local_lights(WaterfrontGpuScene *scene, const WaterfrontScene
     }
 }
 
-static void set_lighting_uniforms(WaterfrontGpuScene *scene, const WaterfrontSceneFrame *frame)
+static void set_lighting_uniforms(WaterfrontGpuScene *scene)
 {
-    // A little more dusk fill keeps the playable craft readable under the crane.
-    const float ambient_color[] = { frame->player_active ? .24f : .07f,
-        frame->player_active ? .27f : .09f, frame->player_active ? .36f : .18f };
-    static const float directional_color[] = { .32f, .38f, .62f };
-    float directional_direction[] = { DIRECTIONAL_LIGHT_DIRECTION.x, DIRECTIONAL_LIGHT_DIRECTION.y,
-        DIRECTIONAL_LIGHT_DIRECTION.z };
+    static const float ambient_color[] = { .48f, .57f, .65f };
+    static const float directional_color[] = { 1.0f, .92f, .74f };
+    Vector3 sun = waterfront_sun_direction();
+    float directional_direction[] = { sun.x, sun.y, sun.z };
     int location = GetShaderLocation(scene->shader, "ambientColor");
     if (location >= 0)
         SetShaderValue(scene->shader, location, ambient_color, SHADER_UNIFORM_VEC3);
@@ -850,7 +846,7 @@ static void set_lighting_uniforms(WaterfrontGpuScene *scene, const WaterfrontSce
         SetShaderValue(scene->shader, location, directional_direction, SHADER_UNIFORM_VEC3);
     location = GetShaderLocation(scene->shader, "directionalIntensity");
     if (location >= 0) {
-        float intensity = .72f;
+        float intensity = .65f;
         SetShaderValue(scene->shader, location, &intensity, SHADER_UNIFORM_FLOAT);
     }
     int shadows_enabled = scene->shadows_enabled && scene->shadow_map.depth.id != 0;
@@ -921,11 +917,11 @@ static void set_lighting_uniforms(WaterfrontGpuScene *scene, const WaterfrontSce
 
 static void set_atmosphere_uniforms(WaterfrontGpuScene *scene, Vector3 camera_position)
 {
-    static const float fog_color[] = { 136.0f / 255.0f, 100.0f / 255.0f, 113.0f / 255.0f };
+    static const float fog_color[] = { 186.0f / 255.0f, 229.0f / 255.0f, 244.0f / 255.0f };
     float camera[] = { camera_position.x, camera_position.y, camera_position.z };
     float fog_start = 145.0f;
     float fog_end = 620.0f;
-    float fog_opacity = .62f;
+    float fog_opacity = .38f;
     int atmosphere_enabled = scene->atmosphere_enabled;
     int location = GetShaderLocation(scene->shader, "cameraPosition");
     if (location >= 0)
@@ -970,6 +966,10 @@ static void set_water_uniforms(WaterfrontGpuScene *scene, const WaterfrontSceneF
             SHADER_UNIFORM_VEC4, 3);
     }
     int shadows = scene->shadows_enabled && frame->player_active;
+    Vector3 sun = waterfront_sun_direction();
+    float sun_direction[] = { sun.x, sun.y, sun.z };
+    SetShaderValue(scene->water_shader, GetShaderLocation(scene->water_shader, "sunDirection"),
+        sun_direction, SHADER_UNIFORM_VEC3);
     int shadow_location = GetShaderLocation(scene->water_shader, "shadowsEnabled");
     SetShaderValue(scene->water_shader, shadow_location, &shadows, SHADER_UNIFORM_INT);
     SetShaderValueMatrix(scene->water_shader,
@@ -1282,7 +1282,7 @@ static Camera3D shadow_camera(const WaterfrontGpuScene *scene, const WaterfrontS
 {
     const float coverage = frame->player_active ? 96.0f : 500.0f;
     const float texel_size = coverage / scene->shadow_map_size;
-    Vector3 light_direction = Vector3Normalize(DIRECTIONAL_LIGHT_DIRECTION);
+    Vector3 light_direction = waterfront_sun_direction();
     Vector3 right = Vector3Normalize(Vector3CrossProduct((Vector3) { 0, 1, 0 }, light_direction));
     Vector3 up = Vector3CrossProduct(light_direction, right);
     Vector3 target = frame->camera.target;
@@ -1357,7 +1357,7 @@ void waterfront_gpu_scene_draw(
     if (scene->shadows_enabled)
         render_shadow_map(scene, frame);
     select_local_lights(scene, frame);
-    set_lighting_uniforms(scene, frame);
+    set_lighting_uniforms(scene);
     if (scene->reflections_enabled) {
         set_atmosphere_uniforms(scene, reflection_camera(frame).position);
         render_reflection(scene, frame, (float)width / height);

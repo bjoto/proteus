@@ -138,9 +138,9 @@ static void windows(Renderer3D *r)
             for (int column = 0; 2.5f + column * 4 < length - 1.5f; ++column) {
                 unsigned int seed = (unsigned int)i * 1664525u + (unsigned int)column * 1013904223u
                     + (unsigned int)floor * 374761393u;
-                Color color = seed % 7 < 3 ? (Color) { 230, 169, 88, 255 }
-                    : seed % 7 == 3        ? (Color) { 139, 161, 177, 255 }
-                                           : (Color) { 32, 43, 58, 255 };
+                Color color = seed % 7 < 3 ? (Color) { 138, 185, 204, 255 }
+                    : seed % 7 == 3        ? (Color) { 181, 211, 221, 255 }
+                                           : (Color) { 66, 100, 120, 255 };
                 Vector3 p = Vector3Add(Vector3Add(a, Vector3Scale(along, 2.5f + column * 4)),
                     Vector3Scale(normal, .035f));
                 p.y = 5.0f + floor * 3.2f;
@@ -207,8 +207,7 @@ bool waterfront_draw_frame(
     Renderer3D *r, Color *pixels, int width, int height, const WaterfrontSceneFrame *frame)
 {
     waterfront_sky_draw(pixels, width, height, frame->camera);
-    if (!renderer3d_begin(
-            r, pixels, width, height, frame->camera, (Vector3) { -0.4f, 0.85f, -0.35f }))
+    if (!renderer3d_begin(r, pixels, width, height, frame->camera, waterfront_sun_direction()))
         return false;
     renderer3d_draw_mesh(r, waterfront_scene_city_mesh(), (Transform3D) { .scale = { 1, 1, 1 } });
     // Dockbron: approximate mapped endpoints and assumed deck elevation, for composition.
@@ -227,7 +226,7 @@ bool waterfront_draw_boating(
     Renderer3D *r, Color *pixels, int width, int height, View3D camera, bool omit_water)
 {
     waterfront_sky_draw(pixels, width, height, camera);
-    if (!renderer3d_begin(r, pixels, width, height, camera, (Vector3) { -0.4f, 0.85f, -0.35f }))
+    if (!renderer3d_begin(r, pixels, width, height, camera, waterfront_sun_direction()))
         return false;
     Mesh3D city = *waterfront_scene_city_mesh();
     if (omit_water) {
