@@ -18,6 +18,8 @@ static void usage(void)
          "--camera-distance UNITS: 8..48 (default 20)\n"
          "--camera-height UNITS: 4..36 (default 14)\n"
          "--location basin|eriksberg (default basin)\n"
+         "--waves: gentle crossing waves and a floating hull\n"
+         "--course: timed S course in the basin; cross highlighted gates in order | R: retry\n"
          "--gpu: GPU Eriksberg renderer | --gpu-aa: enable GPU with 4x supersampling\n"
          "F3: toggle debug profiler | --profiler: show it on startup\n"
          "CPU screenshots need no window; GPU screenshots require a graphics context.\n"
@@ -61,7 +63,7 @@ int main(int argc, char **argv)
     float time = 0;
     BoatCamera camera_settings = BOAT_CAMERA_DEFAULT;
     bool time_set = false, demo = false;
-    bool eriksberg = false;
+    bool eriksberg = false, course = false, waves = false;
     bool gpu_enabled = false, gpu_aa = false;
     bool profiler_visible = false;
     int frame_limit = 0;
@@ -83,6 +85,10 @@ int main(int argc, char **argv)
             gpu_enabled = gpu_aa = true;
         } else if (strcmp(argv[i], "--profiler") == 0) {
             profiler_visible = true;
+        } else if (strcmp(argv[i], "--waves") == 0) {
+            waves = true;
+        } else if (strcmp(argv[i], "--course") == 0) {
+            course = true;
         } else if (strcmp(argv[i], "--demo") == 0) {
             demo = true;
         } else if (strcmp(argv[i], "--screenshot") == 0 && i + 1 < argc) {
@@ -121,6 +127,10 @@ int main(int argc, char **argv)
     }
     if ((time_set && !screenshot) || (screenshot && frame_limit))
         goto invalid;
+    if (course && (eriksberg || demo)) {
+        fprintf(stderr, "--course requires the basin and cannot be combined with --demo.\n");
+        goto invalid;
+    }
     if (gpu_enabled && !eriksberg) {
         fprintf(stderr, "GPU boating requires --location eriksberg.\n");
         goto invalid;
@@ -136,7 +146,11 @@ int main(int argc, char **argv)
     Texture2D texture = { 0 };
     bool window_ready = false;
     Boat boat;
-    boat_reset_location(&boat, eriksberg);
+    if (course)
+        boat_reset_course(&boat);
+    else
+        boat_reset_location(&boat, eriksberg);
+    boat.water_settings = waves ? boat_water_gentle() : (BoatWater) { 0 };
     int result = 1;
     if (eriksberg && !boat_map_water(boat.position, 2.5f)) {
         fprintf(stderr, "Eriksberg spawn is not navigable.\n");
@@ -216,7 +230,11 @@ int main(int argc, char **argv)
                 camera_settings = BOAT_CAMERA_DEFAULT;
         }
         if (IsKeyPressed(KEY_R)) {
-            boat_reset_location(&boat, eriksberg);
+            if (course)
+                boat_reset_course(&boat);
+            else
+                boat_reset_location(&boat, eriksberg);
+            boat.water_settings = waves ? boat_water_gentle() : (BoatWater) { 0 };
             accumulator = 0;
             demo_tick = 0;
         } else if (IsWindowFocused()) {
@@ -288,6 +306,7 @@ int main(int argc, char **argv)
             12, hud_y + 153, 12, LIGHTGRAY);
         DrawText(
             "PgUp/PgDn: height | C: reset view | F3: profiler", 12, hud_y + 171, 12, LIGHTGRAY);
+        boat_course_hud(&boat.course, boat.position, GetScreenWidth());
         if (!IsWindowFocused())
             DrawText("PAUSED", 12, 12, 20, RAYWHITE);
         if (eriksberg)
@@ -306,6 +325,7 @@ cleanup:
             UnloadTexture(texture);
         CloseWindow();
     }
+    boat_water_destroy();
     boat_map_destroy();
     renderer3d_destroy(&renderer);
     free(pixels);

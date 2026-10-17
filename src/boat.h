@@ -1,6 +1,8 @@
 #ifndef PROTEUS_BOAT_H
 #define PROTEUS_BOAT_H
 
+#include "boat_course.h"
+#include "boat_water.h"
 #include "renderer3d.h"
 #include "waterfront_scene.h"
 
@@ -27,6 +29,8 @@ typedef struct {
 typedef struct {
     Vector2 position; // Water-plane X/Z coordinates.
     bool eriksberg;
+    BoatWater water_settings;
+    BoatCourse course;
     float time;
     Vector2 velocity;
     float heading; // Zero faces north (-Z); positive turns right.
@@ -35,8 +39,10 @@ typedef struct {
     float engine_response;
     // 0 is displacement running; 1 is fully planing. Horizontal handling approximation.
     float planing;
-    // Presentation-only bow rise in radians; C2 replaces this with physical attitude.
-    float visual_pitch;
+    // Physical heave relative to the rest waterline, plus bow-up pitch and local Z roll.
+    float height, vertical_velocity;
+    float pitch, pitch_velocity, roll, roll_velocity;
+    float wave_spray; // Smoothed 0..1 bow-entry load, used only for wave encounter particles.
     float wheel; // Spring-centred steering setting, -1 (full port) to 1 (full starboard).
     float engine_angle; // Radians of thrust deflection; positive pushes stern to port.
     float yaw_velocity; // Heading change in radians/second, integrated from stern torque.
@@ -48,6 +54,7 @@ typedef struct {
 
 void boat_reset(Boat *boat);
 void boat_reset_location(Boat *boat, bool eriksberg);
+void boat_reset_course(Boat *boat);
 void boat_scene_frame(const Boat *boat, BoatCamera camera, WaterfrontSceneFrame *frame);
 // Advance one fixed tick. Inputs are adjustment rates in -1..1; zero centres the wheel and holds
 // throttle.

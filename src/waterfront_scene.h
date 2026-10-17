@@ -1,6 +1,7 @@
 #ifndef PROTEUS_WATERFRONT_SCENE_H
 #define PROTEUS_WATERFRONT_SCENE_H
 
+#include "boat_water.h"
 #include "renderer3d.h"
 
 // Renderer-independent authored data and time evaluation for the waterfront.
@@ -58,6 +59,7 @@ typedef struct {
 typedef struct {
     View3D camera;
     bool player_active;
+    BoatWater player_water; // Zero for timeline scenes; shared analytic boating parameters.
     WaterfrontPlayerState player;
     float time;
     Transform3D bridge;

@@ -84,6 +84,15 @@ Explore the bundled Eriksberg waterfront with the same boat and controls:
 ./build/boat_study --location eriksberg --screenshot build/eriksberg-boat.png --time 3
 ```
 
+Run `./build/boat_study --course` for the first timed S course in the basin. Cross the
+start line northbound to start the clock, pass the two offset buoy gates in order, then cross
+the chequered finish line to freeze the time. Yellow marks the next gate; the small route map
+shows the boat and gate order. Cross between the posts in the course direction; missed gates
+can be approached again, and the timer keeps running. Buoys are non-colliding markers.
+R resets the boat and timer for another attempt. Losing focus pauses the timer with the
+simulation. Course mode is basin-only; free boating remains the default. Times are per attempt;
+a fastest-lap list is deferred.
+
 `basin` remains the default. Eriksberg spawns in the dock facing the crane and river; R returns
 there. The map, buildings, Dockbron, crane, and dusk sky reuse the existing offline scene.
 Shoreline collisions use an oriented bow, stern, and beam footprint; glancing contacts scrub speed,
@@ -141,14 +150,42 @@ lowering the throttle to 0%, and holding a modest wheel angle through the coast.
 approximations for calm water. Above a forward speed threshold, a rate-limited planing blend
 gradually reduces hull resistance; it disengages at a lower speed so it cannot chatter around the
 transition. Reverse never planes. The bow rises during the transition and settles to a small
-cruise angle; wake and spray strengthen with planing. This attitude is presentation-only, shared
-by CPU/GPU hull, cabin, outboard, reflections, and shadows; physical buoyancy and waves remain
-later work. The follow camera keeps a level horizon.
+cruise angle; wake and spray strengthen with planing. Six damped buoyancy supports provide physical
+heave, pitch, and roll, shared by CPU/GPU hull, cabin, outboard, reflections, and shadows. Planing
+changes the support distribution rather than adding a cosmetic tilt. The follow camera keeps a
+level horizon and does not follow the hull’s bobbing.
 
 The basin walls bounce the craft back gently; the two orange markers are visual turning references
 and have no collision yet. A spreading wake traces your path and fades; hard turns throw spray
 according to sideways slip. Reset clears both effects. This sketch is silent, with no scoring or
 geographic scenery.
+
+Opt in to gentle crossing waves with `--waves` (CPU basin or Eriksberg, including `--gpu-aa`).
+Flat, still water remains the default. Three low wave components replace the regular colored bands:
+16/9/5.5-unit wavelengths and 0.13/0.06/0.025-unit amplitudes, with different travel directions.
+The hull responds to the same water query that drives the rendered surface; foam follows the
+water and spray starts at the moving hull. GPU water has restrained reflections distorted by the
+physical surface normals. CPU water uses simple, subdued slope shading without scene reflections.
+For a closer view of the motion:
+
+```sh
+./build/boat_study --waves --camera-distance 12 --camera-height 6
+./build/boat_study --waves --location eriksberg --gpu-aa --camera-distance 12 --camera-height 6
+```
+
+With waves enabled, the six hull supports resist motion into and out of the local water surface.
+Faster crossings produce more resistance and bow spray; easing off reduces the encounter load.
+Try the dominant wave train head-on, across the beam, and following it. The camera stays level,
+and the same flat-water steering/coasting response remains available without `--waves`.
+Foam follows both water height and slope; spray inherits the moving hull’s vertical velocity.
+
+This completes C3 of the [physics plan](docs/BOAT_PHYSICS_PLAN.md). The model uses vertical support
+springs plus damped motion normal to the local surface, with a modest speed-dependent gain.
+It does not model hull volumes, orbital water flow, ventilation, or capsizing. Moving waves can
+supply energy; resistance dissipates energy relative to their local velocity. GPU reflections
+still use a planar source, and the two-unit surface mesh approximates analytic heights between
+vertices. `--demo` adds the scripted acceleration/turn/reverse sequence; reset restarts wave time.
+
 The [boating plan](docs/BOATING_PLAN.md) tracks the next steps toward Gothenburg and the archipelago.
 
 For display-free captures of scripted acceleration, planing, and a right turn, or a windowed check:

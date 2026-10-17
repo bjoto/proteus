@@ -1,8 +1,8 @@
 # Gothenburg boating playground
 
 Status: working design, updated 2026-10-17. Stage 1 and the wake/spray portion of stage 2 are implemented
-as `boat_study`; other features remain proposals. Revise this plan as we discover what is enjoyable
-to play.
+as `boat_study`, alongside an initial timed S course; other features remain proposals. Revise this
+plan as we discover what is enjoyable to play.
 
 ## Current prototype
 
@@ -63,7 +63,7 @@ simulation ticks, including angle wraparound. `-`/`+` adjust distance (8..48), P
 height (4..36), and `C` restores the default view. The HUD shows both values; `R` resets the boat
 without changing them. Settings are per-run; `--camera-distance` and `--camera-height` also configure
 interactive runs and screenshots. Eriksberg geographical scenery is implemented;
-collision splashes and timed courses belong to later stages. Player evaluation of handling is the
+collision splashes belong to later stages. Player evaluation of handling is the
 next design input: especially steering responsiveness, the amount of slide, and coasting into a turn.
 
 ## Direction
@@ -108,6 +108,18 @@ selected separately. An enjoyable harbour and one island route would already be 
 
 The first success criterion: driving in circles and carving around a buoy is enjoyable for a minute,
 even without a score. Tune movement before adding content if this does not hold.
+
+## First timed course
+
+`./build/boat_study --course` selects a basin-only S course. The boat spawns south of a
+start line; a forward crossing between the posts starts the timer. Two ordered, offset buoy
+gates require broad turns before a chequered finish line stops the clock. Yellow marks the
+next gate, and a HUD route map shows progress. Gates use swept boat-centre crossings toward
+north, with interpolated start/finish times on fixed simulation ticks. Skipping a gate cannot
+finish a run. Missed gates can be retried while the clock continues. Markers do not collide.
+R resets both the boat and attempt; focus loss pauses both. Free boating is still the default.
+No scores or fastest-lap list are stored yet. This small time trial takes priority over the
+previously proposed minute-long scoring mode and the remaining physics experiments.
 
 ## Optional arcade challenge
 
@@ -160,8 +172,8 @@ demo and its soundtrack timeline while this direction is experimental.
 
 The accepted next-step roadmap is [Boat physics implementation plan](BOAT_PHYSICS_PLAN.md).
 It breaks the ambitions below into independently testable tasks suitable for one coding-agent
-session each. Follow that sequence before pursuing the optional timed game; do not implement the
-whole roadmap at once.
+session each. Continue those experiments in bounded steps; the initial timed S course is now available
+as a separate mode. Do not implement the whole roadmap at once.
 
 Explore these individually after the wake and spray make the existing handling easy to read.
 Keep calm water as a baseline for comparisons. These are proposed gameplay models to try, not a
@@ -218,3 +230,19 @@ turning is satisfying, since they would materially change course design.
   preview now holds its wheel angle while lowering throttle to show an unpowered turning coast.
   Quadratic drag is motivated by the [standard fluid drag equation](https://www1.grc.nasa.gov/beginners-guide-to-aeronautics/drag-equation/);
   coefficients remain gameplay tuning parameters, not measured properties of a specific boat.
+
+### Playable gentle waves (physics C1–C3)
+
+`--waves` opts into three deterministic crossing waves in the basin and Eriksberg on CPU/GPU.
+Flat water remains the default, and reset preserves the launch option while restarting wave time.
+Six damped hull supports add physical heave, pitch and roll, including the planing attitude;
+attachments share that pose while the follow camera stays level. Foam follows local water height.
+GPU wave normals distort restrained planar reflections; CPU uses subdued slope colors.
+Use `--camera-distance 12 --camera-height 6` for a closer view, and add `--demo` for a scripted run.
+Local water-relative normal resistance now couples wave encounters to horizontal motion and all
+three angular rates. Faster crossings increase the load and bow spray; slowing down softens the
+response. Foam follows the local surface slope as well as height. Flat mode retains C2 handling.
+This remains a support-spring/normal-damping model, without displaced hull volumes, orbital flow,
+currents, ventilation, or capsize behavior. The user accepted Phase C after playtesting; preserve
+this baseline for Phase D. See
+[the physics plan](BOAT_PHYSICS_PLAN.md#phase-c--buoyancy-and-gentle-waves).

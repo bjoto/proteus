@@ -223,12 +223,24 @@ bool waterfront_draw_frame(
     return true;
 }
 
-bool waterfront_draw_boating(Renderer3D *r, Color *pixels, int width, int height, View3D camera)
+bool waterfront_draw_boating(
+    Renderer3D *r, Color *pixels, int width, int height, View3D camera, bool omit_water)
 {
     waterfront_sky_draw(pixels, width, height, camera);
     if (!renderer3d_begin(r, pixels, width, height, camera, (Vector3) { -0.4f, 0.85f, -0.35f }))
         return false;
-    renderer3d_draw_mesh(r, waterfront_scene_city_mesh(), (Transform3D) { .scale = { 1, 1, 1 } });
+    Mesh3D city = *waterfront_scene_city_mesh();
+    if (omit_water) {
+        while (city.triangle_count) {
+            const Triangle3D *t = city.triangles;
+            if (city.vertices[t->vertices[0]].y != 0 || city.vertices[t->vertices[1]].y != 0
+                || city.vertices[t->vertices[2]].y != 0)
+                break;
+            ++city.triangles;
+            --city.triangle_count;
+        }
+    }
+    renderer3d_draw_mesh(r, &city, (Transform3D) { .scale = { 1, 1, 1 } });
     WaterfrontSceneFrame frame;
     waterfront_scene_evaluate(0, true, &frame);
     renderer3d_draw_box(r, frame.bridge, frame.bridge_color);

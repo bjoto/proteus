@@ -193,21 +193,21 @@ static int validate_planing(void)
     return 0;
 }
 
-static int validate_planing_presentation(void)
+static int validate_planing_attitude(void)
 {
     Boat boat;
     boat_reset(&boat);
     boat.throttle = 1;
     float peak = 0;
     for (int tick = 0; tick < 360; ++tick) {
-        float previous = boat.visual_pitch;
+        float previous = boat.pitch;
         boat_step(&boat, 0, 0);
-        CHECK(isfinite(boat.visual_pitch));
-        CHECK(fabsf(boat.visual_pitch - previous) < .008f);
-        peak = fmaxf(peak, boat.visual_pitch);
+        CHECK(isfinite(boat.pitch));
+        CHECK(fabsf(boat.pitch - previous) < .008f);
+        peak = fmaxf(peak, boat.pitch);
     }
     CHECK(peak > 5 * DEG2RAD);
-    CHECK(boat.visual_pitch > 2 * DEG2RAD && boat.visual_pitch < 4 * DEG2RAD);
+    CHECK(boat.pitch > 2 * DEG2RAD && boat.pitch < 4 * DEG2RAD);
     CHECK(particles(&boat, true) > 0);
 
     // Validate rigid attachments and local bow rise across headings, including Euler singularities.
@@ -216,13 +216,13 @@ static int validate_planing_presentation(void)
         boat.heading = angle * PI / 8;
         boat.engine_angle = .4f;
         for (int attitude = 0; attitude < 2; ++attitude) {
-            boat.visual_pitch = attitude * .15f;
+            boat.pitch = attitude * .15f;
             boat_scene_frame(&boat, BOAT_CAMERA_DEFAULT, &frame);
             Matrix hull = MatrixRotateXYZ(frame.player.hull.rotation);
             Matrix expected
-                = MatrixMultiply(MatrixRotateX(boat.visual_pitch), MatrixRotateY(boat.heading));
+                = MatrixMultiply(MatrixRotateX(boat.pitch), MatrixRotateY(boat.heading));
             Vector3 bow = Vector3Transform((Vector3) { 0, 0, -1 }, hull);
-            CHECK(fabsf(bow.y - sinf(boat.visual_pitch)) < .0001f);
+            CHECK(fabsf(bow.y - sinf(boat.pitch)) < .0001f);
             Vector3 cabin = Vector3Add(
                 frame.player.hull.position, Vector3Transform((Vector3) { 0, 1.1f, 0 }, expected));
             CHECK(Vector3Distance(cabin, frame.player.cabin.position) < .0001f);
@@ -243,20 +243,20 @@ static int validate_planing_presentation(void)
     }
     // Presentation state must never feed back into horizontal handling or the camera.
     Boat level = boat;
-    level.visual_pitch = 0;
+    level.pitch = 0;
     boat_step(&boat, 0, 0);
     boat_step(&level, 0, 0);
     CHECK(Vector2Distance(boat.velocity, level.velocity) == 0);
     CHECK(boat.heading == level.heading && boat.camera_heading == level.camera_heading);
     boat.throttle = 0;
     for (int tick = 0; tick < 2400; ++tick) {
-        float previous = boat.visual_pitch;
+        float previous = boat.pitch;
         boat_step(&boat, 0, 0);
-        CHECK(fabsf(boat.visual_pitch - previous) < .008f);
+        CHECK(fabsf(boat.pitch - previous) < .008f);
     }
-    CHECK(boat.visual_pitch < .0001f && boat.planing == 0);
+    CHECK(boat.pitch < .0001f && boat.planing == 0);
     boat_reset(&boat);
-    CHECK(boat.visual_pitch == 0);
+    CHECK(boat.pitch == 0);
     return 0;
 }
 
@@ -294,8 +294,433 @@ static int validate_hull_contacts(void)
     return 0;
 }
 
+static int validate_course(void)
+{
+    Boat boat;
+    boat_reset_course(&boat);
+    CHECK(boat.course.enabled && boat.course.next_gate == 0);
+    CHECK(boat.position.x == 0 && boat.position.y > boat_course_gates[0].centre.y);
+    for (int i = 0; i < 120; ++i)
+        boat_step(&boat, 0, 0);
+    CHECK(boat.course.elapsed == 0);
+    BoatCourse *course = &boat.course;
+    // Wrong direction, outside the posts, and later gates cannot start the clock.
+    boat_course_step(course, (Vector2) { 0, 34 }, (Vector2) { 0, 36 }, 1);
+    boat_course_step(course, (Vector2) { 20, 36 }, (Vector2) { 20, 34 }, 1);
+    boat_course_step(course, (Vector2) { 22, 8 }, (Vector2) { 22, 6 }, 1);
+    CHECK(course->next_gate == 0 && course->elapsed == 0);
+    // Interpolate both the crossing time and lateral position, even for a large step.
+    boat_course_step(course, (Vector2) { -20, 36 }, (Vector2) { 20, 34 }, 1);
+    CHECK(course->next_gate == 1 && fabs(course->elapsed - .5) < .00001);
+    boat_course_step(course, (Vector2) { 0, -52 }, (Vector2) { 0, -54 }, 1);
+    CHECK(course->next_gate == 1 && fabs(course->elapsed - 1.5) < .00001);
+    boat_course_step(course, (Vector2) { 0, 8 }, (Vector2) { 0, 6 }, 1);
+    CHECK(course->next_gate == 1); // Short-cut misses the first bend.
+    boat_course_step(course, (Vector2) { 22, 8 }, (Vector2) { 22, 6 }, 1);
+    CHECK(course->next_gate == 2);
+    boat_course_step(course, (Vector2) { -22, -24 }, (Vector2) { -22, -22 }, 1);
+    CHECK(course->next_gate == 2); // Reverse crossing does not advance.
+    boat_course_step(course, (Vector2) { -22, -22 }, (Vector2) { -22, -24 }, 1);
+    CHECK(course->next_gate == 3);
+    double before_finish = course->elapsed;
+    boat_course_step(course, (Vector2) { 0, -52 }, (Vector2) { 0, -56 }, 1);
+    CHECK(course->next_gate == BOAT_COURSE_GATES);
+    CHECK(fabs(course->elapsed - before_finish - .25) < .00001);
+    double finished = course->elapsed;
+    boat_course_step(course, (Vector2) { 0, 50 }, (Vector2) { 0, -60 }, 10);
+    CHECK(course->elapsed == finished);
+    boat_reset_course(&boat);
+    CHECK(course->elapsed == 0 && course->next_gate == 0);
+    // Integration: powered movement starts the timer on the fixed simulation ticks.
+    boat.throttle = 1;
+    for (int i = 0; i < 360; ++i)
+        boat_step(&boat, 0, 0);
+    CHECK(course->next_gate == 1 && course->elapsed > 0);
+    boat_reset_location(&boat, false);
+    CHECK(!course->enabled && course->elapsed == 0);
+    return 0;
+}
+
+// Potential of the same unilateral springs and gravity, relative to calm-water equilibrium.
+static float floating_energy(const Boat *boat)
+{
+    float energy = .5f * boat->vertical_velocity * boat->vertical_velocity
+        + boat->pitch_velocity * boat->pitch_velocity
+        + .225f * boat->roll_velocity * boat->roll_velocity + 9.81f * boat->height;
+    float draft = 9.81f / 64;
+    for (int end = -1; end <= 1; ++end) {
+        for (int side = -1; side <= 1; side += 2) {
+            float height = boat->height + side * .65f * sinf(boat->roll) * cosf(boat->pitch)
+                + end * 1.4f * sinf(boat->pitch);
+            float immersion = fmaxf(0, draft - height);
+            energy += .5f * (64.0f / 6) * (immersion * immersion - draft * draft);
+        }
+    }
+    return energy;
+}
+
+static int validate_buoyancy(void)
+{
+    Boat boat;
+    boat_reset(&boat);
+    for (int tick = 0; tick < 1200; ++tick)
+        boat_step(&boat, 0, 0);
+    CHECK(fabsf(boat.height) < .000001f && fabsf(boat.vertical_velocity) < .000001f);
+    CHECK(fabsf(boat.pitch) < .000001f && fabsf(boat.roll) < .000001f);
+    // Drop, push under water, and disturb both angular modes with and without initial velocity.
+    for (int trial = 0; trial < 4; ++trial) {
+        boat_reset(&boat);
+        boat.height = trial == 0 ? 1.2f : trial == 1 ? -.35f : .1f;
+        boat.pitch = trial % 2 ? -.16f : .12f;
+        boat.roll = trial % 2 ? .14f : -.1f;
+        boat.vertical_velocity = trial == 2 ? -1 : 0;
+        boat.pitch_velocity = trial == 3 ? .4f : 0;
+        boat.roll_velocity = trial == 3 ? -.3f : 0;
+        float initial_energy = floating_energy(&boat);
+        for (int tick = 0; tick < 1200; ++tick) {
+            boat_step(&boat, 0, 0);
+            CHECK(isfinite(boat.height) && isfinite(boat.pitch) && isfinite(boat.roll));
+            CHECK(floating_energy(&boat) < initial_energy * 1.01f + .00001f);
+        }
+        CHECK(fabsf(boat.height) < .0001f && fabsf(boat.pitch) < .0001f);
+        CHECK(fabsf(boat.roll) < .0001f && floating_energy(&boat) < .00001f);
+    }
+    // A static sloping wave must lift the correct bow and side (simulation X is mirrored).
+    boat_reset(&boat);
+    boat.position = (Vector2) { 0 };
+    boat.water_settings = boat_water_gentle();
+    boat.water_settings.angular_speed = 0;
+    boat.water_settings.crossing[0] = boat.water_settings.crossing[1] = (BoatWave) { 0 };
+    for (int tick = 0; tick < 720; ++tick)
+        boat_step(&boat, 0, 0);
+    CHECK(boat.pitch > .01f && boat.roll < -.01f);
+    // The full rigid pose must carry every attachment through heave and roll as well as pitch.
+    for (int angle = 0; angle < 16; ++angle) {
+        boat.heading = angle * PI / 8;
+        boat.height = .25f;
+        boat.pitch = .12f;
+        boat.roll = -.09f;
+        boat.engine_angle = .3f;
+        WaterfrontSceneFrame frame;
+        boat_scene_frame(&boat, BOAT_CAMERA_DEFAULT, &frame);
+        Matrix expected
+            = MatrixMultiply(MatrixMultiply(MatrixRotateZ(boat.roll), MatrixRotateX(boat.pitch)),
+                MatrixRotateY(boat.heading));
+        Matrix actual = MatrixRotateXYZ(frame.player.hull.rotation);
+        for (int axis = 0; axis < 3; ++axis) {
+            Vector3 basis = { axis == 0, axis == 1, axis == 2 };
+            CHECK(
+                Vector3Distance(Vector3Transform(basis, actual), Vector3Transform(basis, expected))
+                < .0001f);
+        }
+        Vector3 cabin = Vector3Add(
+            frame.player.hull.position, Vector3Transform((Vector3) { 0, 1.1f, 0 }, expected));
+        Vector3 engine = Vector3Add(
+            frame.player.hull.position, Vector3Transform((Vector3) { 0, .4f, 1.6f }, expected));
+        CHECK(Vector3Distance(cabin, frame.player.cabin.position) < .0001f);
+        CHECK(Vector3Distance(engine, frame.player.engine.position) < .0001f);
+        CHECK(frame.player.hull.position.y == boat.height);
+        CHECK(frame.camera.position.y == BOAT_CAMERA_DEFAULT.height);
+        CHECK(frame.camera.up.x == 0 && frame.camera.up.y == 1 && frame.camera.up.z == 0);
+    }
+    // Repeatable rest, head-on, beam and following sampling at low and cruising speeds.
+    for (int encounter = 0; encounter < 4; ++encounter) {
+        for (int speed = 0; speed <= 10; speed += 5) {
+            boat_reset(&boat);
+            boat.position = (Vector2) { 0 };
+            boat.water_settings = boat_water_gentle();
+            boat.heading = atan2f(.6f, .8f) + encounter * PI / 2;
+            Boat repeat = boat;
+            float motion = 0;
+            for (int tick = 0; tick < 960; ++tick) {
+                boat.velocity = repeat.velocity
+                    = (Vector2) { speed * sinf(boat.heading), -speed * cosf(boat.heading) };
+                boat_step(&boat, 0, 0);
+                boat_step(&repeat, 0, 0);
+                CHECK(fabsf(boat.height) < .4f && fabsf(boat.pitch) < .35f
+                    && fabsf(boat.roll) < .35f);
+                motion = fmaxf(motion, fabsf(boat.height));
+                for (int i = 0; i < BOAT_WATER_PARTICLES; ++i) {
+                    BoatWaterParticle p = boat.water[i];
+                    if (p.lifetime <= 0)
+                        continue;
+                    float surface
+                        = boat_water_query(boat.water_settings, p.position, boat.time).height;
+                    if (!p.spray)
+                        CHECK(fabsf(p.height - surface - .015f) < .00001f);
+                    else
+                        CHECK(p.height >= surface);
+                }
+            }
+            CHECK(motion > .02f);
+            CHECK(memcmp(&boat, &repeat, sizeof(Boat)) == 0);
+        }
+    }
+    // Longer powered/reversing run, then remove the forcing and recover in calm water.
+    boat_reset(&boat);
+    boat.water_settings = boat_water_gentle();
+    for (int tick = 0; tick < 36000; ++tick) {
+        boat_step(&boat, sinf(tick * .005f), sinf(tick * .001f));
+        CHECK(isfinite(boat.height) && fabsf(boat.height) < .5f);
+        CHECK(isfinite(boat.pitch) && fabsf(boat.pitch) < .4f);
+        CHECK(isfinite(boat.roll) && fabsf(boat.roll) < .4f);
+    }
+    boat.water_settings = (BoatWater) { 0 };
+    boat.throttle = boat.engine_response = 0;
+    for (int tick = 0; tick < 2400; ++tick)
+        boat_step(&boat, 0, 0);
+    CHECK(fabsf(boat.height) < .0001f && fabsf(boat.pitch) < .0001f);
+    CHECK(fabsf(boat.roll) < .0001f);
+    boat_reset(&boat);
+    CHECK(boat.height == 0 && boat.vertical_velocity == 0);
+    CHECK(boat.pitch == 0 && boat.pitch_velocity == 0 && boat.roll == 0 && boat.roll_velocity == 0);
+    return 0;
+}
+
+static int validate_wave_resistance(void)
+{
+    // Test resistance in isolation: its work is nonpositive relative to local moving water.
+    for (int i = 0; i < 2000; ++i) {
+        BoatWaterSample water = boat_water_query(
+            boat_water_gentle(), (Vector2) { i * .13f, sinf(i * .07f) * 20 }, i * .021f);
+        water.velocity.x = sinf(i * .11f) * .4f;
+        water.velocity.z = cosf(i * .05f) * .3f;
+        Vector3 velocity = { sinf(i * .07f) * 15, cosf(i * .17f) * 3, cosf(i * .03f) * 12 };
+        Vector3 relative = Vector3Subtract(velocity, water.velocity);
+        float support = .2f + (i % 13) * .4f;
+        Vector3 force = boat_water_resistance(water, velocity, 3, support);
+        CHECK(Vector3DotProduct(force, relative) <= .00001f);
+        CHECK(support + force.y >= -.00001f);
+        CHECK(Vector3Length(Vector3CrossProduct(force, water.normal)) < .00001f);
+        Vector3 next = Vector3Add(relative, Vector3Scale(force, BOAT_STEP));
+        CHECK(Vector3LengthSqr(next) <= Vector3LengthSqr(relative) + .0001f);
+        CHECK(Vector3LengthSqr(boat_water_resistance(water, velocity, 3, 0)) == 0);
+        CHECK(Vector3LengthSqr(boat_water_resistance(water, water.velocity, 3, support)) == 0);
+    }
+    // Moving water can supply ground-frame energy, without supplying relative-frame energy.
+    BoatWaterSample rising = { .normal = { 0, 1, 0 }, .velocity = { 0, .5f, 0 } };
+    Vector3 force = boat_water_resistance(rising, (Vector3) { 0 }, 3, 2);
+    CHECK(force.y > 0);
+    CHECK(Vector3DotProduct(force, Vector3Negate(rising.velocity)) < 0);
+    rising.velocity.y = 0;
+    CHECK(boat_water_resistance(rising, (Vector3) { 0, 50, 0 }, 3, 2).y == -2);
+    return 0;
+}
+
+typedef struct {
+    float angular_motion, vertical_acceleration, spray_load;
+    Boat final;
+} Encounter;
+
+static Encounter wave_encounter(float heading, float speed)
+{
+    Encounter result = { 0 };
+    Boat *boat = &result.final;
+    boat_reset(boat);
+    boat->position = (Vector2) { 0 };
+    boat->water_settings = boat_water_gentle();
+    for (int tick = 0; tick < 960; ++tick) {
+        // Controlled straight tow isolates heading and speed; it supplies horizontal work.
+        boat->heading = heading;
+        boat->yaw_velocity = 0;
+        boat->velocity = (Vector2) { speed * sinf(heading), -speed * cosf(heading) };
+        float previous = boat->vertical_velocity;
+        boat_step(boat, 0, 0);
+        if (tick >= 240) {
+            float acceleration = (boat->vertical_velocity - previous) / BOAT_STEP;
+            result.angular_motion += boat->pitch_velocity * boat->pitch_velocity
+                + boat->roll_velocity * boat->roll_velocity;
+            result.vertical_acceleration += acceleration * acceleration;
+            result.spray_load += boat->wave_spray;
+        }
+    }
+    result.angular_motion = sqrtf(result.angular_motion / 720);
+    result.vertical_acceleration = sqrtf(result.vertical_acceleration / 720);
+    result.spray_load /= 720;
+    return result;
+}
+
+static int validate_gentle_encounters(void)
+{
+    float following = atan2f(.6f, .8f);
+    Encounter fast[3];
+    for (int angle = 0; angle < 3; ++angle) {
+        float heading = following + (angle == 0 ? PI : angle == 1 ? PI / 2 : 0);
+        Encounter slow = wave_encounter(heading, 2);
+        fast[angle] = wave_encounter(heading, 12);
+        Encounter repeat = wave_encounter(heading, 12);
+        CHECK(memcmp(&fast[angle].final, &repeat.final, sizeof(Boat)) == 0);
+        CHECK(slow.angular_motion < fast[angle].angular_motion * .8f);
+        CHECK(slow.vertical_acceleration < fast[angle].vertical_acceleration);
+        CHECK(slow.spray_load < fast[angle].spray_load);
+        CHECK(fast[angle].angular_motion < .4f && fast[angle].vertical_acceleration < 5);
+        CHECK(fast[angle].spray_load < .4f);
+        WaterfrontSceneFrame frame;
+        boat_scene_frame(&fast[angle].final, BOAT_CAMERA_DEFAULT, &frame);
+        CHECK(frame.camera.up.y == 1 && frame.camera.position.y == BOAT_CAMERA_DEFAULT.height);
+        CHECK(frame.player.particle_count > 0);
+        int foam_count = 0;
+        for (int i = 0; i < frame.player.particle_count; ++i) {
+            WaterfrontPlayerParticle p = frame.player.particles[i];
+            Vector2 position = { -p.transform.position.x, p.transform.position.z };
+            BoatWaterSample water = boat_water_query(
+                fast[angle].final.water_settings, position, fast[angle].final.time);
+            if (p.spray)
+                CHECK(p.transform.position.y >= water.height);
+            else {
+                Vector3 up = Vector3Transform(
+                    (Vector3) { 0, 1, 0 }, MatrixRotateXYZ(p.transform.rotation));
+                Vector3 normal = { -water.normal.x, water.normal.y, water.normal.z };
+                CHECK(Vector3Distance(up, normal) < .0001f);
+                CHECK(fabsf(p.transform.position.y - water.height - .015f) < .00001f);
+                ++foam_count;
+            }
+        }
+        CHECK(foam_count > 0);
+    }
+    CHECK(fast[0].vertical_acceleration > fast[2].vertical_acceleration * 2);
+    CHECK(fast[1].angular_motion > fast[2].angular_motion);
+    // Wave forces cannot bypass the existing hull/shore containment.
+    for (int angle = 0; angle < 4; ++angle) {
+        Boat boat;
+        boat_reset_location(&boat, true);
+        boat.water_settings = boat_water_gentle();
+        boat.heading = angle * PI / 2;
+        boat.throttle = 1;
+        for (int tick = 0; tick < 1200; ++tick) {
+            boat_step(&boat, 0, 0);
+            CHECK(boat_map_water(boat.position, .3f));
+            CHECK(isfinite(boat.heading) && fabsf(boat.yaw_velocity) < 4);
+        }
+    }
+    // Unpowered waves may transfer energy, but must not create a runaway neutral drift or turn.
+    Boat neutral;
+    boat_reset(&neutral);
+    neutral.water_settings = boat_water_gentle();
+    for (int tick = 0; tick < 14400; ++tick) {
+        boat_step(&neutral, 0, 0);
+        CHECK(Vector2Length(neutral.velocity) < .5f);
+        CHECK(fabsf(neutral.yaw_velocity) < .2f);
+        CHECK(
+            fabsf(neutral.height) < .4f && fabsf(neutral.pitch) < .3f && fabsf(neutral.roll) < .3f);
+    }
+    Boat reset = fast[0].final;
+    boat_reset(&reset);
+    CHECK(reset.wave_spray == 0);
+    return 0;
+}
+
+static int validate_calm_reference(void)
+{
+    // Recorded from the accepted C2 handling before introducing any C3 resistance.
+    const float expected[3][10] = { { 0, 3.60687423f, 0, -8.85409927f, 0, 0, .00596522959f,
+                                        .0537321381f, 0, .276249886f },
+        { 23.1199741f, -48.9055214f, 15.0746412f, 3.26405692f, 2.1820364f, 1.30358398f,
+            .0500000007f, .0523598082f, 0, 1 },
+        { 37.4894028f, -30.8295155f, 15.9639769f, -4.24746752f, -1.83083773f, 0, 0, 0, 0, 0 } };
+    Boat boat;
+    boat_reset(&boat);
+    int sample = 0;
+    for (int tick = 0; tick < 1800; ++tick) {
+        float wheel = tick >= 360 && tick < 900 ? .35f : 0;
+        float thrust = tick < 240 ? 1 : tick < 900 ? 0 : tick < 1380 ? -1 : 0;
+        boat_step(&boat, wheel, thrust);
+        CHECK(boat.wave_spray == 0);
+        if (tick == 239 || tick == 719 || tick == 1799) {
+            const float actual[] = { boat.position.x, boat.position.y, boat.velocity.x,
+                boat.velocity.y, boat.heading, boat.yaw_velocity, boat.height, boat.pitch,
+                boat.roll, boat.planing };
+            for (int i = 0; i < 10; ++i)
+                CHECK(fabsf(actual[i] - expected[sample][i]) < (i < 4 ? .002f : .00001f));
+            ++sample;
+        }
+    }
+    return 0;
+}
+
+static int shared_water(void)
+{
+    BoatWater water = boat_water_gentle();
+    water.crossing[0] = water.crossing[1] = (BoatWave) { 0 };
+    BoatWaterSample q = boat_water_query((BoatWater) { 0 }, (Vector2) { 83, -51 }, 120);
+    CHECK(q.height == 0 && q.normal.x == 0 && q.normal.y == 1 && q.normal.z == 0);
+    CHECK(Vector3LengthSqr(q.velocity) == 0);
+    q = boat_water_query(water, (Vector2) { 0 }, 0);
+    CHECK(q.height == 0 && q.normal.x < 0 && q.normal.z > 0);
+    CHECK(fabsf(q.velocity.y + water.amplitude * water.angular_speed) < .00001f);
+    Vector2 crest = Vector2Scale(water.direction, water.wavelength / 4);
+    q = boat_water_query(water, crest, 0);
+    CHECK(fabsf(q.height - water.amplitude) < .00001f);
+    CHECK(fabsf(q.normal.y - 1) < .00001f && fabsf(q.velocity.y) < .00001f);
+    BoatWaterSample moved = boat_water_query(water,
+        Vector2Scale(water.direction,
+            water.wavelength / 4 + water.angular_speed / (2 * PI / water.wavelength)),
+        1);
+    CHECK(fabsf(moved.height - q.height) < .00001f);
+    water = boat_water_gentle();
+    for (int i = 0; i < 10000; ++i) {
+        float time = i * .13f;
+        Vector2 point = { sinf(time) * 250, cosf(time) * 300 };
+        q = boat_water_query(water, point, time);
+        CHECK(isfinite(q.height)
+            && fabsf(q.height) <= water.amplitude + water.crossing[0].amplitude
+                    + water.crossing[1].amplitude + .00001f);
+        CHECK(fabsf(Vector3Length(q.normal) - 1) < .00001f);
+        float dt = .002f;
+        if (time < 20) {
+            float derivative = (boat_water_query(water, point, time + dt).height
+                                   - boat_water_query(water, point, time - dt).height)
+                / (2 * dt);
+            CHECK(fabsf(derivative - q.velocity.y) < .001f);
+            float ds = .02f;
+            Vector2 dx = { point.x + ds, point.y }, dz = { point.x, point.y + ds };
+            float sx = (boat_water_query(water, dx, time).height - q.height) / ds;
+            float sz = (boat_water_query(water, dz, time).height - q.height) / ds;
+            CHECK(fabsf(sx + q.normal.x / q.normal.y) < .001f);
+            CHECK(fabsf(sz + q.normal.z / q.normal.y) < .001f);
+        }
+    }
+    for (int location = 0; location < 2; ++location) {
+        const Mesh3D *mesh = boat_water_surface(water, .7f, location);
+        CHECK(mesh && mesh->triangle_count > 100);
+        for (size_t i = 0; i < mesh->triangle_count; ++i) {
+            Vector3 centre = { 0 };
+            float height = 0;
+            for (int j = 0; j < 3; ++j) {
+                Vector3 v = mesh->vertices[mesh->triangles[i].vertices[j]];
+                q = boat_water_query(water, (Vector2) { -v.x, v.z }, .7f);
+                CHECK(fabsf(v.y - q.height) < .000001f);
+                centre = Vector3Add(centre, Vector3Scale(v, 1.0f / 3));
+                height += v.y / 3;
+            }
+            q = boat_water_query(water, (Vector2) { -centre.x, centre.z }, .7f);
+            CHECK(fabsf(height - q.height) < .035f); // Bounded interpolation error.
+        }
+    }
+    Boat flat, waves;
+    boat_reset(&flat);
+    waves = flat;
+    waves.water_settings = water;
+    for (int i = 0; i < 2400; ++i) {
+        boat_step(&flat, sinf(i * .01f), i < 300 ? 1 : 0);
+        boat_step(&waves, sinf(i * .01f), i < 300 ? 1 : 0);
+    }
+    CHECK(Vector2Distance(flat.position, waves.position) > .01f);
+    CHECK(Vector2Distance(flat.velocity, waves.velocity) > .001f);
+    CHECK(fabsf(flat.pitch - waves.pitch) + fabsf(flat.height - waves.height) > .001f);
+    boat_reset(&waves);
+    CHECK(waves.water_settings.amplitude == 0 && waves.time == 0);
+    boat_water_destroy();
+    return 0;
+}
+
 int main(void)
 {
+    CHECK(shared_water() == 0);
+    CHECK(validate_buoyancy() == 0);
+    CHECK(validate_wave_resistance() == 0);
+    CHECK(validate_gentle_encounters() == 0);
+    CHECK(validate_calm_reference() == 0);
     // The GPU consumes the same held engine angle and mirrored world coordinates as CPU.
     Boat player = { .position = { 4, 9 }, .heading = .7f, .engine_angle = .2f, .time = 3 };
     player.water[0]
@@ -347,11 +772,12 @@ int main(void)
     boat_reset_location(&mapped, false);
     CHECK(!mapped.eriksberg && mapped.position.y == 10);
     boat_map_destroy();
+    CHECK(validate_course() == 0);
     CHECK(validate_coasting() == 0);
     CHECK(validate_signed_propulsion() == 0);
     CHECK(validate_signed_throttle() == 0);
     CHECK(validate_planing() == 0);
-    CHECK(validate_planing_presentation() == 0);
+    CHECK(validate_planing_attitude() == 0);
     CHECK(validate_hull_contacts() == 0);
     Boat boat;
     boat_reset(&boat);

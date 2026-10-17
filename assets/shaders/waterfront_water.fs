@@ -11,6 +11,8 @@ uniform vec4 objectColor;
 uniform mat4 reflectionViewProjection;
 uniform vec3 cameraPosition;
 uniform float time;
+uniform int physicalWaves;
+uniform vec4 waveParameters[3];
 uniform int reflectionsEnabled;
 uniform int shadowsEnabled;
 uniform sampler2D shadowMap;
@@ -30,7 +32,18 @@ float waterShadow()
 void main()
 {
     vec3 base = texture(texture0, fragTexCoord).rgb * objectColor.rgb * fragColor.rgb;
-    base *= vec3(0.20, 0.25, 0.48);
+    vec3 normal = normalize(fragWorldNormal);
+    if (physicalWaves != 0) {
+        vec2 slope = vec2(0.0);
+        for (int i = 0; i < 3; ++i) {
+            vec4 w = waveParameters[i];
+            slope += w.xy * w.z * cos(dot(w.xy, fragWorldPosition.xz) - w.w * time);
+        }
+        normal = normalize(vec3(-slope.x, 1.0, -slope.y));
+        base *= vec3(0.55, 0.65, 0.78) * (0.95 + 0.35 * dot(normal.xz, vec2(0.7)));
+    } else {
+        base *= vec3(0.20, 0.25, 0.48);
+    }
     if (reflectionsEnabled == 0) {
         finalColor = vec4(base * waterShadow(), 1.0);
         return;
@@ -42,10 +55,17 @@ void main()
             + sin(fragWorldPosition.z * 0.05 - time * 0.55),
         sin(fragWorldPosition.z * 0.08 + time * 0.65)
             + sin(fragWorldPosition.x * 0.04 + time * 0.35)) * 0.0025;
+    if (physicalWaves != 0) ripple = normal.xz * 0.08;
     reflectionUv = clamp(reflectionUv + ripple, vec2(0.004), vec2(0.996));
     vec3 reflection = texture(reflectionTexture, reflectionUv).rgb;
     vec3 viewDirection = normalize(cameraPosition - fragWorldPosition);
-    float viewDot = max(0.0, dot(normalize(fragWorldNormal), viewDirection));
-    float reflectionAmount = mix(0.10, 0.42, (1.0 - viewDot) * (1.0 - viewDot));
-    finalColor = vec4(mix(base, reflection * vec3(0.65, 0.62, 0.72), reflectionAmount) * waterShadow(), 1.0);
+    float viewDot = max(0.0, dot(normal, viewDirection));
+    float reflectionAmount = mix(0.10, physicalWaves != 0 ? 0.30 : 0.42,
+        (1.0 - viewDot) * (1.0 - viewDot));
+    vec3 color = mix(base, reflection * vec3(0.65, 0.62, 0.72), reflectionAmount);
+    if (physicalWaves != 0) {
+        vec3 halfVector = normalize(viewDirection + normalize(vec3(-0.4, 0.85, -0.35)));
+        color += vec3(0.12, 0.14, 0.16) * pow(max(dot(normal, halfVector), 0.0), 96.0);
+    }
+    finalColor = vec4(color * waterShadow(), 1.0);
 }

@@ -118,23 +118,27 @@ gear shift. Confirm docking still works.
 
 ## Phase C — Buoyancy and gentle waves
 
-- [ ] **C1: Shared water query.** Add a small deterministic water API exposing height, surface
+- [x] **C1: Shared water query.** Add a small deterministic water API exposing height, surface
   orientation, and water velocity at a position and simulation time. Default to perfectly flat,
-  still water. Add a single opt-in analytic wave and matching rendered surface for both renderers;
+  still water. Add opt-in analytic waves and matching rendered surfaces for both renderers;
   do not apply it to the boat yet. Keep shared parameters/time explicit, not independent CPU/GPU
   tuning. Acceptance: known sample points, finite normals/velocities, flat-mode regression, and
   visual/physical crests aligned. Scope water rendering to the playable area if necessary and
   document approximations; do not redesign the entire waterfront renderer.
-- [ ] **C2: Floating hull.** Add vertical motion, pitch, roll, inertia, and several hull buoyancy
+- [x] **C2: Floating hull.** Add vertical motion, pitch, roll, inertia, and several hull buoyancy
   samples with damping. Replace B2's presentation-only attitude with physical state; approximate
   planing lift must not be double-counted. Keep the existing horizontal/yaw model initially.
   Acceptance: stable rest, recovery from a small tilt/drop, no unforced growth of oscillations,
   finite long runs, reset, and correct engine/particle origins as the hull moves.
-- [ ] **C3: Playable gentle waves.** Couple local water-relative motion to resistance and tune
-  encounter response by speed and heading. Start with one gentle wave train, not storms. Acceptance:
+- [x] **C3: Playable gentle waves.** Couple local water-relative motion to resistance and tune
+  encounter response by speed and heading. Use the gentle crossing-wave preset, not storms. Acceptance:
   repeatable head-on/beam/following encounters; reducing speed provides a manageable response;
   flat mode preserves calm handling; spray and wake remain attached to the water/hull correctly.
   Document simplified effects rather than adding destabilizing impulses to imitate realism.
+
+C1 revision accepted after visual feedback: replace the single long swell and exaggerated color
+bands with three smaller crossing components, subdued shading, and restrained GPU reflections.
+Implement this revision together with C2 so surface appearance can be judged with a floating hull.
 
 Play gate C: small waves are enjoyable to meet at different angles, and the camera remains calm.
 Stronger waves and triangle-based buoyancy are optional upgrades only if this model proves limiting.
@@ -173,6 +177,77 @@ These motivate models, not exact coefficients or a requirement to adopt another 
   an example of decomposed buoyancy/resistance forces and a possible later triangle-based approach.
 
 ## Handoff log
+
+- 2026-10-17: C3 implementation adds local normal resistance at the six supports in
+  `src/boat.[ch]` and `src/boat_water.[ch]`. It replaces wave-mode vertical damping with a
+  dissipative 3D normal force using point velocity (translation plus pitch/roll/yaw), local
+  analytic normal, and water surface velocity. Generalized torques apply the same force to
+  angular motion; there are no random impacts or additional spring/lift terms. Exit damping
+  is capped by available support and dry stations exert no resistance. Total damping remains
+  13 with at most 35% gain by 12 units/s. Flat mode retains the accepted C2 calculation.
+  A smoothed bow-entry load (1.2 units/s scale, 8/s response) modulates spray and wake width;
+  foam now aligns to the sampled surface normal through one shared CPU/GPU pose helper.
+  Spray inherits the exact local attachment velocity. The wave preset, rendering, camera, controls,
+  engine steering, and original horizontal drag/skeg terms are unchanged. Orbital flow/current,
+  hull-pressure simulation, ventilation, and capsize behavior remain out of scope.
+  `tools/validate_boat.c` tests negative relative work and dry/exit limits separately from energy
+  transfer by moving water; controlled 2/12-unit/s head-on, beam and following encounters;
+  repeatability, lower slow-speed angular motion/vertical acceleration/spray load; particle
+  surface alignment; shoreline containment; bounded neutral drift; and a recorded C2 calm-water
+  forward/turn/reverse trace. Existing long-run and buoyancy recovery tests remain enabled.
+  Debug configure/build and all 27 CTests passed, including GPU review and wave capture.
+  Inspected close CPU basin/Eriksberg and Eriksberg GPU+AA captures at transition/cruise
+  (`build/boat-c3-*.png`); both CPU and GPU+AA windowed demo smoke runs passed.
+  Controlled 2-to-12-unit/s encounters measured angular-rate RMS rising from 0.155 to 0.303
+  rad/s head-on, 0.145 to 0.261 beam-on, and 0.061 to 0.134 following. Vertical acceleration
+  and bow-entry load also decrease at the lower tested speed for all three headings.
+  These are tuning checks, not calibrated sea-state measurements. Play gate C accepted after the user reported that C3 feels and looks great.
+  Preserve this baseline when starting Phase D.
+
+- 2026-10-17: Revised C1 and completed C2 after the user approved improving the surface and
+  adding buoyancy together. `boat_water.[ch]` now superposes three components: amplitude/wavelength/
+  angular-speed 0.13/16/1.96, 0.06/9/2.62, 0.025/5.5/3.35, travelling along (0.6,-0.8),
+  (-0.8,-0.6), (0.96,0.28). CPU shading is subdued; shared two-unit tessellation resolves the
+  dominant waves (tested centroid height error <0.035). GPU uploads water topology once and uses
+  the explicit snapshot parameters/time in `waterfront_water.vs/fs`; analytic fragment normals
+  drive restrained reflection distortion, without the old independent shader ripples in wave mode.
+  Planar reflection source and water shadows are restored. Flat/timeline shader behavior remains.
+  `boat.[ch]` replaces `visual_pitch` with heave/pitch/roll and velocities. Six unilateral damped
+  supports use gravity 9.81, total stiffness 64, damping 13, pitch/roll inertia 2/0.45 at 120 Hz.
+  Dry stations provide no buoyancy/damping. The previous 8-degree transition/3-degree cruise trim
+  now redistributes support, with at most 0.05 units of planing rise; no second attitude is added.
+  The horizontal/yaw model remains unchanged. Attachments, reflections/shadows and spray follow
+  the rigid hull pose; foam follows local wave height and spray expires at the water surface.
+  Tests cover exact calm rest, dry drop/submerged and tilt recovery, bounded passive energy,
+  slope response signs, rigid attachments through 16 headings, a level camera, repeatable
+  encounters at 0/5/10 speed and four headings, a five-minute powered/reversing wave run, reset,
+  and foam surface attachment. C3 still owns horizontal encounter resistance and comfort tuning.
+  Debug configure/build and all 27 CTests passed, including a new GPU wave capture and the
+  existing GPU review/material checks. Inspected close CPU/GPU+AA captures at rest, transition,
+  and cruise (`build/boat-c2-*.png`, `build/boat-wave-gpu.png`). CPU basin and Eriksberg GPU+AA
+  windowed demo smoke runs passed. Subjective comfort and enjoyment still need player feedback;
+  CPU water has no scene reflections, GPU reflection projection remains planar, and mesh heights
+  between vertices approximate the analytic surface.
+
+- 2026-10-17: C1 complete following the user's request to start Phase C. Added
+  `src/boat_water.[ch]`: explicit analytic height, unit normal, and vertical surface velocity
+  at simulation X/Z and time; zero settings return exact flat/still water. The opt-in `--waves`
+  preset is amplitude 0.22, wavelength 48, period 4 seconds, travelling along (0.6, -0.8).
+  CPU and GPU consume the same tessellated surface and exaggerated slope colors. Eriksberg
+  reuses imported water triangles, preserving shoreline coverage; the basin uses its rectangle.
+  Longest-edge subdivision targets four-unit edges; tested centroid height error stays below
+  0.012 units. Both paths reflect simulation X once. GPU keeps a dynamic vertex/color buffer;
+  wave mode deliberately omits the old independent ripple/reflection/shadow water material.
+  Flat mode retains the previous rendering and handling. Wave query velocity is surface motion,
+  not an orbital-flow/current model; no wave forces or hull/foam following are applied until
+  C2/C3, so intersections remain visible. Reset restarts time and preserves the CLI wave option.
+  Updated `boat.[ch]`, `boat_gpu.[ch]`, the CPU boating scenery entry point, study CLI,
+  CMake, README, boating notes, and the validator. Tests cover known crests/travel, normal and
+  time derivatives, finite long sampling, mesh/query alignment at both locations, reset, and
+  exact horizontal/attitude equivalence with waves selected. Debug build and all 26 CTests
+  passed, including GPU review; inspected basin/Eriksberg CPU and Eriksberg GPU+AA captures
+  (`build/boat-c1-*.png`) and completed short CPU/GPU+AA windowed demo smoke runs.
+  C2 is next; player assessment of buoyancy and wave encounters waits for C2/C3.
 
 - 2026-10-17: A1 complete. Added bounded reverse propulsion and signed, rate-limited
   `engine_response` in `src/boat.[ch]`; thrust and wash use the response at the stern.

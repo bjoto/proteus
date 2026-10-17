@@ -516,7 +516,7 @@ static Shader load_water_shader(const char *fragment_shader_path)
         return (Shader) { 0 };
     char vertex_shader_path[1024];
     char fragment_path[1024];
-    snprintf(vertex_shader_path, sizeof(vertex_shader_path), "%.*s/waterfront_city.vs",
+    snprintf(vertex_shader_path, sizeof(vertex_shader_path), "%.*s/waterfront_water.vs",
         (int)(slash - fragment_shader_path), fragment_shader_path);
     snprintf(fragment_path, sizeof(fragment_path), "%.*s/waterfront_water.fs",
         (int)(slash - fragment_shader_path), fragment_shader_path);
@@ -943,6 +943,26 @@ static void set_atmosphere_uniforms(WaterfrontGpuScene *scene, Vector3 camera_po
 
 static void set_water_uniforms(WaterfrontGpuScene *scene, const WaterfrontSceneFrame *frame)
 {
+    BoatWater water = frame->player_water;
+    int physical_waves = frame->player_active && water.amplitude != 0;
+    SetShaderValue(scene->water_shader, GetShaderLocation(scene->water_shader, "physicalWaves"),
+        &physical_waves, SHADER_UNIFORM_INT);
+    if (physical_waves) {
+        BoatWave waves[]
+            = { { water.amplitude, water.wavelength, water.angular_speed, water.direction },
+                  water.crossing[0], water.crossing[1] };
+        float parameters[12] = { 0 };
+        for (int i = 0; i < 3; ++i) {
+            float k = waves[i].wavelength > 0 ? 2 * PI / waves[i].wavelength : 0;
+            parameters[i * 4] = -k * waves[i].direction.x; // Simulation X is reflected.
+            parameters[i * 4 + 1] = k * waves[i].direction.y;
+            parameters[i * 4 + 2] = waves[i].wavelength > 0 ? waves[i].amplitude : 0;
+            parameters[i * 4 + 3] = waves[i].angular_speed;
+        }
+        SetShaderValueV(scene->water_shader,
+            GetShaderLocation(scene->water_shader, "waveParameters[0]"), parameters,
+            SHADER_UNIFORM_VEC4, 3);
+    }
     int shadows = scene->shadows_enabled && frame->player_active;
     int shadow_location = GetShaderLocation(scene->water_shader, "shadowsEnabled");
     SetShaderValue(scene->water_shader, shadow_location, &shadows, SHADER_UNIFORM_INT);

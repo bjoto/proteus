@@ -7,6 +7,8 @@ typedef struct {
     WaterfrontGpuScene scene;
     RenderTexture2D target, supersampled;
     Shader downsample;
+    Mesh wave_mesh;
+
 } BoatGpu;
 
 bool boat_gpu_init(BoatGpu *gpu, bool aa);

@@ -95,7 +95,7 @@ target_sources(boat_study PRIVATE src/boat_gpu.c src/renderer_gpu.c)
 add_dependencies(boat_study proteus_assets)
 add_executable(validate_boat tools/validate_boat.c src/boat.c src/renderer3d.c)
 foreach(target boat_study validate_boat)
-  target_sources(${target} PRIVATE src/boat_map.c src/waterfront.c src/waterfront_scene.c src/waterfront_corner.c)
+  target_sources(${target} PRIVATE src/boat_water.c src/boat_course.c src/boat_map.c src/waterfront.c src/waterfront_scene.c src/waterfront_corner.c)
   target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
   target_link_libraries(${target} PRIVATE raylib)
   target_compile_options(${target} PRIVATE
@@ -103,6 +103,10 @@ foreach(target boat_study validate_boat)
   )
 endforeach()
 add_test(NAME boat_handling COMMAND validate_boat)
+add_test(NAME boat_course_screenshot COMMAND boat_study --course --time 0
+  --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-course.png)
+add_test(NAME boat_wave_screenshot COMMAND boat_study --waves --time 1.8
+  --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-wave.png)
 add_test(NAME boat_screenshot COMMAND boat_study --time 3
   --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-screenshot.png)
 add_test(NAME boat_eriksberg_screenshot COMMAND boat_study --location eriksberg --time 3
@@ -230,7 +234,10 @@ if(PROTEUS_GPU_TESTS)
     --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-gpu.png)
   add_test(NAME boat_gpu_aa_screenshot COMMAND boat_study --location eriksberg --gpu --gpu-aa --time 3
     --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-gpu-aa.png)
-  set_tests_properties(boat_gpu_screenshot boat_gpu_aa_screenshot
+  add_test(NAME boat_wave_gpu_screenshot COMMAND boat_study --location eriksberg --gpu-aa --waves
+    --camera-distance 12 --camera-height 6 --time 2.9
+    --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-wave-gpu.png)
+  set_tests_properties(boat_gpu_screenshot boat_gpu_aa_screenshot boat_wave_gpu_screenshot
     PROPERTIES LABELS "gpu" RUN_SERIAL TRUE)
   find_package(Python3 REQUIRED COMPONENTS Interpreter)
   set(PROTEUS_GPU_REVIEW_DIR "${CMAKE_CURRENT_BINARY_DIR}/gpu-review")
