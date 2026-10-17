@@ -94,8 +94,9 @@ add_executable(boat_study tools/boat_study.c src/boat.c src/renderer3d.c src/pro
 target_sources(boat_study PRIVATE src/boat_gpu.c src/renderer_gpu.c)
 add_dependencies(boat_study proteus_assets)
 add_executable(validate_boat tools/validate_boat.c src/boat.c src/renderer3d.c)
-foreach(target boat_study validate_boat)
-  target_sources(${target} PRIVATE src/boat_water.c src/boat_course.c src/boat_map.c src/waterfront.c src/waterfront_scene.c src/waterfront_corner.c)
+add_executable(validate_boat_replay tools/validate_boat_replay.c src/boat.c src/renderer3d.c)
+foreach(target boat_study validate_boat validate_boat_replay)
+  target_sources(${target} PRIVATE src/boat_water.c src/boat_course.c src/boat_replay.c src/boat_map.c src/waterfront.c src/waterfront_scene.c src/waterfront_corner.c)
   target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
   target_link_libraries(${target} PRIVATE raylib)
   target_compile_options(${target} PRIVATE
@@ -103,7 +104,29 @@ foreach(target boat_study validate_boat)
   )
 endforeach()
 add_test(NAME boat_handling COMMAND validate_boat)
+set(BOAT_REPLAY_TEST_DIR "${CMAKE_CURRENT_BINARY_DIR}/replay-tests")
+add_test(NAME boat_replay COMMAND validate_boat_replay ${BOAT_REPLAY_TEST_DIR})
+set_tests_properties(boat_replay PROPERTIES FIXTURES_SETUP boat_recording)
+add_test(NAME boat_replay_screenshot COMMAND boat_study --renderer cpu
+  --replay ${BOAT_REPLAY_TEST_DIR}/replay-fixture.run --time 5
+  --data-dir ${BOAT_REPLAY_TEST_DIR}/profile
+  --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-replay.png)
+add_test(NAME boat_ghost_screenshot COMMAND boat_study --renderer cpu
+  --ghost ${BOAT_REPLAY_TEST_DIR}/replay-fixture.run --time 0
+  --data-dir ${BOAT_REPLAY_TEST_DIR}/profile
+  --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-ghost.png)
+add_test(NAME boat_saved_best_screenshot COMMAND boat_study --renderer cpu --course --time 0
+  --data-dir ${BOAT_REPLAY_TEST_DIR}
+  --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-saved-best.png)
+add_test(NAME boat_ghost_wrong_water COMMAND boat_study --renderer cpu --waves
+  --ghost ${BOAT_REPLAY_TEST_DIR}/replay-fixture.run --time 0
+  --data-dir ${BOAT_REPLAY_TEST_DIR}/profile
+  --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-ghost-invalid.png)
+set_tests_properties(boat_ghost_wrong_water PROPERTIES WILL_FAIL TRUE)
+set_tests_properties(boat_replay_screenshot boat_ghost_screenshot boat_saved_best_screenshot boat_ghost_wrong_water
+  PROPERTIES FIXTURES_REQUIRED boat_recording)
 add_test(NAME boat_course_screenshot COMMAND boat_study --renderer cpu --course --time 0
+  --data-dir ${BOAT_REPLAY_TEST_DIR}/profile
   --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-course.png)
 add_test(NAME boat_wave_screenshot COMMAND boat_study --renderer cpu --waves --time 1.8
   --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-wave.png)
@@ -234,6 +257,16 @@ set_tests_properties(cube_start_screenshot PROPERTIES
 )
 
 if(PROTEUS_GPU_TESTS)
+  add_test(NAME boat_ghost_gpu_screenshot COMMAND boat_study --gpu-aa
+    --ghost ${BOAT_REPLAY_TEST_DIR}/replay-fixture.run --time 0
+    --data-dir ${BOAT_REPLAY_TEST_DIR}/profile
+    --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-ghost-gpu.png)
+  add_test(NAME boat_replay_gpu_screenshot COMMAND boat_study --gpu-aa
+    --replay ${BOAT_REPLAY_TEST_DIR}/replay-fixture.run --time 5
+    --data-dir ${BOAT_REPLAY_TEST_DIR}/profile
+    --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-replay-gpu.png)
+  set_tests_properties(boat_ghost_gpu_screenshot boat_replay_gpu_screenshot
+    PROPERTIES FIXTURES_REQUIRED boat_recording LABELS "gpu" RUN_SERIAL TRUE)
   add_test(NAME boat_gpu_screenshot COMMAND boat_study --location eriksberg --gpu --time 3
     --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-gpu.png)
   add_test(NAME boat_gpu_aa_screenshot COMMAND boat_study --location eriksberg --gpu --gpu-aa --time 3
@@ -246,6 +279,7 @@ if(PROTEUS_GPU_TESTS)
   add_test(NAME boat_basin_gpu_aa_screenshot COMMAND boat_study --gpu-aa --time 0
     --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-basin-gpu-aa.png)
   add_test(NAME boat_course_gpu_screenshot COMMAND boat_study --course --gpu-aa --time 0
+    --data-dir ${BOAT_REPLAY_TEST_DIR}/profile
     --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-course-gpu.png)
   add_test(NAME boat_basin_wave_gpu_screenshot COMMAND boat_study --waves --gpu-aa --time 1.8
     --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-basin-wave-gpu.png)

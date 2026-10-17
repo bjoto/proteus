@@ -90,8 +90,50 @@ the chequered finish line to freeze the time. Yellow marks the next gate; the sm
 shows the boat and gate order. Cross between the posts in the course direction; missed gates
 can be approached again, and the timer keeps running. Buoys are non-colliding markers.
 R resets the boat and timer for another attempt. Losing focus pauses the timer with the
-simulation. Course mode is basin-only; free boating remains the default. Times are per attempt;
-a fastest-lap list is deferred.
+simulation. Course mode is basin-only; free boating remains the default.
+
+Completed attempts are recorded automatically. The fastest completed run becomes your personal best
+and appears as a cyan, stippled ghost on your next attempt. It waits at START, then follows its
+recorded route against your course clock; it has no collisions, wake, shadows, or reflections.
+The HUD shows your best time and the time difference at each gate (negative means ahead).
+`R` abandons an unfinished attempt while preserving your last completed run and best.
+
+- `G`: show/hide the ghost.
+- `P`: watch the last completed run; `B`: watch your personal best. Available before START or after
+  FINISH. Replays follow the recorded hull and camera heading; water particles are omitted.
+- During replay, `Space` pauses/resumes, `Enter` restarts at the selected speed, and `R` returns to
+  racing. Finishing pauses playback; `Space` then plays again from the beginning.
+- `Left`/`Right` seek one second backward/forward; hold `Shift` for five seconds. `Home`/`End` jump
+  to START/FINISH. Seeking preserves pause state; jumping to FINISH pauses.
+- `[`/`]` select 0.25×, 0.5×, 1×, 2×, or 4× playback. Selecting another recording starts at 1×.
+- Click or drag the replay timeline to seek and pause; press `Space` to continue. The timeline marks
+  START, both buoy gates, and FINISH. Camera controls remain available. Losing focus pauses playback
+  without advancing the clock.
+
+Personal bests persist between launches, with separate files for calm water and `--waves`.
+On macOS they live in `~/Library/Application Support/Proteus/`; Windows uses `%LOCALAPPDATA%/Proteus/`,
+and Linux uses `$XDG_DATA_HOME/proteus/` (or `~/.local/share/proteus/`). The files are
+`course-calm.run` and `course-waves.run`. Use `--data-dir DIR` to select another directory.
+Incompatible or damaged saved bests are ignored with a message. Failed saves preserve the best in
+memory. Recording is limited to ten minutes per attempt; longer attempts can still finish, but
+cannot replace your recorded best.
+
+```sh
+./build/boat_study --course --save-run build/my-run.run
+./build/boat_study --replay build/my-run.run
+./build/boat_study --course --ghost build/my-run.run
+./build/boat_study --renderer cpu --replay build/my-run.run --time 5 --screenshot build/replay.png
+```
+
+`--save-run FILE` exports each completed attempt, including slower runs, to that path.
+`--replay FILE` and `--ghost FILE` imply course mode. Replay selects the recording's water preset;
+an imported ghost must match your selected water preset (`--waves` for a wave run).
+An imported ghost stays selected across retries while your personal best is tracked separately.
+Recordings store poses at the 120 Hz simulation rate, with exact START/FINISH boundary samples and
+gate splits, so playback does not rerun physics. File, course, and physics revisions are checked when
+loading; bump the revisions in `src/boat_replay.c` when changing handling, gates, or wave presets.
+Screenshot `--time` accepts up to 600 seconds with `--replay` and clamps to the recorded finish;
+other screenshot modes retain the 60 second limit.
 
 `basin` remains the default. Eriksberg spawns in the dock facing the crane and river; R returns
 there. The map, buildings, Dockbron, crane, and dusk sky reuse the existing offline scene.

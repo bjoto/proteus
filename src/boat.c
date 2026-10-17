@@ -183,7 +183,7 @@ static HullMotion hull_motion(const Boat *boat, Vector3 local)
     return motion;
 }
 
-static void player_pose(const Boat *boat, WaterfrontPlayerState *player)
+void boat_player_pose(const Boat *boat, WaterfrontPlayerState *player)
 {
     Matrix rotation = hull_rotation(boat);
     player->hull
@@ -552,7 +552,7 @@ void boat_scene_frame(const Boat *boat, BoatCamera camera, WaterfrontSceneFrame 
         basin_scenery(boat, frame);
     frame->player_water = boat->water_settings;
     WaterfrontPlayerState *p = &frame->player;
-    player_pose(boat, p);
+    boat_player_pose(boat, p);
     for (int i = 0; i < BOAT_WATER_PARTICLES; ++i) {
         const BoatWaterParticle *water = &boat->water[i];
         if (water->lifetime <= 0 || (boat->eriksberg && !boat_map_water(water->position, 0)))
@@ -571,6 +571,12 @@ void boat_scene_frame(const Boat *boat, BoatCamera camera, WaterfrontSceneFrame 
 
 bool boat_draw(Renderer3D *renderer, Color *pixels, int width, int height, const Boat *boat,
     BoatCamera camera_settings)
+{
+    return boat_draw_with_ghost(renderer, pixels, width, height, boat, camera_settings, NULL, 0);
+}
+
+bool boat_draw_with_ghost(Renderer3D *renderer, Color *pixels, int width, int height,
+    const Boat *boat, BoatCamera camera_settings, const Boat *ghost, float opacity)
 {
     for (int i = 0; i < width * height; ++i)
         pixels[i] = (Color) { 21, 36, 48, 255 };
@@ -634,9 +640,17 @@ bool boat_draw(Renderer3D *renderer, Color *pixels, int width, int height, const
     }
     boat_course_draw(&boat->course, renderer);
     WaterfrontPlayerState player = { 0 };
-    player_pose(boat, &player);
+    boat_player_pose(boat, &player);
     renderer3d_draw_mesh(renderer, waterfront_player_hull_mesh(), player.hull);
     renderer3d_draw_box(renderer, player.cabin, (Color) { 44, 60, 70, 255 });
     renderer3d_draw_box(renderer, player.engine, (Color) { 91, 100, 111, 255 });
+    if (ghost && opacity > 0) {
+        boat_player_pose(ghost, &player);
+        renderer->ghost_opacity = opacity;
+        renderer3d_draw_mesh(renderer, waterfront_player_hull_mesh(), player.hull);
+        renderer3d_draw_box(renderer, player.cabin, WHITE);
+        renderer3d_draw_box(renderer, player.engine, WHITE);
+        renderer->ghost_opacity = 0;
+    }
     return true;
 }

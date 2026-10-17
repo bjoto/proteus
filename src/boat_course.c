@@ -8,6 +8,8 @@ const BoatCourseGate boat_course_gates[BOAT_COURSE_GATES]
 
 void boat_course_step(BoatCourse *course, Vector2 previous, Vector2 position, double dt)
 {
+    for (int i = 0; i < BOAT_COURSE_GATES; ++i)
+        course->crossing[i] = -1;
     if (!course->enabled || course->next_gate == BOAT_COURSE_GATES)
         return;
     // Swept crossings avoid missed gates at speed. Fractions account for the portions of the
@@ -24,6 +26,8 @@ void boat_course_step(BoatCourse *course, Vector2 previous, Vector2 position, do
             break;
         if (course->next_gate == 0)
             running_from = fraction;
+        course->crossing[course->next_gate] = fraction;
+        course->splits[course->next_gate] = course->elapsed + (fraction - running_from) * dt;
         if (++course->next_gate == BOAT_COURSE_GATES)
             running_until = fraction;
     }

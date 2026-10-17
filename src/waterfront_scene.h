@@ -67,6 +67,8 @@ typedef struct {
     } scenery[704];
     BoatWater player_water; // Zero for timeline scenes; shared analytic boating parameters.
     WaterfrontPlayerState player;
+    float ghost_opacity;
+    Transform3D ghost_hull, ghost_cabin, ghost_engine;
     float time;
     Transform3D bridge;
     Color bridge_color;

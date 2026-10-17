@@ -14,6 +14,9 @@ typedef struct {
     bool enabled;
     int next_gate; // 0: waiting at start, 1..3: running, 4: finished.
     double elapsed;
+    double splits[BOAT_COURSE_GATES];
+    // Crossings on the most recent simulation tick, -1 when absent.
+    double crossing[BOAT_COURSE_GATES];
 } BoatCourse;
 
 extern const BoatCourseGate boat_course_gates[BOAT_COURSE_GATES];

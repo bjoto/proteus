@@ -175,6 +175,13 @@ static void rasterize(Renderer3D *r, Vector3 va, Vector3 vb, Vector3 vc, Color c
             float wc = edge(a, b, px, py) / area;
             if (wa < 0 || wb < 0 || wc < 0)
                 continue;
+            if (r->ghost_opacity > 0) {
+                static const int bayer[16]
+                    = { 0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5 };
+                if ((bayer[(y & 3) * 4 + (x & 3)] + .5f) / 16 >= r->ghost_opacity)
+                    continue;
+                color = (Color) { 90, 240, 255, 255 };
+            }
             // Reciprocal view depth is linear in screen space; view depth itself is not.
             float inverse_z = wa * a.inverse_z + wb * b.inverse_z + wc * c.inverse_z;
             size_t index = (size_t)y * (size_t)r->width + (size_t)x;

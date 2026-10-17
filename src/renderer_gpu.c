@@ -1018,6 +1018,24 @@ static void draw_rectangle(const WaterfrontGpuScene *scene, Material material, V
         color, false);
 }
 
+// Called only in the main colour pass; ghosts never enter reflection or shadow passes.
+static void draw_ghost(const WaterfrontGpuScene *scene, Material material,
+    const WaterfrontSceneFrame *frame, int width)
+{
+    if (frame->ghost_opacity <= 0)
+        return;
+    int opacity = GetShaderLocation(material.shader, "ghostOpacity");
+    int pixel_scale = GetShaderLocation(material.shader, "ghostPixelScale");
+    float scale = (float)width / 320;
+    SetShaderValue(material.shader, pixel_scale, &scale, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(material.shader, opacity, &frame->ghost_opacity, SHADER_UNIFORM_FLOAT);
+    draw_colored_mesh(scene->player_hull, material, frame->ghost_hull, WHITE, true);
+    draw_colored_mesh(scene->cube, material, frame->ghost_cabin, WHITE, true);
+    draw_colored_mesh(scene->cube, material, frame->ghost_engine, WHITE, true);
+    float zero = 0;
+    SetShaderValue(material.shader, opacity, &zero, SHADER_UNIFORM_FLOAT);
+}
+
 static void draw_life(const WaterfrontGpuScene *scene, Material material,
     const WaterfrontSceneFrame *frame, bool emissive)
 {
@@ -1356,6 +1374,7 @@ void waterfront_gpu_scene_draw(
         DrawMesh(scene->water, scene->water_material, MatrixIdentity());
         rlDisableBackfaceCulling();
         draw_life(scene, life_material, frame, true);
+        draw_ghost(scene, life_material, frame, width);
         EndMode3D();
         return;
     }

@@ -8,6 +8,8 @@ in vec3 fragWorldNormal;
 uniform sampler2D texture0;
 uniform vec4 objectColor;
 uniform int emissive;
+uniform float ghostOpacity;
+uniform float ghostPixelScale;
 uniform int groundPass;
 uniform int facadePass;
 uniform vec3 ambientColor;
@@ -171,6 +173,15 @@ float directional_shadow(vec3 normal)
 
 void main()
 {
+    if (ghostOpacity > 0.0) {
+        const int bayer[16] = int[16](0, 8, 2, 10, 12, 4, 14, 6,
+            3, 11, 1, 9, 15, 7, 13, 5);
+        ivec2 cell = ivec2(floor(gl_FragCoord.xy / ghostPixelScale)) & 3;
+        if ((float(bayer[cell.y * 4 + cell.x]) + .5) / 16.0 >= ghostOpacity)
+            discard;
+        finalColor = vec4(90.0 / 255.0, 240.0 / 255.0, 1.0, 1.0);
+        return;
+    }
     vec4 albedo = texture(texture0, fragTexCoord) * objectColor * fragColor;
     if (groundPass != 0)
         albedo = vec4(ground_albedo(), fragColor.a) * objectColor;

@@ -56,8 +56,22 @@ failed:
 
 void boat_gpu_draw(BoatGpu *gpu, const Boat *boat, BoatCamera camera)
 {
+    boat_gpu_draw_with_ghost(gpu, boat, camera, NULL, 0);
+}
+
+void boat_gpu_draw_with_ghost(
+    BoatGpu *gpu, const Boat *boat, BoatCamera camera, const Boat *ghost, float opacity)
+{
     WaterfrontSceneFrame frame;
     boat_scene_frame(boat, camera, &frame);
+    if (ghost && opacity > 0) {
+        WaterfrontPlayerState pose = { 0 };
+        boat_player_pose(ghost, &pose);
+        frame.ghost_opacity = opacity;
+        frame.ghost_hull = pose.hull;
+        frame.ghost_cabin = pose.cabin;
+        frame.ghost_engine = pose.engine;
+    }
     RenderTexture2D target = gpu->supersampled.id ? gpu->supersampled : gpu->target;
     Mesh original_water = gpu->scene.water;
     if (!boat->eriksberg) {

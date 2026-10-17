@@ -1,7 +1,8 @@
 # Gothenburg boating playground
 
 Status: working design, updated 2026-10-17. Stage 1 and the wake/spray portion of stage 2 are implemented
-as `boat_study`, alongside an initial timed S course; other features remain proposals. Revise this
+as `boat_study`, alongside a timed S course with recordings and a personal-best ghost; other features
+remain proposals. Revise this
 plan as we discover what is enjoyable to play.
 
 ## Current prototype
@@ -120,8 +121,19 @@ next gate, and a HUD route map shows progress. Gates use swept boat-centre cross
 north, with interpolated start/finish times on fixed simulation ticks. Skipping a gate cannot
 finish a run. Missed gates can be retried while the clock continues. Markers do not collide.
 R resets both the boat and attempt; focus loss pauses both. Free boating is still the default.
-No scores or fastest-lap list are stored yet. This small time trial takes priority over the
-previously proposed minute-long scoring mode and the remaining physics experiments.
+Completed runs are recorded as poses at 120 Hz with interpolated START/FINISH samples and gate
+splits. The fastest run persists across launches and becomes a non-colliding cyan ghost on retry;
+calm water and gentle waves have separate bests. G toggles the ghost. Before START or after FINISH,
+P/B replays the last/best run; Space pauses, Enter restarts, and R returns to racing. A retry discards
+only the unfinished recording. Replay omits water particles and allows the usual camera controls. Left/Right seek one second
+(Shift: five seconds), Home/End jump to START/FINISH, and brackets select 0.25× through 4× playback.
+A clickable timeline marks gate splits; clicking/dragging seeks and pauses. Finish pauses playback;
+Space starts again from the beginning. Seeking and speed changes preserve the recording and best.
+Portable, versioned run files can be exported with `--save-run`, watched with `--replay`, or selected
+as a ghost with `--ghost`; see the [README controls and storage notes](../README.md#boating-sketch).
+There is one saved best per water preset; a broader leaderboard is deferred. This small time trial
+takes priority over the previously proposed minute-long scoring mode and the remaining physics
+experiments.
 
 ## Optional arcade challenge
 

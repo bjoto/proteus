@@ -64,6 +64,7 @@ typedef struct {
     Vector3 forward;
     Vector3 light_direction; // World-space direction toward the light, normalized by begin.
     float focal_length;
+    float ghost_opacity; // Zero normally; 0..1 draws cyan screen-door coverage.
     PointLight3D point_light; // Disabled by begin; set before drawing the frame.
 } Renderer3D;
 

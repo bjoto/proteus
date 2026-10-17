@@ -55,11 +55,15 @@ typedef struct {
 void boat_reset(Boat *boat);
 void boat_reset_location(Boat *boat, bool eriksberg);
 void boat_reset_course(Boat *boat);
+void boat_player_pose(const Boat *boat, WaterfrontPlayerState *player);
 void boat_scene_frame(const Boat *boat, BoatCamera camera, WaterfrontSceneFrame *frame);
 // Advance one fixed tick. Inputs are adjustment rates in -1..1; zero centres the wheel and holds
 // throttle.
 void boat_step(Boat *boat, float wheel_change, float throttle_change);
 bool boat_draw(Renderer3D *renderer, Color *pixels, int width, int height, const Boat *boat,
     BoatCamera camera_settings);
+
+bool boat_draw_with_ghost(Renderer3D *renderer, Color *pixels, int width, int height,
+    const Boat *boat, BoatCamera camera, const Boat *ghost, float opacity);
 
 #endif
