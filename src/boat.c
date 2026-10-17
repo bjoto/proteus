@@ -50,7 +50,7 @@ static Vector2 hull_point(Vector2 forward, Vector2 right, Vector2 position, Vect
 
 static bool hull_contact(const Boat *boat, HullContact *contact)
 {
-    static const Vector2 samples[] = { { 0, HULL_BOW }, { -HULL_HALF_BEAM, HULL_BOW },
+    const Vector2 samples[] = { { 0, HULL_BOW }, { -HULL_HALF_BEAM, HULL_BOW },
         { HULL_HALF_BEAM, HULL_BOW }, { 0, -HULL_STERN }, { -HULL_HALF_BEAM, -HULL_STERN },
         { HULL_HALF_BEAM, -HULL_STERN } };
     Vector2 forward = { sinf(boat->heading), -cosf(boat->heading) };
