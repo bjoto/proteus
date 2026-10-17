@@ -25,9 +25,9 @@ static void usage(void)
 static void demo_step(Boat *boat, int tick)
 {
     // Ease through neutral into reverse with the same held steering.
-    float target_wheel = tick >= 120 ? 0.65f : 0;
+    float target_wheel = tick >= 360 ? 0.65f : 0;
     float wheel_change = fmaxf(-1, fminf(1, (target_wheel - boat->wheel) / BOAT_STEP));
-    float throttle_change = tick < 240 ? 1 : tick < 720 ? -1 : 0;
+    float throttle_change = tick < 240 ? 1 : tick < 480 ? 0 : tick < 960 ? -1 : 0;
     boat_step(boat, wheel_change, throttle_change);
 }
 

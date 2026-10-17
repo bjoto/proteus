@@ -42,10 +42,12 @@ velocity, including rotation. A passive force across the angled submerged outboa
 stern velocity and acts at the stern, producing both drag and turning torque. It works at idle
 while moving and fades to zero with water-relative motion. Calm water remains the baseline. A
 rate-limited, hysteretic planing blend reduces forward hull resistance above cruising speed and
-returns smoothly to displacement handling while slowing; it has no vertical lift or visual attitude
-yet. Currents and waves are not implemented.
-A spreading, fading wake traces the travelled path; lateral
-slip throws turning spray from the sliding side of the hull. Two orange markers provide turning
+returns smoothly to displacement handling while slowing. Presentation-only bow rise peaks in the
+transition and settles at cruise; it returns smoothly to rest when slowing. Hull, cabin, and
+outboard share the pose in both renderers, including GPU reflections and shadows. The camera
+keeps a level horizon. Physical vertical lift, currents, and waves are not implemented.
+A spreading, fading wake traces the travelled path; planing broadens it and adds symmetric spray
+even on straight runs. Lateral slip throws turning spray from the sliding side of the hull. Two orange markers provide turning
 references but do not collide. Rendering is 320x200 with nearest-neighbour integer scaling. Losing
 focus pauses movement.
 

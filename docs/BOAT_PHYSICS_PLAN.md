@@ -106,7 +106,7 @@ controls. Use the basin walls for repeatable practice. Tune before continuing.
   not a claim of calibrated hydrodynamics. No waves or full vertical dynamics yet. Acceptance:
   no discontinuous acceleration, no rapid toggling near the transition, no reverse planing, neutral
   coasting does not create energy, and speed stays bounded. Preserve low-speed manoeuvrability.
-- [ ] **B2: Explain the transition visually.** Add bow rise followed by settling, and blend wake
+- [x] **B2: Explain the transition visually.** Add bow rise followed by settling, and blend wake
   and spray with the planing state. Initially the vertical attitude may be presentation-only; keep
   that approximation explicit and isolated for C2 to replace. Apply the same pose to hull, cabin,
   engine, attachments, reflections, and shadows. Acceptance: CPU/GPU captures at displacement,
@@ -197,5 +197,21 @@ These motivate models, not exact coefficients or a requirement to adopt another 
   horizontal handling approximation: no visual attitude or vertical lift has been added. The
   deterministic boat validator covers smooth entry, neutral energy decay, planing decay, and the
   reverse exclusion; README and boating notes describe the limitation.
+- 2026-10-17: B2 complete. `src/boat.[ch]` adds isolated `visual_pitch` at 120 Hz: an
+  8-degree transition hump plus a 3-degree cruise target, smoothed with a 5/s exponential response.
+  No physical lift or horizontal forces were added. A shared pose helper rotates cabin/outboard
+  offsets with the hull and composes local engine steering; CPU rendering and the GPU snapshot
+  use it, so GPU reflection/shadow passes inherit the same pose. The camera stays independent.
+  Planing blends wake spread/size/lifetime and adds symmetric spray; slip-driven turning spray
+  remains. Foam stays on the water while spray originates at a hull attachment.
+  `tools/boat_study.c` now holds straight cruise before turning at 3s and lowering thrust at 4s;
+  README and boating notes document the visual approximation and revised preview.
+  `tools/validate_boat.c` covers transition rise/cruise settling, smooth return to rest/reset,
+  attachment alignment through 16 headings (including Euler singularities), planing spray,
+  camera stability, and independence from horizontal handling. Debug configure/build and all
+  24 CTests passed, including GPU review. Inspected CPU and Eriksberg GPU+AA captures at
+  0.5/1.8/2.9s (`build/boat-b2-cpu-*.png` and `build/boat-b2-gpu-*.png`); CPU and Eriksberg GPU+AA
+  windowed demo smoke runs also passed. Attitude remains cosmetic until C2; no engine audio.
+  Play gate B still needs player feedback on acceleration and docking before starting C1.
 - 2026-10-17: Plan saved. Control recommendations and coefficients remain proposals until their
   respective implementation step. Each play gate needs user feedback before starting the next phase.

@@ -20,6 +20,10 @@ static const float PLANING_EXIT_SPEED = 5.0f;
 static const float PLANING_RISE_RATE = 0.85f;
 static const float PLANING_FALL_RATE = 3.0f;
 static const float PLANING_DRAG_MULTIPLIER = 0.62f;
+// Presentation only: a transition hump settles to a modest cruise angle. No vertical force.
+static const float VISUAL_TRANSITION_PITCH = 8 * DEG2RAD;
+static const float VISUAL_CRUISE_PITCH = 3 * DEG2RAD;
+static const float VISUAL_PITCH_RESPONSE = 5.0f;
 static const float SKEG_RESISTANCE = 0.10f;
 // Contact samples form an intentionally simple, forgiving hull footprint.
 static const float HULL_BOW = 2.0f;
@@ -111,6 +115,42 @@ static void resolve_hull_contact(Boat *boat, Vector2 safe_position, HullContact 
             tangent_speed * (1 - CONTACT_TANGENT_DAMPING)));
 }
 
+// Raymath's XYZ Euler order is not local pitch followed by heading. Compose the attachment
+// in hull space first, then convert to the existing renderer transform convention.
+static Vector3 pose_rotation(Matrix rotation)
+{
+    float y = asinf(Clamp(rotation.m8, -1, 1));
+    if (fabsf(cosf(y)) < .0001f)
+        return (Vector3) { atan2f(rotation.m6, rotation.m5), y, 0 };
+    return (Vector3) { atan2f(-rotation.m9, rotation.m10), y, atan2f(-rotation.m4, rotation.m0) };
+}
+
+static Matrix hull_rotation(const Boat *boat)
+{
+    return MatrixMultiply(MatrixRotateX(boat->visual_pitch), MatrixRotateY(boat->heading));
+}
+
+static Vector3 hull_attachment(const Boat *boat, Vector3 local)
+{
+    return Vector3Add((Vector3) { -boat->position.x, 0, boat->position.y },
+        Vector3Transform(local, hull_rotation(boat)));
+}
+
+static void player_pose(const Boat *boat, WaterfrontPlayerState *player)
+{
+    Matrix rotation = hull_rotation(boat);
+    player->hull = (Transform3D) { .position = { -boat->position.x, 0, boat->position.y },
+        .rotation = pose_rotation(rotation),
+        .scale = { 1.4f, 1.4f, 1.4f } };
+    player->cabin = (Transform3D) { .position = hull_attachment(boat, (Vector3) { 0, 1.1f, 0 }),
+        .rotation = player->hull.rotation,
+        .scale = { 1, .7f, 1 } };
+    player->engine = (Transform3D) { .position
+        = hull_attachment(boat, (Vector3) { 0, .4f, ENGINE_ARM }),
+        .rotation = pose_rotation(MatrixMultiply(MatrixRotateY(-boat->engine_angle), rotation)),
+        .scale = { .55f, .65f, .9f } };
+}
+
 static void water_emit(Boat *boat, BoatWaterParticle particle)
 {
     boat->water[boat->next_particle] = particle;
@@ -137,9 +177,9 @@ static void water_step(Boat *boat)
     }
 
     float speed = Vector2Length(boat->velocity);
-    Vector2 forward = { sinf(boat->heading), -cosf(boat->heading) };
     Vector2 right = { cosf(boat->heading), sinf(boat->heading) };
-    Vector2 stern = Vector2Subtract(boat->position, Vector2Scale(forward, ENGINE_ARM));
+    Vector3 stern_world = hull_attachment(boat, (Vector3) { 0, 0, ENGINE_ARM });
+    Vector2 stern = { -stern_world.x, stern_world.z };
     // Propeller wash moves opposite the force applied to the stern, even before the hull moves.
     if (fabsf(boat->engine_response) > 0.02f) {
         boat->propeller_time += BOAT_STEP;
@@ -164,35 +204,44 @@ static void water_step(Boat *boat)
                 water_emit(boat,
                     (BoatWaterParticle) {
                         .position = Vector2Add(stern, Vector2Scale(right, side * 0.65f)),
-                        .velocity = Vector2Scale(right, side * (0.45f + speed * 0.035f)),
+                        .velocity = Vector2Scale(
+                            right, side * (0.45f + speed * 0.035f) * Lerp(1, 1.6f, boat->planing)),
                         .height = 0.01f,
-                        .lifetime = 1.6f + speed * 0.045f,
-                        .size = 0.4f });
+                        .lifetime = (1.6f + speed * 0.045f) * Lerp(1, 1.25f, boat->planing),
+                        .size = Lerp(.4f, .65f, boat->planing) });
             }
         }
     } else {
         boat->wake_distance = 0;
     }
 
+    // Planing adds symmetric low spray in straight running; turning slip still favours one side.
     float slip = Vector2DotProduct(boat->velocity, right);
-    if (fabsf(slip) > 0.9f && speed > 2) {
+    bool planing_spray = boat->planing > .05f && speed > 2;
+    if ((fabsf(slip) > 0.9f && speed > 2) || planing_spray) {
         boat->spray_time += BOAT_STEP;
         if (boat->spray_time >= 0.035f) {
             boat->spray_time -= 0.035f;
-            float side = slip > 0 ? 1 : -1;
+            float strength = fabsf(slip) > .9f ? 1 : boat->planing;
+            int first_side = fabsf(slip) > .9f ? (slip > 0 ? 1 : -1) : -1;
+            int last_side = fabsf(slip) > .9f ? first_side : 1;
             // Deterministic variation keeps screenshots repeatable and avoids shared RNG state.
             float variation = (float)((++boat->emission * 37u) % 101u) / 100;
-            Vector2 out = Vector2Scale(right, side);
-            water_emit(boat,
-                (BoatWaterParticle) {
-                    .position = Vector2Add(boat->position, Vector2Scale(out, 1.05f)),
-                    .velocity = Vector2Add(Vector2Scale(boat->velocity, 0.25f),
-                        Vector2Scale(out, 1.5f + fabsf(slip) * (0.45f + variation * 0.4f))),
-                    .height = 0.25f,
-                    .lift = 2.0f + variation * 2 + fminf(fabsf(slip) * 0.25f, 1.5f),
-                    .lifetime = 1.1f,
-                    .size = 0.22f + variation * 0.18f,
-                    .spray = true });
+            for (int side = first_side; side <= last_side; side += 2) {
+                Vector2 out = Vector2Scale(right, side);
+                Vector3 origin = hull_attachment(boat, (Vector3) { -side * 1.05f, .25f, -.4f });
+                water_emit(boat,
+                    (BoatWaterParticle) { .position = { -origin.x, origin.z },
+                        .velocity = Vector2Add(Vector2Scale(boat->velocity, 0.25f),
+                            Vector2Scale(out,
+                                1.5f + fabsf(slip) * (0.45f + variation * 0.4f) + boat->planing)),
+                        .height = fmaxf(.03f, origin.y),
+                        .lift
+                        = (2.0f + variation * 2 + fminf(fabsf(slip) * 0.25f, 1.5f)) * strength,
+                        .lifetime = 1.1f,
+                        .size = (.22f + variation * .18f) * Lerp(1, 1.3f, boat->planing) * strength,
+                        .spray = true });
+            }
         }
     } else {
         boat->spray_time = 0;
@@ -217,8 +266,7 @@ void boat_step(Boat *boat, float wheel_change, float throttle_change)
     Vector2 right = { cosf(boat->heading), sinf(boat->heading) };
     float along = Vector2DotProduct(boat->velocity, forward);
     float sideways = Vector2DotProduct(boat->velocity, right);
-    // Only forward water-relative motion can establish plane.  The presentation and physical
-    // vertical lift are deliberately deferred to B2/C2, respectively.
+    // Only forward water-relative motion can establish plane; physical lift waits for C2.
     float planing_target = 0;
     if (along > (boat->planing > 0 ? PLANING_EXIT_SPEED : PLANING_ENTER_SPEED))
         planing_target = 1;
@@ -267,6 +315,10 @@ void boat_step(Boat *boat, float wheel_change, float throttle_change)
     float camera_delta = remainderf(boat->heading - boat->camera_heading, 2 * PI);
     boat->camera_heading
         = remainderf(boat->camera_heading + camera_delta * (1 - expf(-6 * BOAT_STEP)), 2 * PI);
+    float pitch_target = 4 * boat->planing * (1 - boat->planing) * VISUAL_TRANSITION_PITCH
+        + boat->planing * VISUAL_CRUISE_PITCH;
+    boat->visual_pitch
+        += (pitch_target - boat->visual_pitch) * (1 - expf(-VISUAL_PITCH_RESPONSE * BOAT_STEP));
     water_step(boat);
 }
 
@@ -299,17 +351,7 @@ void boat_scene_frame(const Boat *boat, BoatCamera camera, WaterfrontSceneFrame 
     frame->time = boat->time;
     frame->player_active = true;
     WaterfrontPlayerState *p = &frame->player;
-    p->hull = (Transform3D) { .position = { -boat->position.x, 0, boat->position.y },
-        .rotation = { 0, boat->heading, 0 },
-        .scale = { 1.4f, 1.4f, 1.4f } };
-    p->cabin = p->hull;
-    p->cabin.position.y = 1.1f;
-    p->cabin.scale = (Vector3) { 1, .7f, 1 };
-    Vector2 stern = Vector2Subtract(boat->position,
-        Vector2Scale((Vector2) { sinf(boat->heading), -cosf(boat->heading) }, ENGINE_ARM));
-    p->engine = (Transform3D) { .position = { -stern.x, .4f, stern.y },
-        .rotation = { 0, boat->heading - boat->engine_angle, 0 },
-        .scale = { .55f, .65f, .9f } };
+    player_pose(boat, p);
     for (int i = 0; i < BOAT_WATER_PARTICLES; ++i) {
         const BoatWaterParticle *water = &boat->water[i];
         if (water->lifetime <= 0 || (boat->eriksberg && !boat_map_water(water->position, 0)))
@@ -381,19 +423,10 @@ bool boat_draw(Renderer3D *renderer, Color *pixels, int width, int height, const
                 (Color) { 248, 225, 175, 255 });
         }
     }
-    // Reflect simulation X and heading together to match the renderer's view handedness.
-    Transform3D transform = { .position = { -boat->position.x, 0, boat->position.y },
-        .rotation = { 0, boat->heading, 0 },
-        .scale = { 1.4f, 1.4f, 1.4f } };
-    renderer3d_draw_mesh(renderer, waterfront_player_hull_mesh(), transform);
-    transform.position.y = 1.1f;
-    transform.scale = (Vector3) { 1, 0.7f, 1 };
-    renderer3d_draw_box(renderer, transform, (Color) { 44, 60, 70, 255 });
-    Vector2 stern = Vector2Subtract(boat->position,
-        Vector2Scale((Vector2) { sinf(boat->heading), -cosf(boat->heading) }, ENGINE_ARM));
-    transform.position = (Vector3) { -stern.x, 0.4f, stern.y };
-    transform.rotation.y = boat->heading - boat->engine_angle;
-    transform.scale = (Vector3) { 0.55f, 0.65f, 0.9f };
-    renderer3d_draw_box(renderer, transform, (Color) { 91, 100, 111, 255 });
+    WaterfrontPlayerState player = { 0 };
+    player_pose(boat, &player);
+    renderer3d_draw_mesh(renderer, waterfront_player_hull_mesh(), player.hull);
+    renderer3d_draw_box(renderer, player.cabin, (Color) { 44, 60, 70, 255 });
+    renderer3d_draw_box(renderer, player.engine, (Color) { 91, 100, 111, 255 });
     return true;
 }

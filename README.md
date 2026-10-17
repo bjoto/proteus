@@ -134,8 +134,10 @@ term, while hull grip grows with forward speed and local sideways slip. Try buil
 lowering the throttle to 0%, and holding a modest wheel angle through the coast. These are tunable
 approximations for calm water. Above a forward speed threshold, a rate-limited planing blend
 gradually reduces hull resistance; it disengages at a lower speed so it cannot chatter around the
-transition. Reverse never planes, and planing currently changes only horizontal handling—bow rise,
-settling, and waves remain later work.
+transition. Reverse never planes. The bow rises during the transition and settles to a small
+cruise angle; wake and spray strengthen with planing. This attitude is presentation-only, shared
+by CPU/GPU hull, cabin, outboard, reflections, and shadows; physical buoyancy and waves remain
+later work. The follow camera keeps a level horizon.
 
 The basin walls bounce the craft back gently; the two orange markers are visual turning references
 and have no collision yet. A spreading wake traces your path and fades; hard turns throw spray
@@ -143,17 +145,21 @@ according to sideways slip. Reset clears both effects. This sketch is silent, wi
 geographic scenery.
 The [boating plan](docs/BOATING_PLAN.md) tracks the next steps toward Gothenburg and the archipelago.
 
-For display-free captures of a scripted acceleration and right turn, or a windowed smoke check:
+For display-free captures of scripted acceleration, planing, and a right turn, or a windowed check:
 
 ```sh
 ./build/boat_study --screenshot build/boat-start.png
-./build/boat_study --screenshot build/boat-turn.png --time 3
+./build/boat_study --screenshot build/boat-transition.png --time 1.8
+./build/boat_study --screenshot build/boat-cruise.png --time 2.9
+./build/boat_study --screenshot build/boat-turn.png --time 4
 ./build/boat_study --frames 180
 ./build/boat_study --demo --frames 720
+./build/boat_study --location eriksberg --gpu --gpu-aa --demo
 ```
 
-`--demo` previews the same scripted run as screenshots: raise thrust for two seconds, turn after
-one second, then lower it through neutral into reverse. R replays it.
+`--demo` previews the same scripted run as screenshots: raise thrust for two seconds, hold it to
+show cruise, turn after three seconds, then lower thrust after four seconds through neutral into
+reverse. R replays it.
 Screenshot `--time` selects a point in that run (0..60 seconds). The water effects use the same
 fixed simulation ticks as handling.
 

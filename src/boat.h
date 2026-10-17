@@ -33,9 +33,10 @@ typedef struct {
     float throttle; // Signed thrust command, -1 (reverse) through 0 (idle) to 1 (forward).
     // Actual signed propulsion after deterministic engine response, -1..1.
     float engine_response;
-    // 0 is displacement running; 1 is fully planing. This is a horizontal handling blend only
-    // until Phase C adds physical hull lift and attitude.
+    // 0 is displacement running; 1 is fully planing. Horizontal handling approximation.
     float planing;
+    // Presentation-only bow rise in radians; C2 replaces this with physical attitude.
+    float visual_pitch;
     float wheel; // Held steering setting, -1 (full port) to 1 (full starboard).
     float engine_angle; // Radians of thrust deflection; positive pushes stern to port.
     float yaw_velocity; // Heading change in radians/second, integrated from stern torque.

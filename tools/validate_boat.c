@@ -1,5 +1,6 @@
 #include "boat.h"
 #include "boat_map.h"
+#include "raymath.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -192,6 +193,73 @@ static int validate_planing(void)
     return 0;
 }
 
+static int validate_planing_presentation(void)
+{
+    Boat boat;
+    boat_reset(&boat);
+    boat.throttle = 1;
+    float peak = 0;
+    for (int tick = 0; tick < 360; ++tick) {
+        float previous = boat.visual_pitch;
+        boat_step(&boat, 0, 0);
+        CHECK(isfinite(boat.visual_pitch));
+        CHECK(fabsf(boat.visual_pitch - previous) < .008f);
+        peak = fmaxf(peak, boat.visual_pitch);
+    }
+    CHECK(peak > 5 * DEG2RAD);
+    CHECK(boat.visual_pitch > 2 * DEG2RAD && boat.visual_pitch < 4 * DEG2RAD);
+    CHECK(particles(&boat, true) > 0);
+
+    // Validate rigid attachments and local bow rise across headings, including Euler singularities.
+    WaterfrontSceneFrame frame;
+    for (int angle = 0; angle < 16; ++angle) {
+        boat.heading = angle * PI / 8;
+        boat.engine_angle = .4f;
+        for (int attitude = 0; attitude < 2; ++attitude) {
+            boat.visual_pitch = attitude * .15f;
+            boat_scene_frame(&boat, BOAT_CAMERA_DEFAULT, &frame);
+            Matrix hull = MatrixRotateXYZ(frame.player.hull.rotation);
+            Matrix expected
+                = MatrixMultiply(MatrixRotateX(boat.visual_pitch), MatrixRotateY(boat.heading));
+            Vector3 bow = Vector3Transform((Vector3) { 0, 0, -1 }, hull);
+            CHECK(fabsf(bow.y - sinf(boat.visual_pitch)) < .0001f);
+            Vector3 cabin = Vector3Add(
+                frame.player.hull.position, Vector3Transform((Vector3) { 0, 1.1f, 0 }, expected));
+            CHECK(Vector3Distance(cabin, frame.player.cabin.position) < .0001f);
+            Vector3 stern = Vector3Add(
+                frame.player.hull.position, Vector3Transform((Vector3) { 0, .4f, 1.6f }, expected));
+            CHECK(Vector3Distance(stern, frame.player.engine.position) < .0001f);
+            Matrix engine = MatrixRotateXYZ(frame.player.engine.rotation);
+            Matrix expected_engine = MatrixMultiply(MatrixRotateY(-boat.engine_angle), expected);
+            for (int axis = 0; axis < 3; ++axis) {
+                Vector3 basis = { axis == 0, axis == 1, axis == 2 };
+                CHECK(Vector3Distance(
+                          Vector3Transform(basis, engine), Vector3Transform(basis, expected_engine))
+                    < .0001f);
+            }
+            CHECK(frame.camera.up.x == 0 && frame.camera.up.y == 1 && frame.camera.up.z == 0);
+            CHECK(frame.camera.position.y == BOAT_CAMERA_DEFAULT.height);
+        }
+    }
+    // Presentation state must never feed back into horizontal handling or the camera.
+    Boat level = boat;
+    level.visual_pitch = 0;
+    boat_step(&boat, 0, 0);
+    boat_step(&level, 0, 0);
+    CHECK(Vector2Distance(boat.velocity, level.velocity) == 0);
+    CHECK(boat.heading == level.heading && boat.camera_heading == level.camera_heading);
+    boat.throttle = 0;
+    for (int tick = 0; tick < 2400; ++tick) {
+        float previous = boat.visual_pitch;
+        boat_step(&boat, 0, 0);
+        CHECK(fabsf(boat.visual_pitch - previous) < .008f);
+    }
+    CHECK(boat.visual_pitch < .0001f && boat.planing == 0);
+    boat_reset(&boat);
+    CHECK(boat.visual_pitch == 0);
+    return 0;
+}
+
 static int validate_hull_contacts(void)
 {
     // A starboard-bow glancing impact should rebound, scrub speed, and turn the hull away.
@@ -283,6 +351,7 @@ int main(void)
     CHECK(validate_signed_propulsion() == 0);
     CHECK(validate_signed_throttle() == 0);
     CHECK(validate_planing() == 0);
+    CHECK(validate_planing_presentation() == 0);
     CHECK(validate_hull_contacts() == 0);
     Boat boat;
     boat_reset(&boat);
@@ -367,7 +436,7 @@ int main(void)
     CHECK(boat.position.y < 10 && boat.velocity.y < -5);
     CHECK(fabsf(boat.position.x) < 0.001f);
     CHECK(particles(&boat, false) > 0);
-    CHECK(particles(&boat, true) == 0);
+    CHECK(particles(&boat, true) > 0); // Forward planing now throws symmetric spray.
     boat.throttle = 0;
     while (boat.engine_response > 0)
         boat_step(&boat, 0, 0);
