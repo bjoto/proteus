@@ -2,7 +2,9 @@
 
 Status, reconciled 2026-10-18: execution steps 01–04 and follow-ups 04b–04d complete
 (2026-09-19); boat-view audit 04e, surface pass 04f, and selected waterline pass 04g
-complete (2026-10-17). Step 05 remains the prerequisite for new interacting actors.
+complete (2026-10-17). Generated moored fleet and dressed berths 04h implemented
+(2026-10-18); see [the generator/berth guide](HARBOR_BOATS.md). Step 05 remains the
+prerequisite for new interacting actors.
 Flying gulls from step 11 were brought forward for the four-minute demo; perched birds
 remain pending. The [river expansion](eriksberg/bridge/README.md) is a separate scenery
 track, not completion of actor/ferry steps. [All plans](README.md).
@@ -10,8 +12,8 @@ track, not completion of actor/ferry steps. [All plans](README.md).
 ## Direction
 
 The original artistic brief is an inhabited waterfront at blue hour: apartments above active
-ground floors, connected streets, people with destinations, and a working harbour beyond. Preserve the crisp,
-integer-scaled image and the contrast between warm rooms and cool outdoor space.
+ground floors, connected streets, people with destinations, and a working harbour beyond.
+Preserve the crisp, integer-scaled image and the contrast between warm rooms and cool outdoor space.
 Prioritize depth and readable activity at 320x200; inspect 320x240 and 320x180 too.
 The current demo and boat scenery use the sunny daytime lighting added on 2026-10-17;
 blue hour remains the earlier design reference, not the current default lighting.
@@ -52,6 +54,7 @@ report what remains. A purely documentary step does not require a new manual dem
 | 04e | Audit water from the playable boat: dock, basin mouth, river crossing, quay approach, and view toward the exposed reach. Record matching flat/wave stills, motion, shoreline and map-boundary issues, and a performance baseline. | Complete; see WATER_REVIEW.md |
 | 04f | Reduce unnecessary distant wave geometry and give sheltered dock/exposed river water distinct visual surface character. Preserve current physical waves and handling; use the bounded brief in WATER_REVIEW.md. | Complete |
 | 04g | Finish selected waterline edges: quay contact, fenders, ladders, moorings, and restrained local disturbance. Inspect alongside the boat and approaching shore. | Complete; selected wall fittings, see WATER_REVIEW.md |
+| 04h | Dress two berths with a varied generated leisure fleet and a workboat; share wave poses, mooring attachments, reflection/shadow geometry, and forgiving player contacts. Establish reusable visual recipes for later boat variants. | Complete; see HARBOR_BOATS.md and progress log |
 | 05 | Consolidate the actor evaluation needed for city life into the shared scene layer. Preserve existing behaviour and verify direct seeks before adding actors. | Pending |
 | 06 | Distribute a small cast of pedestrians and cyclists between street destinations and both quays, with readable silhouettes and deterministic paths. Avoid concentrating all life at the cafe. Inspect motion and occlusion. | Pending |
 | 07 | Add varied vehicles and one authored interaction, such as a bus stop or yielding car. Verify spacing, stops, and hidden route wraps. | Pending |
@@ -94,6 +97,40 @@ deliverable, or request a range such as `02–04, with one commit per step`.
 Dated records preserve each revision's findings and verification. Their local “next” tasks,
 old geometry counts, and limitations may be superseded by later entries; the status table
 above owns the current execution order.
+
+- 2026-10-18, **04h generated moored fleet and dressed berths**: brought the harbor pass
+  forward at the user's request. Added `boat_model.[ch]` visual recipes (skiff, runabout,
+  cruiser, sailboat, workboat, speedboat), plus `waterfront_harbor.[ch]` with six leisure
+  boats on a west-bank pontoon and a workboat alongside the east quay. Individual hull
+  dimensions, end widths, cabin/rake, engines, mast, equipment, fenders, and colors vary
+  without separate hand-authored meshes. The reusable generator is visual only; the
+  player craft, basin handling, racing progression, and physics D1/D2 remain separate.
+  CPU/GPU share boat/pontoon wave poses, gangway, and attached mooring lines; GPU color,
+  reflection, and shadow passes reuse nine uploaded meshes plus bounded cube transforms.
+  Four water samples provide a stateless rigid pose, not a second boat physics solver.
+  Stationary padded hull/pontoon/finger/gangway envelopes reuse forgiving player contacts.
+  Both map crops, spawn, and the central launch/review channel retain clearance.
+  Added `harbor_review` close/overview captures and bounded 60 Hz playback; the
+  [generator/berth guide](HARBOR_BOATS.md) owns its commands and parameter contract.
+  Verification: Debug configure/build, 49 CTests including 13 GPU-context checks,
+  six presets plus 30 parameter variants, invalid recipes, bounded geometry,
+  direct-seek/wave/rope continuity, modeled pontoon anchors, and contact/reverse recovery.
+  Storyboard/flock camera paths retain 2 m sampled clearance. The inspected opening
+  CPU reference changes from `283e8c24b6393cac` to `2445a29318b46e7b`; CMake records it.
+  Artifacts: `build/living-city/harbor/` contains final marina/workboat/overview images,
+  `final-cpu-profile.log`, `final-ctest.log`, and windowed smoke logs. `review/` contains
+  CPU/GPU flat/wave close views and `routes/` captures for both complete storyboard
+  routes, 320x200/240 sheets, 320x180 framing, and one-second sweeps. Reviewed the full
+  sweep sheets and close views; final berth fittings were checked again in close captures.
+  Both windowed storyboard routes, marina/workboat wave passes, and an Eriksberg
+  GPU+AA wave/demo smoke run completed. The 923-frame main GPU profile (120 warm-up)
+  measured mean/p95 CPU submission 1.837/1.931 ms at 320x200 without AA. The 300-frame
+  4x marina wave pass measured 1.256 ms mean, 5.665 ms maximum, including first-frame
+  work; these are development-machine submission samples, not GPU execution/FPS claims.
+  Limits: no human handling/input/audio assessment, Windows playthrough, or new Instruments
+  trace. Thin rigging is less readable in the unsupersampled CPU reference. Berths are
+  fixed envelopes rather than moving rigid-body contacts; distant water and reflections
+  retain existing approximations. User artistic acceptance remains open; next actor task is 05.
 
 - 2026-10-17, **04g selected waterline edges**: added 80 wall equipment stations across
   the existing map-validated quay sections: 26 access ladders and 54 paired fender/cleat
@@ -443,8 +480,9 @@ Inspect idle, acceleration, turns, and parallel-quay travel in flat and wave mod
 
 The implemented scope is selected ladders, fenders, and wall contact treatment, documented
 in [the 04g record](WATER_REVIEW.md#04g-implementation-selected-waterline-edges). The original
-brief below also suggested mooring lines, moored craft, and disturbance; those additions
-were not implemented and are not prerequisites for step 05.
+brief below also suggested mooring lines, moored craft, and disturbance. Moored craft and
+attached lines were subsequently added in 04h; additional disturbance remains a proposal.
+The original 04g scope did not require those additions before step 05.
 
 Dress a few clearly visible stretches with ladders, fenders, bollards, mooring lines,
 and selected moored craft. Ground them at the waterline and preserve navigable space.
@@ -610,8 +648,8 @@ turn small details into distracting pixel noise.
   Report CPU submission and GPU timing separately where available, plus draw counts and
   memory growth; establish a performance target from measurements on the target machine.
 
-Current implementation priority: step 05 follows the completed selected waterline
-pass 04g and still precedes new interacting actors. The ferry proxy in 09 can follow that foundation if the boat review prioritizes
+Current implementation priority: step 05 follows the selected waterline pass 04g and the
+explicitly brought-forward generated-boat berth pass 04h; it still precedes new interacting actors. The ferry proxy in 09 can follow that foundation if the boat review prioritizes
 harbour activity; inspect its scale and route before modelling the vessel in detail.
 
 ## Soundtrack and flock follow pass (2026-10-11)

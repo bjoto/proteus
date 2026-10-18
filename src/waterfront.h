@@ -18,4 +18,6 @@ bool waterfront_draw_boating(
 // This validates the proxy geometry only, not real-world clearance.
 bool waterfront_check_routes(void);
 
+void waterfront_draw_harbor(Renderer3D *renderer, const WaterfrontHarborFrame *frame);
+
 #endif

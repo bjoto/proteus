@@ -3,6 +3,8 @@
 Status, 2026-10-18: A1–C3 implemented; Phase C player acceptance is recorded in the handoff
 log. Next task: D1 spatial current, followed by D2 one crossable wake. E1/E2 remain optional
 after Phase D. Calm-water handling and the accepted C3 wave baseline must be preserved.
+The separate [04h harbor pass](HARBOR_BOATS.md) adds fixed berth collision envelopes and
+kinematic moored-boat wave poses; it does not implement D1/D2 or change basin handling.
 
 Accepted direction: 2026-10-17. Parent design: [Boating playground](BOATING_PLAN.md).
 Public controls: [README](../README.md#boating-sketch). [All plans](README.md).

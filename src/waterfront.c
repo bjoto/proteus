@@ -216,6 +216,17 @@ static void waterline_details(Renderer3D *r)
     }
 }
 
+void waterfront_draw_harbor(Renderer3D *r, const WaterfrontHarborFrame *frame)
+{
+    renderer3d_draw_mesh(r, waterfront_harbor_quay_mesh(), (Transform3D) { .scale = { 1, 1, 1 } });
+    renderer3d_draw_mesh(r, waterfront_harbor_pontoon_mesh(), frame->pontoon);
+    renderer3d_draw_box(r, frame->gangway, (Color) { 154, 123, 84, 255 });
+    for (int i = 0; i < WATERFRONT_HARBOR_BOATS; ++i)
+        renderer3d_draw_mesh(r, waterfront_harbor_boat_mesh(i), frame->boats[i]);
+    for (int i = 0; i < frame->line_count; ++i)
+        renderer3d_draw_box(r, frame->lines[i], (Color) { 169, 153, 113, 255 });
+}
+
 bool waterfront_draw(
     Renderer3D *r, Color *pixels, int width, int height, float time, bool short_route)
 {
@@ -237,6 +248,7 @@ bool waterfront_draw_frame(
     windows(r);
     street_life(r, frame);
     harbour_life(r, &frame->boat);
+    waterfront_draw_harbor(r, &frame->harbor);
     crane(r);
     for (int i = 0; i < frame->gull_count; ++i)
         for (int part = 0; part < WATERFRONT_GULL_PARTS; ++part)
@@ -314,6 +326,11 @@ bool waterfront_check_routes(void)
             else
                 waterfront_scene_evaluate(time, short_route, &frame);
             Vector3 p = frame.camera.position;
+            if (!waterfront_harbor_camera_clear(p, 2)) {
+                fprintf(
+                    stderr, "Camera route %d at %.3f s is within 2 m of a berth\n", route, time);
+                return false;
+            }
             if (!waterfront_corner_clear(p, 2)) {
                 fprintf(stderr, "Route %s at %.3f s is within 2 m of the city dressing\n",
                     short_route ? "short" : "long", time);

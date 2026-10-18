@@ -35,6 +35,12 @@ This first integration has static scenery, no overhead
 structure collisions, and no camera occlusion handling near buildings. It does not include the
 rest of Gothenburg or the archipelago. Source attribution is retained in the HUD and README.
 
+The [generated boat and berth foundation](HARBOR_BOATS.md) adds six leisure boats at a
+west-bank pontoon and a working east-bank berth in Eriksberg and river locations. Moored
+hulls, pontoon fingers, and gangway have forgiving static contacts. The visual generator
+covers skiff through speedboat recipes; it does not change the player craft or implement
+speed tiers, unlocks, prices, or progression saves. Those remain future design work.
+
 The boat-level [water review](WATER_REVIEW.md) records a repeatable dock/river/quay circuit
 and the completed 04f surface and 04g selected waterline passes. Those visual changes
 preserve handling; the separately implemented river expansion adds playable geography.
@@ -254,6 +260,11 @@ turning is satisfying, since they would materially change course design.
 - Can a few carefully shaped routes provide enough variety without more systems?
 
 ## Decision record
+
+- 2026-10-18: Prioritize an inhabited harbor through two dressed berths. Build the moored
+  fleet with shared parameterized boat recipes, laying a visual foundation for a possible
+  later skiff-to-speedboat upgrade path. Keep gameplay progression and player handling changes
+  separate from this first harbor step; preserve free exploration and the basin course.
 
 - 2026-10-17: Prioritize learnable, predictable handling over exhaustive simulation. Adopt the
   [step-by-step physics roadmap](BOAT_PHYSICS_PLAN.md): reverse and docking, planing, buoyancy and

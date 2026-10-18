@@ -2,7 +2,7 @@
 
 Status, reconciled 2026-10-18: steps 01–12 implemented. GPU is the default for the
 main demo and boat study; CPU remains a deterministic reference. The development Mac's
-Debug build and all 46 CTests passed, including 12 GPU-context checks. Earlier desktop
+Debug build and all 49 CTests passed, including 13 GPU-context checks. Earlier desktop
 context failures below are historical, not current blockers. Human visual/audio acceptance
 and other-platform verification are separate and are not established by this test run.
 
@@ -460,7 +460,7 @@ Later visual reviews and windowed smoke runs are recorded in
 | 03 Shared scene evaluation | Implemented; regression verified | CPU/GPU consume shared evaluated frames; further actor consolidation is living-city step 05. |
 | 04 Static GPU city | Implemented; regression verified | GPU city fixtures and current review pass. |
 | 05 City life/application integration | Implemented; regression verified | Renderer routing and GPU city/replay captures pass; this is distinct from living-city step 05. |
-| 06 GPU regression/profiling | Implemented; regression verified | 12 GPU-context CTests pass with `PROTEUS_GPU_TESTS=ON`; submission timing is not GPU execution time. |
+| 06 GPU regression/profiling | Implemented; regression verified | 13 GPU-context CTests pass with `PROTEUS_GPU_TESTS=ON`; submission timing is not GPU execution time. |
 | 07 Surface detail | Implemented; regression verified | Current surface-material probe passes; later procedural ground/facade finishes supersede the initial bitmap tiles. Roofs retain bitmap mapping. |
 | 08 Local lighting | Implemented; regression verified | Current lighting fixture/review passes; the later shared budget is 32 lights. |
 | 09 Directional shadows | Implemented; regression verified | Directional shadow diagnostics and GPU review pass. |

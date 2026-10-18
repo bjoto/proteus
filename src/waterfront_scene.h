@@ -3,6 +3,7 @@
 
 #include "boat_water.h"
 #include "renderer3d.h"
+#include "waterfront_harbor.h"
 
 // Renderer-independent authored data and time evaluation for the waterfront.
 // The returned mesh refers to scene-owned, static generated geometry.
@@ -76,6 +77,7 @@ typedef struct {
     WaterfrontLampState lamps[WATERFRONT_MAX_LAMPS];
     int lamp_count;
     WaterfrontBoatState boat;
+    WaterfrontHarborFrame harbor;
     int gull_count;
     Transform3D gulls[WATERFRONT_GULL_COUNT][WATERFRONT_GULL_PARTS];
 } WaterfrontSceneFrame;

@@ -1,0 +1,266 @@
+// Repeatable CPU/GPU berth views; all poses come from the same shared snapshot as playback.
+#include "renderer_gpu.h"
+#include "waterfront.h"
+
+#include "raymath.h"
+#include "rlgl.h"
+
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+static void usage(void)
+{
+    puts("Usage: harbor_review [--view marina|workboat|overview] [--renderer cpu|gpu]\n"
+         "       [--waves] [--time SECONDS] [--screenshot FILE] [--frames COUNT]\n"
+         "       [--resolution 320x180|320x200|320x240]\n"
+         "Default: GPU, marina, interactive. Screenshots render once; --frames bounds playback.\n"
+         "GPU uses 4x4 supersampling. CPU screenshots need no graphics context. Esc exits.");
+}
+
+static bool number(const char *text, float *value)
+{
+    char *end;
+    *value = strtof(text, &end);
+    return end != text && !*end && isfinite(*value) && *value >= 0 && *value <= 600;
+}
+
+static Mesh patch(Vector3 center)
+{
+    const Mesh3D *source = boat_water_patch((Vector2) { center.x, center.z }, true);
+    Mesh mesh = { 0 };
+    if (!source)
+        return mesh;
+    mesh.triangleCount = (int)source->triangle_count;
+    mesh.vertexCount = mesh.triangleCount * 3;
+    mesh.vertices = MemAlloc((unsigned int)mesh.vertexCount * 3 * sizeof(float));
+    if (!mesh.vertices)
+        return (Mesh) { 0 };
+    for (int i = 0; i < mesh.vertexCount; ++i) {
+        Vector3 v = source->vertices[source->triangles[i / 3].vertices[i % 3]];
+        memcpy(&mesh.vertices[i * 3], &v, sizeof(v));
+    }
+    UploadMesh(&mesh, false);
+    return mesh;
+}
+
+int main(int argc, char **argv)
+{
+    const char *view = "marina", *screenshot = NULL;
+    bool gpu = true, waves = false;
+    float time = 0;
+    int frames = 0, height = 200;
+    for (int i = 1; i < argc; ++i) {
+        if (!strcmp(argv[i], "--help")) {
+            usage();
+            return 0;
+        } else if (!strcmp(argv[i], "--view") && i + 1 < argc) {
+            view = argv[++i];
+            if (strcmp(view, "marina") && strcmp(view, "workboat") && strcmp(view, "overview"))
+                goto invalid;
+        } else if (!strcmp(argv[i], "--renderer") && i + 1 < argc) {
+            const char *name = argv[++i];
+            if (strcmp(name, "cpu") && strcmp(name, "gpu"))
+                goto invalid;
+            gpu = !strcmp(name, "gpu");
+        } else if (!strcmp(argv[i], "--waves")) {
+            waves = true;
+        } else if (!strcmp(argv[i], "--time") && i + 1 < argc) {
+            if (!number(argv[++i], &time))
+                goto invalid;
+        } else if (!strcmp(argv[i], "--frames") && i + 1 < argc) {
+            char *end;
+            long n = strtol(argv[++i], &end, 10);
+            if (*end || end == argv[i] || n < 1 || n > 36000)
+                goto invalid;
+            frames = (int)n;
+        } else if (!strcmp(argv[i], "--screenshot") && i + 1 < argc) {
+            screenshot = argv[++i];
+        } else if (!strcmp(argv[i], "--resolution") && i + 1 < argc) {
+            const char *size = argv[++i];
+            if (!strcmp(size, "320x180"))
+                height = 180;
+            else if (!strcmp(size, "320x200"))
+                height = 200;
+            else if (!strcmp(size, "320x240"))
+                height = 240;
+            else
+                goto invalid;
+        } else {
+            goto invalid;
+        }
+    }
+    SetTraceLogLevel(LOG_WARNING);
+    View3D camera = { .position = { 12, 8, 157 },
+        .target = { -15, 2, 182 },
+        .up = { 0, 1, 0 },
+        .vertical_fov = 58 * DEG2RAD,
+        .near_plane = .25f,
+        .far_plane = 1400 };
+    if (!strcmp(view, "workboat")) {
+        camera.position = (Vector3) { 20, 6.5f, 18 };
+        camera.target = (Vector3) { 42, 1.8f, 35 };
+    } else if (!strcmp(view, "overview")) {
+        camera.position = (Vector3) { 145, 145, 85 };
+        camera.target = (Vector3) { 4, 0, 125 };
+    }
+    bool window = gpu || !screenshot;
+    if (window) {
+        if (screenshot)
+            SetConfigFlags(FLAG_WINDOW_HIDDEN);
+        InitWindow(960, height * 3, "Proteus / harbor review");
+        if (!IsWindowReady())
+            return 1;
+        SetTargetFPS(60);
+    }
+    int result = 0, count = 0;
+    Color *pixels = NULL;
+    Renderer3D cpu = { 0 };
+    WaterfrontGpuScene scene = { 0 };
+    RenderTexture2D target = { 0 }, resolved = { 0 };
+    Shader downsample = { 0 };
+    Texture2D texture = { 0 };
+    Mesh near = { 0 };
+    BoatWater water = waves ? boat_water_gentle() : (BoatWater) { 0 };
+    if (gpu) {
+        char path[1024];
+        int n = snprintf(
+            path, sizeof(path), "%sassets/shaders/waterfront_city.fs", GetApplicationDirectory());
+        if (n < 0 || (size_t)n >= sizeof(path) || !waterfront_gpu_scene_init(&scene, path)) {
+            result = 1;
+            goto cleanup;
+        }
+        target = LoadRenderTexture(1280, height * 4);
+        resolved = LoadRenderTexture(320, height);
+        n = snprintf(
+            path, sizeof(path), "%sassets/shaders/gpu_downsample.fs", GetApplicationDirectory());
+        if (n < 0 || (size_t)n >= sizeof(path)) {
+            result = 1;
+            goto cleanup;
+        }
+        downsample = LoadShader(NULL, path);
+        if (!IsRenderTextureValid(target) || !IsRenderTextureValid(resolved)
+            || !IsShaderValid(downsample) || downsample.id == rlGetShaderIdDefault()) {
+            result = 1;
+            goto cleanup;
+        }
+        SetTextureFilter(resolved.texture, TEXTURE_FILTER_POINT);
+        if (waves) {
+            near = patch(camera.target);
+            if (!near.vaoId) {
+                result = 1;
+                goto cleanup;
+            }
+            scene.near_water = near;
+        }
+    } else {
+        pixels = malloc((size_t)320 * height * sizeof(*pixels));
+        if (!pixels) {
+            result = 1;
+            goto cleanup;
+        }
+    }
+    double sum = 0, peak = 0;
+    do {
+        WaterfrontSceneFrame frame;
+        waterfront_scene_evaluate(0, true, &frame);
+        frame.camera = camera;
+        frame.time = time + count / 60.0f;
+        frame.player_active = true;
+        frame.player_water = water;
+        // Keep the player out of the scene; its X/Z still centres the shared GPU wave patch.
+        frame.player.hull = frame.player.cabin = frame.player.engine
+            = (Transform3D) { .position = { camera.target.x, -100, camera.target.z },
+                  .scale = { 1, 1, 1 } };
+        waterfront_harbor_evaluate(water, frame.time, &frame.harbor);
+        double start = window ? GetTime() : 0;
+        if (gpu) {
+            BeginTextureMode(target);
+            waterfront_gpu_scene_draw(&scene, &frame, 1280, height * 4);
+            EndTextureMode();
+            BeginTextureMode(resolved);
+            ClearBackground(BLACK);
+            BeginShaderMode(downsample);
+            DrawTexturePro(target.texture, (Rectangle) { 0, 0, 1280, -height * 4.0f },
+                (Rectangle) { 0, 0, 320, (float)height }, (Vector2) { 0 }, 0, WHITE);
+            EndShaderMode();
+            EndTextureMode();
+        } else {
+            if (!waterfront_draw_boating(&cpu, pixels, 320, height, camera, waves)) {
+                result = 1;
+                break;
+            }
+            if (waves) {
+                const Mesh3D *surface = boat_water_surface(water, frame.time, true);
+                if (!surface) {
+                    result = 1;
+                    break;
+                }
+                renderer3d_draw_emissive_mesh(
+                    &cpu, surface, (Transform3D) { .scale = { 1, 1, 1 } });
+            }
+            waterfront_draw_harbor(&cpu, &frame.harbor);
+        }
+        if (window) {
+            double elapsed = (GetTime() - start) * 1000;
+            sum += elapsed;
+            peak = fmax(peak, elapsed);
+        }
+        if (screenshot) {
+            Image image;
+            if (gpu) {
+                image = LoadImageFromTexture(resolved.texture);
+                ImageFlipVertical(&image);
+            } else {
+                image = (Image) { pixels, 320, height, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 };
+            }
+            result = ExportImage(image, screenshot) ? 0 : 1;
+            if (gpu)
+                UnloadImage(image);
+            break;
+        }
+        if (!gpu) {
+            Image image = { pixels, 320, height, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 };
+            if (!texture.id) {
+                texture = LoadTextureFromImage(image);
+                SetTextureFilter(texture, TEXTURE_FILTER_POINT);
+            } else {
+                UpdateTexture(texture, pixels);
+            }
+        }
+        BeginDrawing();
+        ClearBackground(BLACK);
+        Texture2D shown = gpu ? resolved.texture : texture;
+        DrawTexturePro(shown,
+            (Rectangle) { 0, 0, (float)shown.width, (gpu ? -1.0f : 1.0f) * shown.height },
+            (Rectangle) { 0, 0, 960, height * 3.0f }, (Vector2) { 0 }, 0, WHITE);
+        EndDrawing();
+        ++count;
+    } while ((!frames || count < frames) && !WindowShouldClose());
+    if (count && window)
+        printf("harbor_view=%s frames=%d render_ms_mean=%.3f render_ms_max=%.3f scope=%s\n", view,
+            count, sum / count, peak, gpu ? "CPU_submission_at_4x" : "CPU_rendering");
+cleanup:
+    if (texture.id)
+        UnloadTexture(texture);
+    if (near.vaoId)
+        UnloadMesh(near);
+    if (gpu)
+        waterfront_gpu_scene_destroy(&scene);
+    if (target.id)
+        UnloadRenderTexture(target);
+    if (resolved.id)
+        UnloadRenderTexture(resolved);
+    if (downsample.id)
+        UnloadShader(downsample);
+    renderer3d_destroy(&cpu);
+    free(pixels);
+    boat_water_destroy();
+    if (window)
+        CloseWindow();
+    return result;
+invalid:
+    usage();
+    return 2;
+}

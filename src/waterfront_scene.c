@@ -389,6 +389,7 @@ void waterfront_scene_evaluate(float time, bool short_route, WaterfrontSceneFram
     };
     frame->bridge_color = (Color) { 119, 128, 145, 255 };
     evaluate_life(time, frame);
+    waterfront_harbor_evaluate((BoatWater) { 0 }, time, &frame->harbor);
 }
 
 const Mesh3D *waterfront_scene_city_mesh(void)
@@ -500,6 +501,7 @@ void waterfront_demo_evaluate(float time, WaterfrontSceneFrame *frame)
     waterfront_scene_evaluate(0, true, frame);
     frame->time = time;
     evaluate_life(time, frame);
+    waterfront_harbor_evaluate((BoatWater) { 0 }, time, &frame->harbor);
     Vector3 center = flock_position(time);
     Vector3 forward = Vector3Normalize(
         Vector3Subtract(flock_position(time + .25f), flock_position(time - .25f)));

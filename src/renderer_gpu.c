@@ -608,6 +608,12 @@ bool waterfront_gpu_scene_init(WaterfrontGpuScene *scene, const char *fragment_s
         || !build_source_mesh(&scene->player_cabin, waterfront_player_cabin_mesh())
         || !build_source_mesh(&scene->player_engine, waterfront_player_engine_mesh()))
         goto failed;
+    for (int i = 0; i < WATERFRONT_HARBOR_BOATS; ++i)
+        if (!build_source_mesh(&scene->harbor_boats[i], waterfront_harbor_boat_mesh(i)))
+            goto failed;
+    if (!build_source_mesh(&scene->harbor_pontoon, waterfront_harbor_pontoon_mesh())
+        || !build_source_mesh(&scene->harbor_quay, waterfront_harbor_quay_mesh()))
+        goto failed;
     if (!build_unit_cube(&scene->bridge) || !build_unit_cube(&scene->cube)
         || !build_unit_plane(&scene->plane))
         goto failed;
@@ -1049,9 +1055,26 @@ static void draw_ghost(const WaterfrontGpuScene *scene, Material material,
     SetShaderValue(material.shader, opacity, &zero, SHADER_UNIFORM_FLOAT);
 }
 
+static void draw_harbor(
+    const WaterfrontGpuScene *scene, Material material, const WaterfrontSceneFrame *frame)
+{
+    const WaterfrontHarborFrame *harbor = &frame->harbor;
+    draw_colored_mesh(
+        scene->harbor_quay, material, (Transform3D) { .scale = { 1, 1, 1 } }, WHITE, false);
+    draw_colored_mesh(scene->harbor_pontoon, material, harbor->pontoon, WHITE, false);
+    draw_colored_mesh(scene->cube, material, harbor->gangway, (Color) { 154, 123, 84, 255 }, false);
+    for (int i = 0; i < WATERFRONT_HARBOR_BOATS; ++i)
+        draw_colored_mesh(scene->harbor_boats[i], material, harbor->boats[i], WHITE, false);
+    for (int i = 0; i < harbor->line_count; ++i)
+        draw_colored_mesh(
+            scene->cube, material, harbor->lines[i], (Color) { 169, 153, 113, 255 }, false);
+}
+
 static void draw_life(const WaterfrontGpuScene *scene, Material material,
     const WaterfrontSceneFrame *frame, bool emissive)
 {
+    if (!frame->boating_basin)
+        draw_harbor(scene, material, frame);
     if (frame->player_active) {
         for (int i = 0; i < frame->lamp_count; ++i) {
             const WaterfrontLampState *lamp = &frame->lamps[i];
@@ -1502,6 +1525,13 @@ void waterfront_gpu_scene_destroy(WaterfrontGpuScene *scene)
             UnloadMesh(scene->gull[part]);
     if (scene->cube.vaoId != 0)
         UnloadMesh(scene->cube);
+    for (int i = 0; i < WATERFRONT_HARBOR_BOATS; ++i)
+        if (scene->harbor_boats[i].vaoId)
+            UnloadMesh(scene->harbor_boats[i]);
+    if (scene->harbor_pontoon.vaoId)
+        UnloadMesh(scene->harbor_pontoon);
+    if (scene->harbor_quay.vaoId)
+        UnloadMesh(scene->harbor_quay);
     if (scene->player_hull.vaoId != 0)
         UnloadMesh(scene->player_hull);
     if (scene->player_cabin.vaoId != 0)

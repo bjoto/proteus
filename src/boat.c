@@ -93,6 +93,8 @@ static bool hull_contact(const Boat *boat, HullContact *contact)
         bool water;
         if (boat->eriksberg) {
             water = boat_map_water_contact(point, HULL_SHORE_CLEARANCE, &normal);
+            if (water && waterfront_harbor_contact(point, HULL_SHORE_CLEARANCE, &normal))
+                water = false;
         } else {
             water = fabsf(point.x) <= BOAT_BASIN_HALF_X - HULL_SHORE_CLEARANCE
                 && fabsf(point.y) <= BOAT_BASIN_HALF_Z - HULL_SHORE_CLEARANCE;
@@ -551,6 +553,8 @@ void boat_scene_frame(const Boat *boat, BoatCamera camera, WaterfrontSceneFrame 
     if (!boat->eriksberg)
         basin_scenery(boat, frame);
     frame->player_water = boat->water_settings;
+    if (boat->eriksberg)
+        waterfront_harbor_evaluate(boat->water_settings, boat->time, &frame->harbor);
     WaterfrontPlayerState *p = &frame->player;
     boat_player_pose(boat, p);
     for (int i = 0; i < BOAT_WATER_PARTICLES; ++i) {
@@ -606,6 +610,11 @@ bool boat_draw_with_ghost(Renderer3D *renderer, Color *pixels, int width, int he
         if (!surface)
             return false;
         renderer3d_draw_emissive_mesh(renderer, surface, (Transform3D) { .scale = { 1, 1, 1 } });
+    }
+    if (boat->eriksberg) {
+        WaterfrontHarborFrame harbor;
+        waterfront_harbor_evaluate(boat->water_settings, boat->time, &harbor);
+        waterfront_draw_harbor(renderer, &harbor);
     }
     for (int i = 0; i < BOAT_WATER_PARTICLES; ++i) {
         const BoatWaterParticle *p = &boat->water[i];

@@ -144,6 +144,15 @@ other screenshot modes retain the 60 second limit.
 
 `basin` remains the default. Eriksberg spawns in the dock facing the crane and river; R returns
 there. The map, buildings, Dockbron, crane, and daytime sky reuse the existing offline scene.
+Two authored berths now give the dock an inhabited edge: six generated leisure boats on a
+floating pontoon along the west bank, and a workboat with quay equipment on the east bank.
+Their hulls, fenders, cabin shapes, masts, and engines come from shared parameterized recipes.
+They follow the gentle-wave surface, with attached mooring lines, reflections, and shadows.
+Moored boats and pontoons block the player with forgiving contacts; the central channel stays open.
+Inspect them directly with `./build/harbor_review --view marina --waves` or `--view workboat`.
+See [generated boats and berths](docs/HARBOR_BOATS.md) for parameters, review commands,
+and the foundation for future playable boat variants.
+
 Shoreline collisions use an oriented bow, stern, and beam footprint; glancing contacts scrub speed,
 turn the craft away, and rebound gently while retaining most speed along the dock. Translation
 and rotation keep the entire footprint in water, so a dock contact can be reversed out of. The
