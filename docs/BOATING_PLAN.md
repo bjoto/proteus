@@ -2,10 +2,11 @@
 
 Status: updated 2026-10-18. `boat_study` implements free boating in basin, Eriksberg,
 and river locations, reverse/docking, planing, buoyancy, optional gentle waves, opt-in
-basin current/crossing-wake tests, and a timed S course with recordings, persistent personal bests, ghosts, and replay controls. The study
+current/scripted-wake options in all locations, a default player-path wake, and a timed S course with recordings, persistent personal bests, ghosts, and replay controls. The study
 has quiet engine/water audio and a repeating, gentle XM background piece. The
 [stern-wake motion pass](#stern-wake-motion--2026-10-18) and physics Phase D are implemented;
-continuous-motion and handling/artistic review are next.
+the user has provisionally accepted Phase D handling and revised player-wake motion,
+with continued evaluation over time.
 The score-loop arcade mode and archipelago remain proposals.
 
 This document owns gameplay direction. Detailed next tasks belong to the
@@ -83,9 +84,12 @@ physical heave, pitch, and roll; planing redistributes support to raise the bow 
 transition and settle at cruise. Hull, cabin, and outboard share the physical pose in both
 renderers, including GPU reflections and shadows. The camera keeps a level horizon.
 `--waves` enables gentle crossing waves with water-relative resistance and matching visual
-surfaces. Basin free boating also offers opt-in `--current` and `--crossing-wake` tests,
-with water-relative resistance and one scripted visible/physical wake. They reject course,
-replay/ghost, and mapped locations; see [Phase D](BOAT_PHYSICS_PLAN.md#phase-d--currents-and-crossing-wakes).
+surfaces. Free boating in every location now enables physical player wakes by default;
+`--no-player-wake` restores the visual-only trail. Opt-in `--current` and `--crossing-wake`
+profiles also work in all locations, with an authored river source/channel for mapped views.
+They reject course/replay/ghost modes, which retain their existing water settings. See
+[Phase D](BOAT_PHYSICS_PLAN.md#phase-d--currents-and-crossing-wakes).
+Player crests travel at 3 units/s through a slower packet and persist about 20 seconds.
 Harbor traffic still leaves visual foam only.
 A spreading, fading wake traces the travelled path, with varied foam patches and short-lived
 stern wash that separates and erodes; planing broadens the trail and adds symmetric spray
@@ -344,12 +348,13 @@ These are tunable gameplay models, not calibrated hydrodynamics.
   manoeuvring. The current model uses forces and torque, not a prescribed speed-to-turn curve.
 - **Planing (implemented):** a smooth resistance transition and physical support redistribution
   raise the bow, then settle it into cruise.
-- **Current (D1, implemented; play gate pending):** an opt-in smooth basin channel adds drift
-  and local water-relative resistance; mapped harbor currents remain future work.
+- **Current (D1, implemented; provisionally accepted):** an opt-in authored channel in all locations adds drift
+  and local water-relative resistance; measured harbor currents remain future work.
 - **Gentle waves (C1–C3, implemented and accepted):** physical buoyancy and encounter resistance
   depend on speed and heading. Visual shelter/exposure varies independently of the wave physics.
-- **Crossable wake (D2, implemented; play gate pending):** one opt-in scripted basin source
-  with matching rendering and forces; fleet foam remains visual only.
+- **Crossable wakes (D2/D3, implemented; provisionally accepted):** an opt-in scripted source in all locations
+  plus a default player-path history (`--no-player-wake` opts out) for crossing your own trail, with matching
+  rendering and forces. Fleet foam remains visual only.
 
 Judge each experiment through driving before combining it with the others. Wake and spray should
 help reveal movement through water as these models evolve.
@@ -403,7 +408,8 @@ turning is satisfying, since they would materially change course design.
 ### Playable gentle waves (physics C1–C3)
 
 `--waves` opts into three deterministic crossing waves in all locations on CPU/GPU.
-Flat water remains the default, and reset preserves the launch option while restarting wave time.
+Ambient waves remain opt-in, while player wakes now default on in free boating. Reset preserves
+the launch options while restarting wave time and clearing player history.
 Six damped hull supports add physical heave, pitch and roll, including the planing attitude;
 attachments share that pose while the follow camera stays level. Foam follows local water height.
 GPU wave normals distort restrained planar reflections; CPU uses subdued slope colors.
@@ -413,7 +419,8 @@ three angular rates. Faster crossings increase the load and bow spray; slowing d
 response. Foam follows the local surface slope as well as height. Flat mode retains C2 handling.
 This remains a support-spring/normal-damping model, without displaced hull volumes, orbital flow,
 ventilation, or capsize behavior. The user accepted Phase C after playtesting. Its default baseline
-is preserved by the separate opt-in Phase D current/wake tests. See
+remains available through `--no-player-wake`; Phase D player wakes are now the free-boating
+default, while currents/scripted sources remain opt-in. See
 [the physics plan](BOAT_PHYSICS_PLAN.md#phase-c--buoyancy-and-gentle-waves).
 
 The GPU's boat-level water pass now uses a clipped near patch and a much smaller flat

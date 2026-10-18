@@ -965,6 +965,23 @@ static void set_water_uniforms(WaterfrontGpuScene *scene, const WaterfrontSceneF
     float wake_amplitude = frame->player_active ? water.wake_amplitude : 0;
     SetShaderValue(scene->water_shader, GetShaderLocation(scene->water_shader, "wakeAmplitude"),
         &wake_amplitude, SHADER_UNIFORM_FLOAT);
+    float wake_offset[] = { -water.wake_offset.x, water.wake_offset.y };
+    SetShaderValue(scene->water_shader, GetShaderLocation(scene->water_shader, "wakeOffset"),
+        wake_offset, SHADER_UNIFORM_VEC2);
+    float wake_origins[BOAT_WAKE_SEGMENTS * 4], wake_parameters[BOAT_WAKE_SEGMENTS * 4];
+    int wake_count = frame->player_active
+        ? boat_water_wake_uniforms(water, frame->time, wake_origins, wake_parameters)
+        : 0;
+    SetShaderValue(scene->water_shader, GetShaderLocation(scene->water_shader, "playerWakeCount"),
+        &wake_count, SHADER_UNIFORM_INT);
+    if (wake_count) {
+        SetShaderValueV(scene->water_shader,
+            GetShaderLocation(scene->water_shader, "playerWakeOrigins[0]"), wake_origins,
+            SHADER_UNIFORM_VEC4, wake_count);
+        SetShaderValueV(scene->water_shader,
+            GetShaderLocation(scene->water_shader, "playerWakeParameters[0]"), wake_parameters,
+            SHADER_UNIFORM_VEC4, wake_count);
+    }
     int waterfront_water = frame->player_active && !frame->boating_basin;
     SetShaderValue(scene->water_shader, GetShaderLocation(scene->water_shader, "waterfrontWater"),
         &waterfront_water, SHADER_UNIFORM_INT);

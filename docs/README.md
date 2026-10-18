@@ -10,7 +10,7 @@ Both default to GPU rendering; the CPU reference supports display-free captures.
 | Area and owning document | Implemented | Remaining / next task |
 | --- | --- | --- |
 | [Boating design](BOATING_PLAN.md) | Basin, Eriksberg, and river locations; timed S course, recordings, persistent bests, ghosts, replays, and quiet engine/water audio with a joyful repeating XM | [Stern-wake motion](BOATING_PLAN.md#stern-wake-motion--2026-10-18): implemented and verified, user motion review next; score-loop and archipelago remain proposals |
-| [Boat physics](BOAT_PHYSICS_PLAN.md) | A–D2: reverse/docking, hull contacts, planing, buoyancy, gentle waves, opt-in basin current and crossable wake; Phase C accepted | D handling/artistic review; mapped currents/fleet wakes remain future work; optional trim/loading after D acceptance |
+| [Boat physics](BOAT_PHYSICS_PLAN.md) | A–D3: reverse/docking, hull contacts, planing, buoyancy, gentle waves, current/scripted wake options in all locations and default player wakes; C accepted and D provisionally accepted | Continued handling evaluation; measured currents/fleet wakes remain future work; optional trim/loading not started |
 | [Living city](LIVING_CITY_PLAN.md) | 01–05: city dressing, materials, berths, shared actors; travelling boats and a compact ferry brought forward; demo flock and 32 reactive boating gulls | 06 people/cyclists; varied road traffic, building activity, ferry polish, perched gulls, and final review remain |
 | [River / Älvsborgsbron](eriksberg/bridge/README.md) | Separate source/crop, navigable bridge blockout, blocking tower legs, and grounded road approaches | Bridge/shoreline/building refinement; human handling and camera review |
 | [GPU migration](GPU_WATERFRONT_PLAN.md) | Steps 01–12 implemented; GPU default, lighting, shadows, atmosphere, reflections, and regression checks | Migration is implemented; other-platform and human visual acceptance remain separate from automated checks |
@@ -36,6 +36,37 @@ does not authorize advancing every plan. Use the requested track's scope and acc
   to the current owners above. Dated progress entries retain results for their original revisions.
 
 ## Verification baseline
+
+All-location/default-wake update, 2026-10-18, macOS: Debug build and all 69 CTests passed,
+including 18 GPU checks. Default and explicit player-wake captures match byte for byte;
+the opt-out matches the earlier calm frame. Mapped profile/source-clearance checks,
+CPU/GPU captures, and a desktop river smoke run passed. Courses/replays retain their
+original settings. Details and continuing manual/platform limits belong to the
+[physics handoff log](BOAT_PHYSICS_PLAN.md#handoff-log).
+
+
+User acceptance, 2026-10-18: Phase D handling is provisionally accepted as feeling good,
+with continued evaluation over time. Revised player-wake motion was also accepted.
+Preserve this baseline; optional Phase E has not started. This supersedes pending
+handling status in the historical verification entries below. See the
+[physics handoff log](BOAT_PHYSICS_PLAN.md#handoff-log) for scope and limitations.
+
+
+Player-wake motion refinement, 2026-10-18, macOS: Debug build and all 66 CTests passed,
+including 18 GPU checks. A new propagation test tracks crest travel independently of the
+packet; CPU/GPU parity and loop/recovery checks passed. Desktop scripted playback and
+sampled native captures passed. The user accepted the revised player-wake motion on
+2026-10-18; broader Phase D handling review remains pending. See the
+[physics handoff log](BOAT_PHYSICS_PLAN.md#handoff-log) for current speeds and evidence.
+
+
+Player-path wake follow-up, 2026-10-18, macOS: Debug build and all 66 CTests passed,
+including 18 GPU checks. The expanded full-history shader parity probe and environment
+checks also passed afterward. Scripted loop/recovery and desktop playback passed; sampled
+CPU/GPU basin and mapped captures were inspected. Human handling/artistic acceptance is
+pending. Details and limitations belong to the
+[physics handoff log](BOAT_PHYSICS_PLAN.md#handoff-log).
+
 
 Phase D, 2026-10-18, macOS: Debug build and all 62 CTests passed, including 16 GPU
 checks. The authored basin current/wake profiles passed scripted recovery and desktop

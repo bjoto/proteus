@@ -1,4 +1,5 @@
 #include "boat.h"
+#include "boat_map.h"
 #include "raymath.h"
 
 #include <math.h>
@@ -105,6 +106,25 @@ static int wake_checks(void)
         BoatWaterSample q = boat_water_query(wake, (Vector2) { x, 0 }, 25);
         CHECK(q.height == 0 && q.velocity.y == 0 && q.normal.y == 1);
     }
+    BoatWater shifted = wake;
+    shifted.wake_offset = (Vector2) { -140, -220 };
+    for (float t = 4; t <= 16; t += 2) {
+        Vector2 p = { -10, 4 };
+        BoatWaterSample a = boat_water_query(wake, p, t);
+        BoatWaterSample b = boat_water_query(shifted, Vector2Add(p, shifted.wake_offset), t);
+        CHECK(fabsf(a.height - b.height) < .00001f);
+        CHECK(Vector3Distance(a.normal, b.normal) < .00001f);
+        CHECK(Vector3Distance(a.velocity, b.velocity) < .00001f);
+    }
+    for (int river = 0; river < 2; ++river) {
+        waterfront_scene_select_river(river != 0);
+        for (int tick = 0; tick <= 120; ++tick) {
+            CHECK(boat_water_wake_source(shifted, tick * .1f, &source));
+            CHECK(boat_map_water(source, 3));
+        }
+        boat_map_destroy();
+    }
+    waterfront_scene_select_river(false);
     // Repeated crossings at different speeds and angles must settle without stored energy.
     const float speeds[] = { 0, 3, 9 };
     float encounter = 0;
@@ -136,6 +156,94 @@ static int wake_checks(void)
     return 0;
 }
 
+static int player_wake_checks(void)
+{
+    BoatWater water = { .player_wake_enabled = true };
+    boat_water_emit_wake(&water, (Vector2) { -8, 0 }, (Vector2) { 0, 0 }, 2, .4f, 20);
+    boat_water_emit_wake(&water, (Vector2) { 0, 0 }, (Vector2) { 8, 0 }, 2.4f, .4f, 20);
+    boat_water_emit_wake(&water, (Vector2) { 8, 0 }, (Vector2) { 8, 8 }, 2.8f, .4f, 20);
+    float peak = 0;
+    // Derivatives must include the normalization when curved/intersecting patches overlap.
+    for (float t = 3; t < 24; t += .71f)
+        for (float x = -12; x < 12; x += 2.3f)
+            for (float z = -16; z < 16; z += 2.7f) {
+                Vector2 p = { x, z };
+                BoatWaterSample q = boat_water_query(water, p, t);
+                peak = fmaxf(peak, fabsf(q.height));
+                CHECK(fabsf(q.height) <= .65f && q.normal.y > .4f);
+                float dt = .001f;
+                float dy = (boat_water_query(water, p, t + dt).height
+                               - boat_water_query(water, p, t - dt).height)
+                    / (2 * dt);
+                float dx = (boat_water_query(water, (Vector2) { x + dt, z }, t).height
+                               - boat_water_query(water, (Vector2) { x - dt, z }, t).height)
+                    / (2 * dt);
+                float dz = (boat_water_query(water, (Vector2) { x, z + dt }, t).height
+                               - boat_water_query(water, (Vector2) { x, z - dt }, t).height)
+                    / (2 * dt);
+                CHECK(fabsf(dy - q.velocity.y) < .002f);
+                CHECK(fabsf(dx + q.normal.x / q.normal.y) < .002f);
+                CHECK(fabsf(dz + q.normal.z / q.normal.y) < .002f);
+            }
+    CHECK(peak > .25f);
+    // Track the same positive crest in world space: it advances 1.5 m in half a second,
+    // while the original point falls to a zero crossing. This catches a frozen phase.
+    BoatWater travelling = { .player_wake_enabled = true };
+    boat_water_emit_wake(&travelling, (Vector2) { -8, 0 }, (Vector2) { 0, 0 }, .2f, .4f, 20);
+    float radius0 = .9f + 3 * 4 - 4.5f;
+    float radius1 = radius0 + 3 * .5f;
+    Vector2 crest0 = { -4, sqrtf(radius0 * radius0 - .25f) };
+    Vector2 crest1 = { -4, sqrtf(radius1 * radius1 - .25f) };
+    CHECK(boat_water_query(travelling, crest0, 4).height > .1f);
+    CHECK(boat_water_query(travelling, crest1, 4.5f).height > .1f);
+    CHECK(fabsf(boat_water_query(travelling, crest0, 4.5f).height) < .001f);
+    CHECK(Vector2Distance(crest0, crest1) > 1.49f);
+    // Densely overlapping history is bounded; copies own their history, reset clears it.
+    BoatWater copy = water;
+    for (int i = 0; i < 200; ++i)
+        boat_water_emit_wake(&copy, (Vector2) { -8, 0 }, (Vector2) { 0, 0 }, 2, .4f, 20);
+    CHECK(water.player_wake_count == 3 && copy.player_wake_count == BOAT_WAKE_SEGMENTS);
+    for (float z = 0; z < 20; z += .1f)
+        CHECK(fabsf(boat_water_query(copy, (Vector2) { -4, z }, 8).height) <= .65f);
+    CHECK(boat_water_query(copy, (Vector2) { -4, 6 }, 25).height == 0);
+    Boat drifting;
+    boat_reset(&drifting);
+    drifting.water_settings = (BoatWater) { .player_wake_enabled = true, .current = { 1, 0 } };
+    drifting.velocity = (Vector2) { 1, 0 };
+    for (int tick = 0; tick < 480; ++tick)
+        boat_step(&drifting, 0, 0);
+    CHECK(drifting.water_settings.player_wake_count == 0);
+    // Drive a loop back through the emitted wake, then coast and settle after it passes.
+    Boat a, b;
+    boat_reset(&a);
+    boat_reset(&b);
+    a.water_settings.player_wake_enabled = b.water_settings.player_wake_enabled = true;
+    float encounter = 0, max_height = 0;
+    for (int tick = 0; tick < 6000; ++tick) {
+        float throttle = tick < 1440 ? 1 : 0;
+        float wheel = tick >= 420 && tick < 1440 ? 1 : 0;
+        boat_step(&a, Clamp((wheel - a.wheel) / BOAT_STEP, -1, 1),
+            Clamp((throttle - a.throttle) / (.5f * BOAT_STEP), -1, 1));
+        boat_step(&b, Clamp((wheel - b.wheel) / BOAT_STEP, -1, 1),
+            Clamp((throttle - b.throttle) / (.5f * BOAT_STEP), -1, 1));
+        CHECK(a.height == b.height && a.position.x == b.position.x && a.roll == b.roll);
+        CHECK(fabsf(a.roll) < .7f && fabsf(a.pitch) < .7f && fabsf(a.height) < 1.5f);
+        CHECK(Vector2Length(a.velocity) < 23);
+        CHECK(fabsf(a.position.x) < BOAT_BASIN_HALF_X && fabsf(a.position.y) < BOAT_BASIN_HALF_Z);
+        max_height = fmaxf(max_height, fabsf(a.height));
+        if (tick > 720 && tick < 1440)
+            encounter = fmaxf(
+                encounter, fabsf(boat_water_query(a.water_settings, a.position, a.time).height));
+    }
+    CHECK(encounter > .05f && max_height > .1f);
+    CHECK(fabsf(a.height) < .003f && fabsf(a.pitch) < .003f && fabsf(a.roll) < .003f);
+    CHECK(Vector2Length(a.velocity) < .01f);
+    boat_reset(&a);
+    CHECK(a.water_settings.player_wake_count == 0 && a.physical_wake_time == 0);
+    printf("player_wake=ok encounter=%g max_hull_height=%g\n", encounter, max_height);
+    return 0;
+}
+
 // Compile the production fragment wake function into a readback probe, then test the
 // actual production vertex displacement independently. No copied wave formula in tests.
 static int gpu_checks(void)
@@ -155,7 +263,8 @@ static int gpu_checks(void)
     memcpy(probe, fragment, prefix);
     strcpy(probe + prefix,
         "uniform vec2 probePosition;\nvoid main() { "
-        "finalColor = vec4(crossingWake(probePosition, time) * 0.5 + 0.5, 1.0); }");
+        "finalColor = vec4((crossingWake(probePosition, time) + playerWake(probePosition, time)) * "
+        "0.5 + 0.5, 1.0); }");
     Shader slope = LoadShaderFromMemory(NULL, probe);
     const char *height_fragment = "#version 330\nin vec3 fragWorldPosition;\n"
                                   "out vec4 finalColor; void main() { "
@@ -174,6 +283,29 @@ static int gpu_checks(void)
     Material material = LoadMaterialDefault();
     material.shader = height;
     BoatWater wake = boat_water_test(false, false, true);
+    wake.player_wake_enabled = true;
+    // Exercise a full uniform array: the local packets occupy its last three slots.
+    for (int i = 0; i < BOAT_WAKE_SEGMENTS - 3; ++i)
+        boat_water_emit_wake(&wake, (Vector2) { 500, 500 }, (Vector2) { 508, 500 }, 4, .4f, 20);
+    boat_water_emit_wake(&wake, (Vector2) { -20, -8 }, (Vector2) { -12, -8 }, 4, .4f, 20);
+    boat_water_emit_wake(&wake, (Vector2) { -12, -8 }, (Vector2) { -4, -4 }, 4.4f, .4f, 20);
+    boat_water_emit_wake(&wake, (Vector2) { -4, -4 }, (Vector2) { 4, -4 }, 4.8f, .4f, 20);
+    float origins[BOAT_WAKE_SEGMENTS * 4], parameters[BOAT_WAKE_SEGMENTS * 4];
+    int count = boat_water_wake_uniforms(wake, 8, origins, parameters);
+    const Shader shaders[] = { slope, height };
+    for (int si = 0; si < 2; ++si) {
+        Shader shader = shaders[si];
+        SetShaderValue(
+            shader, GetShaderLocation(shader, "playerWakeCount"), &count, SHADER_UNIFORM_INT);
+        SetShaderValueV(shader, GetShaderLocation(shader, "playerWakeOrigins[0]"), origins,
+            SHADER_UNIFORM_VEC4, count);
+        SetShaderValueV(shader, GetShaderLocation(shader, "playerWakeParameters[0]"), parameters,
+            SHADER_UNIFORM_VEC4, count);
+    }
+    wake.wake_offset = (Vector2) { 3, -2 };
+    float offset[] = { -wake.wake_offset.x, wake.wake_offset.y };
+    SetShaderValue(slope, GetShaderLocation(slope, "wakeOffset"), offset, SHADER_UNIFORM_VEC2);
+    SetShaderValue(height, GetShaderLocation(height, "wakeOffset"), offset, SHADER_UNIFORM_VEC2);
     float amplitude = wake.wake_amplitude;
     int enabled = 1, patch = 0;
     SetShaderValue(
@@ -255,6 +387,7 @@ int main(int argc, char **argv)
     CHECK(argc == 1);
     CHECK(current_checks() == 0);
     CHECK(wake_checks() == 0);
+    CHECK(player_wake_checks() == 0);
     puts("boat_environment=ok");
     return 0;
 }

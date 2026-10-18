@@ -119,6 +119,10 @@ foreach(target boat_study validate_boat validate_boat_environment validate_boat_
 endforeach()
 add_test(NAME boat_handling COMMAND validate_boat)
 add_test(NAME boat_environment COMMAND validate_boat_environment)
+add_test(NAME boat_player_wake_screenshot COMMAND boat_study --renderer cpu --player-wake --time 9
+  --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-player-wake.png)
+add_test(NAME boat_player_wake_course_rejected COMMAND boat_study --player-wake --course)
+set_tests_properties(boat_player_wake_course_rejected PROPERTIES WILL_FAIL TRUE)
 add_test(NAME boat_current_screenshot COMMAND boat_study --renderer cpu --current --time 5
   --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-current.png)
 add_test(NAME boat_crossing_wake_screenshot COMMAND boat_study --renderer cpu --crossing-wake --time 9
@@ -126,9 +130,21 @@ add_test(NAME boat_crossing_wake_screenshot COMMAND boat_study --renderer cpu --
 add_test(NAME boat_environment_screenshot COMMAND boat_study --renderer cpu --current --crossing-wake
   --waves --time 9 --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-environment.png)
 add_test(NAME boat_environment_course_rejected COMMAND boat_study --current --course)
-add_test(NAME boat_environment_map_rejected COMMAND boat_study --crossing-wake --location river)
-set_tests_properties(boat_environment_course_rejected boat_environment_map_rejected
-  PROPERTIES WILL_FAIL TRUE)
+add_test(NAME boat_environment_eriksberg_screenshot COMMAND boat_study --renderer cpu
+  --location eriksberg --current --crossing-wake --time 3
+  --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-eriksberg-environment.png)
+add_test(NAME boat_environment_river_screenshot COMMAND boat_study --renderer cpu
+  --location river --current --crossing-wake --time 3
+  --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-river-environment.png)
+set_tests_properties(boat_environment_course_rejected PROPERTIES WILL_FAIL TRUE)
+add_test(NAME boat_default_player_wake_screenshot COMMAND boat_study --renderer cpu --time 9
+  --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-default-player-wake.png)
+set_tests_properties(boat_default_player_wake_screenshot boat_player_wake_screenshot
+  PROPERTIES FIXTURES_SETUP player_wake_defaults)
+add_test(NAME boat_default_wake_matches_explicit COMMAND ${CMAKE_COMMAND} -E compare_files
+  ${CMAKE_CURRENT_BINARY_DIR}/boat-default-player-wake.png
+  ${CMAKE_CURRENT_BINARY_DIR}/boat-player-wake.png)
+set_tests_properties(boat_default_wake_matches_explicit PROPERTIES FIXTURES_REQUIRED player_wake_defaults)
 add_test(NAME boat_water_route COMMAND boat_water_review --check)
 add_test(NAME boat_water_wave_route COMMAND boat_water_review --check --waves)
 add_test(NAME boat_river_route COMMAND boat_water_review --check --river)
@@ -335,6 +351,12 @@ if(PROTEUS_GPU_TESTS)
   add_test(NAME harbor_gpu_screenshot COMMAND harbor_review --renderer gpu --view marina
     --waves --time 2 --screenshot ${CMAKE_CURRENT_BINARY_DIR}/harbor-marina-gpu.png)
   set_tests_properties(harbor_gpu_screenshot PROPERTIES LABELS "gpu" RUN_SERIAL TRUE)
+  add_test(NAME boat_player_wake_gpu_screenshot COMMAND boat_study --player-wake --time 9
+    --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-player-wake-gpu.png)
+  add_test(NAME boat_player_wake_gpu_aa_screenshot COMMAND boat_study --player-wake --current --waves
+    --gpu-aa --time 9 --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-player-wake-gpu-aa.png)
+  set_tests_properties(boat_player_wake_gpu_screenshot boat_player_wake_gpu_aa_screenshot
+    PROPERTIES LABELS "gpu" RUN_SERIAL TRUE)
   add_test(NAME boat_environment_gpu_screenshot COMMAND boat_study --current --crossing-wake
     --waves --gpu-aa --time 9 --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-environment-gpu.png)
   set_tests_properties(boat_environment_gpu_screenshot PROPERTIES LABELS "gpu" RUN_SERIAL TRUE)

@@ -1,14 +1,17 @@
 # Boat physics: learnable handling
 
-Status, 2026-10-18: A1–D2 implemented; Phase C player acceptance is recorded in the handoff
-log. D1/D2 are opt-in basin tests; their handling/artistic play gate remains pending. Next
-task: review neutral drift and crossing comfort, then tune if needed. E1/E2 remain optional
-after Phase D acceptance. Calm-water handling and the accepted C3 wave baseline must be preserved.
+Status, 2026-10-18: A1–D3 implemented. Phase C is accepted; Phase D handling and
+player-wake motion are provisionally accepted by the user, with continued evaluation
+over time. Current/scripted-wake options now work in all locations; player-path wakes are
+enabled by default in free boating, with `--no-player-wake` available for calm practice.
+Next task: preserve this baseline and collect longer-term handling feedback; tune only
+when that feedback warrants it. E1/E2 remain optional future work, not started by this
+acceptance. Calm-water handling and the accepted C3 wave baseline must be preserved.
 The separate [04h harbor pass](HARBOR_BOATS.md) adds fixed berth collision envelopes and
 kinematic moored-boat wave poses. [Travelling harbor vessels](HARBOR_TRAFFIC.md) add
 player contacts using obstacle-relative velocity and visual foam wakes. Those harbor
-passes remain kinematic and their foam adds no physical wake. The separate D1/D2 basin
-source below supplies the new physical test.
+passes remain kinematic and their foam adds no physical wake. The separate D1/D2
+source below supplies the physical test.
 
 Accepted direction: 2026-10-17. Parent design: [Boating playground](BOATING_PLAN.md).
 Public controls: [README](../README.md#boating-sketch). [All plans](README.md).
@@ -165,8 +168,16 @@ Stronger waves and triangle-based buoyancy are optional upgrades only if this mo
   traffic AI and full fluid coupling are out of scope. Acceptance: repeatable crossing at several
   angles/speeds, clear approach cues, stable recovery, and no enduring energy growth after it passes.
 
-Implementation: `--current` and `--crossing-wake` in basin free boating, independently or
-combined with `--waves`. Zero initialization still means flat, still water. The current
+- [x] **D3: Cross your own wake (user-requested follow-up, 2026-10-18).** Add
+  `--player-wake` for free boating: retain a bounded travelled-path history, spread/fade
+  physical crests long enough to circle back across, match visible geometry/normals and
+  hull response, and preserve the current front spray. Keep overlapping loops bounded,
+  reset deterministic, and calm/default/course behavior intact. Implementation and
+  automated checks are complete; the user provisionally accepted Phase D handling and
+  the revised wake motion on 2026-10-18, with continued evaluation over time.
+
+Implementation: `--current` and `--crossing-wake` in all free-boating locations,
+independently or combined with `--waves`. Zero initialization still means flat, still water. The current
 API supports uniform flow or a compact polynomial channel with zero slope at its edges;
 the authored preset peaks at (0.85, -0.25) units/s, centred on simulation X=0 with a 32 m
 half-width. Axial drag/planing use centre water-relative speed; lateral hull stations and
@@ -175,8 +186,12 @@ load, HUD water speed, and water audio use water-relative travel. Ground velocit
 the navigation/contact velocity. Material vertical water velocity includes current travel
 along the local slope as well as the explicit time derivative.
 
-The scripted source moves from simulation (-24, -8) to (24, -8) at 4 units/s during the
-first 12 seconds. It emits an outward-travelling compact wave packet: 0.38 m amplitude
+In the basin, the scripted source moves from simulation (-24, -8) to (24, -8) at 4 units/s
+during the first 12 seconds. Mapped locations translate it by (-140, -220), giving the
+open-river route (-164, -228) to (-116, -228). Height, derivatives, source boxes, and GPU
+uniforms share this translation. Both mapped routes have been checked for 3 m clearance.
+The mapped current channel is centred on X=-12; its width/velocity recipe is unchanged.
+Current streaks sample the channel near the boat and are masked to mapped water. It emits an outward-travelling compact wave packet: 0.38 m amplitude
 bound, 6 m wavelength, 2.4 units/s spreading speed, 5 m packet half-width, and 12 s local
 lifetime. Smooth sine-squared source/age windows and a cubic compact packet envelope
 bound height and derivatives; the whole wake is exactly zero after 24 seconds. Analytic
@@ -192,15 +207,61 @@ renderers; they are a non-contact scripted cue, with no navigation or fluid coup
 ./build/boat_study --renderer cpu --crossing-wake --time 9 --screenshot build/wake-crossing.png
 ```
 
-Reset preserves the options and restarts time. The test demo waits six seconds, approaches
-at 65% thrust, and returns to neutral after ten seconds; screenshot time uses that script.
-The flags reject mapped locations and the course/replay/ghost modes, preserving existing
-course comparison and saved replay formats. Real harbor currents and physical wakes from
-the existing traveling fleet remain future work. No ambient-wave preset or main-demo
+Reset preserves the options and restarts time. With `--no-player-wake`, the test demo
+waits six seconds, approaches at 65% thrust, and returns to neutral after ten seconds;
+screenshot time uses that script. With player wakes enabled (the free-boating default),
+the loop script below takes precedence. The flags reject course/replay/ghost modes,
+preserving existing comparisons and formats. Measured harbor currents and physical wakes
+from the existing traveling fleet remain future work. No ambient-wave preset or main-demo
 arrangement was changed.
 
-Verification record: see the D1/D2 handoff entry below. Implementation checks do not mark
-this play gate accepted; continuous manual handling/artistic review is next.
+Verification record: see the handoff log below. The user provisionally accepted the
+Phase D play gate on 2026-10-18, reporting that handling feels good while planning to
+continue evaluating it over time. This is user acceptance, not a claim of exhaustive
+manual coverage of every current/angle/speed combination.
+
+### Player-path wake follow-up
+
+The earlier D2 pass supplied one scripted source; the player's own foam still had zero
+physical height. Following the user's basin feedback, D3 adds a separate `--player-wake`
+option (all free-boating locations), now enabled by default. `--no-player-wake` opts out;
+explicit `--player-wake` remains supported. Existing `--crossing-wake` is the separate
+scripted-source test; combine it with the default player wake if desired. Courses/replays/
+ghosts automatically retain their old water settings and reject explicit player-wake enabling.
+
+The boat records a stern-offset path segment every 0.4 seconds when water-relative speed
+exceeds 2 units/s. Each stored segment owns its centre, direction, support length, birth,
+speed-based amplitude, and inverse travel speed. The 64-entry history is embedded in
+`BoatWater`, so snapshots/copies do not alias another boat and reset discards all history.
+Above 12 units/s, the source amplitude reaches a 0.65 m bound before packet weighting;
+actual crest height is lower. Two outward packets per path segment spread at 1.6 units/s;
+individual crests travel through them at 3 units/s with a 6 m wavelength. The original
+1.15 units/s shared packet/phase speed was superseded after motion-readability feedback.
+Packets rise smoothly over local ages 0.4–1.4 s and fade over ages
+14–20 s. Longitudinal overlap joins the path; smooth normalization bounds densely looped
+patches, including analytic spatial/time derivatives. No random impulses or extra buoyancy
+forces are added: the existing water query and six-support response produce the encounter.
+
+CPU tessellation, GPU displacement/normal/crest shading, foam attachment, and actor wave
+poses all use that owned history. The shader receives live segments as two vec4 arrays;
+expired segments are omitted. No new airborne emitter or bow-spray variation is introduced.
+The existing near/far geometry representation remains; this is an authored wake approximation,
+without wave reflection, shoreline propagation barriers, or full wave/current transport.
+Mapped water topology still clips visible geometry and existing hull contacts still apply.
+
+```sh
+./build/boat_study --player-wake --gpu-aa
+./build/boat_study --player-wake --gpu-aa --demo
+./build/boat_study --player-wake --waves --current --gpu-aa --demo
+./build/boat_study --renderer cpu --player-wake --time 9 --screenshot build/player-wake.png
+```
+
+The player-wake demo accelerates into a loop starting at 3.5 s, then returns to neutral
+at 12 s; screenshot mode uses the same script. Manual driving uses normal controls.
+R clears history while preserving the launch option. Free boating now defaults to player
+wakes; `--no-player-wake` restores the earlier calm baseline when other water flags are absent.
+Next task: preserve the provisionally accepted wake/handling baseline and collect
+longer-term feedback on recrossing comfort.
 
 Play gate D: currents reward anticipation and wakes reward choosing speed/angle; neither feels like
 an invisible punishment. Keep a calm-water option and do not make exposure mandatory for exploration.
@@ -224,6 +285,97 @@ These motivate models, not exact coefficients or a requirement to adopt another 
   an example of decomposed buoyancy/resistance forces and a possible later triangle-based approach.
 
 ## Handoff log
+
+- 2026-10-18: Default/availability follow-up requested by the user. All free-boating
+  locations now enable player wakes at launch/reset. `--no-player-wake` opts out;
+  explicit `--player-wake` remains compatible. Course/replay/ghost modes keep their
+  existing settings and explicit opt-in rejection. Current/scripted-wake flags now accept
+  Eriksberg and river as well as basin. The mapped source uses a translated, verified
+  open-water corridor; current streaks are shoreline-masked and available in mapped
+  snapshots and direct CPU rendering. No accepted wake speed/amplitude was retuned.
+  Added CLI checks for both mapped profiles and byte-identical default/explicit player
+  wake output. CPU checks verify translated field equivalence and 3 m source clearance
+  through both maps; the production shader probe also checks a translated scripted source.
+  `--no-player-wake --time 3` matches the earlier calm CPU PNG byte for byte.
+  On macOS, Debug configure/build passed without compiler warnings (raylib retains
+  its CMake OpenGL deprecation notice). All 69 CTests passed, including 18 GPU checks,
+  the mapped profiles, default/explicit equivalence, and course/replay regressions.
+  Inspected Eriksberg and river GPU+AA time-3 captures with current/scripted wake enabled
+  and default player wakes; mapped CPU captures also passed. A 600-frame river desktop
+  demo smoke run exited successfully. The HUD now identifies the default player-wake
+  loop script. Artifacts/logs: `build/wakes-default/`. Changed documentation links and
+  `git diff --check` passed. Scripted/mapped checks do not establish exhaustive manual
+  handling or other-platform coverage.
+  Longer-term user evaluation remains open; test currents are authored, not measurements,
+  and the mapped one-shot source is in open river away from the dock spawn.
+
+
+- 2026-10-18: Phase D handling provisionally accepted by the user: "It feels good. I will
+  evaluate it over time but let's ok it for now." This closes the current D1–D3 play gate
+  while retaining longer-term evaluation. The revised player-wake appearance/motion was
+  already accepted. Preserve the current settings; optional Phase E remains unstarted.
+  This acceptance supersedes the pending handling status in the implementation records
+  below and does not claim exhaustive manual coverage. Documentation-only update;
+  changed links and `git diff --check` passed, with no new build or audiovisual checks.
+
+
+- 2026-10-18: D3 motion refinement after the user reported that player wakes still looked
+  static. Previously the phase and compact packet both advanced at 1.15 units/s, leaving
+  a steady crest inside each moving ribbon. The packet now advances at 1.6 units/s and
+  the wave phase at 3 units/s, so crests travel through, emerge from, and dissolve within
+  the slower packet. CPU and both GPU shader stages use the separate phases. Spatial
+  gradients and vertical surface velocity include the different envelope/phase speeds;
+  hull response follows the same travelling feature as the rendered crest.
+  Added a propagation regression: the same positive crest advances 1.5 m in half a
+  second, while its former location becomes a zero crossing. Existing finite-difference
+  derivatives, full 64-slot shader parity, loop/recovery, and overlap bounds also passed
+  the targeted environment check. Revised loop encounter height: 0.397 m; maximum hull
+  height over the full acceleration/loop/coast run: 0.682 m. The original D3 figures in
+  the entry below describe its superseded 1.15 units/s baseline.
+  On macOS, Debug build and all 66 CTests passed, including 18 GPU checks. A 900-frame
+  GPU+AA desktop player-wake demo smoke run exited successfully. Inspected native CPU
+  and GPU+AA cruise/loop/coast frames and combined-current/ambient-wave samples from
+  24 s sequences captured at 10 Hz. Wake-only maximum hull angle was 0.190 rad and
+  recovered to negligible height/pitch/roll by 24 s; the combined profile stayed bounded
+  (0.230 rad maximum), with ongoing ambient wave motion. This is scripted verification,
+  not continuous human driving or artistic acceptance.
+  Artifacts: `build/wake-motion/loop.mp4`, `combined.mp4`, per-frame PNGs and logs;
+  `compare.mp4` places the original D3 baseline left and revised motion right under the
+  same control script. Physics changes mean boat poses can differ. `review.c` and its
+  executable retain the local capture driver. `git diff --check` and changed documentation
+  links passed. The user accepted the revised player-wake appearance/motion on
+  2026-10-18 ("Looks good!"). Preserve the 3 units/s phase and 1.6 units/s packet speeds
+  as the accepted visual baseline. This does not establish acceptance of every Phase D
+  current/angle/speed handling case. Next task: broader Phase D handling review.
+
+
+- 2026-10-18: D3 player-path wake implemented after committing the D1/D2 baseline as
+  `b3c79dd`. Extended the environment checks for analytic derivatives through curved and
+  overlapping path segments, finite support/lifetime, dense-overlap height bounds, owned
+  copies, capacity/reset, and no emission while drifting with uniform current. A repeatable
+  free-boating loop returns through its own wake and then settles after coasting: measured
+  local encounter height 0.381 m and maximum hull height 0.714 m over the full run,
+  including acceleration/planing. Two identical runs match position/heave/roll every tick.
+  The production GPU probe now compares combined player/scripted packet height and
+  slopes at 165 samples, including actual vertex displacement. New CLI captures cover
+  player-only CPU/GPU and player+current+ambient-wave GPU+AA; course use is rejected.
+  On macOS, Debug configure/build passed without compiler warnings; CMake retains
+  raylib's existing OpenGL deprecation notice. All 66 CTests passed, including 18 GPU
+  checks. The environment CPU/GPU checks passed again after strengthening the probe
+  to exercise all 64 packed history slots, with the local packets in the final entries.
+  A `--player-wake --gpu-aa --demo --frames 900` desktop smoke run exited successfully.
+  This is scripted playback; manual control/comfort acceptance remains open.
+  `git diff --check` and changed documentation links passed.
+  Representative native CPU and GPU+AA frames before/during/after recrossing were inspected.
+  Local artifacts: `build/player-wake/loop.mp4`, `combined.mp4`, 10 Hz 24 s PNG sequences,
+  logs, and `review.c`/its executable. The calm CPU time-3 capture is byte-identical to
+  the pre-D3 baseline. Sampled mapped Eriksberg CPU and river GPU+AA time-3 captures
+  also loaded and rendered correctly. The 24 s wake-only capture settled to negligible
+  height/pitch/roll, with a maximum hull angle of 0.222 rad; the combined current/ambient
+  wave run stayed bounded (0.329 rad maximum), with ongoing ambient motion as expected.
+  Continuous human handling/artistic acceptance remains pending;
+  no physical fleet wake, water transport solver, or saved wake replay was added.
+
 
 - 2026-10-18: D1/D2 implemented as the authored basin profiles above. Added
   `tools/validate_boat_environment.c`: smooth compact field boundaries, uniform-current

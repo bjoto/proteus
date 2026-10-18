@@ -36,7 +36,8 @@ route positions, including across the lap boundary. All 64 segments follow the w
 GPU foam receives depth/shading in the main pass without casting solid slab shadows. Hulls
 and lights appear in planar reflections; hulls cast shadows. Foam has no physical effect on
 the player. [Physics D1/D2](BOAT_PHYSICS_PLAN.md#phase-d--currents-and-crossing-wakes)
-now supplies a separate opt-in basin current and scripted physical wake; these fleet trails
+now supplies separate authored current/scripted-wake options in every free-boating
+location, alongside default physical player wakes; these fleet trails
 remain visual only.
 
 ## Player contacts

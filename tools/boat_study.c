@@ -20,7 +20,8 @@ static void usage(void)
         "Wheel springs to centre when released; thrust holds. R: reset and centre wheel | Esc: "
         "close\n"
         "+/-: closer/farther | PageUp/PageDown: raise/lower camera | C: reset view\n"
-        "--current / --crossing-wake: opt-in authored basin tests; R restarts passage\n"
+        "--player-wake / --no-player-wake: physical player trail (default on in free boating)\n"
+        "--current / --crossing-wake: opt-in authored tests in all locations; R restarts passage\n"
         "--camera-distance UNITS: 8..48 (default 20; river 32)\n"
         "--camera-height UNITS: 4..36 (default 14; river 6)\n"
         "--location basin|eriksberg|river (default basin; river extends to Alvsborgsbron)\n"
@@ -39,8 +40,26 @@ static void usage(void)
         "--demo drives the screenshot example in a window; R restarts it.");
 }
 
+static BoatWater study_water(bool waves, bool current, bool crossing, bool player, bool mapped)
+{
+    BoatWater water = boat_water_test(waves, current, crossing);
+    water.player_wake_enabled = player;
+    if (mapped) {
+        water.current_center = -12;
+        water.wake_offset = (Vector2) { -140, -220 };
+    }
+    return water;
+}
+
 static void demo_step(Boat *boat, int tick)
 {
+    if (boat->water_settings.player_wake_enabled) {
+        float throttle = tick < 1440 ? 1 : 0;
+        float wheel = tick >= 420 && tick < 1440 ? 1 : 0;
+        boat_step(boat, Clamp((wheel - boat->wheel) / BOAT_STEP, -1, 1),
+            Clamp((throttle - boat->throttle) / (.5f * BOAT_STEP), -1, 1));
+        return;
+    }
     if (boat->water_settings.wake_amplitude != 0
         || Vector2LengthSqr(boat->water_settings.current) > 0) {
         // Let the source become visible, approach its spreading wake, then recover in neutral.
@@ -141,7 +160,8 @@ int main(int argc, char **argv)
     bool camera_distance_set = false, camera_height_set = false;
     bool time_set = false, demo = false;
     bool eriksberg = false, course = false, waves = false;
-    bool river = false, current = false, crossing_wake = false;
+    bool river = false, current = false, crossing_wake = false, player_wake = true;
+    bool player_wake_set = false;
     bool gpu_enabled = true, gpu_aa = false;
     bool profiler_visible = false;
     int frame_limit = 0;
@@ -172,6 +192,12 @@ int main(int argc, char **argv)
             gpu_aa = true;
         } else if (strcmp(argv[i], "--profiler") == 0) {
             profiler_visible = true;
+        } else if (strcmp(argv[i], "--player-wake") == 0) {
+            player_wake = true;
+            player_wake_set = true;
+        } else if (strcmp(argv[i], "--no-player-wake") == 0) {
+            player_wake = false;
+            player_wake_set = true;
         } else if (strcmp(argv[i], "--current") == 0) {
             current = true;
         } else if (strcmp(argv[i], "--crossing-wake") == 0) {
@@ -238,10 +264,19 @@ int main(int argc, char **argv)
         fprintf(stderr, "--course requires the basin and cannot be combined with --demo.\n");
         goto invalid;
     }
-    if ((current || crossing_wake) && (course || eriksberg || ghost_path)) {
-        fprintf(stderr, "--current and --crossing-wake require basin free boating.\n");
+    if ((current || crossing_wake) && (course || ghost_path)) {
+        fprintf(stderr,
+            "--current and --crossing-wake require free boating, without course/replay/ghost "
+            "modes.\n");
         goto invalid;
     }
+    if (player_wake_set && player_wake && (course || ghost_path)) {
+        fprintf(
+            stderr, "--player-wake requires free boating, without course/replay/ghost modes.\n");
+        goto invalid;
+    }
+    if (course || ghost_path)
+        player_wake = false; // Existing course/replay comparisons retain their original water.
     const BoatCamera camera_default = river ? (BoatCamera) { 32, 6 } : BOAT_CAMERA_DEFAULT;
     if (!camera_distance_set)
         camera_settings.distance = camera_default.distance;
@@ -266,7 +301,7 @@ int main(int argc, char **argv)
         boat_reset_course(&boat);
     else
         boat_reset_location(&boat, eriksberg);
-    boat.water_settings = boat_water_test(waves, current, crossing_wake);
+    boat.water_settings = study_water(waves, current, crossing_wake, player_wake, eriksberg);
     int result = 1;
     BoatReplayRuns runs = { .ghost_visible = true, .export_path = export_path };
     if (replay_path) {
@@ -275,7 +310,7 @@ int main(int argc, char **argv)
             goto cleanup;
         }
         waves = runs.last.waves;
-        boat.water_settings = boat_water_test(waves, current, crossing_wake);
+        boat.water_settings = study_water(waves, current, crossing_wake, player_wake, eriksberg);
     }
     if (course) {
         char directory[1800];
@@ -470,7 +505,8 @@ int main(int argc, char **argv)
                 boat_reset_course(&boat);
             else
                 boat_reset_location(&boat, eriksberg);
-            boat.water_settings = boat_water_test(waves, current, crossing_wake);
+            boat.water_settings
+                = study_water(waves, current, crossing_wake, player_wake, eriksberg);
             if (course)
                 boat_replay_runs_reset(&runs);
             accumulator = 0;
@@ -580,10 +616,11 @@ int main(int argc, char **argv)
         DrawText(TextFormat("Engine %+.0f%%", view->engine_response * 100), 12, hud_y + 47, 16,
             (Color) { 232, 180, 102, 255 });
         draw_wheel(view->wheel, hud_y);
-        DrawText(demo ? ((current || crossing_wake) ? "DEMO: wait, wake approach, neutral"
-                                                    : "DEMO: forward, neutral, reverse")
-                      : "Left/Right A/D: wheel | Up/Down W/S: thrust",
-            12, hud_y + 113, 12, LIGHTGRAY);
+        const char *demo_label = player_wake ? "DEMO: loop across your wake, neutral"
+            : (current || crossing_wake)     ? "DEMO: wait, wake approach, neutral"
+                                             : "DEMO: forward, neutral, reverse";
+        DrawText(demo ? demo_label : "Left/Right A/D: wheel | Up/Down W/S: thrust", 12, hud_y + 113,
+            12, LIGHTGRAY);
         DrawText(demo ? "R: replay | Esc: close" : "Both hold | R: reset + centre | Esc: close", 12,
             hud_y + 131, 12, LIGHTGRAY);
         DrawText(TextFormat("View %.1f back / %.1f high | +/-: zoom", camera_settings.distance,

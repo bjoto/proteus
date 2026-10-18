@@ -51,6 +51,8 @@ typedef struct {
     BoatWaterParticle water[BOAT_WATER_PARTICLES];
     unsigned int next_particle, emission, wake_emission;
     float wake_distance, spray_time, propeller_time;
+    float physical_wake_time;
+    Vector2 physical_wake_start;
 } Boat;
 
 void boat_reset(Boat *boat);

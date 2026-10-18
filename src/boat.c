@@ -537,6 +537,21 @@ void boat_step(Boat *boat, float wheel_change, float throttle_change)
     boat->camera_heading
         = remainderf(boat->camera_heading + camera_delta * (1 - expf(-6 * BOAT_STEP)), 2 * PI);
     buoyancy_step(boat);
+    if (boat->water_settings.player_wake_enabled) {
+        if (boat->physical_wake_time == 0)
+            boat->physical_wake_start = previous;
+        boat->physical_wake_time += BOAT_STEP;
+        if (boat->physical_wake_time >= .4f) {
+            Vector2 flow = boat_water_current(boat->water_settings, boat->position);
+            float speed = Vector2Length(Vector2Subtract(boat->velocity, flow));
+            // Move the source behind the hull so fresh packets cannot lift their emitter.
+            Vector2 offset = Vector2Scale(forward, -ENGINE_ARM);
+            boat_water_emit_wake(&boat->water_settings,
+                Vector2Add(boat->physical_wake_start, offset), Vector2Add(boat->position, offset),
+                boat->time, boat->physical_wake_time, speed);
+            boat->physical_wake_time = 0;
+        }
+    }
     water_step(boat);
     boat_course_step(&boat->course, previous, boat->position, BOAT_STEP);
 }
@@ -596,21 +611,22 @@ static Transform3D water_particle_pose(const Boat *boat, const BoatWaterParticle
     return pose;
 }
 
-// Shared authored current cues and scripted wake source for CPU/GPU test-area views.
+// Shared authored current cues and scripted wake source for CPU/GPU views in all locations.
 static void environment_visit(const Boat *boat, BoatCourseBoxDraw draw, void *context)
 {
-    if (boat->eriksberg)
-        return;
     if (Vector2LengthSqr(boat->water_settings.current) > 0) {
         for (int x = -24; x <= 24; x += 8)
             for (int z = -48; z <= 48; z += 16) {
                 float phase = fmodf(boat->time + (float)(x + z + 80) * .11f, 8);
                 float fade = sinf(PI * phase / 8);
-                Vector2 p = { (float)x, (float)z };
+                float center_z = boat->eriksberg ? roundf(boat->position.y / 16) * 16 : 0;
+                Vector2 p = { x + boat->water_settings.current_center, z + center_z };
                 Vector2 flow = boat_water_current(boat->water_settings, p);
                 if (Vector2LengthSqr(flow) < .01f || fade < .02f)
                     continue;
                 p = Vector2Add(p, Vector2Scale(flow, phase));
+                if (boat->eriksberg && !boat_map_water(p, .2f))
+                    continue;
                 float height = boat_water_query(boat->water_settings, p, boat->time).height;
                 draw(context,
                     (Transform3D) { .position = { -p.x, height + .025f, p.y },
@@ -690,6 +706,8 @@ void boat_scene_frame(const Boat *boat, BoatCamera camera, WaterfrontSceneFrame 
     frame->player_active = true;
     if (!boat->eriksberg)
         basin_scenery(boat, frame);
+    else
+        environment_visit(boat, basin_box, frame);
     frame->player_water = boat->water_settings;
     WaterfrontPlayerState *p = &frame->player;
     boat_player_pose(boat, p);

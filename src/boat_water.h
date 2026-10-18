@@ -9,12 +9,24 @@ typedef struct {
     Vector2 direction; // Unit vector along wave travel.
 } BoatWave;
 
+#define BOAT_WAKE_SEGMENTS 64
+#define BOAT_WAKE_LIFETIME 20.0f
+
+typedef struct {
+    Vector2 position, direction; // Segment centre and unit travel direction in simulation X/Z.
+    float length, emitted, amplitude, inverse_speed;
+} BoatWakeSegment;
+
 typedef struct {
     float amplitude, wavelength, angular_speed;
     Vector2 direction;
     Vector2 current; // Uniform flow, or a compact channel when current_width > 0.
     float current_center, current_width; // Simulation X centre and half-width.
-    float wake_amplitude; // Opt-in bounded basin source, independent of ambient waves.
+    float wake_amplitude; // Opt-in bounded scripted source, independent of ambient waves.
+    Vector2 wake_offset; // Translate the authored source and its wave field together.
+    bool player_wake_enabled;
+    int player_wake_count, player_wake_next;
+    BoatWakeSegment player_wake[BOAT_WAKE_SEGMENTS]; // Owned history: copies never alias a boat.
     BoatWave crossing[2]; // Smaller components; all parameters are shared with the GPU.
 } BoatWater;
 
@@ -30,8 +42,13 @@ Transform3D boat_water_pose(
 BoatWater boat_water_gentle(void);
 BoatWater boat_water_test(bool waves, bool current, bool wake);
 bool boat_water_displaced(BoatWater water);
+// Append a travelled segment. Clear/zero the water settings to discard its entire history.
+void boat_water_emit_wake(
+    BoatWater *water, Vector2 start, Vector2 end, float emitted, float duration, float water_speed);
+// Pack live segments into renderer/world-space vec4 arrays for both production and probes.
+int boat_water_wake_uniforms(BoatWater water, float time, float *origins, float *parameters);
 Vector2 boat_water_current(BoatWater water, Vector2 position);
-// One source travels X=-24..24 at Z=-8 over the first 12 seconds after reset.
+// One source travels X=-24..24 at Z=-8 plus wake_offset over the first 12 seconds.
 bool boat_water_wake_source(BoatWater water, float time, Vector2 *position);
 BoatWaterSample boat_water_query(BoatWater water, Vector2 position, float time);
 // Dissipative normal resistance in simulation coordinates. Positive support is the local upward
