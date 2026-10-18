@@ -234,7 +234,7 @@ static void buoyancy_step(Boat *boat)
     float sr = sinf(boat->roll), cr = cosf(boat->roll);
     Vector3 wave_force = { 0 };
     float wave_yaw = 0, bow_entry = 0;
-    bool waves = boat->water_settings.amplitude != 0;
+    bool waves = boat_water_displaced(boat->water_settings);
     for (int end = -1; end <= 1; ++end) {
         for (int side = -1; side <= 1; side += 2) {
             float fore = end * 1.4f, across = side * .65f;
@@ -332,7 +332,10 @@ static void water_step(Boat *boat)
         if (p->lifetime <= 0)
             continue;
         p->age += BOAT_STEP;
-        p->position = Vector2Add(p->position, Vector2Scale(p->velocity, BOAT_STEP));
+        Vector2 velocity = p->velocity;
+        if (!p->spray)
+            velocity = Vector2Add(velocity, boat_water_current(boat->water_settings, p->position));
+        p->position = Vector2Add(p->position, Vector2Scale(velocity, BOAT_STEP));
         if (p->spray) {
             p->lift -= 12 * BOAT_STEP;
             p->height += p->lift * BOAT_STEP;
@@ -347,7 +350,9 @@ static void water_step(Boat *boat)
             p->lifetime = 0;
     }
 
-    float speed = Vector2Length(boat->velocity);
+    Vector2 relative
+        = Vector2Subtract(boat->velocity, boat_water_current(boat->water_settings, boat->position));
+    float speed = Vector2Length(relative);
     Vector2 right = { cosf(boat->heading), sinf(boat->heading) };
     Vector3 stern_world = hull_attachment(boat, (Vector3) { 0, 0, ENGINE_ARM });
     Vector2 stern = { -stern_world.x, stern_world.z };
@@ -402,7 +407,7 @@ static void water_step(Boat *boat)
     }
 
     // Planing adds symmetric low spray in straight running; turning slip still favours one side.
-    float slip = Vector2DotProduct(boat->velocity, right);
+    float slip = Vector2DotProduct(relative, right);
     bool planing_spray = boat->planing > .05f && speed > 2;
     bool wave_spray = boat->wave_spray > .08f && speed > 2;
     if ((fabsf(slip) > 0.9f && speed > 2) || planing_spray || wave_spray) {
@@ -429,7 +434,7 @@ static void water_step(Boat *boat)
                                 + .03f,
                             origin.y),
                         .lift = (2.0f + variation * 2 + fminf(fabsf(slip) * 0.25f, 1.5f)) * strength
-                            + (boat->water_settings.amplitude != 0
+                            + (boat_water_displaced(boat->water_settings)
                                     ? motion.velocity.y + boat->wave_spray
                                     : boat->vertical_velocity + .4f * boat->pitch_velocity
                                         - side * 1.05f * boat->roll_velocity),
@@ -465,8 +470,9 @@ void boat_step(Boat *boat, float wheel_change, float throttle_change)
     boat->engine_angle += Clamp(target_angle - boat->engine_angle, -2 * BOAT_STEP, 2 * BOAT_STEP);
     Vector2 forward = { sinf(boat->heading), -cosf(boat->heading) };
     Vector2 right = { cosf(boat->heading), sinf(boat->heading) };
-    float along = Vector2DotProduct(boat->velocity, forward);
-    float sideways = Vector2DotProduct(boat->velocity, right);
+    Vector2 relative
+        = Vector2Subtract(boat->velocity, boat_water_current(boat->water_settings, boat->position));
+    float along = Vector2DotProduct(relative, forward);
     // Only forward water-relative motion can establish plane.
     float planing_target = 0;
     if (along > (boat->planing > 0 ? PLANING_EXIT_SPEED : PLANING_ENTER_SPEED))
@@ -486,17 +492,23 @@ void boat_step(Boat *boat, float wheel_change, float throttle_change)
     // This produces both lateral grip and yaw damping rather than prescribing a turn rate.
     for (int end = -1; end <= 1; end += 2) {
         float arm = end * 1.2f;
-        float lateral_speed = sideways + boat->yaw_velocity * arm;
+        Vector2 station = Vector2Add(boat->position, Vector2Scale(forward, arm));
+        Vector2 flow = boat_water_current(boat->water_settings, station);
+        float lateral_speed = Vector2DotProduct(Vector2Subtract(boat->velocity, flow), right)
+            + boat->yaw_velocity * arm;
         float grip = 0.7f + 0.055f * fabsf(along) + 0.10f * fabsf(lateral_speed);
         float lateral_force = -grip * lateral_speed;
         force = Vector2Add(force, Vector2Scale(right, lateral_force));
         torque += arm * lateral_force;
     }
-    // Calm water: point velocity is relative to stationary water, including stern rotation.
+    // Outboard point velocity is relative to its local flow, including stern rotation.
     // The submerged outboard resists flow across its angled plane. Apply both components of
     // this force and its stern torque: it can redirect a coast, but cannot add kinetic energy.
-    Vector2 stern_velocity
-        = Vector2Subtract(boat->velocity, Vector2Scale(right, ENGINE_ARM * boat->yaw_velocity));
+    Vector2 stern_velocity = Vector2Subtract(
+        Vector2Subtract(boat->velocity,
+            boat_water_current(boat->water_settings,
+                Vector2Subtract(boat->position, Vector2Scale(forward, ENGINE_ARM)))),
+        Vector2Scale(right, ENGINE_ARM * boat->yaw_velocity));
     Vector2 skeg_normal = Vector2Add(Vector2Scale(right, cosf(boat->engine_angle)),
         Vector2Scale(forward, sinf(boat->engine_angle)));
     float cross_flow = Vector2DotProduct(stern_velocity, skeg_normal);
@@ -575,13 +587,55 @@ static Transform3D water_particle_pose(const Boat *boat, const BoatWaterParticle
 {
     Transform3D pose = { .position = { -water->position.x, water->height, water->position.y },
         .scale = { size, water->spray ? size : .015f, size } };
-    if (!water->spray && boat->water_settings.amplitude != 0) {
+    if (!water->spray && boat_water_displaced(boat->water_settings)) {
         Vector3 normal = boat_water_query(boat->water_settings, water->position, boat->time).normal;
         normal.x = -normal.x;
         pose.rotation = pose_rotation(
             QuaternionToMatrix(QuaternionFromVector3ToVector3((Vector3) { 0, 1, 0 }, normal)));
     }
     return pose;
+}
+
+// Shared authored current cues and scripted wake source for CPU/GPU test-area views.
+static void environment_visit(const Boat *boat, BoatCourseBoxDraw draw, void *context)
+{
+    if (boat->eriksberg)
+        return;
+    if (Vector2LengthSqr(boat->water_settings.current) > 0) {
+        for (int x = -24; x <= 24; x += 8)
+            for (int z = -48; z <= 48; z += 16) {
+                float phase = fmodf(boat->time + (float)(x + z + 80) * .11f, 8);
+                float fade = sinf(PI * phase / 8);
+                Vector2 p = { (float)x, (float)z };
+                Vector2 flow = boat_water_current(boat->water_settings, p);
+                if (Vector2LengthSqr(flow) < .01f || fade < .02f)
+                    continue;
+                p = Vector2Add(p, Vector2Scale(flow, phase));
+                float height = boat_water_query(boat->water_settings, p, boat->time).height;
+                draw(context,
+                    (Transform3D) { .position = { -p.x, height + .025f, p.y },
+                        .rotation = { 0, atan2f(-flow.x, flow.y), 0 },
+                        .scale = { .12f * fade, .015f, 1.5f * fade } },
+                    (Color) { 113, 171, 177, 255 });
+            }
+    }
+    Vector2 source;
+    if (boat_water_wake_source(boat->water_settings, boat->time, &source)) {
+        float height = boat_water_query(boat->water_settings, source, boat->time).height;
+        draw(context,
+            (Transform3D) {
+                .position = { -source.x, height + .25f, source.y }, .scale = { 4.2f, .5f, 1.5f } },
+            (Color) { 205, 151, 64, 255 });
+        draw(context,
+            (Transform3D) { .position = { -source.x + .5f, height + .8f, source.y },
+                .scale = { 1.4f, .7f, 1.15f } },
+            (Color) { 226, 222, 202, 255 });
+    }
+}
+
+static void environment_draw(void *context, Transform3D transform, Color color)
+{
+    renderer3d_draw_box(context, transform, color);
 }
 
 static void basin_box(void *context, Transform3D transform, Color color)
@@ -616,7 +670,7 @@ static void basin_scenery(const Boat *boat, WaterfrontSceneFrame *frame)
                 (Color) { 248, 225, 175, 255 });
         }
     }
-    if (boat->water_settings.amplitude == 0)
+    if (!boat_water_displaced(boat->water_settings))
         for (int z = -(int)BOAT_BASIN_HALF_Z + 4; z < BOAT_BASIN_HALF_Z; z += 8)
             for (int x = -(int)BOAT_BASIN_HALF_X + 4; x < BOAT_BASIN_HALF_X; x += 8)
                 basin_box(frame,
@@ -624,6 +678,7 @@ static void basin_scenery(const Boat *boat, WaterfrontSceneFrame *frame)
                         .position = { x + (z % 4), .01f, z }, .scale = { 1.3f, .04f, .12f } },
                     (Color) { 62, 132, 142, 255 });
     boat_course_visit(&boat->course, basin_box, frame);
+    environment_visit(boat, basin_box, frame);
 }
 
 void boat_scene_frame(const Boat *boat, BoatCamera camera, WaterfrontSceneFrame *frame)
@@ -666,14 +721,14 @@ bool boat_draw_with_ghost(Renderer3D *renderer, Color *pixels, int width, int he
         pixels[i] = (Color) { 21, 36, 48, 255 };
     View3D camera = boat_camera(boat, camera_settings);
     if (boat->eriksberg) {
-        if (!waterfront_draw_boating(
-                renderer, pixels, width, height, camera, boat->water_settings.amplitude != 0))
+        if (!waterfront_draw_boating(renderer, pixels, width, height, camera,
+                boat_water_displaced(boat->water_settings)))
             return false;
     } else {
         if (!renderer3d_begin(renderer, pixels, width, height, camera, (Vector3) { -1, 3, 2 }))
             return false;
 
-        if (boat->water_settings.amplitude == 0) {
+        if (!boat_water_displaced(boat->water_settings)) {
             box(renderer, (Vector3) { 0, -0.6f, 0 },
                 (Vector3) { 2 * BOAT_BASIN_HALF_X, 1, 2 * BOAT_BASIN_HALF_Z },
                 (Color) { 36, 107, 125, 255 });
@@ -684,7 +739,7 @@ bool boat_draw_with_ghost(Renderer3D *renderer, Color *pixels, int width, int he
                         (Vector3) { 1.3f, 0.04f, 0.12f }, (Color) { 62, 132, 142, 255 });
         }
     }
-    if (boat->water_settings.amplitude != 0) {
+    if (boat_water_displaced(boat->water_settings)) {
         const Mesh3D *surface
             = boat_water_surface(boat->water_settings, boat->time, boat->eriksberg);
         if (!surface)
@@ -732,6 +787,7 @@ bool boat_draw_with_ghost(Renderer3D *renderer, Color *pixels, int width, int he
                 (Color) { 248, 225, 175, 255 });
         }
     }
+    environment_visit(boat, environment_draw, renderer);
     boat_course_draw(&boat->course, renderer);
     WaterfrontPlayerState player = { 0 };
     boat_player_pose(boat, &player);

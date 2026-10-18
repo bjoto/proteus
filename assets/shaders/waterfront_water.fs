@@ -13,6 +13,7 @@ uniform vec3 cameraPosition;
 uniform float time;
 uniform vec3 sunDirection;
 uniform int physicalWaves;
+uniform float wakeAmplitude;
 uniform vec4 waveParameters[3];
 uniform int reflectionsEnabled;
 uniform int shadowsEnabled;
@@ -49,6 +50,31 @@ float resolved(float frequency, float footprint)
     return 1.0 - smoothstep(0.65, 2.5, frequency * footprint);
 }
 
+
+// Same bounded packet and derivatives as boat_water.c, in reflected world X/Z.
+vec3 crossingWake(vec2 world, float clock)
+{
+    float emitted = (-world.x + 24.0) / 4.0;
+    float age = clock - emitted;
+    if (wakeAmplitude == 0.0 || emitted <= 0.0 || emitted >= 12.0 || age <= 0.0 || age >= 12.0)
+        return vec3(0.0);
+    float radius = sqrt((world.y + 8.0) * (world.y + 8.0) + 0.25);
+    float q = radius - 2.4 * age;
+    if (abs(q) >= 5.0) return vec3(0.0);
+    float pi = 3.14159265359, k = 2.0 * pi / 6.0;
+    float edge = 1.0 - q * q / 25.0;
+    float f = sin(k * q) * edge * edge * edge;
+    float df = k * cos(k * q) * edge * edge * edge
+        - sin(k * q) * 6.0 * q / 25.0 * edge * edge;
+    float window = pow(sin(pi * emitted / 12.0), 2.0);
+    float envelope = pow(sin(pi * age / 12.0), 2.0);
+    float dw = pi / 12.0 * sin(2.0 * pi * emitted / 12.0);
+    float de = pi / 12.0 * sin(2.0 * pi * age / 12.0);
+    return wakeAmplitude * vec3(window * envelope * f,
+        -((dw * envelope - window * de) * f + window * envelope * df * 2.4) / 4.0,
+        window * envelope * df * (world.y + 8.0) / radius);
+}
+
 void main()
 {
     float footprint = max(length(dFdx(fragWorldPosition.xz)),
@@ -66,6 +92,8 @@ void main()
             float filtering = waterfrontWater != 0 ? resolved(length(w.xy), footprint) : 1.0;
             slope += w.xy * w.z * cos(dot(w.xy, fragWorldPosition.xz) - w.w * time) * filtering;
         }
+        vec3 wake = crossingWake(fragWorldPosition.xz, time);
+        slope += wake.yz;
         if (waterfrontWater != 0) slope *= mix(0.55, 1.0, exposed);
         normal = normalize(vec3(-slope.x, 1.0, -slope.y));
         base *= vec3(0.78, 0.94, 1.0) * (0.95 + 0.35 * dot(normal.xz, vec2(0.7)));
@@ -115,6 +143,10 @@ void main()
         vec3 highlight = waterfrontWater != 0 ? vec3(0.09, 0.10, 0.085) * mix(0.25, 1.0, exposed)
             : vec3(0.28, 0.25, 0.17);
         color += highlight * pow(max(dot(normal, halfVector), 0.0), 96.0);
+    }
+    if (wakeAmplitude > 0.0) {
+        float crest = max(0.0, crossingWake(fragWorldPosition.xz, time).x) / wakeAmplitude;
+        color = mix(color, vec3(0.65, 0.78, 0.80), crest * 0.65);
     }
     finalColor = vec4(color * waterShadow(), 1.0);
 }

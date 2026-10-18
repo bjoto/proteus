@@ -80,7 +80,7 @@ void boat_gpu_draw_with_ghost(
             gpu->basin_water = GenMeshPlane(2 * BOAT_BASIN_HALF_X, 2 * BOAT_BASIN_HALF_Z, 1, 1);
         gpu->scene.water = gpu->basin_water;
     }
-    if (boat->water_settings.amplitude != 0) {
+    if (boat_water_displaced(boat->water_settings)) {
         Vector2 center
             = { roundf(-boat->position.x / 12) * 12, roundf(boat->position.y / 12) * 12 };
         Mesh *mesh = &gpu->wave_mesh;

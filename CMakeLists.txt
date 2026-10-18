@@ -104,11 +104,12 @@ target_compile_definitions(boat_study PRIVATE
 )
 add_dependencies(boat_study proteus_assets)
 add_executable(validate_boat tools/validate_boat.c src/boat.c src/renderer3d.c)
+add_executable(validate_boat_environment tools/validate_boat_environment.c src/boat.c src/renderer3d.c)
 add_executable(validate_boat_replay tools/validate_boat_replay.c src/boat.c src/renderer3d.c)
 add_executable(boat_water_review tools/boat_water_review.c src/boat.c src/renderer3d.c
   src/boat_gpu.c src/renderer_gpu.c)
 add_dependencies(boat_water_review proteus_assets)
-foreach(target boat_study validate_boat validate_boat_replay boat_water_review)
+foreach(target boat_study validate_boat validate_boat_environment validate_boat_replay boat_water_review)
   target_sources(${target} PRIVATE src/boat_water.c src/boat_course.c src/boat_replay.c src/boat_map.c src/waterfront.c src/waterfront_scene.c src/waterfront_corner.c)
   target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
   target_link_libraries(${target} PRIVATE raylib)
@@ -117,6 +118,17 @@ foreach(target boat_study validate_boat validate_boat_replay boat_water_review)
   )
 endforeach()
 add_test(NAME boat_handling COMMAND validate_boat)
+add_test(NAME boat_environment COMMAND validate_boat_environment)
+add_test(NAME boat_current_screenshot COMMAND boat_study --renderer cpu --current --time 5
+  --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-current.png)
+add_test(NAME boat_crossing_wake_screenshot COMMAND boat_study --renderer cpu --crossing-wake --time 9
+  --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-crossing-wake.png)
+add_test(NAME boat_environment_screenshot COMMAND boat_study --renderer cpu --current --crossing-wake
+  --waves --time 9 --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-environment.png)
+add_test(NAME boat_environment_course_rejected COMMAND boat_study --current --course)
+add_test(NAME boat_environment_map_rejected COMMAND boat_study --crossing-wake --location river)
+set_tests_properties(boat_environment_course_rejected boat_environment_map_rejected
+  PROPERTIES WILL_FAIL TRUE)
 add_test(NAME boat_water_route COMMAND boat_water_review --check)
 add_test(NAME boat_water_wave_route COMMAND boat_water_review --check --waves)
 add_test(NAME boat_river_route COMMAND boat_water_review --check --river)
@@ -253,7 +265,7 @@ target_compile_options(harbor_review PRIVATE
   $<$<C_COMPILER_ID:AppleClang,Clang,GNU>:-Wall;-Wextra;-Wpedantic>)
 
 # Shared generated boats and berth evaluation feed all waterfront consumers.
-foreach(target proteus gpu_fixture boat_study validate_boat validate_boat_replay
+foreach(target proteus gpu_fixture boat_study validate_boat validate_boat_environment validate_boat_replay
     boat_water_review waterfront_storyboard validate_waterfront_actors validate_city_dressing
     harbor_review)
   target_sources(${target} PRIVATE src/boat_model.c src/waterfront_harbor.c src/waterfront_traffic.c)
@@ -323,6 +335,11 @@ if(PROTEUS_GPU_TESTS)
   add_test(NAME harbor_gpu_screenshot COMMAND harbor_review --renderer gpu --view marina
     --waves --time 2 --screenshot ${CMAKE_CURRENT_BINARY_DIR}/harbor-marina-gpu.png)
   set_tests_properties(harbor_gpu_screenshot PROPERTIES LABELS "gpu" RUN_SERIAL TRUE)
+  add_test(NAME boat_environment_gpu_screenshot COMMAND boat_study --current --crossing-wake
+    --waves --gpu-aa --time 9 --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-environment-gpu.png)
+  set_tests_properties(boat_environment_gpu_screenshot PROPERTIES LABELS "gpu" RUN_SERIAL TRUE)
+  add_test(NAME boat_environment_gpu COMMAND validate_boat_environment --gpu)
+  set_tests_properties(boat_environment_gpu PROPERTIES LABELS "gpu" RUN_SERIAL TRUE)
   add_test(NAME gpu_water_surface COMMAND boat_water_review --check-gpu)
   set_tests_properties(gpu_water_surface PROPERTIES LABELS "gpu" RUN_SERIAL TRUE)
   add_test(NAME boat_ghost_gpu_screenshot COMMAND boat_study --gpu-aa

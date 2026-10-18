@@ -4,6 +4,7 @@
 #include "boat_map.h"
 #include "boat_replay.h"
 #include "profiler.h"
+#include "raymath.h"
 #include "xm_audio.h"
 
 #include <math.h>
@@ -19,6 +20,7 @@ static void usage(void)
         "Wheel springs to centre when released; thrust holds. R: reset and centre wheel | Esc: "
         "close\n"
         "+/-: closer/farther | PageUp/PageDown: raise/lower camera | C: reset view\n"
+        "--current / --crossing-wake: opt-in authored basin tests; R restarts passage\n"
         "--camera-distance UNITS: 8..48 (default 20; river 32)\n"
         "--camera-height UNITS: 4..36 (default 14; river 6)\n"
         "--location basin|eriksberg|river (default basin; river extends to Alvsborgsbron)\n"
@@ -39,6 +41,13 @@ static void usage(void)
 
 static void demo_step(Boat *boat, int tick)
 {
+    if (boat->water_settings.wake_amplitude != 0
+        || Vector2LengthSqr(boat->water_settings.current) > 0) {
+        // Let the source become visible, approach its spreading wake, then recover in neutral.
+        float target = tick < 720 ? 0 : tick < 1200 ? .65f : 0;
+        boat_step(boat, 0, Clamp((target - boat->throttle) / (.5f * BOAT_STEP), -1, 1));
+        return;
+    }
     // Ease through neutral into reverse with the same held steering.
     float target_wheel = tick >= 360 ? 0.65f : 0;
     float wheel_change = fmaxf(-1, fminf(1, (target_wheel - boat->wheel) / BOAT_STEP));
@@ -132,7 +141,7 @@ int main(int argc, char **argv)
     bool camera_distance_set = false, camera_height_set = false;
     bool time_set = false, demo = false;
     bool eriksberg = false, course = false, waves = false;
-    bool river = false;
+    bool river = false, current = false, crossing_wake = false;
     bool gpu_enabled = true, gpu_aa = false;
     bool profiler_visible = false;
     int frame_limit = 0;
@@ -163,6 +172,10 @@ int main(int argc, char **argv)
             gpu_aa = true;
         } else if (strcmp(argv[i], "--profiler") == 0) {
             profiler_visible = true;
+        } else if (strcmp(argv[i], "--current") == 0) {
+            current = true;
+        } else if (strcmp(argv[i], "--crossing-wake") == 0) {
+            crossing_wake = true;
         } else if (strcmp(argv[i], "--waves") == 0) {
             waves = true;
         } else if (strcmp(argv[i], "--replay") == 0 && i + 1 < argc) {
@@ -225,6 +238,10 @@ int main(int argc, char **argv)
         fprintf(stderr, "--course requires the basin and cannot be combined with --demo.\n");
         goto invalid;
     }
+    if ((current || crossing_wake) && (course || eriksberg || ghost_path)) {
+        fprintf(stderr, "--current and --crossing-wake require basin free boating.\n");
+        goto invalid;
+    }
     const BoatCamera camera_default = river ? (BoatCamera) { 32, 6 } : BOAT_CAMERA_DEFAULT;
     if (!camera_distance_set)
         camera_settings.distance = camera_default.distance;
@@ -249,7 +266,7 @@ int main(int argc, char **argv)
         boat_reset_course(&boat);
     else
         boat_reset_location(&boat, eriksberg);
-    boat.water_settings = waves ? boat_water_gentle() : (BoatWater) { 0 };
+    boat.water_settings = boat_water_test(waves, current, crossing_wake);
     int result = 1;
     BoatReplayRuns runs = { .ghost_visible = true, .export_path = export_path };
     if (replay_path) {
@@ -258,7 +275,7 @@ int main(int argc, char **argv)
             goto cleanup;
         }
         waves = runs.last.waves;
-        boat.water_settings = waves ? boat_water_gentle() : (BoatWater) { 0 };
+        boat.water_settings = boat_water_test(waves, current, crossing_wake);
     }
     if (course) {
         char directory[1800];
@@ -453,7 +470,7 @@ int main(int argc, char **argv)
                 boat_reset_course(&boat);
             else
                 boat_reset_location(&boat, eriksberg);
-            boat.water_settings = waves ? boat_water_gentle() : (BoatWater) { 0 };
+            boat.water_settings = boat_water_test(waves, current, crossing_wake);
             if (course)
                 boat_replay_runs_reset(&runs);
             accumulator = 0;
@@ -486,8 +503,11 @@ int main(int argc, char **argv)
         const Boat *view = &boat;
         if (runs.playing && boat_replay_sample(runs.playing, runs.replay_time, &playback))
             view = &playback;
+        Vector2 flow = boat_water_current(view->water_settings, view->position);
+        float ground_speed = hypotf(view->velocity.x, view->velocity.y);
+        float water_speed = hypotf(view->velocity.x - flow.x, view->velocity.y - flow.y);
         BoatAudioInput audio_input = { .thrust = view->engine_response,
-            .speed = hypotf(view->velocity.x, view->velocity.y),
+            .speed = water_speed,
             .planing = view->planing,
             .wave_entry = view->wave_spray };
         boat_audio_update(
@@ -546,8 +566,12 @@ int main(int argc, char **argv)
                 : eriksberg ? "ERIKSBERG"
                             : "BOATING SKETCH",
             12, hud_y, 20, RAYWHITE);
-        DrawText(TextFormat("Speed %.1f", hypotf(view->velocity.x, view->velocity.y)), 210,
-            hud_y + 3, 16, (Color) { 232, 180, 102, 255 });
+        DrawText(TextFormat("Ground %.1f | Water %.1f", ground_speed, water_speed), 210, hud_y + 3,
+            14, (Color) { 232, 180, 102, 255 });
+        if (current || crossing_wake)
+            DrawText(TextFormat("Test water: %s %s | R restarts source",
+                         current ? "current channel" : "", crossing_wake ? "crossing wake" : ""),
+                12, 12, 14, RAYWHITE);
         DrawText(TextFormat("Thrust %+.0f%%", view->throttle * 100), 12, hud_y + 27, 16, RAYWHITE);
         DrawRectangle(150, hud_y + 28, 156, 12, (Color) { 40, 58, 68, 255 });
         int thrust_width = (int)(78 * fabsf(view->throttle));
@@ -556,7 +580,8 @@ int main(int argc, char **argv)
         DrawText(TextFormat("Engine %+.0f%%", view->engine_response * 100), 12, hud_y + 47, 16,
             (Color) { 232, 180, 102, 255 });
         draw_wheel(view->wheel, hud_y);
-        DrawText(demo ? "DEMO: forward, neutral, reverse"
+        DrawText(demo ? ((current || crossing_wake) ? "DEMO: wait, wake approach, neutral"
+                                                    : "DEMO: forward, neutral, reverse")
                       : "Left/Right A/D: wheel | Up/Down W/S: thrust",
             12, hud_y + 113, 12, LIGHTGRAY);
         DrawText(demo ? "R: replay | Esc: close" : "Both hold | R: reset + centre | Esc: close", 12,

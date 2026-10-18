@@ -1,12 +1,14 @@
 # Boat physics: learnable handling
 
-Status, 2026-10-18: A1–C3 implemented; Phase C player acceptance is recorded in the handoff
-log. Next task: D1 spatial current, followed by D2 one crossable wake. E1/E2 remain optional
-after Phase D. Calm-water handling and the accepted C3 wave baseline must be preserved.
+Status, 2026-10-18: A1–D2 implemented; Phase C player acceptance is recorded in the handoff
+log. D1/D2 are opt-in basin tests; their handling/artistic play gate remains pending. Next
+task: review neutral drift and crossing comfort, then tune if needed. E1/E2 remain optional
+after Phase D acceptance. Calm-water handling and the accepted C3 wave baseline must be preserved.
 The separate [04h harbor pass](HARBOR_BOATS.md) adds fixed berth collision envelopes and
 kinematic moored-boat wave poses. [Travelling harbor vessels](HARBOR_TRAFFIC.md) add
-player contacts using obstacle-relative velocity and visual foam wakes. Neither pass
-implements D1/D2 or changes basin handling; traffic remains kinematic.
+player contacts using obstacle-relative velocity and visual foam wakes. Those harbor
+passes remain kinematic and their foam adds no physical wake. The separate D1/D2 basin
+source below supplies the new physical test.
 
 Accepted direction: 2026-10-17. Parent design: [Boating playground](BOATING_PLAN.md).
 Public controls: [README](../README.md#boating-sketch). [All plans](README.md).
@@ -153,15 +155,52 @@ Stronger waves and triangle-based buoyancy are optional upgrades only if this mo
 
 ## Phase D — Currents and crossing wakes
 
-- [ ] **D1: Spatial current.** Add a smooth, opt-in current field through the water API. Evaluate
+- [x] **D1: Spatial current.** Add a smooth, opt-in current field through the water API. Evaluate
   hull/outboard resistance using local water-relative velocities, not ground speed; distinguish the
   two in debugging output. Start with an authored test channel, not claimed real Gothenburg currents.
   Acceptance: neutral drift, smooth field boundaries, uniform-current equivalence to moving through
   still water, deterministic routes, shoreline containment, and unchanged zero-current handling.
-- [ ] **D2: One crossable wake.** Add a deterministic moving wake source to the test area, with
+- [x] **D2: One crossable wake.** Add a deterministic moving wake source to the test area, with
   matching visible and physical waves and bounded lifetime/amplitude. A scripted source is enough;
   traffic AI and full fluid coupling are out of scope. Acceptance: repeatable crossing at several
   angles/speeds, clear approach cues, stable recovery, and no enduring energy growth after it passes.
+
+Implementation: `--current` and `--crossing-wake` in basin free boating, independently or
+combined with `--waves`. Zero initialization still means flat, still water. The current
+API supports uniform flow or a compact polynomial channel with zero slope at its edges;
+the authored preset peaks at (0.85, -0.25) units/s, centred on simulation X=0 with a 32 m
+half-width. Axial drag/planing use centre water-relative speed; lateral hull stations and
+the outboard sample their own local flow. Surface foam drifts with the flow, and spray
+load, HUD water speed, and water audio use water-relative travel. Ground velocity remains
+the navigation/contact velocity. Material vertical water velocity includes current travel
+along the local slope as well as the explicit time derivative.
+
+The scripted source moves from simulation (-24, -8) to (24, -8) at 4 units/s during the
+first 12 seconds. It emits an outward-travelling compact wave packet: 0.38 m amplitude
+bound, 6 m wavelength, 2.4 units/s spreading speed, 5 m packet half-width, and 12 s local
+lifetime. Smooth sine-squared source/age windows and a cubic compact packet envelope
+bound height and derivatives; the whole wake is exactly zero after 24 seconds. Analytic
+height, normal, and velocity drive the existing six-support buoyancy/normal resistance.
+The same packet is evaluated in CPU water geometry and GPU displacement/normal shading;
+pale crests and the visible source provide approach cues. Source boxes are shared between
+renderers; they are a non-contact scripted cue, with no navigation or fluid coupling.
+
+```sh
+./build/boat_study --current
+./build/boat_study --crossing-wake --gpu-aa
+./build/boat_study --current --crossing-wake --waves --gpu-aa --demo
+./build/boat_study --renderer cpu --crossing-wake --time 9 --screenshot build/wake-crossing.png
+```
+
+Reset preserves the options and restarts time. The test demo waits six seconds, approaches
+at 65% thrust, and returns to neutral after ten seconds; screenshot time uses that script.
+The flags reject mapped locations and the course/replay/ghost modes, preserving existing
+course comparison and saved replay formats. Real harbor currents and physical wakes from
+the existing traveling fleet remain future work. No ambient-wave preset or main-demo
+arrangement was changed.
+
+Verification record: see the D1/D2 handoff entry below. Implementation checks do not mark
+this play gate accepted; continuous manual handling/artistic review is next.
 
 Play gate D: currents reward anticipation and wakes reward choosing speed/angle; neither feels like
 an invisible punishment. Keep a calm-water option and do not make exposure mandatory for exploration.
@@ -185,6 +224,30 @@ These motivate models, not exact coefficients or a requirement to adopt another 
   an example of decomposed buoyancy/resistance forces and a possible later triangle-based approach.
 
 ## Handoff log
+
+- 2026-10-18: D1/D2 implemented as the authored basin profiles above. Added
+  `tools/validate_boat_environment.c`: smooth compact field boundaries, uniform-current
+  equivalence through steering, neutral drift, basin containment, bounded wake amplitude,
+  finite-difference spatial/time derivatives (including current travel along slopes),
+  deterministic repeat crossings at 0/3/9 units/s and 0/45/90-degree headings, and stable
+  recovery after the source passes. A production-shader readback probe checks GPU vertex
+  height and fragment height/slopes against the water API at 165 points/times. CLI tests
+  exercise separate/combined presets and reject courses/mapped locations.
+  On macOS, Debug configure/build completed without compiler warnings (CMake retains
+  raylib's existing macOS OpenGL deprecation notice). All 62 CTests passed, including
+  16 desktop GPU tests. A `--current --crossing-wake --waves --gpu-aa --demo --frames 900`
+  desktop playback smoke run exited successfully. This is scripted playback, not human
+  handling acceptance. `git diff --check` and changed documentation links passed.
+  Calm-profile regression: 160 CPU frames are byte-identical to the pre-D stern-wake
+  baseline across cruise, turn, coast, and reverse. Native 320x200 CPU frames and 10 Hz
+  GPU+AA passage sequences are under `build/phase-d/`; reviewed wake-only and combined
+  current/ambient-wave frames before/during/after crossing. `wake-passage.mp4` and
+  `combined-passage.mp4` show 24 s of motion; `review.c` and its executable preserve the
+  local capture driver. The wake-only script ended at height 1.7e-8 m and negligible
+  pitch/roll at 24 s; its peak hull angle, including acceleration/planing, was 0.228 rad.
+  The combined script retains the expected ongoing ambient-wave motion after the wake. Manual continuous handling/artistic acceptance is pending;
+  the source is a bounded non-contact test cue and real harbor flow remains unimplemented.
+
 
 Dated records describe each step at the time it landed. In particular, B2's cosmetic
 `visual_pitch` was replaced by C2's physical support model, and the older B/C play-gate

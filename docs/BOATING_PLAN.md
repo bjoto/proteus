@@ -1,10 +1,11 @@
 # Gothenburg boating playground
 
 Status: updated 2026-10-18. `boat_study` implements free boating in basin, Eriksberg,
-and river locations, reverse/docking, planing, buoyancy, optional gentle waves, and a timed
-S course with recordings, persistent personal bests, ghosts, and replay controls. The study
-has quiet engine/water audio and a repeating, gentle XM background piece. The [stern-wake motion pass](#stern-wake-motion--2026-10-18) is implemented;
-continuous-motion artistic review is next.
+and river locations, reverse/docking, planing, buoyancy, optional gentle waves, opt-in
+basin current/crossing-wake tests, and a timed S course with recordings, persistent personal bests, ghosts, and replay controls. The study
+has quiet engine/water audio and a repeating, gentle XM background piece. The
+[stern-wake motion pass](#stern-wake-motion--2026-10-18) and physics Phase D are implemented;
+continuous-motion and handling/artistic review are next.
 The score-loop arcade mode and archipelago remain proposals.
 
 This document owns gameplay direction. Detailed next tasks belong to the
@@ -82,7 +83,10 @@ physical heave, pitch, and roll; planing redistributes support to raise the bow 
 transition and settle at cruise. Hull, cabin, and outboard share the physical pose in both
 renderers, including GPU reflections and shadows. The camera keeps a level horizon.
 `--waves` enables gentle crossing waves with water-relative resistance and matching visual
-surfaces. Currents and crossable wakes from another vessel remain unimplemented.
+surfaces. Basin free boating also offers opt-in `--current` and `--crossing-wake` tests,
+with water-relative resistance and one scripted visible/physical wake. They reject course,
+replay/ghost, and mapped locations; see [Phase D](BOAT_PHYSICS_PLAN.md#phase-d--currents-and-crossing-wakes).
+Harbor traffic still leaves visual foam only.
 A spreading, fading wake traces the travelled path, with varied foam patches and short-lived
 stern wash that separates and erodes; planing broadens the trail and adds symmetric spray
 even on straight runs. Lateral slip throws turning spray from the sliding side of the hull. Two orange markers provide turning
@@ -190,8 +194,8 @@ Status: implementation and automated verification complete; user motion/artistic
 is next. The user likes
 high-speed bow spray but reports that the stern wake looks static at full speed. Astra
 reviewed the particle implementation and recommends a bounded visual pass here. This
-continues the movement feedback in physics B2/C3; the planned D1 current and D2 physical
-crossable wake remain separate tasks in the [physics plan](BOAT_PHYSICS_PLAN.md).
+continues the movement feedback in physics B2/C3; the D1 current and D2 physical
+crossable wake belong to the separate basin physics pass in the [physics plan](BOAT_PHYSICS_PLAN.md).
 
 Baseline code review, before this pass: `water_step` already left world-space history. It emitted identical paired
 foam patches every 0.55 m and identical propeller-wash patches every 0.04 s. Surface
@@ -279,7 +283,8 @@ review executables, per-preset PNG sequences/logs, `motion-*.png` temporal strip
 camera; `compare-gpu-w0.mp4` uses the normal camera. Review these in motion before
 artistic acceptance. Current limits: the frame audit samples 20 Hz, human continuous
 motion/input review remains pending, and the existing pose-only saved replay format
-does not regenerate water particles. No physical crossing wake was added.
+does not regenerate water particles. No physical crossing wake was added in this
+presentation pass; the later Phase D basin implementation is tracked in the physics plan.
 
 Next task: user review of full-speed stern motion, especially from the low follow view;
 then tune churn density/contrast if needed. Keep the accepted bow spray as the reference.
@@ -339,11 +344,12 @@ These are tunable gameplay models, not calibrated hydrodynamics.
   manoeuvring. The current model uses forces and torque, not a prescribed speed-to-turn curve.
 - **Planing (implemented):** a smooth resistance transition and physical support redistribution
   raise the bow, then settle it into cruise.
-- **Current (D1, pending):** introduce drift that makes routes through channels and approaches
-  to shore matter.
+- **Current (D1, implemented; play gate pending):** an opt-in smooth basin channel adds drift
+  and local water-relative resistance; mapped harbor currents remain future work.
 - **Gentle waves (C1–C3, implemented and accepted):** physical buoyancy and encounter resistance
   depend on speed and heading. Visual shelter/exposure varies independently of the wave physics.
-- **Crossable wake (D2, pending):** one deterministic moving wake with matching rendering and forces.
+- **Crossable wake (D2, implemented; play gate pending):** one opt-in scripted basin source
+  with matching rendering and forces; fleet foam remains visual only.
 
 Judge each experiment through driving before combining it with the others. Wake and spray should
 help reveal movement through water as these models evolve.
@@ -406,8 +412,8 @@ Local water-relative normal resistance now couples wave encounters to horizontal
 three angular rates. Faster crossings increase the load and bow spray; slowing down softens the
 response. Foam follows the local surface slope as well as height. Flat mode retains C2 handling.
 This remains a support-spring/normal-damping model, without displaced hull volumes, orbital flow,
-currents, ventilation, or capsize behavior. The user accepted Phase C after playtesting; preserve
-this baseline for Phase D. See
+ventilation, or capsize behavior. The user accepted Phase C after playtesting. Its default baseline
+is preserved by the separate opt-in Phase D current/wake tests. See
 [the physics plan](BOAT_PHYSICS_PLAN.md#phase-c--buoyancy-and-gentle-waves).
 
 The GPU's boat-level water pass now uses a clipped near patch and a much smaller flat

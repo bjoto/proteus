@@ -35,7 +35,9 @@ Each vessel leaves eight fading foam segments on either side, evaluated from his
 route positions, including across the lap boundary. All 64 segments follow the water surface.
 GPU foam receives depth/shading in the main pass without casting solid slab shadows. Hulls
 and lights appear in planar reflections; hulls cast shadows. Foam has no physical effect on
-the player: spatial current and a crossable wake remain physics tasks D1/D2.
+the player. [Physics D1/D2](BOAT_PHYSICS_PLAN.md#phase-d--currents-and-crossing-wakes)
+now supplies a separate opt-in basin current and scripted physical wake; these fleet trails
+remain visual only.
 
 ## Player contacts
 
@@ -73,6 +75,6 @@ four vessels. Actor snapshot checks preserve the legacy street equations and exe
 through the full demo. CTest includes CPU and opt-in GPU ferry captures.
 
 Night deck lighting, passenger animation, ferry docking/boarding, dynamic traffic avoidance,
-physical crossing wakes, and a large ship are future work. Human handling/artistic acceptance
+physical fleet crossing wakes, and a large ship are future work. Human handling/artistic acceptance
 remains separate from successful automated checks; see the living-city progress log for the
 current verification evidence.

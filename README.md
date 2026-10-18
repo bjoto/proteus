@@ -257,6 +257,27 @@ and have no collision yet. Varied foam traces your path and fades; short-lived s
 separates and erodes as it travels aft. Hard turns throw spray
 according to sideways slip. Reset clears both effects. The default basin has no geographic scenery; `--course` adds timed gates, and Eriksberg and river provide mapped scenery.
 
+Basin free boating also has two optional authored physics tests:
+
+```sh
+./build/boat_study --current
+./build/boat_study --crossing-wake
+./build/boat_study --current --crossing-wake --waves --gpu-aa --demo
+```
+
+`--current` adds a smooth central channel with drifting surface streaks. The HUD distinguishes
+speed over ground from speed through water; water-relative speed drives resistance, planing,
+wake/spray, and water audio. `--crossing-wake` adds a scripted boat travelling across the basin
+for 12 seconds after launch/reset. Its spreading wave packet affects buoyancy and resistance,
+with matching CPU/GPU geometry and normals; the packet fades completely by 24 seconds.
+R restarts the passage. With either option, `--demo` waits six seconds, approaches the wake,
+and returns to neutral after ten seconds. Screenshots use that same deterministic test script.
+These flags require basin free boating and cannot be used with courses, saved replays/ghosts,
+or mapped locations. They are authored experiments, not measured Gothenburg flow. The scripted
+source has no hull contact or traffic AI. Defaults retain calm practice water.
+See [Phase D](docs/BOAT_PHYSICS_PLAN.md#phase-d--currents-and-crossing-wakes) for verification
+and remaining handling/artistic review.
+
 Opt in to gentle crossing waves with `--waves` (all locations, CPU or GPU).
 Flat, still water remains the default. Three low wave components drive the surface:
 16/9/5.5-unit wavelengths and 0.13/0.06/0.025-unit amplitudes, with different travel directions.

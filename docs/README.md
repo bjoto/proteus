@@ -10,7 +10,7 @@ Both default to GPU rendering; the CPU reference supports display-free captures.
 | Area and owning document | Implemented | Remaining / next task |
 | --- | --- | --- |
 | [Boating design](BOATING_PLAN.md) | Basin, Eriksberg, and river locations; timed S course, recordings, persistent bests, ghosts, replays, and quiet engine/water audio with a joyful repeating XM | [Stern-wake motion](BOATING_PLAN.md#stern-wake-motion--2026-10-18): implemented and verified, user motion review next; score-loop and archipelago remain proposals |
-| [Boat physics](BOAT_PHYSICS_PLAN.md) | A–C: reverse/docking, hull contacts, planing, buoyancy, and gentle waves; Phase C accepted by the user | D1 spatial current, then D2 one crossable wake; optional trim/loading after D |
+| [Boat physics](BOAT_PHYSICS_PLAN.md) | A–D2: reverse/docking, hull contacts, planing, buoyancy, gentle waves, opt-in basin current and crossable wake; Phase C accepted | D handling/artistic review; mapped currents/fleet wakes remain future work; optional trim/loading after D acceptance |
 | [Living city](LIVING_CITY_PLAN.md) | 01–05: city dressing, materials, berths, shared actors; travelling boats and a compact ferry brought forward; demo flock and 32 reactive boating gulls | 06 people/cyclists; varied road traffic, building activity, ferry polish, perched gulls, and final review remain |
 | [River / Älvsborgsbron](eriksberg/bridge/README.md) | Separate source/crop, navigable bridge blockout, blocking tower legs, and grounded road approaches | Bridge/shoreline/building refinement; human handling and camera review |
 | [GPU migration](GPU_WATERFRONT_PLAN.md) | Steps 01–12 implemented; GPU default, lighting, shadows, atmosphere, reflections, and regression checks | Migration is implemented; other-platform and human visual acceptance remain separate from automated checks |
@@ -36,6 +36,13 @@ does not authorize advancing every plan. Use the requested track's scope and acc
   to the current owners above. Dated progress entries retain results for their original revisions.
 
 ## Verification baseline
+
+Phase D, 2026-10-18, macOS: Debug build and all 62 CTests passed, including 16 GPU
+checks. The authored basin current/wake profiles passed scripted recovery and desktop
+playback checks; 160 calm-profile CPU frames matched the pre-D baseline byte for byte.
+Human handling/artistic acceptance remains pending. See the
+[physics handoff log](BOAT_PHYSICS_PLAN.md#handoff-log) for detailed evidence and limits.
+
 
 Boating music, 2026-10-18: Debug build and all 54 CTests passed across CPU and
 unsandboxed desktop graphics runs (14 GPU tests); the final XM was rechecked after

@@ -12,6 +12,9 @@ typedef struct {
 typedef struct {
     float amplitude, wavelength, angular_speed;
     Vector2 direction;
+    Vector2 current; // Uniform flow, or a compact channel when current_width > 0.
+    float current_center, current_width; // Simulation X centre and half-width.
+    float wake_amplitude; // Opt-in bounded basin source, independent of ambient waves.
     BoatWave crossing[2]; // Smaller components; all parameters are shared with the GPU.
 } BoatWater;
 
@@ -25,6 +28,11 @@ typedef struct {
 Transform3D boat_water_pose(
     BoatWater water, float time, Vector3 position, float heading, float length, float beam);
 BoatWater boat_water_gentle(void);
+BoatWater boat_water_test(bool waves, bool current, bool wake);
+bool boat_water_displaced(BoatWater water);
+Vector2 boat_water_current(BoatWater water, Vector2 position);
+// One source travels X=-24..24 at Z=-8 over the first 12 seconds after reset.
+bool boat_water_wake_source(BoatWater water, float time, Vector2 *position);
 BoatWaterSample boat_water_query(BoatWater water, Vector2 position, float time);
 // Dissipative normal resistance in simulation coordinates. Positive support is the local upward
 // spring force; it caps exit damping so the combined support never pulls the hull underwater.

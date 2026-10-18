@@ -48,10 +48,77 @@ BoatWater boat_water_gentle(void)
                 .direction = { .96f, .28f } } } };
 }
 
+BoatWater boat_water_test(bool waves, bool current, bool wake)
+{
+    BoatWater water = waves ? boat_water_gentle() : (BoatWater) { 0 };
+    if (current) {
+        water.current = (Vector2) { .85f, -.25f };
+        water.current_width = 32;
+    }
+    water.wake_amplitude = wake ? .38f : 0;
+    return water;
+}
+
+bool boat_water_displaced(BoatWater water)
+{
+    return water.amplitude != 0 || water.wake_amplitude != 0;
+}
+
+Vector2 boat_water_current(BoatWater water, Vector2 position)
+{
+    float weight = 1;
+    if (water.current_width > 0) {
+        float x = (position.x - water.current_center) / water.current_width;
+        weight = fmaxf(0, 1 - x * x);
+        weight *= weight;
+    }
+    return Vector2Scale(water.current, weight);
+}
+
+bool boat_water_wake_source(BoatWater water, float time, Vector2 *position)
+{
+    *position = (Vector2) { -24 + 4 * time, -8 };
+    return water.wake_amplitude != 0 && time >= 0 && time <= 12;
+}
+
+// Compact wave packet with analytic spatial/time derivatives. Keep the matching GLSL
+// recipe in waterfront_water.vs/fs in sync. It is a scripted wake, not fluid simulation.
+static void crossing_wake(
+    BoatWater water, Vector2 p, float time, float *height, Vector2 *gradient, float *vertical_speed)
+{
+    if (water.wake_amplitude == 0)
+        return;
+    float emitted = (p.x + 24) / 4;
+    float age = time - emitted;
+    if (emitted <= 0 || emitted >= 12 || age <= 0 || age >= 12)
+        return;
+    float radius = sqrtf((p.y + 8) * (p.y + 8) + .25f);
+    float q = radius - 2.4f * age;
+    if (fabsf(q) >= 5)
+        return;
+    float k = 2 * PI / 6;
+    float edge = 1 - q * q / 25;
+    float f = sinf(k * q) * edge * edge * edge;
+    float df = k * cosf(k * q) * edge * edge * edge - sinf(k * q) * 6 * q / 25 * edge * edge;
+    float window = sinf(PI * emitted / 12), envelope = sinf(PI * age / 12);
+    float dw = PI / 12 * sinf(2 * PI * emitted / 12);
+    float de = PI / 12 * sinf(2 * PI * age / 12);
+    window *= window;
+    envelope *= envelope;
+    float a = water.wake_amplitude;
+    *height += a * window * envelope * f;
+    gradient->x += a / 4 * ((dw * envelope - window * de) * f + window * envelope * df * 2.4f);
+    gradient->y += a * window * envelope * df * (p.y + 8) / radius;
+    *vertical_speed += a * window * (de * f - envelope * df * 2.4f);
+}
+
 BoatWaterSample boat_water_query(BoatWater water, Vector2 position, float time)
 {
     BoatWaterSample sample = { .normal = { 0, 1, 0 } };
-    if (water.amplitude == 0)
+    Vector2 current = boat_water_current(water, position);
+    sample.velocity.x = current.x;
+    sample.velocity.z = current.y;
+    if (!boat_water_displaced(water))
         return sample;
     const BoatWave waves[]
         = { { water.amplitude, water.wavelength, water.angular_speed, water.direction },
@@ -68,8 +135,11 @@ BoatWaterSample boat_water_query(BoatWater water, Vector2 position, float time)
         gradient = Vector2Add(gradient, Vector2Scale(w.direction, slope));
         sample.velocity.y -= w.amplitude * w.angular_speed * cosf(phase);
     }
+    crossing_wake(water, position, time, &sample.height, &gradient, &sample.velocity.y);
+    // Material surface velocity includes the current's travel along the local slope.
+    sample.velocity.y += Vector2DotProduct(current, gradient);
     sample.normal = Vector3Normalize((Vector3) { -gradient.x, 1, -gradient.y });
-    // Vertical surface motion only; no current or orbital drift.
+    // Horizontal velocity is the authored current; waves add vertical surface motion.
     return sample;
 }
 
@@ -288,8 +358,16 @@ const Mesh3D *boat_water_surface(BoatWater water, float time, bool eriksberg)
         // Restrained slope light; geometry and GPU reflections carry the wave shape.
         float light = Clamp(.95f + .55f * (-q.normal.x + q.normal.z), .85f, 1.05f);
         Color base = eriksberg ? (Color) { 45, 79, 104, 255 } : (Color) { 36, 107, 125, 255 };
-        s->triangles[i].color = (Color) { (unsigned char)(base.r * light),
-            (unsigned char)(base.g * light), (unsigned char)(base.b * light), 255 };
+        float crest = 0;
+        if (water.wake_amplitude > 0) {
+            BoatWater wake = { .wake_amplitude = water.wake_amplitude };
+            crest = .65f
+                * fmaxf(0, boat_water_query(wake, (Vector2) { -centre.x, centre.z }, time).height)
+                / water.wake_amplitude;
+        }
+        s->triangles[i].color = (Color) { (unsigned char)Lerp(base.r * light, 166, crest),
+            (unsigned char)Lerp(base.g * light, 199, crest),
+            (unsigned char)Lerp(base.b * light, 204, crest), 255 };
     }
     s->mesh = (Mesh3D) { s->vertices, s->triangles, s->count };
     return &s->mesh;

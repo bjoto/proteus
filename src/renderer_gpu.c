@@ -959,9 +959,12 @@ static void set_atmosphere_uniforms(WaterfrontGpuScene *scene, Vector3 camera_po
 static void set_water_uniforms(WaterfrontGpuScene *scene, const WaterfrontSceneFrame *frame)
 {
     BoatWater water = frame->player_water;
-    int physical_waves = frame->player_active && water.amplitude != 0;
+    int physical_waves = frame->player_active && boat_water_displaced(water);
     SetShaderValue(scene->water_shader, GetShaderLocation(scene->water_shader, "physicalWaves"),
         &physical_waves, SHADER_UNIFORM_INT);
+    float wake_amplitude = frame->player_active ? water.wake_amplitude : 0;
+    SetShaderValue(scene->water_shader, GetShaderLocation(scene->water_shader, "wakeAmplitude"),
+        &wake_amplitude, SHADER_UNIFORM_FLOAT);
     int waterfront_water = frame->player_active && !frame->boating_basin;
     SetShaderValue(scene->water_shader, GetShaderLocation(scene->water_shader, "waterfrontWater"),
         &waterfront_water, SHADER_UNIFORM_INT);
