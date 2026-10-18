@@ -213,7 +213,16 @@ Press `F3` to toggle the same debug profiler overlay used in the main demo, or p
 to show it on startup. It shows rolling frame, scene rendering/upload, and presentation timings,
 a frame-time graph, display dimensions, and the active location and CPU/GPU backend. GPU scene
 measurements cover CPU submission, not GPU execution; GPU mode uploads no CPU framebuffer.
-The study is silent, so the shared overlay's audio readings remain off/zero.
+The study mixes a quiet, low engine with soft hull-water wash. The engine follows thrust;
+water follows hull speed and swells gently with live bow entry when using `--waves`.
+Wash continues while coasting and quiets as the boat stops. The default 750–4800 RPM acoustic
+voice is a sound-design setting; future craft can use higher-revving voices. Audio fades when
+the window loses focus or a replay pauses. Replays have speed-driven wash but lack recorded
+wave-contact swells. A quiet, joyful XM background piece, “A little boat”, plays independently of boat speed.
+Its soft keys, humming melody, and rounded bass repeat every 91.43 seconds at 84 BPM;
+there are no drums or dynamic arrangement changes. Music pauses on focus loss or replay pause.
+The shared overlay's music-analysis readings remain off/zero. See [music notes](docs/MUSIC.md)
+for regeneration and editing.
 
 The follow camera defaults to 20 units back and 14 units above the water. Hold `-` to pull back,
 `+` (or `=`) to move closer, and PageUp/PageDown to raise/lower the camera. `C` restores the default
@@ -245,8 +254,7 @@ level horizon and does not follow the hull’s bobbing.
 
 The basin walls bounce the craft back gently; the two orange markers are visual turning references
 and have no collision yet. A spreading wake traces your path and fades; hard turns throw spray
-according to sideways slip. Reset clears both effects. The study is silent. The default basin has
-no geographic scenery; `--course` adds timed gates, and Eriksberg and river provide mapped scenery.
+according to sideways slip. Reset clears both effects. The default basin has no geographic scenery; `--course` adds timed gates, and Eriksberg and river provide mapped scenery.
 
 Opt in to gentle crossing waves with `--waves` (all locations, CPU or GPU).
 Flat, still water remains the default. Three low wave components drive the surface:

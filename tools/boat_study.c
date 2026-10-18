@@ -1,8 +1,10 @@
 #include "boat.h"
+#include "boat_audio.h"
 #include "boat_gpu.h"
 #include "boat_map.h"
 #include "boat_replay.h"
 #include "profiler.h"
+#include "xm_audio.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -239,6 +241,9 @@ int main(int argc, char **argv)
     BoatGpu gpu = { 0 };
     Texture2D texture = { 0 };
     bool window_ready = false;
+    BoatAudio audio = { 0 };
+    Music music = { 0 };
+    bool music_ready = false;
     Boat boat;
     if (course)
         boat_reset_course(&boat);
@@ -336,6 +341,23 @@ int main(int argc, char **argv)
             goto cleanup;
     }
     SetTextureFilter(texture, TEXTURE_FILTER_POINT);
+    boat_audio_init(&audio, BOAT_ENGINE_DEFAULT);
+    const char *music_path = PROTEUS_ASSET_DIR "/music/a-little-boat.xm";
+    if (IsAudioDeviceReady()) {
+        music = LoadMusicStream(music_path);
+        music_ready = IsMusicValid(music);
+        if (music_ready && !xm_music_start_at(&music, music_path, 0)) {
+            UnloadMusicStream(music);
+            music_ready = false;
+        }
+        if (music_ready) {
+            music.looping = true;
+            SetMusicVolume(music, .35f);
+            PlayMusicStream(music);
+        } else {
+            TraceLog(LOG_WARNING, "Boating background music could not be loaded");
+        }
+    }
     double accumulator = 0;
     int frames = 0, demo_tick = 0;
     bool replay_dragging = false;
@@ -464,6 +486,19 @@ int main(int argc, char **argv)
         const Boat *view = &boat;
         if (runs.playing && boat_replay_sample(runs.playing, runs.replay_time, &playback))
             view = &playback;
+        BoatAudioInput audio_input = { .thrust = view->engine_response,
+            .speed = hypotf(view->velocity.x, view->velocity.y),
+            .planing = view->planing,
+            .wave_entry = view->wave_spray };
+        boat_audio_update(
+            &audio, audio_input, IsWindowFocused() && (!runs.playing || !runs.paused));
+        if (music_ready) {
+            if (IsWindowFocused() && (!runs.playing || !runs.paused))
+                ResumeMusicStream(music);
+            else
+                PauseMusicStream(music);
+            UpdateMusicStream(music);
+        }
         ghost_view = NULL;
         ghost_opacity = 0;
         if (course && !runs.playing && runs.ghost_visible && runs.opponent.complete) {
@@ -545,6 +580,9 @@ int main(int argc, char **argv)
         ++frames;
     }
 cleanup:
+    if (music_ready)
+        UnloadMusicStream(music);
+    boat_audio_destroy(&audio);
     boat_replay_runs_destroy(&runs);
     if (window_ready) {
         if (gpu_enabled)

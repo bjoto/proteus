@@ -15,6 +15,23 @@ partial decoder reset does not clear; reusing that state would play only the fir
 sound. The XM validation covers that loader sequence and backward seeking as well as
 full-song decoding. Call the helper only while the audio stream is stopped.
 
+## Boating background loop
+
+The separate `boat_study` plays [A little boat](../assets/music/a-little-boat.xm): an
+original, quiet C-major piece at 84 BPM / speed 6, 32 bars (91.43 seconds), repeating
+from the beginning. Soft rounded keys, a humming melody, and a sine-led bass use simple
+major/sixth/seventh harmony and sparse call-and-answer phrases. There are no drums,
+intensity layers, or boat-dependent changes. Playback volume is 0.35; engine/water
+remain independently mixed. Focus loss and paused replays pause the music.
+The main demo's timed soundtrack and the dance study's starter remain separate.
+
+Regenerate only this asset with `python3 tools/generate_boating_music.py`, then rebuild
+to refresh the bundled copy. This reuses the starter generator's XM encoding helpers
+without overwriting its samples or module. Edit the new module in FastTracker, or change
+the dedicated generator (regeneration replaces tracker edits). CMake bundles it next
+to the other music and `boating_xm_is_valid` checks decoder loading/reset, seeking,
+finite unclipped samples, and continued sound across two loop boundaries.
+
 ## Archived starter sketch
 
 The notes below describe the original starter XM, retained for the separate dance study.

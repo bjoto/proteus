@@ -3,7 +3,7 @@
 Status: updated 2026-10-18. `boat_study` implements free boating in basin, Eriksberg,
 and river locations, reverse/docking, planing, buoyancy, optional gentle waves, and a timed
 S course with recordings, persistent personal bests, ghosts, and replay controls. The study
-is silent. The score-loop arcade mode and archipelago remain proposals.
+has quiet engine/water audio and a repeating, gentle XM background piece. The score-loop arcade mode and archipelago remain proposals.
 
 This document owns gameplay direction. Detailed next tasks belong to the
 [physics plan](BOAT_PHYSICS_PLAN.md), [living-city plan](LIVING_CITY_PLAN.md), and
@@ -62,7 +62,7 @@ held input covering the full range. A signed percentage and centred bar show the
 independently of speed, and the HUD shows actual signed engine response separately. Lowering
 thrust passes smoothly through idle and continues into reverse only while Down/S remains held.
 R resets to neutral thrust, centres the wheel, and clears effects; Esc exits.
-The silent handling sketch has a third-person follow camera, stern-applied engine thrust, rotational
+The handling sketch has a third-person follow camera, stern-applied engine thrust, rotational
 inertia, water resistance at two hull stations, and forgiving basin-wall collisions. Steering
 angles the outboard; its lateral thrust pushes the stern and creates torque. The outboard follows
 the wheel as it springs back when keys are released. Returning the wheel to centre lets rotation settle
@@ -185,7 +185,7 @@ needed. Free boating remains available without a timer or mandatory gates.
 
 The current craft, wake, and turning/planing spray provide visual movement feedback.
 The table below is a presentation wishlist, not a list of implemented effects: the study has
-no audio, buoy impacts, gate sounds, score laps, or impact camera kick. Preserve
+engine audio, but no buoy impacts, gate sounds, score laps, or impact camera kick. Preserve
 nearest-neighbour, integer-scaled presentation while refining feedback.
 
 | Player action | Feedback |
@@ -313,3 +313,108 @@ quieter dock reflections to more broken river water. This is visual exposure onl
 physical waves and existing recordings are unchanged. The CPU renderer retains the full
 wave reference. Geometry, comparisons, and verification are in the
 [04f water-surface record](WATER_REVIEW.md#04f-implementation-boat-level-surface-and-bounded-geometry).
+
+## Engine audio — implemented 2026-10-18
+
+The current mix puts soft hull-water wash ahead of a subdued low engine. After user feedback
+asking for a peaceful experience, a second Astra consultation recommended lower acoustic
+firing frequency, darker engine filtering, and water driven by real hull motion:
+
+- The default acoustic voice spans 750–4800 RPM with one pulse per revolution (12.5–80 Hz).
+  This is a sound-design voice, not a literal cylinder count or a change to propulsion physics.
+  Continuous irregular firing pulses remain, filtered through roughly 240–320 Hz stages.
+  Engine gain and bright combustion texture are substantially reduced.
+- Independent filtered noise supplies gentle hull wash: hull speed sets travel gain, planing
+  adds a little brightness, and live `wave_spray` bow-entry load creates soft encounter swells.
+  Wave intensity has about 60 ms attack and 300 ms release; travel smooths over 150 ms.
+  Water quiets as the hull stops and remains audible while coasting at neutral thrust.
+- The mix fades in/out on focus and replay pause (about 40/100 ms smoothing constants),
+  with continuous filters and noise state. A DC blocker and soft limiter bound output.
+
+`src/boat_audio.h` owns independently tunable engine settings for future higher-revving craft.
+The default irregular six-event amplitude pattern is an artistic texture. Screenshots do not
+open audio. Replays reproduce speed-driven wash and recorded thrust at normal acoustic pitch;
+old recordings lack planing and wave-entry data, so their water sound has no wave-contact swells.
+Ghosts are silent. Impact/gate sounds remain proposals.
+
+User acceptance, 2026-10-18: “I like this a lot!” accepts the peaceful engine/water mix.
+Keep this balance as the baseline. Prior bass/combustion versions are superseded.
+The background loop added below complements this accepted mix.
+Next: retain their balance during further boating work. Manual coverage of every control/replay scenario remains unverified.
+
+Generate a repeatable 12-second idle/cruise/wave-swell/coast preview without an audio device:
+
+```sh
+./build/validate_boat_audio build/boat-peaceful-preview.wav
+./build/boat_study --waves
+```
+
+Preview wave encounters use synthetic varying inputs every 20 ms to expose the swell envelopes;
+the interactive study uses actual hull state. The validator checks finite/bounded samples,
+DC, audible idle, stronger loaded output, and buffer-boundary independence with an 8500 RPM
+variant. It separately checks silent resting water, wash during coasting without engine sound,
+stronger wave wash, and pause fade. These do not establish perceived pleasantness.
+
+### Historical verification before the pulse redesign
+
+Verification on the development Mac, 2026-10-18: Debug configure/build passed without
+compiler warnings. All 52 existing CTests passed: tests 1–38 in the sandbox, followed by
+39–52 (plus their replay fixture) with desktop access after the sandbox stalled on the
+first GPU window. Final procedural-voice changes were rebuilt before the desktop tests.
+A desktop CPU `--demo --frames 720` runtime smoke run completed successfully, exercising
+forward and reverse thrust. This confirms startup/stream lifecycle and run completion,
+not perceived sound quality, manual control/replay listening, or user acceptance. No visual
+effects changed, so no additional visual inspection was performed.
+
+Bass revision verification (2026-10-18): Debug configure/build passed. A desktop CPU
+`--demo --frames 720` smoke run completed through forward and reverse thrust.
+All 52 CTests passed with desktop access, including the 14 graphics tests.
+`git diff --check` passed.
+The user subsequently found this revision too clean; it is superseded by the pulse redesign.
+
+### Pulse redesign verification — 2026-10-18
+
+Debug configure/build and the new device-free audio validator passed. The exported preview
+measures peak 0.276, mean −0.000834, idle RMS 0.042, and full-thrust RMS 0.126 before stream
+gain. A desktop CPU `--demo --frames 720` smoke run completed through forward and reverse
+thrust. Astra reviewed the DSP implementation and found no material blockers; the fixed
+six-event pattern and small post-limiter DC bias remain tuning limitations. All 53 CTests passed with desktop access, including the new audio validator and 14
+graphics tests. `git diff --check` passed. No visual effects changed.
+Human listening and user acceptance remain pending.
+
+### Peaceful water mix verification — 2026-10-18
+
+Debug configure/build and offline validation passed. Isolated engine RMS is 0.002 at idle and
+0.013 under full thrust (peak 0.034); isolated water RMS is 0 at rest, 0.0161 coasting at
+speed 10, and 0.0362 with sustained strong bow-entry input. These measurements are before
+perceptual listening and do not imply user approval. Astra reviewed the implementation;
+its suggested lower wave gain and varying-input preview were incorporated.
+A desktop CPU `--waves --demo --frames 720` smoke run completed through forward/reverse
+thrust with the water stream active. All 53 CTests passed with desktop access, including
+14 graphics tests. The final preview/fallback adjustment was rebuilt and checked with the
+offline validator during the suite run. `git diff --check` passed. No visual effects changed.
+
+## Joyful background music — 2026-10-18
+
+Implemented “A little boat” for `boat_study`: an original 32-bar, 84 BPM major-key
+XM with rounded keys, a simple humming melody, warm bass, and no percussion.
+The fixed arrangement repeats after 91.43 seconds at low volume, independent of
+handling. Focus loss / replay pause pauses playback; unload precedes audio-device
+shutdown. Screenshots do not start audio. The dedicated deterministic generator
+reuses existing XM helpers without changing the starter or main-demo soundtrack.
+See [music workflow](MUSIC.md#boating-background-loop) for the asset and command.
+
+Current task: background-loop implementation and automated verification complete.
+Verification on macOS, 2026-10-18: Debug configure/build passed without compiler
+warnings. All 54 CTests passed across the CPU/device-free run (tests 1–39) and
+an unsandboxed desktop run (tests 40–54, including all 14 GPU tests); the sandboxed
+run was stopped when its first GPU window could not start. The final regenerated
+XM's dedicated test passed again: correct fresh-load start, 48.58-second seek,
+185 seconds of finite unclipped PCM, and exactly two completed loops. A 180-frame
+CPU-rendered desktop `--waves --demo` smoke run exited successfully. This is runtime
+smoke evidence, not a listening judgement. A local 100-second WAV preview includes
+the first loop transition (`build/a-little-boat-preview.wav`, ignored build output).
+User acceptance, 2026-10-18: “It's joyful! Let's commit” accepts the background music.
+Next task: retain the accepted music and engine/water balance during further boating work.
+Known limitation: exhaustive focus/replay listening remains unverified; automated
+decoding cannot establish that.

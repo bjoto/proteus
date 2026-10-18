@@ -1,15 +1,15 @@
 # Documentation and current plans
 
 Current status reconciled on 2026-10-18. The main demo is a four-minute Eriksberg
-journey following five gulls to “Below the surface” at 120 BPM. The separate, silent
-`boat_study` provides free boating and a basin time trial. Both default to GPU rendering;
-the CPU reference supports display-free captures.
+journey following five gulls to “Below the surface” at 120 BPM. The separate
+`boat_study`, with quiet engine/water audio and a gentle XM background loop, provides free boating and a basin time trial.
+Both default to GPU rendering; the CPU reference supports display-free captures.
 
 ## Current work
 
 | Area and owning document | Implemented | Remaining / next task |
 | --- | --- | --- |
-| [Boating design](BOATING_PLAN.md) | Basin, Eriksberg, and river locations; timed S course, recordings, persistent bests, ghosts, and replays | Playtesting and presentation; score-loop and archipelago ideas remain proposals |
+| [Boating design](BOATING_PLAN.md) | Basin, Eriksberg, and river locations; timed S course, recordings, persistent bests, ghosts, replays, and quiet engine/water audio with a joyful repeating XM | Playtesting and presentation; score-loop and archipelago ideas remain proposals |
 | [Boat physics](BOAT_PHYSICS_PLAN.md) | A–C: reverse/docking, hull contacts, planing, buoyancy, and gentle waves; Phase C accepted by the user | D1 spatial current, then D2 one crossable wake; optional trim/loading after D |
 | [Living city](LIVING_CITY_PLAN.md) | 01–05: city dressing, materials, berths, shared actors; travelling boats and a compact ferry brought forward; demo flock and 32 reactive boating gulls | 06 people/cyclists; varied road traffic, building activity, ferry polish, perched gulls, and final review remain |
 | [River / Älvsborgsbron](eriksberg/bridge/README.md) | Separate source/crop, navigable bridge blockout, blocking tower legs, and grounded road approaches | Bridge/shoreline/building refinement; human handling and camera review |
@@ -36,6 +36,20 @@ does not authorize advancing every plan. Use the requested track's scope and acc
   to the current owners above. Dated progress entries retain results for their original revisions.
 
 ## Verification baseline
+
+Boating music, 2026-10-18: Debug build and all 54 CTests passed across CPU and
+unsandboxed desktop graphics runs (14 GPU tests); the final XM was rechecked after
+regeneration. Desktop boating audio smoke passed. The user accepted the joyful music
+on 2026-10-18; exhaustive focus/replay listening remains unverified.
+See [the boating music record](BOATING_PLAN.md#joyful-background-music--2026-10-18).
+
+Boating-audio change, 2026-10-18: a peaceful water-led mix supersedes the earlier engine
+revisions following user feedback and a second Astra consultation. Debug build and offline
+engine/water validation, all 53 CTests (including 14 graphics tests), and the desktop CPU
+wave-demo smoke run passed. Detailed evidence is tracked in
+[the audio record](BOATING_PLAN.md#peaceful-water-mix-verification--2026-10-18).
+The user accepted the peaceful mix on 2026-10-18; it is the audio baseline.
+Exhaustive manual control/replay coverage remains unverified.
 
 On the development Mac, 2026-10-18, Debug configure/build and all 52 CTests passed,
 including 14 graphics-context tests with `PROTEUS_GPU_TESTS=ON`; rerun after the

@@ -90,8 +90,18 @@ target_compile_options(validate_audio_spectrum PRIVATE
 )
 
 enable_testing()
+add_executable(validate_boat_audio tools/validate_boat_audio.c src/boat_audio.c)
+target_include_directories(validate_boat_audio PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(validate_boat_audio PRIVATE raylib)
+target_compile_options(validate_boat_audio PRIVATE
+  $<$<C_COMPILER_ID:AppleClang,Clang,GNU>:-Wall;-Wextra;-Wpedantic>)
+add_test(NAME boat_audio_is_valid COMMAND validate_boat_audio)
+
 add_executable(boat_study tools/boat_study.c src/boat.c src/renderer3d.c src/profiler.c)
-target_sources(boat_study PRIVATE src/boat_gpu.c src/renderer_gpu.c)
+target_sources(boat_study PRIVATE src/boat_audio.c src/xm_audio.c src/boat_gpu.c src/renderer_gpu.c)
+target_compile_definitions(boat_study PRIVATE
+  PROTEUS_ASSET_DIR="$<TARGET_FILE_DIR:boat_study>/assets"
+)
 add_dependencies(boat_study proteus_assets)
 add_executable(validate_boat tools/validate_boat.c src/boat.c src/renderer3d.c)
 add_executable(validate_boat_replay tools/validate_boat_replay.c src/boat.c src/renderer3d.c)
@@ -366,3 +376,6 @@ if(PROTEUS_GPU_TESTS)
   add_test(NAME gpu_surface_materials COMMAND gpu_fixture --city --check)
   set_tests_properties(gpu_surface_materials PROPERTIES LABELS "gpu" RUN_SERIAL TRUE)
 endif()
+
+add_test(NAME boating_xm_is_valid
+  COMMAND validate_xm ${CMAKE_CURRENT_SOURCE_DIR}/assets/music/a-little-boat.xm --background)
