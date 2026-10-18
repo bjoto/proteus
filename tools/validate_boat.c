@@ -24,6 +24,49 @@ static int particles(const Boat *boat, bool spray)
     return count;
 }
 
+// Stern variation must not change the accepted bow spray or any handling state.
+static int validate_wake_independence(void)
+{
+    Boat a, b;
+    boat_reset(&a);
+    boat_reset(&b);
+    b.wake_emission = 931;
+    for (int tick = 0; tick < 720; ++tick) {
+        a.throttle = b.throttle = tick < 480 ? 1 : -1;
+        boat_step(&a, tick > 360 ? .4f : 0, 0);
+        boat_step(&b, tick > 360 ? .4f : 0, 0);
+        CHECK(a.position.x == b.position.x && a.position.y == b.position.y);
+        CHECK(a.heading == b.heading && a.emission == b.emission);
+        CHECK(particles(&a, true) == particles(&b, true));
+        for (int i = 0; i < BOAT_WATER_PARTICLES; ++i) {
+            const BoatWaterParticle *p = &a.water[i];
+            if (!p->spray || p->lifetime <= 0)
+                continue;
+            bool found = false;
+            for (int j = 0; j < BOAT_WATER_PARTICLES; ++j) {
+                const BoatWaterParticle *q = &b.water[j];
+                if (q->spray && q->lifetime > 0 && p->age == q->age
+                    && p->position.x == q->position.x && p->position.y == q->position.y
+                    && p->height == q->height && p->size == q->size && p->lift == q->lift) {
+                    found = true;
+                    break;
+                }
+            }
+            CHECK(found);
+        }
+    }
+    // Even a saturated pool must not let a foam birth overwrite live airborne spray.
+    boat_reset(&a);
+    a.throttle = a.engine_response = 1;
+    a.propeller_time = .075f;
+    for (int i = 0; i < BOAT_WATER_PARTICLES; ++i)
+        a.water[i] = (BoatWaterParticle) { .height = 100, .lifetime = 100, .spray = true };
+    boat_step(&a, 0, 0);
+    CHECK(particles(&a, true) == BOAT_WATER_PARTICLES);
+    CHECK(particles(&a, false) == 0);
+    return 0;
+}
+
 static float kinetic_energy(const Boat *boat)
 {
     // Normalized mass 1 and yaw inertia 2.2; total energy includes rotation.
@@ -915,6 +958,7 @@ int main(void)
     boat_map_destroy();
     CHECK(validate_course() == 0);
     CHECK(validate_coasting() == 0);
+    CHECK(validate_wake_independence() == 0);
     CHECK(validate_signed_propulsion() == 0);
     CHECK(validate_signed_throttle() == 0);
     CHECK(validate_planing() == 0);

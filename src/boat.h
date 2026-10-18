@@ -23,7 +23,8 @@ typedef struct {
     Vector2 position, velocity;
     float height, lift;
     float age, lifetime, size;
-    bool spray;
+    bool spray, wash;
+    float variation; // Stable birth variation; independent of the front-spray sequence.
 } BoatWaterParticle;
 
 typedef struct {
@@ -48,7 +49,7 @@ typedef struct {
     float yaw_velocity; // Heading change in radians/second, integrated from stern torque.
     float camera_heading; // Smoothed follow direction, updated on fixed simulation ticks.
     BoatWaterParticle water[BOAT_WATER_PARTICLES];
-    unsigned int next_particle, emission;
+    unsigned int next_particle, emission, wake_emission;
     float wake_distance, spray_time, propeller_time;
 } Boat;
 

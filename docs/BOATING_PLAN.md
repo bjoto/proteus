@@ -3,7 +3,9 @@
 Status: updated 2026-10-18. `boat_study` implements free boating in basin, Eriksberg,
 and river locations, reverse/docking, planing, buoyancy, optional gentle waves, and a timed
 S course with recordings, persistent personal bests, ghosts, and replay controls. The study
-has quiet engine/water audio and a repeating, gentle XM background piece. The score-loop arcade mode and archipelago remain proposals.
+has quiet engine/water audio and a repeating, gentle XM background piece. The [stern-wake motion pass](#stern-wake-motion--2026-10-18) is implemented;
+continuous-motion artistic review is next.
+The score-loop arcade mode and archipelago remain proposals.
 
 This document owns gameplay direction. Detailed next tasks belong to the
 [physics plan](BOAT_PHYSICS_PLAN.md), [living-city plan](LIVING_CITY_PLAN.md), and
@@ -81,7 +83,8 @@ transition and settle at cruise. Hull, cabin, and outboard share the physical po
 renderers, including GPU reflections and shadows. The camera keeps a level horizon.
 `--waves` enables gentle crossing waves with water-relative resistance and matching visual
 surfaces. Currents and crossable wakes from another vessel remain unimplemented.
-A spreading, fading wake traces the travelled path; planing broadens it and adds symmetric spray
+A spreading, fading wake traces the travelled path, with varied foam patches and short-lived
+stern wash that separates and erodes; planing broadens the trail and adds symmetric spray
 even on straight runs. Lateral slip throws turning spray from the sliding side of the hull. Two orange markers provide turning
 references but do not collide. Rendering is 320x200 with nearest-neighbour integer scaling. Losing
 focus pauses movement.
@@ -180,6 +183,106 @@ The proposed challenge is a 60-second score run:
 
 Exact scoring values are tuning decisions. No opponents, enemy AI, or complicated combo system are
 needed. Free boating remains available without a timer or mandatory gates.
+
+## Stern-wake motion — 2026-10-18
+
+Status: implementation and automated verification complete; user motion/artistic review
+is next. The user likes
+high-speed bow spray but reports that the stern wake looks static at full speed. Astra
+reviewed the particle implementation and recommends a bounded visual pass here. This
+continues the movement feedback in physics B2/C3; the planned D1 current and D2 physical
+crossable wake remain separate tasks in the [physics plan](BOAT_PHYSICS_PLAN.md).
+
+Baseline code review, before this pass: `water_step` already left world-space history. It emitted identical paired
+foam patches every 0.55 m and identical propeller-wash patches every 0.04 s. Surface
+patches spread, grow at the same rate, and fade monotonically. Overlap and regular spacing
+can therefore look like a steady V beneath a following camera at constant speed. This was
+the code-based explanation of the reported symptom. Matched baseline and revised
+sequences have now been captured; see the implementation record below.
+
+Reviewed implementation brief (now implemented with surface foam): prototype stern-local
+churn and breaking foam while preserving the current
+bow/turning spray, handling, camera, and historical curved trail.
+
+1. Capture a repeatable full-speed straight run before changing visuals, plus acceleration,
+   a turn, neutral coast, and reverse. Include the default and low river follow cameras.
+2. Give stern foam deterministic per-birth variation in size, spacing, lateral drift, and
+   lifetime. Make short-lived, coarse foam clusters visibly emerge, travel aft, split or
+   lose coverage, and dissolve; retain quieter spreading foam farther behind. Use bounded
+   variation rather than whole-wake brightness pulsing or fine flicker. Keep bow-spray
+   emission variation independent so its existing appearance survives the stern pass.
+3. Start with the existing fixed-step particle system and shared CPU/GPU pose path.
+   Tune the near-stern propeller wash before adding geometry. If flat foam still lacks
+   volume, try a few low, short-lived stern droplets, visually below the bow spray.
+   Keep wash responsive to signed engine thrust and steering, and hull wake responsive
+   to water-relative travel; coasting and reversing must remain understandable.
+4. Review the existing 384-particle budget before adding emitters; stern additions must
+   not evict front spray. Share appearance calculations between scene-frame and direct
+   CPU drawing. Preserve the curved
+   history through turns, surface attachment, shoreline masking, and renderer parity.
+   No physical wake forces or broader water-surface redesign are required for this pass.
+
+Acceptance: at steady full speed, individual coarse stern features visibly move and
+break up in the follow view; motion reads at 320x200 without relying on AA. Preserve the
+approved front spray and avoid a continuous white carpet, synchronized pulses, sparkling
+pixels, and repeated dotted rails. Compare matched before/after clips with waves on/off
+and GPU AA on/off, check CPU representative frames, and manually drive the transition,
+turn, neutral, and reverse cases. Run the Debug build and CTest; verify deterministic
+replay and particle capacity when the implementation changes. User artistic acceptance
+remains pending until the moving result is reviewed.
+
+Verification for this planning step (2026-10-18, macOS): inspected source and existing
+plan ownership; Debug build and all 54 CTests passed, including 14 GPU checks with
+`PROTEUS_GPU_TESTS=ON`. `git diff --check` passed. No runtime changes, new manual
+playback review, or audiovisual acceptance claimed. No dedicated stern-animation task
+was found in the live plans; the earlier water review's preservation brief describes its
+completed surface pass.
+
+### Stern-wake implementation and verification — 2026-10-18
+
+Implemented in `src/boat.[ch]`: unequal, short-lived propeller-wash lobes with varied
+rearward speed and outward drift; a deterministic separate foam-birth sequence varies
+the historical trail's spacing, width, lifetime, and spread. Wash first expands then
+shrinks as it fades, opening gaps instead of filling a central stripe. Foam size/colour
+are shared by direct CPU rendering and scene-frame/GPU rendering. Surface attachment,
+shoreline masking, signed thrust direction, and the fixed 384-particle pool remain.
+No additional stern droplets were needed in this first pass. Bow-spray birth, trajectories,
+size, colour, and its original variation sequence are preserved. Expired slots are reused;
+if saturated, new particles may replace surface foam but never live airborne spray.
+
+Completed checks on macOS:
+
+- Debug build passed without warnings. All 54 CTests passed across the initial CPU run
+  and desktop-access GPU run: 14 GPU tests plus their replay fixture passed; the final
+  XM test also passed separately. The sandboxed suite was interrupted at its first GPU
+  test because macOS desktop access was unavailable there.
+- Added handling checks that change the stern seed while requiring identical boat
+  positions/headings and matching live bow-spray particles throughout acceleration,
+  a turn, and reversal. A deliberately full spray pool rejects new foam. Existing
+  handling, wave-attachment, reset, and replay tests passed.
+- Captured matched before/after 320x200 sequences at 20 Hz with the normal 20/14 camera
+  and low 32/6 camera, GPU AA on/off and waves on/off. The eight-second basin sequence
+  begins after four seconds of full throttle, then turns, coasts, and reverses; basin
+  position and existing foam are translated together at segment boundaries to avoid
+  wall contacts. Inspected representative cruise, turning, coasting, and reverse frames
+  and temporal strips. The revised trail has irregular gaps instead of continuous rails;
+  the near-stern clusters change shape and position while the curved trail remains.
+  Peak live particles: 268 flat / 273 waves, versus 256 / 263 in the baseline.
+- Repeated the CPU sequence from reset: all 160 exported frames were byte-identical.
+  A desktop `boat_study --location river --waves --gpu-aa --demo --frames 360` smoke
+  run exited successfully. This is scripted playback, not exhaustive manual driving.
+- `git diff --check` and changed documentation links passed.
+
+Artifacts are local under `build/wake-review/`: `review.c` and the baseline/revised
+review executables, per-preset PNG sequences/logs, `motion-*.png` temporal strips, and
+`compare-*.mp4` clips (baseline left, revised right). `compare-aa-w0.mp4` uses the low
+camera; `compare-gpu-w0.mp4` uses the normal camera. Review these in motion before
+artistic acceptance. Current limits: the frame audit samples 20 Hz, human continuous
+motion/input review remains pending, and the existing pose-only saved replay format
+does not regenerate water particles. No physical crossing wake was added.
+
+Next task: user review of full-speed stern motion, especially from the low follow view;
+then tune churn density/contrast if needed. Keep the accepted bow spray as the reference.
 
 ## Presentation and feedback
 

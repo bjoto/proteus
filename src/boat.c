@@ -293,13 +293,36 @@ static void buoyancy_step(Boat *boat)
     boat->roll += boat->roll_velocity * BOAT_STEP;
 }
 
+// Integer hash gives each foam birth its own identity without disturbing spray variation.
+static float wake_variation(Boat *boat)
+{
+    unsigned int bits = ++boat->wake_emission * 747796405u + 2891336453u;
+    bits = ((bits >> ((bits >> 28u) + 4u)) ^ bits) * 277803737u;
+    return (float)((bits >> 22u) & 1023u) / 1023;
+}
+
 static void water_emit(Boat *boat, BoatWaterParticle particle)
 {
     if (!particle.spray)
         particle.height
             = boat_water_query(boat->water_settings, particle.position, boat->time).height + .015f;
-    boat->water[boat->next_particle] = particle;
-    boat->next_particle = (boat->next_particle + 1) % BOAT_WATER_PARTICLES;
+    // Prefer expired slots. Foam may replace foam, but never shorten airborne spray.
+    for (unsigned int offset = 0; offset < BOAT_WATER_PARTICLES; ++offset) {
+        unsigned int slot = (boat->next_particle + offset) % BOAT_WATER_PARTICLES;
+        if (boat->water[slot].lifetime <= 0) {
+            boat->water[slot] = particle;
+            boat->next_particle = (slot + 1) % BOAT_WATER_PARTICLES;
+            return;
+        }
+    }
+    for (unsigned int offset = 0; offset < BOAT_WATER_PARTICLES; ++offset) {
+        unsigned int slot = (boat->next_particle + offset) % BOAT_WATER_PARTICLES;
+        if (!boat->water[slot].spray) {
+            boat->water[slot] = particle;
+            boat->next_particle = (slot + 1) % BOAT_WATER_PARTICLES;
+            return;
+        }
+    }
 }
 
 static void water_step(Boat *boat)
@@ -331,14 +354,24 @@ static void water_step(Boat *boat)
     // Propeller wash moves opposite the force applied to the stern, even before the hull moves.
     if (fabsf(boat->engine_response) > 0.02f) {
         boat->propeller_time += BOAT_STEP;
-        if (boat->propeller_time >= 0.04f) {
-            boat->propeller_time -= 0.04f;
-            water_emit(boat,
-                (BoatWaterParticle) { .position = stern,
-                    .velocity = Vector2Scale(thrust_direction(boat), -4 * boat->engine_response),
-                    .height = 0.015f,
-                    .lifetime = 0.7f + fabsf(boat->engine_response) * 0.5f,
-                    .size = 0.3f + fabsf(boat->engine_response) * 0.4f });
+        if (boat->propeller_time >= 0.075f) {
+            boat->propeller_time -= 0.075f;
+            float variation = wake_variation(boat);
+            float power = fabsf(boat->engine_response);
+            // Unequal lobes separate as they travel aft, opening gaps instead of a solid stripe.
+            for (int side = -1; side <= 1; side += 2) {
+                float v = side < 0 ? variation : wake_variation(boat);
+                water_emit(boat,
+                    (BoatWaterParticle) { .position
+                        = Vector2Add(stern, Vector2Scale(right, side * (.12f + .18f * v))),
+                        .velocity = Vector2Add(Vector2Scale(thrust_direction(boat),
+                                                   -(3.0f + 3.0f * v) * boat->engine_response),
+                            Vector2Scale(right, side * (.3f + .65f * v) * power)),
+                        .lifetime = .55f + .65f * v,
+                        .size = (.28f + .38f * v) * (.5f + .5f * power),
+                        .wash = true,
+                        .variation = v });
+            }
         }
     } else {
         boat->propeller_time = 0;
@@ -346,18 +379,22 @@ static void water_step(Boat *boat)
     if (speed > 0.8f) {
         // Distance spacing leaves a curved history in the water, independent of render rate.
         boat->wake_distance += speed * BOAT_STEP;
-        if (boat->wake_distance >= 0.55f) {
-            boat->wake_distance -= 0.55f;
+        float spacing = .48f + .24f * (float)(boat->wake_emission % 7u) / 6;
+        if (boat->wake_distance >= spacing) {
+            boat->wake_distance -= spacing;
             for (int side = -1; side <= 1; side += 2) {
+                float v = wake_variation(boat);
                 water_emit(boat,
-                    (BoatWaterParticle) {
-                        .position = Vector2Add(stern, Vector2Scale(right, side * 0.65f)),
+                    (BoatWaterParticle) { .position
+                        = Vector2Add(stern, Vector2Scale(right, side * (.55f + .25f * v))),
                         .velocity = Vector2Scale(right,
                             side * (0.45f + speed * 0.035f) * Lerp(1, 1.6f, boat->planing)
-                                * (1 + .15f * boat->wave_spray)),
+                                * (1 + .15f * boat->wave_spray) * (.75f + .5f * v)),
                         .height = 0.01f,
-                        .lifetime = (1.6f + speed * 0.045f) * Lerp(1, 1.25f, boat->planing),
-                        .size = Lerp(.4f, .65f, boat->planing) });
+                        .lifetime = (1.6f + speed * 0.045f) * Lerp(1, 1.25f, boat->planing)
+                            * (.75f + .35f * v),
+                        .size = Lerp(.4f, .65f, boat->planing) * (.65f + .55f * v),
+                        .variation = v });
             }
         }
     } else {
@@ -513,6 +550,27 @@ static View3D boat_camera(const Boat *boat, BoatCamera camera_settings)
         .far_plane = boat->eriksberg ? 2200 : 350 };
 }
 
+static float water_particle_size(const BoatWaterParticle *water)
+{
+    if (water->spray)
+        return water->size;
+    float life = water->age / water->lifetime;
+    if (water->wash)
+        return (water->size + water->age * .9f) * (1 - .85f * life * life);
+    return (water->size + water->age * .22f) * (1 - .45f * life * life);
+}
+
+static Color water_particle_color(const Boat *boat, const BoatWaterParticle *water)
+{
+    float fade = 1 - water->age / water->lifetime;
+    if (!water->spray)
+        fade *= (.68f + .32f * water->variation) * fade;
+    Color base = boat->eriksberg ? (Color) { 45, 79, 104, 255 } : (Color) { 36, 107, 125, 255 };
+    return (Color) { (unsigned char)(base.r + (226 - base.r) * fade),
+        (unsigned char)(base.g + (239 - base.g) * fade),
+        (unsigned char)(base.b + (244 - base.b) * fade), 255 };
+}
+
 static Transform3D water_particle_pose(const Boat *boat, const BoatWaterParticle *water, float size)
 {
     Transform3D pose = { .position = { -water->position.x, water->height, water->position.y },
@@ -587,14 +645,10 @@ void boat_scene_frame(const Boat *boat, BoatCamera camera, WaterfrontSceneFrame 
         const BoatWaterParticle *water = &boat->water[i];
         if (water->lifetime <= 0 || (boat->eriksberg && !boat_map_water(water->position, 0)))
             continue;
-        float fade = 1 - water->age / water->lifetime;
-        Color base = boat->eriksberg ? (Color) { 45, 79, 104, 255 } : (Color) { 36, 107, 125, 255 };
-        float size = water->size + (water->spray ? 0 : water->age * .35f);
+        float size = water_particle_size(water);
         p->particles[p->particle_count++]
             = (WaterfrontPlayerParticle) { .transform = water_particle_pose(boat, water, size),
-                  .color = { (unsigned char)(base.r + (226 - base.r) * fade),
-                      (unsigned char)(base.g + (239 - base.g) * fade),
-                      (unsigned char)(base.b + (244 - base.b) * fade), 255 },
+                  .color = water_particle_color(boat, water),
                   .spray = water->spray };
     }
 }
@@ -659,14 +713,8 @@ bool boat_draw_with_ghost(Renderer3D *renderer, Color *pixels, int width, int he
             continue;
         if (boat->eriksberg && !boat_map_water(p->position, 0))
             continue;
-        float fade = 1 - p->age / p->lifetime;
-        Color water
-            = boat->eriksberg ? (Color) { 45, 79, 104, 255 } : (Color) { 36, 107, 125, 255 };
-        Color color = { (unsigned char)(water.r + (226 - water.r) * fade),
-            (unsigned char)(water.g + (239 - water.g) * fade),
-            (unsigned char)(water.b + (244 - water.b) * fade), 255 };
-        float size = p->size + (p->spray ? 0 : p->age * 0.35f);
-        renderer3d_draw_box(renderer, water_particle_pose(boat, p, size), color);
+        renderer3d_draw_box(renderer, water_particle_pose(boat, p, water_particle_size(p)),
+            water_particle_color(boat, p));
     }
     if (!boat->eriksberg) {
         Color quay = { 148, 151, 137, 255 };

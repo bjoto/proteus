@@ -253,7 +253,8 @@ changes the support distribution rather than adding a cosmetic tilt. The follow 
 level horizon and does not follow the hull’s bobbing.
 
 The basin walls bounce the craft back gently; the two orange markers are visual turning references
-and have no collision yet. A spreading wake traces your path and fades; hard turns throw spray
+and have no collision yet. Varied foam traces your path and fades; short-lived stern wash
+separates and erodes as it travels aft. Hard turns throw spray
 according to sideways slip. Reset clears both effects. The default basin has no geographic scenery; `--course` adds timed gates, and Eriksberg and river provide mapped scenery.
 
 Opt in to gentle crossing waves with `--waves` (all locations, CPU or GPU).
