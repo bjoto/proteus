@@ -1,0 +1,88 @@
+# macOS boat study builds
+
+The **macOS boat study** GitHub Actions workflow builds a Release Apple Silicon
+app on `macos-15`, targeting macOS 13 or newer. It runs on pushes and can be
+started manually after the workflow is on the default branch. Intel Macs are
+not included. No Apple Developer membership or signing secrets are required.
+
+## Download and open
+
+1. Push the changes, then open **Actions → macOS boat study** in GitHub.
+2. Open a successful run and download **proteus-boating-macos-arm64** under **Artifacts**.
+3. Extract the artifact, then extract the enclosed `proteus-boating-macos-arm64.zip`.
+4. Move **Proteus Boating.app** into Applications, or another folder of your choice.
+5. Open the app. If macOS blocks it, open **System Settings → Privacy & Security**,
+   select **Open Anyway** for this app, and confirm the launch.
+
+See [Apple's instructions](https://support.apple.com/en-ie/102445) for the security
+override. Managed Macs may restrict this option. The app is ad-hoc signed: its
+bundle integrity is checked, but there is no verified developer identity or Apple
+notarization. The workflow does not disable Gatekeeper. A SHA-256 file accompanies
+the ZIP; it checks archive integrity, not publisher identity. Artifacts expire after
+30 days. `Contents/Resources/build.txt` records the source commit and whether the
+checkout had uncommitted changes when packaged.
+
+Double-clicking the app launches the preferred river setup: current, crossing wake,
+gentle waves, GPU antialiasing, camera distance 12, and camera height 6. This is
+equivalent to:
+
+```sh
+./build/boat_study --current --crossing-wake --location river --waves --gpu-aa --camera-distance 12 --camera-height 6
+```
+
+See the [controls and replay guide](../README.md#boating-sketch). Supplying any
+explicit arguments to the bundle executable uses the usual CLI defaults (basin,
+without current/crossing wake/waves/antialiasing), then applies those arguments.
+For example:
+
+```sh
+"/Applications/Proteus Boating.app/Contents/MacOS/boat_study" --location eriksberg --gpu-aa
+```
+
+Music, shaders, textures, map attribution, and dependency licenses are inside the
+bundle. Personal bests remain in `~/Library/Application Support/Proteus/`.
+
+## Build locally
+
+From the repository root on an Apple Silicon Mac:
+
+```sh
+cmake -S . -B build-mac -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 -DBUILD_SHARED_LIBS=OFF -DPROTEUS_GPU_TESTS=OFF
+cmake --build build-mac --parallel 3
+ctest --test-dir build-mac --output-on-failure
+python3 tools/macos/package.py --build-dir build-mac --output-dir build-mac/package
+```
+
+Use a fresh output directory when packaging again; the script refuses to overwrite
+an existing app. It checks architecture and system-only dynamic dependencies,
+creates the bundle, ad-hoc signs it, verifies the signature, and creates the ZIP
+with `ditto`. The plist records the executable's minimum macOS version. An optional
+`--raylib-source PATH` supports a custom CMake FetchContent source location.
+
+The workflow runs the full display-free CTest suite and checks the extracted app's
+signature and a CPU capture from another working directory. GPU rendering and
+audio playback require a desktop check; CI does not establish those or Gatekeeper
+behavior after a browser download.
+
+## Implementation status and verification
+
+2026-10-18, Apple Silicon/macOS 26: workflow, relocatable boating assets, preferred
+river launch defaults, bundle packager, ad-hoc signature, ZIP, and checksum implemented.
+Debug configure/build passed; all 69 CTests passed with desktop access, including
+18 GPU checks. The first sandboxed suite was stopped at its first GPU test after
+50 passing checks; desktop access resolved the stall. Release arm64 build targeting
+macOS 13 passed (raylib emitted an existing third-party `stb_vorbis` warning).
+Local Release configuration reused the fetched raylib source via
+`FETCHCONTENT_SOURCE_DIR_RAYLIB`; packaging used `--raylib-source` accordingly.
+
+ZIP extraction, strict code-signature verification, checksum verification, relocated
+CPU capture, GPU/antialiasing desktop smoke, and Launch Services startup passed.
+The final no-argument bundled river launch ran for five seconds before deliberate
+termination, and a GPU capture of the preferred invocation was inspected.
+Workflow YAML parsing, Python compilation, changed local documentation links, and
+`git diff --check` passed. No subjective audio listening or interactive control
+review was performed for this change; macOS 13 execution remains untested.
+
+Next: push and run the workflow, download through a browser, and verify the
+Open Anyway path and interactive playback. No GitHub run, browser-download
+Gatekeeper check, user acceptance, Intel support, or notarization is claimed.

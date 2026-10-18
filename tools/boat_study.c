@@ -1,4 +1,5 @@
 #include "boat.h"
+#include "boat_assets.h"
 #include "boat_audio.h"
 #include "boat_gpu.h"
 #include "boat_map.h"
@@ -153,6 +154,20 @@ static void course_runs_hud(
 
 int main(int argc, char **argv)
 {
+#if defined(__APPLE__)
+    // Finder launches the app without arguments; explicit CLI invocations keep their defaults.
+    char bundle_assets[4096];
+    int bundle_length = snprintf(
+        bundle_assets, sizeof(bundle_assets), "%s../Resources/assets", GetApplicationDirectory());
+    if (argc == 1 && bundle_length > 0 && (size_t)bundle_length < sizeof(bundle_assets)
+        && DirectoryExists(bundle_assets)) {
+        static char *app_arguments[]
+            = { "boat_study", "--current", "--crossing-wake", "--location", "river", "--waves",
+                  "--gpu-aa", "--camera-distance", "12", "--camera-height", "6", NULL };
+        argc = (int)(sizeof(app_arguments) / sizeof(app_arguments[0])) - 1;
+        argv = app_arguments;
+    }
+#endif
     const char *screenshot = NULL;
     const char *replay_path = NULL, *ghost_path = NULL, *data_dir = NULL, *export_path = NULL;
     float time = 0;
@@ -394,7 +409,9 @@ int main(int argc, char **argv)
     }
     SetTextureFilter(texture, TEXTURE_FILTER_POINT);
     boat_audio_init(&audio, BOAT_ENGINE_DEFAULT);
-    const char *music_path = PROTEUS_ASSET_DIR "/music/a-little-boat.xm";
+    char music_path[4096];
+    if (!boat_asset_path(music_path, sizeof(music_path), "music/a-little-boat.xm"))
+        goto cleanup;
     if (IsAudioDeviceReady()) {
         music = LoadMusicStream(music_path);
         music_ready = IsMusicValid(music);

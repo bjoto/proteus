@@ -99,9 +99,6 @@ add_test(NAME boat_audio_is_valid COMMAND validate_boat_audio)
 
 add_executable(boat_study tools/boat_study.c src/boat.c src/renderer3d.c src/profiler.c)
 target_sources(boat_study PRIVATE src/boat_audio.c src/xm_audio.c src/boat_gpu.c src/renderer_gpu.c)
-target_compile_definitions(boat_study PRIVATE
-  PROTEUS_ASSET_DIR="$<TARGET_FILE_DIR:boat_study>/assets"
-)
 add_dependencies(boat_study proteus_assets)
 add_executable(validate_boat tools/validate_boat.c src/boat.c src/renderer3d.c)
 add_executable(validate_boat_environment tools/validate_boat_environment.c src/boat.c src/renderer3d.c)

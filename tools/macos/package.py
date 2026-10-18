@@ -1,0 +1,84 @@
+#!/usr/bin/env python3
+"""Package a native boat_study build as an ad-hoc signed macOS app ZIP."""
+
+import argparse
+from pathlib import Path
+import plistlib
+import re
+import shutil
+import subprocess
+
+
+def run(*args):
+    return subprocess.check_output(args, text=True).strip()
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--build-dir", type=Path, default=Path("build"))
+    parser.add_argument("--output-dir", type=Path, default=Path("build/macos-package"))
+    parser.add_argument("--raylib-source", type=Path, help="Override FetchContent source location")
+    args = parser.parse_args()
+    root = Path(__file__).resolve().parents[2]
+    build = args.build_dir.resolve()
+    output = args.output_dir.resolve()
+    raylib = args.raylib_source or build / "_deps/raylib-src"
+    app = output / "Proteus Boating.app"
+    if app.exists():
+        raise SystemExit(f"Refusing to overwrite existing app: {app}")
+    executable = build / "boat_study"
+    architectures = run("lipo", "-archs", str(executable))
+    if architectures != "arm64":
+        raise SystemExit(f"Expected Apple Silicon build, got: {architectures}")
+    minimum_os = re.search(r"\bminos (\S+)", run("otool", "-l", str(executable)))
+    if not minimum_os:
+        raise SystemExit("Could not determine executable's minimum macOS version")
+    dependencies = run("otool", "-L", str(executable))
+    for line in dependencies.splitlines()[1:]:
+        library = line.strip().split(" (", 1)[0]
+        if not library.startswith(("/System/Library/", "/usr/lib/")):
+            raise SystemExit(f"Unbundled dependency: {library}")
+    commit = run("git", "-C", str(root), "rev-parse", "HEAD")
+    dirty = bool(run("git", "-C", str(root), "status", "--porcelain"))
+    contents = app / "Contents"
+    resources = contents / "Resources"
+    (contents / "MacOS").mkdir(parents=True)
+    resources.mkdir()
+    shutil.copy2(executable, contents / "MacOS" / "boat_study")
+    assets = resources / "assets"
+    assets.mkdir()
+    for directory in ("shaders", "textures"):
+        shutil.copytree(build / "assets" / directory, assets / directory)
+    (assets / "music").mkdir()
+    shutil.copy2(build / "assets/music/a-little-boat.xm", assets / "music")
+    (assets / "geometry/eriksberg").mkdir(parents=True)
+    shutil.copy2(root / "assets/geometry/eriksberg/manifest.json", assets / "geometry/eriksberg")
+    shutil.copy2(raylib / "LICENSE", resources / "raylib-LICENSE.txt")
+    shutil.copy2(raylib / "src/external/glfw/LICENSE.md", resources / "glfw-LICENSE.md")
+    (resources / "build.txt").write_text(
+        f"Commit: {commit}\nUncommitted changes: {dirty}\nArchitecture: {architectures}\n"
+        "Signing: ad-hoc; no verified developer identity or Apple notarization\n"
+    )
+    with (contents / "Info.plist").open("wb") as stream:
+        plistlib.dump({
+            "CFBundleExecutable": "boat_study",
+            "CFBundleIdentifier": "org.proteus.boating",
+            "CFBundleName": "Proteus Boating",
+            "CFBundleDisplayName": "Proteus Boating",
+            "CFBundlePackageType": "APPL",
+            "CFBundleShortVersionString": "0.1.0",
+            "CFBundleVersion": "1",
+            "NSHighResolutionCapable": True,
+            "LSMinimumSystemVersion": minimum_os.group(1),
+        }, stream)
+    run("codesign", "--force", "--sign", "-", str(app))
+    run("codesign", "--verify", "--deep", "--strict", "--verbose=2", str(app))
+    archive = output / "proteus-boating-macos-arm64.zip"
+    run("ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", str(app), str(archive))
+    digest = run("shasum", "-a", "256", str(archive)).split()[0]
+    archive.with_suffix(".zip.sha256").write_text(f"{digest}  {archive.name}\n")
+    print(archive)
+
+
+if __name__ == "__main__":
+    main()

@@ -15,6 +15,7 @@ Both default to GPU rendering; the CPU reference supports display-free captures.
 | [River / Älvsborgsbron](eriksberg/bridge/README.md) | Separate source/crop, navigable bridge blockout, blocking tower legs, and grounded road approaches | Bridge/shoreline/building refinement; human handling and camera review |
 | [GPU migration](GPU_WATERFRONT_PLAN.md) | Steps 01–12 implemented; GPU default, lighting, shadows, atmosphere, reflections, and regression checks | Migration is implemented; other-platform and human visual acceptance remain separate from automated checks |
 | [Soundtrack](SOUNDTRACK_PLAN.md) | Approved proof v03, full composition/mix candidate, editable XM, and runtime integration | Timestamped listening feedback and full composition/mix acceptance; continue editing in FastTracker |
+| [macOS app builds](MACOS_BUILD.md) | Apple Silicon action, relocatable app bundle, preferred river launch, ad-hoc signing, ZIP/checksum; local build and launch verified | First GitHub run and browser-download security approval; macOS 13 execution and user playback review |
 
 These are separate work tracks, not a single execution queue. A next task in one plan
 does not authorize advancing every plan. Use the requested track's scope and acceptance checks.
@@ -30,7 +31,8 @@ does not authorize advancing every plan. Use the requested track's scope and acc
 - [Harbor traffic](HARBOR_TRAFFIC.md): travelling craft, ferry, routes, moving contacts, and visual wakes.
 - [Music workflow](MUSIC.md) and [FastTracker guide](../soundtrack/alternate/fasttracker/README.md):
   working XM, section cues, editing, and runtime selection.
-- [Windows builds](WINDOWS_BUILD.md), [dance study](DANCE_STUDY.md), and [Emacs setup](emacs.md).
+- [Windows builds](WINDOWS_BUILD.md), [macOS app builds](MACOS_BUILD.md),
+  [dance study](DANCE_STUDY.md), and [Emacs setup](emacs.md).
 - [Original waterfront plan](WATERFRONT_PLAN.md), [Eriksberg survey](eriksberg/README.md), and
   [living-city baseline audit](LIVING_CITY_AUDIT.md): historical design and evidence, with links
   to the current owners above. Dated progress entries retain results for their original revisions.

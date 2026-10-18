@@ -1,0 +1,55 @@
+name: macOS boat study
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Configure Apple Silicon Release
+        run: >-
+          cmake -S . -B build-mac -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_OSX_ARCHITECTURES=arm64 -DBUILD_SHARED_LIBS=OFF
+          -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0
+          -DPROTEUS_GPU_TESTS=OFF
+
+      - name: Build and test
+        run: |
+          cmake --build build-mac --parallel 3
+          ctest --test-dir build-mac --output-on-failure
+
+      - name: Package and ad-hoc sign
+        run: python3 tools/macos/package.py --build-dir build-mac --output-dir build-mac/package
+
+      - name: Check extracted app outside the checkout
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/relocated"
+          ditto -x -k build-mac/package/proteus-boating-macos-arm64.zip "$RUNNER_TEMP/relocated"
+          app="$RUNNER_TEMP/relocated/Proteus Boating.app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          cd "$RUNNER_TEMP"
+          "$app/Contents/MacOS/boat_study" --renderer cpu --location eriksberg --time 3 --screenshot relocated.png
+          test -s relocated.png
+          test -s "$app/Contents/Resources/assets/music/a-little-boat.xm"
+          test -s "$app/Contents/Resources/assets/shaders/waterfront_city.fs"
+
+      - name: Upload downloadable app
+        uses: actions/upload-artifact@v4
+        with:
+          name: proteus-boating-macos-arm64
+          path: |
+            build-mac/package/*.zip
+            build-mac/package/*.sha256
+          if-no-files-found: error
+          retention-days: 30

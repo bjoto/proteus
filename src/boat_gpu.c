@@ -1,4 +1,5 @@
 #include "boat_gpu.h"
+#include "boat_assets.h"
 #include "raymath.h"
 #include "rlgl.h"
 
@@ -25,9 +26,7 @@ void boat_gpu_destroy(BoatGpu *gpu)
 bool boat_gpu_init(BoatGpu *gpu, bool aa)
 {
     char shader_path[1024];
-    int length = snprintf(shader_path, sizeof(shader_path), "%sassets/shaders/waterfront_city.fs",
-        GetApplicationDirectory());
-    if (length < 0 || (size_t)length >= sizeof(shader_path)) {
+    if (!boat_asset_path(shader_path, sizeof(shader_path), "shaders/waterfront_city.fs")) {
         TraceLog(LOG_ERROR, "Boat shader path is too long");
         goto failed;
     }
@@ -41,9 +40,7 @@ bool boat_gpu_init(BoatGpu *gpu, bool aa)
         gpu->supersampled = LoadRenderTexture(1280, 800);
         if (!IsRenderTextureValid(gpu->supersampled))
             goto failed;
-        length = snprintf(shader_path, sizeof(shader_path), "%sassets/shaders/gpu_downsample.fs",
-            GetApplicationDirectory());
-        if (length < 0 || (size_t)length >= sizeof(shader_path))
+        if (!boat_asset_path(shader_path, sizeof(shader_path), "shaders/gpu_downsample.fs"))
             goto failed;
         gpu->downsample = LoadShader(NULL, shader_path);
         if (!IsShaderValid(gpu->downsample) || gpu->downsample.id == rlGetShaderIdDefault())
