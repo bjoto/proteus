@@ -1,7 +1,11 @@
-# Älvsborgsbron river expansion survey
+# Älvsborgsbron river expansion
 
-The coverage survey below now has an opt-in playable blockout in `boat_study`.
-The original Eriksberg location and main demo retain their existing geometry.
+Status, 2026-10-18: opt-in river location implemented, with a shared CPU/GPU bridge
+blockout and grounded road approaches. Both deterministic river traversal presets pass.
+Bridge/shoreline/building detail and a human handling/camera playthrough remain open;
+see [implementation status](#implementation-status-and-remaining-work).
+The default Eriksberg location and main demo retain their existing geometry.
+[All plans](../../README.md).
 
 ```sh
 ./build/boat_study --location river --gpu-aa
@@ -13,31 +17,35 @@ to 32 m back / 6 m high to show the bridge above the water; C resets that view.
 The map boundary and four tower legs block the hull. The deck, cables, and crossbeams
 are elevated scenery; overhead structure collisions are not implemented.
 
-![Proposed river extension](coverage.png)
+![River expansion survey](coverage.png)
 
 [Vector map](coverage.svg) · [Machine-readable findings](summary.json)
 
-## Recommended coverage
+The retained survey map and JSON use the original “current”/“proposed” labels.
+They mean the default Eriksberg crop and the now-implemented river crop respectively.
+
+## Implemented coverage and original survey
 
 Keep the crane origin and EPSG:3007 metre frame. Coordinates here are east/north;
 boat simulation X points west, so negate it when converting to map coordinates.
 
 | Coverage | West, south, east, north relative to crane | Size |
 | --- | --- | --- |
-| Current runtime crop | −700, −600, +950, +800 m | 1,650 × 1,400 m |
-| Proposed runtime crop | −1,500, −1,600, +950, +800 m | 2,450 × 2,400 m |
+| Default Eriksberg crop | −700, −600, +950, +800 m | 1,650 × 1,400 m |
+| Opt-in river crop | −1,500, −1,600, +950, +800 m | 2,450 × 2,400 m |
 | Download envelope | Approximately −1,900, −2,200, +1,250, +1,100 m | Source margin around proposal |
 
-The proposed crop extends 800 m west and 1,000 m south. The mapped bridge outline
-occupies approximately east −592…−255 m, north −1,191…−297 m. The current southern
-boundary therefore cuts through the bridge area. The proposed crop contains the
+The river crop extends 800 m west and 1,000 m south of the default Eriksberg crop.
+The mapped bridge outline occupies approximately east −592…−255 m, north −1,191…−297 m.
+The default Eriksberg boundary cuts through that area; the river location contains the
 entire mapped deck and space to sail beyond it.
 
 The route drawn on the map starts at the existing dock spawn and travels about
 1,649 m to a turnaround point. It crosses the mapped bridge deck around (−454, −678) m
-and continues to (−1,100, −950) m. The complete route is inside the proposed water
-polygon with at least 27.6 m of mapped shore/crop clearance. These are geometric
-checks of a planning polyline, not a simulated voyage or verified overhead clearance.
+and continues to (−1,100, −950) m. The survey polyline is inside the river water polygon
+with at least 27.6 m of mapped shore/crop clearance. Those original geometric checks
+are separate from the subsequently implemented simulated voyage documented below;
+neither establishes real-world overhead clearance.
 
 ## Source and reproducibility
 
@@ -70,7 +78,7 @@ and matplotlib 3.10.8:
 python docs/eriksberg/bridge/survey.py
 ```
 
-The script reads the current crop from `tools/prepare_waterfront.py`, checks the source
+The script reads the default Eriksberg crop from `tools/prepare_waterfront.py`, checks the source
 hash, assembles the two main outer banks of river relation 3329487, and verifies:
 
 - Artificial closing edges and omitted bank fragments lie outside the proposed crop.

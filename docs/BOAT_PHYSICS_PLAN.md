@@ -1,7 +1,11 @@
 # Boat physics: learnable handling
 
-Accepted direction: 2026-10-17. Tasks are completed incrementally and recorded below.
-Parent design and current controls: [Boating playground](BOATING_PLAN.md).
+Status, 2026-10-18: A1–C3 implemented; Phase C player acceptance is recorded in the handoff
+log. Next task: D1 spatial current, followed by D2 one crossable wake. E1/E2 remain optional
+after Phase D. Calm-water handling and the accepted C3 wave baseline must be preserved.
+
+Accepted direction: 2026-10-17. Parent design: [Boating playground](BOATING_PLAN.md).
+Public controls: [README](../README.md#boating-sketch). [All plans](README.md).
 
 ## Experience to build toward
 
@@ -136,9 +140,9 @@ gear shift. Confirm docking still works.
   flat mode preserves calm handling; spray and wake remain attached to the water/hull correctly.
   Document simplified effects rather than adding destabilizing impulses to imitate realism.
 
-C1 revision accepted after visual feedback: replace the single long swell and exaggerated color
-bands with three smaller crossing components, subdued shading, and restrained GPU reflections.
-Implement this revision together with C2 so surface appearance can be judged with a floating hull.
+Implemented C1 revision, accepted after visual feedback: three smaller crossing components,
+subdued shading, and restrained GPU reflections replaced the single long swell and exaggerated
+color bands. It was implemented together with C2 to assess the surface with a floating hull.
 
 Play gate C: small waves are enjoyable to meet at different angles, and the camera remains calm.
 Stronger waves and triangle-based buoyancy are optional upgrades only if this model proves limiting.
@@ -177,6 +181,10 @@ These motivate models, not exact coefficients or a requirement to adopt another 
   an example of decomposed buoyancy/resistance forces and a possible later triangle-based approach.
 
 ## Handoff log
+
+Dated records describe each step at the time it landed. In particular, B2's cosmetic
+`visual_pitch` was replaced by C2's physical support model, and the older B/C play-gate
+notes are superseded by the C3 acceptance below. Test counts refer to those revisions.
 
 - 2026-10-17: C3 implementation adds local normal resistance at the six supports in
   `src/boat.[ch]` and `src/boat_water.[ch]`. It replaces wave-mode vertical damping with a

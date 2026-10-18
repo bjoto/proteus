@@ -3,6 +3,11 @@
 Captured 2026-09-16, based on `e906687` with review-tool additions only. No scene
 geometry, camera, shader output, or music changed in this step.
 
+Historical baseline: the missing building parts, ground treatment, and context coverage
+below were addressed in steps 02–04g. Counts, timings, and failures describe the captured
+revision. Use [the living-city status table](LIVING_CITY_PLAN.md) for outstanding work and
+[the plan index](README.md) for current verification; do not use these findings as a new task list.
+
 ## Findings and next changes
 
 1. **Restore the missing stepped apartments beside Monsungatan.** The snapshot contains

@@ -1,12 +1,16 @@
 # Alternate soundtrack plan
 
-> Runtime integration, 2026-10-11: the demo now uses the working
-> `soundtrack/alternate/fasttracker/v01/below-the-surface.xm`, copied into the build
-> assets by CMake. The sole `cube` scene follows five gulls across its four-minute
-> 120 BPM timeline and holds the final shot. Earlier draft/acceptance notes below
-> record the composition history; future tracker revisions remain possible.
+Status reconciled 2026-10-18. Runtime integration was implemented on 2026-10-11:
+the demo uses `soundtrack/alternate/fasttracker/v01/below-the-surface.xm`, copied
+into build assets by CMake. The sole `cube` scene follows five gulls across its
+four-minute, 120 BPM / speed-6 timeline and holds the final shot.
 
-Status: the user requested a FastTracker editing handoff on 2026-09-22. The full
+Milestones 1–2 are accepted; full composition and mix candidates exist, but milestones
+3–4 still await musical acceptance. Milestone 5's working-XM runtime integration is
+implemented and regression-tested; acceptance of the final music remains open.
+See [the plan index](README.md) for current verification across the project.
+
+The user requested a FastTracker editing handoff on 2026-09-22. The full
 song is now available as an editable [XM and tracker guide](../soundtrack/alternate/fasttracker/README.md),
 with embedded instruments and separate note/chord voices. Continue musical edits
 in the XM; the JSON/MIDI sources and original WAV mix remain reference versions.
@@ -14,8 +18,8 @@ in the XM; the JSON/MIDI sources and original WAV mix remain reference versions.
 Proof v03 is the current approved direction (commit `0706588`). Full sketch
 v01 has been played through; musical feedback and milestone 3 acceptance remain
 pending. Mix candidate v01 has rendered and its draft delivery package is prepared;
-full mix playback completed successfully. Final listening acceptance remains open; the current working XM is now integrated
-with the four-minute waterfront. Milestones 1 and 2 are complete. The approved dark synth
+full mix playback completed successfully. Final listening acceptance remains open.
+Milestones 1 and 2 are complete. The approved dark synth
 palette, restrained motif, dynamics, and grunge-influenced chord movement remain
 the foundation.
 
@@ -29,7 +33,8 @@ Create an approximately four-minute dark symphonic electronic adventure: powerfu
 spacious, and dynamic enough to support distinctly different visual moods. Keep
 the melody simple; develop tension and scale through texture, register, rhythm,
 and silence. The user's response to proof v01 rules out brightness and cheerfulness
-as the default direction. Duration and section timings are provisional.
+as the default direction. The working arrangement is four minutes; future timing changes
+require coordinated updates to the demo camera and cues.
 
 The user's response to v02 adds Nirvana's "Something in the Way" as a mood
 reference: brooding restraint can carry a soundtrack. Keep the electronic sound
@@ -76,9 +81,9 @@ These are the authored full-v01 section boundaries at 120 BPM. The audio file is
 4:00 including its eight-second release; composed material ends at 3:52. Treat the
 guide as provisional until the full arrangement has been heard and accepted.
 
-Sections should have clear musical boundaries and meaningful accents for eventual
-visual choreography. Phrase lengths, tempo, key, and metre remain composition choices;
-the existing 125 BPM XM grid is not a requirement for this alternate track.
+The working XM and demo follow these boundaries at 120 BPM / speed 6. Future musical
+revisions may change them, but must update runtime duration, camera cues, and the tracker
+guide together. The separate dance study retains the original 125 BPM starter XM.
 
 ## Working method
 
@@ -111,7 +116,11 @@ has no live shared hall.
 Done when: we have a reproducible audio render and enough control to change notes,
 instruments, and dynamics without rebuilding the toolchain.
 
-#### Established setup (2026-09-20)
+#### Reference render setup (2026-09-20)
+
+This setup reproduces the earlier JSON/MIDI auditions. Current composition editing is
+in FastTracker; the setup findings and initial palette below describe the dated reference,
+not a requirement to return to JSON authoring.
 
 Local inspection found FastTracker II Clone, Python 3.14.2, FFmpeg, `afplay`, and
 Xcode/Swift 6.3.3 on Apple Silicon macOS 26.6.2. REAPER, GarageBand, FluidSynth,
@@ -122,8 +131,8 @@ MIDI DLS bank is available.
 Use the checked-in [alternate workspace](../soundtrack/alternate/) for this first
 palette. Author notes and settings in `palette-v01.json`; `render.py` exports a
 type-1 MIDI file and invokes a small Swift AVAudioEngine offline renderer. This
-establishes a working path without installing a DAW. A piano-roll/DAW workflow
-remains open for the composition milestone; the MIDI export provides a handoff.
+established a working path without installing a DAW. The later FastTracker handoff
+settled the composition workflow; MIDI remains available for reference exports.
 
 | Role | Initial patch | Program (zero-based) | MIDI channel (display numbering) |
 |---|---|---|---|
@@ -245,8 +254,9 @@ dynamic range. Keep the editable project and instrument settings with the revisi
 
 ### 5. Prepare demo integration
 
-- Choose the playback format based on the accepted music and runtime requirements.
-  A stereo audio file plus explicit cues is the default proposal; XM is optional.
+- Working playback format: XM, selected during the FastTracker handoff. The CMake asset
+  copy selects the source file; `src/main.c` loads its bundled `below-the-surface.xm` copy.
+  The original WAV/MIDI package is a reference delivery, not the active runtime source.
 - Export section boundaries, tempo changes, and important accents with stable names
   and times measured from the start of the final audio render.
 - Keep aligned stems for drums, bass, harmony, lead, and atmosphere if useful for
@@ -260,18 +270,19 @@ dynamic range. Keep the editable project and instrument settings with the revisi
 The draft package from mix-v01 is prepared with `prepare_delivery.py`. It contains
 the WAV, MIDI, project, render manifest, cue sheet, and delivery manifest. The cue
 sheet has 11 sections spanning the full 240 seconds; verified manifest hashes bind
-the cues to the audio. Musical acceptance is pending. Runtime playback and visual
-timing integration are also pending.
+the cues to the audio. That reference package predates runtime integration. The working
+XM now drives the four-minute demo with start/seek/ending regression checks; full musical
+acceptance and human audiovisual assessment are not established by those checks.
 
 Done when: the demo follows the accepted composition and musical cues stay aligned
 through playback and seeking.
 
 ## Artifact handling
 
-Use a separate alternate-soundtrack workspace in the repository when composition
-begins. Keep source, instrument provenance/settings, and render instructions together.
-Use revisioned listening renders so comparisons remain possible. Put disposable
-renders in `build/` and add chosen delivery assets under `assets/music/` later.
+Keep the alternate soundtrack in `soundtrack/alternate/`, with source, instrument
+provenance/settings, and render instructions together. Use revisioned listening renders
+under `build/`. The working XM stays in `soundtrack/alternate/fasttracker/` and is copied
+into build assets by CMake; the generated starter assets stay separate.
 Record any external libraries needed to reproduce the sound.
 
 The starter XM and its generator remain available for comparison. This exploration
@@ -295,11 +306,20 @@ treating the candidate delivery as accepted. The full sketch retains the six
 voices, simple signal, and E5–C5–F5–E5 harmonic backbone, with a chromatic fracture,
 quiet centre, restrained first weight, and larger final return.
 
-Open choices: DAW/piano-roll authoring, final instruments, composition tempo/key,
-final duration, and delivery format. Resolve them when their milestone needs them.
+Current authoring and runtime choices are settled: FastTracker II Clone, editable XM,
+120 BPM / speed 6, and four minutes. Remaining work is musical feedback, possible tracker
+revisions, and final composition/mix approval. If feedback changes timing or the source XM,
+update CMake selection, runtime cues, and the guides in the same step.
 
 For each listening revision, append: render location, changes, listening feedback,
 decision, and next action.
+
+## Historical iteration records
+
+The dated entries below describe the sources, decisions, playback, and verification at each
+iteration. Their local “pending” notes are superseded where the current status and checklist
+above record later completion; old test counts are not the current suite. JSON/MIDI and WAV
+renders are reference versions following the FastTracker handoff.
 
 ### Palette v01 — 2026-09-20
 

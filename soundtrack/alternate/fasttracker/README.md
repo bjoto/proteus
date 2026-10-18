@@ -20,7 +20,10 @@ a populated directory, including one containing your tracker edits.
 Proteus now plays this working XM. `cmake --build build -j` copies it into the build
 asset directory without modifying the source. The sole `cube` scene follows a small
 flock for four minutes, then holds its last shot while the song ends in silence.
-Rebuild after tracker edits; update the demo duration/camera cues if the arrangement changes.
+Rebuild after editing the selected XM. If saving a new revision under a different filename,
+update the source path in CMakeLists.txt's `proteus_assets` copy command; the bundled name
+remains `below-the-surface.xm`. Saving another file alone does not switch runtime playback.
+Update the demo duration/camera cues and section guide if the arrangement changes.
 
 ## Finding the parts
 
@@ -82,8 +85,10 @@ are placed on the nearest tick, with at most 10.42 ms of timing rounding. Sample
 tuning follows FastTracker's finetune steps (about 2.83 cents sharp at this sample
 rate). These are transfer limitations, not changes to the written harmony.
 
-The [original mix](../../../build/soundtrack/mix-v01/soundtrack.wav) remains the
-sound reference. Individual source WAVs are in `v01/samples/`; loop points,
+The original mix at `build/soundtrack/mix-v01/soundtrack.wav` remains the sound reference.
+It is a local render, absent from a fresh checkout; see the
+[reference rendering workflow](../README.md) to recreate it. Individual source WAVs
+are in `v01/samples/`; loop points,
 instrument provenance, source/render hashes, note mapping, and section positions
 are recorded in `v01/transfer.json`. The XM embeds the samples and loops.
 
@@ -114,7 +119,7 @@ The checker verifies the generated transfer, including exact note counts/pitches
 key-offs, timing, cue positions, sample delta encoding, loops, and tuning. Its
 original-file hash check will intentionally fail after you edit an XM in FastTracker.
 
-## Verification of v01
+## Verification of the original v01 transfer (2026-09-22)
 
 - Independent XM inspection recovered all 844 attacks and 602 melodic key-offs,
   all 55 sample WAVs, and all eleven section boundaries.

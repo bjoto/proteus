@@ -70,6 +70,23 @@ xcrun xctrace record --template 'Time Profiler' --output build/cube.trace \
   change.
 - Do not commit `build/`, caches, or machine-specific compile databases.
 
+## Documentation maintenance
+
+- Treat documentation as part of each implementation step. Before handing off, update the owning
+  plan's current status, completed task, next task, verification evidence, and known limitations.
+  Use [the documentation index](docs/README.md) to find the owner for each area.
+- Update affected user guides and commands in the same change. Search for superseded claims across
+  `README.md`, `docs/`, and relevant asset/workspace guides; do not fix only the newest log entry.
+- Keep the index's status overview consistent when a milestone or next task changes. Each plan owns
+  its detailed task status; link to it rather than copying detailed checklists into other documents.
+- Distinguish implementation, automated verification, manual playback, and user acceptance. Record
+  only checks actually performed, with date and relevant platform/options. Never turn an old test
+  count into a claim about the current suite or infer user approval from a successful run.
+- Keep dated history as history: label superseded proposals and baseline findings, and correct live
+  summaries instead of appending contradictory updates. Editor autosaves are not planning sources.
+- Check changed local links and command examples. Report unresolved documentation uncertainty and
+  verification limits before handoff; documentation-only changes need no new audiovisual review.
+
 ## Before handing off
 
 Run the build and CTest command above. Capture and inspect representative frames when visual effects

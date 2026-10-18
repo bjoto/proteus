@@ -1,9 +1,22 @@
 # Waterfront GPU migration plan
 
-Status: steps 01–12 implemented; desktop GPU-test verification remains platform-dependent. Written
-2026-09-12.
+Status, reconciled 2026-10-18: steps 01–12 implemented. GPU is the default for the
+main demo and boat study; CPU remains a deterministic reference. The development Mac's
+Debug build and all 46 CTests passed, including 12 GPU-context checks. Earlier desktop
+context failures below are historical, not current blockers. Human visual/audio acceptance
+and other-platform verification are separate and are not established by this test run.
 
-## Decision and scope
+Current renderer behavior and commands live in [3D.md](3D.md) and the
+[project README](../README.md); active visual work is in the [living-city plan](LIVING_CITY_PLAN.md).
+See [all current plans](README.md) and the [current migration status table](#status-and-historical-records).
+
+Written 2026-09-12. The migration design and numbered steps below preserve the original
+port's scope and acceptance criteria. Their 15.36/30.72-second routes, starter-track timing,
+old light budget, texture choices, and scene inventory describe the port at that time.
+Subsequent work added the four-minute flock demo, procedural ground/facade materials,
+32 local-light slots, boating, and river geometry. Do not treat the original port as new work.
+
+## Decision and scope (original migration)
 
 Use the existing C17/raylib 6.0 application with custom shaders. Render the city into
 a 320x240 or 320x200 GPU color/depth target and present it with nearest-neighbour,
@@ -44,21 +57,12 @@ Do not introduce a runtime fallback from `--renderer gpu` to CPU after a context
 framebuffer error. Report the failed GPU request and return nonzero. A fallback would make
 diagnostics and GPU test results ambiguous. The normal default may remain CPU until step 12.
 
-## Recommended agent and execution method
+## Original execution method
 
-Use **GPT-5.6 Terra, medium reasoning**, as the default implementation agent. The steps
-below are intentionally small enough to complete in separate sessions. Use **GPT-5.6
-Luna, medium reasoning**, for baseline collection and straightforward documentation.
-Use **Terra high** for projection, integration, shadows, and reflection work. If a
-reduced rendering failure remains unexplained after two focused attempts, ask **GPT-5.6
-Sol high** or **GPT-6 Astra high** to diagnose that failure rather than rewrite the renderer.
-
-These are project recommendations, not measured performance guarantees. Official
-[OpenAI model guidance](https://learn.chatgpt.com/docs/models) describes Terra as an
-everyday all-rounder, Luna as suitable for clear repeatable tasks, and Sol/Astra as
-options for more difficult work. Availability depends on the client and account.
-Model names and guidance were checked on 2026-09-12; use the available picker equivalents
-if they change. No automatic delegation or model configuration is required by this plan.
+The migration was split into bounded steps with prerequisites and verification evidence.
+Historical model recommendations have been retired; follow the current session's agent
+instructions. For new work, use the active owning plan and the documentation maintenance
+rules in [AGENTS.md](../AGENTS.md#documentation-maintenance).
 
 Run one numbered step at a time unless explicitly asked for a range. Read its prerequisites,
 finish its checks, update the progress table, and stop at its boundary. Within an assigned
@@ -80,7 +84,7 @@ the visual/manual checks required for this step. Update the progress log with ch
 commands, artifact paths, results, and remaining limitations. Report the outcome and stop.
 ```
 
-## Starting code and constraints
+## Starting code and constraints (2026-09-12 baseline)
 
 | Location | Current responsibility and migration implication |
 | --- | --- |
@@ -442,25 +446,32 @@ for GPU checks; inspected image paths and times; manual checks; performance wher
 known deviations and the exact next step. Use “implemented, verification pending” if a
 required check cannot run. Do not mark visual acceptance based only on compilation.
 
-## Progress log
+## Status and historical records
 
-Documentation creation alone does not complete step 01. Step 01 has a recorded CPU baseline;
-its remaining manual motion review is called out below rather than being treated as passed.
+Current status, reconciled 2026-10-18. “Regression verified” means the development Mac's
+current automated suite passed; it does not close every original human-review criterion.
+Later visual reviews and windowed smoke runs are recorded in
+[LIVING_CITY_PLAN.md](LIVING_CITY_PLAN.md) and [WATER_REVIEW.md](WATER_REVIEW.md).
 
-| Step | Status | Evidence / deviations |
+| Step | Current status | Evidence / follow-up |
 | --- | --- | --- |
-| 01 CPU baseline | Implemented, verification pending | Build and 12/12 CTest passed; seven captures inspected. Full interactive route-motion review remains pending. See record below. |
-| 02 GPU target/capture fixture | Complete | Custom-shader render-target fixture, readback, orientation/depth checks, resizing, and visible comparison passed on the development Mac. See record below. |
-| 03 Shared scene evaluation | Complete | Scene-owned static geometry and explicit scene-time evaluation now feed the unchanged CPU submission order. See record below. |
-| 04 Static GPU city | Implemented, verification pending | Static city diagnostic path added; see record below. |
-| 05 City life/application integration | Implemented, verification pending | GPU city life and application backend routing are in place; desktop GPU checks remain pending. See record below. |
-| 06 GPU regression/profiling | Implemented, verification pending | Opt-in `PROTEUS_GPU_TESTS` adds a context-required capture/review CTest and target. Desktop context verification remains pending. |
-| 07 Surface detail | Implemented, verification pending | Bundled point-filtered facade, roof, and quay detail textures are on the GPU route; desktop visual review remains pending. |
-| 08 Local lighting | Implemented, verification pending | Eight bounded, hysteresis-selected lamp/headlight lights now shade the GPU route; desktop context/capture review remains pending. |
-| 09 Directional shadows | Implemented, verification pending | One texel-snapped directional depth map, caster pass, hard direct-light attenuation, and fixture diagnostics are in place; desktop review remains pending. See record below. |
-| 10 Atmosphere | Implemented, verification pending | Distance haze is applied after direct, local, and emissive lighting, with identical-time on/off switches; desktop visual review remains pending. See record below. |
-| 11 Water reflection | Implemented, verification pending | The semantic water mesh samples a separate 160x120 reflected scene with deterministic distortion; desktop review remains pending. See record below. |
-| 12 Default/documentation | Implemented, verification pending | GPU is now the default `cube` renderer; CPU reference tests and captures explicitly select `--renderer cpu`. Desktop GPU-test verification remains pending. See record below. |
+| 01 CPU baseline | Implemented; regression verified | CPU renderer, checksum, seek, screenshot, and profile checks pass. Original human motion review remains unrecorded. |
+| 02 GPU target/capture fixture | Implemented; regression verified | GPU fixture and capture checks pass on the development Mac. |
+| 03 Shared scene evaluation | Implemented; regression verified | CPU/GPU consume shared evaluated frames; further actor consolidation is living-city step 05. |
+| 04 Static GPU city | Implemented; regression verified | GPU city fixtures and current review pass. |
+| 05 City life/application integration | Implemented; regression verified | Renderer routing and GPU city/replay captures pass; this is distinct from living-city step 05. |
+| 06 GPU regression/profiling | Implemented; regression verified | 12 GPU-context CTests pass with `PROTEUS_GPU_TESTS=ON`; submission timing is not GPU execution time. |
+| 07 Surface detail | Implemented; regression verified | Current surface-material probe passes; later procedural ground/facade finishes supersede the initial bitmap tiles. Roofs retain bitmap mapping. |
+| 08 Local lighting | Implemented; regression verified | Current lighting fixture/review passes; the later shared budget is 32 lights. |
+| 09 Directional shadows | Implemented; regression verified | Directional shadow diagnostics and GPU review pass. |
+| 10 Atmosphere | Implemented; regression verified | Atmosphere diagnostics and GPU review pass. |
+| 11 Water reflection | Implemented; regression verified | Reflection diagnostics and boat-water surface probe pass; reflections remain planar. |
+| 12 Default/documentation | Implemented; regression verified | GPU is the default; CPU tests explicitly select their backend. Other-platform/human acceptance remains separate. |
+
+The dated records below retain the results and limitations at each original implementation
+step. Their “pending” notes, old test counts, and proposed next tasks are historical;
+use the table above and active plans for current status. No past failed check is rewritten
+as having passed at the time.
 
 ### Step 01 record — 2026-09-12
 

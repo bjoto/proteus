@@ -1,9 +1,14 @@
 # Gothenburg boating playground
 
-Status: working design, updated 2026-10-17. Stage 1 and the wake/spray portion of stage 2 are implemented
-as `boat_study`, alongside a timed S course with recordings and a personal-best ghost; other features
-remain proposals. Revise this
-plan as we discover what is enjoyable to play.
+Status: updated 2026-10-18. `boat_study` implements free boating in basin, Eriksberg,
+and river locations, reverse/docking, planing, buoyancy, optional gentle waves, and a timed
+S course with recordings, persistent personal bests, ghosts, and replay controls. The study
+is silent. The score-loop arcade mode and archipelago remain proposals.
+
+This document owns gameplay direction. Detailed next tasks belong to the
+[physics plan](BOAT_PHYSICS_PLAN.md), [living-city plan](LIVING_CITY_PLAN.md), and
+[river expansion record](eriksberg/bridge/README.md). See the [plan index](README.md)
+for status across tracks. Revise the design as we discover what is enjoyable to play.
 
 ## Current prototype
 
@@ -23,7 +28,7 @@ and map crop. Glancing impacts scrub speed, turn the craft away, and rebound gen
 supports `--gpu --gpu-aa`: the player hull, engine and airborne
 spray participate in depth, reflection and shadow passes; surface foam is depth-tested and receives
 shadows without casting solid shadows. Optional AA uses 4×4 supersampling before integer scaling.
-GPU is the default for both locations, including the basin course. `--renderer cpu` selects the
+GPU is the default for all locations, including the basin course. `--renderer cpu` selects the
 software renderer for window-free captures; GPU captures need a desktop graphics context.
 `--gpu-aa` only enables supersampling and does not select a renderer or location.
 This first integration has static scenery, no overhead
@@ -31,8 +36,8 @@ structure collisions, and no camera occlusion handling near buildings. It does n
 rest of Gothenburg or the archipelago. Source attribution is retained in the HUD and README.
 
 The boat-level [water review](WATER_REVIEW.md) records a repeatable dock/river/quay circuit
-and the next visual surface pass. It complements the physics roadmap; it adds no handling
-changes or new playable geography.
+and the completed 04f surface and 04g selected waterline passes. Those visual changes
+preserve handling; the separately implemented river expansion adds playable geography.
 
 Run `./build/boat_study`. Left/right or A/D adjust the wheel, clamped from full
 left to full right. Centre to either limit takes one second. Releasing keys lets an overdamped
@@ -58,10 +63,12 @@ velocity, including rotation. A passive force across the angled submerged outboa
 stern velocity and acts at the stern, producing both drag and turning torque. It works at idle
 while moving and fades to zero with water-relative motion. Calm water remains the baseline. A
 rate-limited, hysteretic planing blend reduces forward hull resistance above cruising speed and
-returns smoothly to displacement handling while slowing. Presentation-only bow rise peaks in the
-transition and settles at cruise; it returns smoothly to rest when slowing. Hull, cabin, and
-outboard share the pose in both renderers, including GPU reflections and shadows. The camera
-keeps a level horizon. Physical vertical lift, currents, and waves are not implemented.
+returns smoothly to displacement handling while slowing. Six damped buoyancy supports provide
+physical heave, pitch, and roll; planing redistributes support to raise the bow during the
+transition and settle at cruise. Hull, cabin, and outboard share the physical pose in both
+renderers, including GPU reflections and shadows. The camera keeps a level horizon.
+`--waves` enables gentle crossing waves with water-relative resistance and matching visual
+surfaces. Currents and crossable wakes from another vessel remain unimplemented.
 A spreading, fading wake traces the travelled path; planing broadens it and adds symmetric spray
 even on straight runs. Lateral slip throws turning spray from the sliding side of the hull. Two orange markers provide turning
 references but do not collide. Rendering is 320x200 with nearest-neighbour integer scaling. Losing
@@ -108,7 +115,7 @@ If the first area works, explore a small island area next: rocky shores, narrow 
 water, and a few distinctive landmarks. Decide later whether areas connect continuously or are
 selected separately. An enjoyable harbour and one island route would already be a meaningful game.
 
-## First playable version
+## First playable baseline
 
 - One craft, one compact area, free driving, and instant reset.
 - Left/right adjust a spring-centred wheel; up/down adjust a persistent throttle within
@@ -117,7 +124,8 @@ selected separately. An enjoyable harbour and one island route would already be 
   Water resistance along the hull damps sliding and rotation.
 - Throttle affects both forward push and turning force. Reducing it cuts thrust; momentum remains.
   Defer a dedicated brake until play suggests it is needed.
-- Shore and buoy collisions cause forgiving bumps and splashes, with quick recovery.
+- Shore contacts cause forgiving rebounds; buoys are non-colliding markers. Collision splashes
+  remain a presentation proposal.
 - Follow the boat from behind and above, with a stable horizon and gently smoothed heading.
 
 The first success criterion: driving in circles and carving around a buoy is enjoyable for a minute,
@@ -143,15 +151,15 @@ Space starts again from the beginning. Seeking and speed changes preserve the re
 Portable, versioned run files can be exported with `--save-run`, watched with `--replay`, or selected
 as a ghost with `--ghost`; see the [README controls and storage notes](../README.md#boating-sketch).
 There is one saved best per water preset; a broader leaderboard is deferred. This small time trial
-takes priority over the previously proposed minute-long scoring mode and the remaining physics
-experiments.
+was implemented ahead of the proposed minute-long scoring mode and remaining physics experiments.
+The time-trial foundation is now in place; it is not an outstanding prerequisite for physics D1.
 
 ## Optional arcade challenge
 
-After free driving feels good, add five or six ordered buoy gates forming a short loop. Clearly
-highlight the next gate. Include a broad sweeping turn, a tighter corner, and an acceleration straight.
+Deferred proposal: a score-loop alternative to the implemented S time trial. It would add
+five or six ordered buoy gates forming a short loop. Clearly highlight the next gate. Include a broad sweeping turn, a tighter corner, and an acceleration straight.
 
-The initial challenge is a 60-second score run:
+The proposed challenge is a 60-second score run:
 
 - Passing gates in order earns points.
 - Completing a lap earns a bonus.
@@ -163,8 +171,10 @@ needed. Free boating remains available without a timer or mandatory gates.
 
 ## Presentation and feedback
 
-Use a chunky craft, strong silhouettes, a small palette, and exaggerated water effects. Preserve
-nearest-neighbour, integer-scaled presentation. Put visual effort into movement and response.
+The current craft, wake, and turning/planing spray provide visual movement feedback.
+The table below is a presentation wishlist, not a list of implemented effects: the study has
+no audio, buoy impacts, gate sounds, score laps, or impact camera kick. Preserve
+nearest-neighbour, integer-scaled presentation while refining feedback.
 
 | Player action | Feedback |
 | --- | --- |
@@ -180,18 +190,23 @@ audio suits free boating once the basic experience exists.
 
 ## Implementation stages
 
-1. **Handling sketch:** simple craft, water, steering, thrust, momentum, boundaries, and reset.
-   Evaluate the pleasure and readability of movement; keep this cheap to revise.
-2. **Water toy:** wake, turning spray, forgiving bumps, and a few buoys in a compact waterfront area.
-   Evaluate whether movement feels expressive and whether cruising is enjoyable on its own.
-3. **Minute-long game:** ordered gates, timer, scoring, and fast restart, alongside free driving.
-   Evaluate whether another attempt is appealing without adding progression rewards.
-4. **First archipelago slice:** only after the core works, try a small island area and the camera
-   needed to explore it. Evaluate the appeal of discovering routes and places.
+These stages describe the design sequence; current implementation is recorded explicitly below.
 
-Develop in a separate launch mode initially, reusing rendering and audio where useful. Choose the
-actual command-line interface during implementation and document it then. Preserve the existing
-demo and its soundtrack timeline while this direction is experimental.
+1. **Handling sketch (implemented):** simple craft, water, steering, thrust, momentum,
+   boundaries, and reset.
+   Evaluate the pleasure and readability of movement; keep this cheap to revise.
+2. **Water toy (implemented except buoy contacts and collision splashes):** wake, turning
+   spray, forgiving bumps, and a few buoys in a compact waterfront area.
+   Evaluate whether movement feels expressive and whether cruising is enjoyable on its own.
+3. **Timed challenge (S time trial implemented):** ordered gates, timer, fast restart, persistent
+   bests, ghosts, and replay. The original minute-long score-loop remains deferred.
+   Evaluate whether another attempt is appealing without adding progression rewards.
+4. **First archipelago slice (proposed):** only after the core works, try a small island area
+   and the camera needed to explore it. Evaluate the appeal of discovering routes and places.
+
+The separate `boat_study` executable reuses the scene and rendering foundation. Its controls
+and launch options live in the [README](../README.md#boating-sketch). Preserve the main demo
+and its soundtrack timeline while developing this experimental direction.
 
 ## Later water-physics experiments
 
@@ -200,18 +215,20 @@ It breaks the ambitions below into independently testable tasks suitable for one
 session each. Continue those experiments in bounded steps; the initial timed S course is now available
 as a separate mode. Do not implement the whole roadmap at once.
 
-Explore these individually after the wake and spray make the existing handling easy to read.
-Keep calm water as a baseline for comparisons. These are proposed gameplay models to try, not a
-commitment to a comprehensive boat simulation or claims of physically accurate behaviour.
+Keep calm water as a baseline for comparisons. The following summarizes the implemented
+experiments and remaining direction; the physics plan owns task status and acceptance.
+These are tunable gameplay models, not calibrated hydrodynamics.
 
 - **Speed-dependent steering (first approximation implemented):** tune stern thrust, passive
   outboard resistance, and speed-dependent hull resistance through coasting turns and low-speed
   manoeuvring. The current model uses forces and torque, not a prescribed speed-to-turn curve.
-- **Planing:** explore a distinct acceleration transition, with the bow rising and then settling
-  into a faster glide. Test whether reaching open water becomes more satisfying.
-- **Current:** introduce drift that makes routes through channels and approaches to shore matter.
-- **Waves:** experiment with boat motion and handling that depend on travel direction relative to
-  waves. Compare sheltered water with an exposed crossing.
+- **Planing (implemented):** a smooth resistance transition and physical support redistribution
+  raise the bow, then settle it into cruise.
+- **Current (D1, pending):** introduce drift that makes routes through channels and approaches
+  to shore matter.
+- **Gentle waves (C1–C3, implemented and accepted):** physical buoyancy and encounter resistance
+  depend on speed and heading. Visual shelter/exposure varies independently of the wave physics.
+- **Crossable wake (D2, pending):** one deterministic moving wake with matching rendering and forces.
 
 Judge each experiment through driving before combining it with the others. Wake and spray should
 help reveal movement through water as these models evolve.
@@ -222,7 +239,8 @@ The first complete game can be one arena, one craft, one course, one music track
 one score mode. The archipelago is the direction for expansion, not a requirement to build a vast map.
 
 Defer upgrades, unlocks, economy, building systems, missions, multiplayer, procedural terrain,
-a level editor, full fluid simulation, and persistent saves. Incremental boat physics follows the
+a level editor, full fluid simulation, and broader progression saves. Course personal bests
+and portable run files already persist. Incremental boat physics follows the
 separate physics plan rather than being a prerequisite for a complete game. Jumps and boost wait until ordinary
 turning is satisfying, since they would materially change course design.
 
@@ -230,7 +248,7 @@ turning is satisfying, since they would materially change course design.
 
 - How much sliding feels playful while still feeling like a boat?
 - Does relaxed exploration or fast gate running become the stronger experience?
-- Which small piece of Gothenburg should be the first recognisable playable place?
+- Does the implemented Eriksberg-to-Älvsborgsbron area offer enough useful routes and landmarks?
 - How much geographic fidelity contributes to the pleasure of being there?
 - What follow-camera distance and angle best balance scenery and steering clarity?
 - Can a few carefully shaped routes provide enough variety without more systems?
@@ -258,7 +276,7 @@ turning is satisfying, since they would materially change course design.
 
 ### Playable gentle waves (physics C1–C3)
 
-`--waves` opts into three deterministic crossing waves in the basin and Eriksberg on CPU/GPU.
+`--waves` opts into three deterministic crossing waves in all locations on CPU/GPU.
 Flat water remains the default, and reset preserves the launch option while restarting wave time.
 Six damped hull supports add physical heave, pitch and roll, including the planing attitude;
 attachments share that pose while the follow camera stays level. Foam follows local water height.

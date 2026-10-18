@@ -2,7 +2,9 @@
 
 The demo now plays the working [Below the surface XM](../soundtrack/alternate/fasttracker/v01/below-the-surface.xm)
 at 120 BPM, speed 6. See its [tracker guide](../soundtrack/alternate/fasttracker/README.md).
-Rebuild after editing it to refresh the bundled runtime copy. The four-minute waterfront
+Rebuild after editing it to refresh the bundled runtime copy. If a tracker revision uses
+a new filename, update CMakeLists.txt's `proteus_assets` source path too; the runtime copy
+keeps the name `below-the-surface.xm`. The four-minute waterfront
 and flock camera hold at 4:00; the XM has a silent end hold. If the arrangement length or
 section cues change, update `WATERFRONT_DEMO_DURATION` and the flock route cue times in
 `src/waterfront_scene.c` / `src/waterfront_scene.h` alongside the audio.
@@ -62,7 +64,9 @@ Every pattern is four bars and lasts 7.68 seconds.
 
 The generator is deterministic. Running it again overwrites `starter.xm` and the
 five generated WAV files, so keep the evolving composition under another name,
-for example `proteus-theme.xm`, and update the filename in `src/main.c`.
+for example `proteus-theme.xm`. To select it for the dance study, update that tool's
+`starter.xm` load/seek paths in `tools/dance_study.c` and ensure CMake bundles the file.
+The main demo's separate working soundtrack is selected by the CMake copy described above.
 
 ## Making new samples without a sample library
 
@@ -111,14 +115,15 @@ instruments now use 44.1 kHz/16-bit PCM. Instrument slots, patterns, volumes, an
 125 BPM/speed-6 timing are unchanged.
 
 Audition `assets/samples/kick.wav`, `snare.wav`, and `hat.wav` individually, then
-listen to `./build/proteus --time 7.68` for the drums with bass and the later full
-arrangement. To compare revisions, keep a copy of the previous XM before
-regenerating, and solo channels 1–3 in FastTracker II Clone.
+open `assets/music/starter.xm` in FastTracker and listen from 7.68 seconds for the
+drums with bass and the later full arrangement. The main demo plays a different XM.
+To compare revisions, keep a copy of the previous XM before regenerating, and solo
+channels 1–3 in FastTracker II Clone.
 
 For the bass, audition `assets/samples/bass.wav`, then solo channel 4 in the
 tracker and listen with the drums at 7.68 seconds and the chords at 15.36 seconds.
 
-For the synth, audition `assets/samples/synth.wav`, then listen to
-`./build/proteus --time 15.36` for chords and `./build/proteus --time 23.04` for
-the full arrangement with melody. Solo channels 5–7 for the chord voicing or
+For the synth, audition `assets/samples/synth.wav`, then listen to the starter XM
+in FastTracker from 15.36 seconds for chords and 23.04 seconds for the full arrangement
+with melody. Solo channels 5–7 for the chord voicing or
 channel 8 for the lead in FastTracker II Clone.

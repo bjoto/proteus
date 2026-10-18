@@ -11,6 +11,7 @@ R: reset boat
 +/-: camera distance
 PageUp/PageDown: camera height
 C: reset camera
+F3: toggle profiler overlay
 Esc: quit
 
 To compare performance without supersampling, run from PowerShell:
@@ -18,7 +19,10 @@ To compare performance without supersampling, run from PowerShell:
 
 If GPU startup fails, launch from PowerShell to read the diagnostic output.
 CPU rendering is also available:
-  .\boat_study.exe --location eriksberg
+  .\boat_study.exe --renderer cpu --location eriksberg
+
+For the expanded river and bridge, use --location river. Add --waves for gentle
+waves in any location. Run .\boat_study.exe --help for course and replay options.
 
 When reporting issues, include build.txt, Windows version, GPU model, and
 whether the problem also happens without --gpu-aa.

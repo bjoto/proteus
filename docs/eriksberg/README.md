@@ -1,12 +1,15 @@
 # Eriksberg coverage inspection and camera approaches
 
-For the proposed boat route to Älvsborgsbron and expanded river coverage, see the
-[bridge expansion survey](bridge/README.md). It uses a separate source extract and
-does not change the bundled runtime scene.
+Historical survey, 2026-09-09; status reconciled 2026-10-18. The findings, counts,
+candidate routes, and proposed next iteration below record the original inspection,
+not current runtime coverage. Route A's short/long cuts were implemented and remain in
+`waterfront_storyboard`. The main `cube` demo now follows five gulls for four minutes.
+See [the renderer guide](../3D.md) and [current plans](../README.md).
 
-Survey date: 2026-09-09. The survey below records the initial planning findings.
-As of 2026-09-12, Route A and the evening city-life pass are integrated into `cube`; see
-[the renderer notes](../3D.md) for playback commands. The music arrangement is unchanged.
+The separately sourced [Älvsborgsbron river expansion](bridge/README.md) is implemented
+as `boat_study --location river`, including the bridge and road approaches. It preserves
+the default Eriksberg scene; its larger assets are bundled alongside it. The default
+Eriksberg context has also grown beyond this survey's original crop.
 
 ## Recommendation
 

@@ -1,22 +1,25 @@
-# Waterfront fly-through plan
+# Original waterfront fly-through plan
 
-The next rendering phase is specified in [the GPU migration plan](GPU_WATERFRONT_PLAN.md).
-That plan selects raylib with custom shaders and supersedes the CPU-only constraint below
-for the new GPU path. The implementation described here remains the current CPU baseline.
+Status: historical design, written before the GPU migration and four-minute flock demo.
+Reconciled 2026-10-18. The original Route A prototype and offline geometry pipeline were
+implemented; the 15.36-second short and 30.72-second long cuts remain in
+`waterfront_storyboard` for diagnostics. They are not the main demo timeline.
 
-Status: Route A evening city-life pass integrated into `cube` (2026-09-12).
-The shortened 15.36-second route uses the existing two-pattern slot. A separate
-`waterfront_storyboard` tool retains the full 30.72-second route for comparison.
-Offline preparation, bundled geometry, sampled proxy clearance, and deterministic
-seek checks are implemented. The evening-life pass adds facade windows, street lamps, two-way traffic and a launch
-with a wake. Camera framing now prioritizes city life, with a muted background crane.
-Broader surface materials and water reflections remain open.
+Current behavior: `proteus --scene cube` follows five gulls for four minutes to the
+120 BPM “Below the surface” XM, then holds its final shot. GPU is the default;
+`--renderer cpu` selects the deterministic software reference. GPU materials, lighting,
+shadows, atmosphere, and planar reflections are implemented. See the
+[renderer guide](3D.md) for current commands and limitations.
 
-See [the coverage report and camera sketches](eriksberg/README.md). Route A, Monsungatan to
-the river, is implemented with sampled clearance checks against the proxy geometry.
+Active follow-up work belongs to the [living-city plan](LIVING_CITY_PLAN.md),
+[boating design](BOATING_PLAN.md), and [river expansion](eriksberg/bridge/README.md).
+The [GPU migration plan](GPU_WATERFRONT_PLAN.md) records the implemented rendering port.
+See [all current plans](README.md).
 
-The planning sections below retain the original milestone proposals. Current behavior and
-remaining rendering limitations are documented in [the renderer notes](3D.md).
+The sections below preserve the original design brief and milestone proposals. Their
+future tense, candidate sources, CPU-only assumptions, two-pattern music slot, and open
+choices describe that planning stage; they are not a current task list. The retained
+[coverage survey and camera sketches](eriksberg/README.md) document its source research.
 
 ## Direction we have agreed on
 
@@ -202,10 +205,16 @@ This is a development target, not a portability guarantee.
   and conversion settings so asset regeneration is also reproducible.
 - Keep build and CTest checks passing; inspect visual differences before changing checksums.
 
-## Next review
+## Reviewing the retained prototype
 
-Review the integrated short route with `./build/proteus --scene cube` and compare the
-long route with `./build/waterfront_storyboard --route long`. The accepted city-life pass
-prioritizes street traffic and lit apartments, with the crane as background setting.
-The current flat quay and fallback heights are explicit artistic assumptions. The full
-route remains a storyboard option; the music arrangement has not changed.
+Use the storyboard tool for the original cuts:
+
+```sh
+./build/waterfront_storyboard --renderer gpu --route short
+./build/waterfront_storyboard --renderer gpu --route long
+```
+
+GPU playback requires a graphics context; the tool defaults to CPU without `--renderer gpu`.
+The current main demo is `./build/proteus --scene cube`, with the four-minute flock camera.
+The quay datum and most building heights remain authored assumptions; these routes validate
+against proxy geometry, not surveyed real-world clearance.

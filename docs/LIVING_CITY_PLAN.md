@@ -1,17 +1,20 @@
 # Living Eriksberg city plan
 
-Status: execution steps 01–04 and follow-ups 04b–04d complete, 2026-09-19.
-Boat-view water audit 04e, surface pass 04f, and selected waterline pass 04g complete,
-2026-10-17;
-step 05 remains the prerequisite for new interacting actors. This is the
-visual-development plan after the [GPU migration](GPU_WATERFRONT_PLAN.md).
+Status, reconciled 2026-10-18: execution steps 01–04 and follow-ups 04b–04d complete
+(2026-09-19); boat-view audit 04e, surface pass 04f, and selected waterline pass 04g
+complete (2026-10-17). Step 05 remains the prerequisite for new interacting actors.
+Flying gulls from step 11 were brought forward for the four-minute demo; perched birds
+remain pending. The [river expansion](eriksberg/bridge/README.md) is a separate scenery
+track, not completion of actor/ferry steps. [All plans](README.md).
 
 ## Direction
 
-An inhabited waterfront at blue hour: apartments above active ground floors, connected
-streets, people with destinations, and a working harbour beyond. Preserve the crisp,
+The original artistic brief is an inhabited waterfront at blue hour: apartments above active
+ground floors, connected streets, people with destinations, and a working harbour beyond. Preserve the crisp,
 integer-scaled image and the contrast between warm rooms and cool outdoor space.
 Prioritize depth and readable activity at 320x200; inspect 320x240 and 320x180 too.
+The current demo and boat scenery use the sunny daytime lighting added on 2026-10-17;
+blue hour remains the earlier design reference, not the current default lighting.
 
 The city should feel inhabited even in a still frame. Movement then supplies small stories:
 a cyclist passes a waiting bus, someone walks home, a room lights up, a ferry slides behind
@@ -87,6 +90,10 @@ For subsequent work, replace `05` and the task-specific sentence with the next s
 deliverable, or request a range such as `02–04, with one commit per step`.
 
 ### Progress log
+
+Dated records preserve each revision's findings and verification. Their local “next” tasks,
+old geometry counts, and limitations may be superseded by later entries; the status table
+above owns the current execution order.
 
 - 2026-10-17, **04g selected waterline edges**: added 80 wall equipment stations across
   the existing map-validated quay sections: 26 access ladders and 54 paired fender/cleat
@@ -361,8 +368,12 @@ deliverable, or request a range such as `02–04, with one commit per step`.
   in that configuration; fresh GPU captures, live route review, and performance baseline
   remain work for step 01. No runtime changes.
 
+## Original baseline findings (2026-09-16)
 
-## What exists and what feels missing
+This section records the pre-step-02 audit, not the current scene. Steps 02–04g repaired
+heights, expanded the Eriksberg context to 523 building features over 1,650 × 1,400 m,
+and added dressing/materials/waterline details. See the progress log and
+[renderer guide](3D.md) for implemented behavior. The separate river crop is larger still.
 
 The current GPU scene already has static apartment windows, 20 moving cars on two street
 paths, street lamps, a small boat and wake, shadows, atmosphere, and water reflections.
@@ -428,7 +439,12 @@ Acceptance: the dock and river read differently from the boat, the hull stays at
 to the visible surface, and the transition has no visible seam or abrupt handling change.
 Inspect idle, acceleration, turns, and parallel-quay travel in flat and wave modes.
 
-### 04g — connect water, shore, and use
+### 04g — connect water, shore, and use (selected fittings complete)
+
+The implemented scope is selected ladders, fenders, and wall contact treatment, documented
+in [the 04g record](WATER_REVIEW.md#04g-implementation-selected-waterline-edges). The original
+brief below also suggested mooring lines, moored craft, and disturbance; those additions
+were not implemented and are not prerequisites for step 05.
 
 Dress a few clearly visible stretches with ladders, fenders, bollards, mooring lines,
 and selected moored craft. Ground them at the waterline and preserve navigable space.

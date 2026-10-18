@@ -4,8 +4,9 @@ A small native C/raylib demo playground with deliberately low-resolution output
 and tracker music. The demo is now a single four-minute Eriksberg waterfront journey,
 following five gulls to the 120 BPM “Below the surface” soundtrack.
 
-The [Gothenburg boating plan](docs/BOATING_PLAN.md) records the proposed interactive direction:
-a small boating playground, with free exploration and an optional arcade challenge.
+The separate boating playground provides free exploration, a timed basin course, ghosts,
+and replays. See the [documentation and current plans](docs/README.md) for project status,
+next tasks, and the [Gothenburg boating design](docs/BOATING_PLAN.md).
 
 ## Generate the original sample pack and starter XM (archived sketch)
 
@@ -147,7 +148,7 @@ Shoreline collisions use an oriented bow, stern, and beam footprint; glancing co
 turn the craft away, and rebound gently while retaining most speed along the dock. Translation
 and rotation keep the entire footprint in water, so a dock contact can be reversed out of. The
 outer map boundary also blocks travel.
-GPU rendering is the default for both locations; `--renderer cpu` selects the software renderer.
+GPU rendering is the default for all locations; `--renderer cpu` selects the software renderer.
 GPU rendering provides a depth-tested player hull, steerable engine, wake and spray, with
 reflections and shadows.
 The hull, engine and airborne spray cast shadows; surface foam receives them without casting solid
@@ -223,11 +224,11 @@ level horizon and does not follow the hull’s bobbing.
 
 The basin walls bounce the craft back gently; the two orange markers are visual turning references
 and have no collision yet. A spreading wake traces your path and fades; hard turns throw spray
-according to sideways slip. Reset clears both effects. This sketch is silent, with no scoring or
-geographic scenery.
+according to sideways slip. Reset clears both effects. The study is silent. The default basin has
+no geographic scenery; `--course` adds timed gates, and Eriksberg and river provide mapped scenery.
 
-Opt in to gentle crossing waves with `--waves` (basin or Eriksberg, CPU or GPU).
-Flat, still water remains the default. Three low wave components replace the regular colored bands:
+Opt in to gentle crossing waves with `--waves` (all locations, CPU or GPU).
+Flat, still water remains the default. Three low wave components drive the surface:
 16/9/5.5-unit wavelengths and 0.13/0.06/0.025-unit amplitudes, with different travel directions.
 The hull responds to the same water query that drives the rendered surface; foam follows the
 water and spray starts at the moving hull. GPU water has restrained reflections distorted by the

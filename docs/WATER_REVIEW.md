@@ -1,8 +1,14 @@
 # Boat-level Eriksberg water review
 
 Execution step 04e of [the living city plan](LIVING_CITY_PLAN.md), 2026-10-17.
-The 04e audit did not change rendering or handling. The implementation record for 04f
-follows the original findings and baseline below.
+Status, reconciled 2026-10-18: audit 04e, surface pass 04f, and selected waterline pass
+04g are complete. The 04e audit did not change rendering or handling. Its original findings,
+geometry costs, crop limits, and implementation brief below are historical baseline evidence;
+the 04f/04g records later in this document describe the changes that followed.
+
+This review uses the original Eriksberg location. The opt-in river crop, bridge route,
+and its verification are documented separately in the [river expansion record](eriksberg/bridge/README.md).
+See [the living-city plan](LIVING_CITY_PLAN.md) for the next visual task, step 05.
 
 ## Review route and reproduction
 
@@ -286,7 +292,7 @@ exposed reach, quay, and return views plus adjacent-frame strips at both heights
 Also inspected a native 320x200 wave capture without AA (`native-waves.png`).
 The complete close-view wave route finished in a 60 Hz windowed pass with the submission
 figures above. Python compilation, artifact assembly, movie encoding, Instruments
-record/export, and `git diff --check` passed. Step 04f is complete; 04g is next.
+record/export, and `git diff --check` passed. Step 04f was complete at this checkpoint; the subsequent 04g record follows below.
 
 Remaining limitations: planar reflection projection, the finite geographic crop, and
 the expensive full CPU wave reference remain. Distant GPU wave heights now deliberately

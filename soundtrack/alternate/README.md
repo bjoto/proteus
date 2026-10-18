@@ -4,7 +4,9 @@ The brief, palette provenance, render commands, listening guide, and revision
 decisions live in [SOUNDTRACK_PLAN.md](../../docs/SOUNDTRACK_PLAN.md).
 
 **Runtime:** Proteus now bundles the working XM below at build time and plays it
-with the four-minute gull-follow waterfront. Rebuild after tracker edits.
+with the four-minute gull-follow waterfront. Rebuild after editing the selected XM.
+A new filename must also be selected in CMakeLists.txt's `proteus_assets` copy command;
+see the tracker guide's [runtime instructions](fasttracker/README.md#runtime-playback).
 
 **Current editing handoff:** open
 [fasttracker/v01/below-the-surface.xm](fasttracker/v01/below-the-surface.xm) in
@@ -26,7 +28,7 @@ the song in a new XM revision; tracker edits do not update the JSON sources belo
   harmony timestamp guides. Full playback completed; musical acceptance is pending.
 - `mix-v01.json`: post-processing candidate based on full-v01, preserving its
   notes, timing, patches, track volumes, master gain, and reverb. Its render and
-  listening assessment are pending.
+  full playback are complete; musical listening acceptance remains pending.
 - `compose_proof.py`: optional recipe for the original proof score, using the
   earlier palette definitions. It refuses to overwrite an existing score; edit
   a new JSON revision directly for subsequent listening iterations.
@@ -105,8 +107,10 @@ with −22.14 dBFS RMS and zero clipped samples. The opening sample is zero, and
 final second is silent. The quiet centre measures −31.61 dBFS RMS; first peak
 −21.08 dBFS; full return −18.23 dBFS; widening −17.34 dBFS. All 844 notes, timings,
 patches, and track settings were preserved; the MIDI matches full-v01 byte for byte.
-Current build passed. CTest passed 14/16; two GPU checks could not create a GLFW
-context because no monitor was available. Full mix playback completed with exit 0; listening
+At the 2026-09-22 mix checkpoint, the build passed and CTest passed 14/16; two GPU
+checks could not create a GLFW context because no monitor was available. Those context
+failures are historical; see the [current verification baseline](../../docs/README.md#verification-baseline).
+Full mix playback completed with exit 0; listening
 acceptance and headphone/speaker review remain pending. The `mix-v01` output folder
 is populated, so rerenders need a new output path.
 
