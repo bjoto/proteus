@@ -329,19 +329,14 @@ static void evaluate_life(float time, WaterfrontSceneFrame *frame)
                 }
         }
     }
-    float z = 85 - time * 2;
-    frame->boat.hull = (Transform3D) { .position = { 12, .7f, z }, .scale = { 3.2f, 1.3f, 7 } };
-    frame->boat.cabin
-        = (Transform3D) { .position = { 12, 1.9f, z + .5f }, .scale = { 2.5f, 1.3f, 3.2f } };
-    frame->boat.window
-        = (Transform3D) { .position = { 12, 2, z - 1.15f }, .scale = { 2, .6f, .1f } };
-    for (int i = 0; i < WATERFRONT_WAKE_COUNT; ++i) {
-        float drift = fmodf(time * 2 + i * 1.8f, 14);
-        // Retain legacy float operation order for the CPU edges and GPU centre.
-        frame->boat.wake[i] = (WaterfrontWakeState) { .half_width = 1.4f + drift * .14f,
-            .z_start = z + 3.8f + drift,
-            .z_center = z + 3.95f + drift };
-    }
+}
+
+void waterfront_scene_evaluate_actors(float time, BoatWater water, WaterfrontSceneFrame *frame)
+{
+    frame->time = time;
+    evaluate_life(time, frame);
+    waterfront_harbor_evaluate(water, time, &frame->harbor);
+    waterfront_traffic_evaluate(water, time, &frame->traffic);
 }
 
 float waterfront_scene_duration(bool short_route) { return short_route ? 15.36f : 30.72f; }
@@ -388,8 +383,7 @@ void waterfront_scene_evaluate(float time, bool short_route, WaterfrontSceneFram
         .position = { 11, 7, 126 }, .rotation = { 0, -.08f, 0 }, .scale = { 68, 1, 3 }
     };
     frame->bridge_color = (Color) { 119, 128, 145, 255 };
-    evaluate_life(time, frame);
-    waterfront_harbor_evaluate((BoatWater) { 0 }, time, &frame->harbor);
+    waterfront_scene_evaluate_actors(time, (BoatWater) { 0 }, frame);
 }
 
 const Mesh3D *waterfront_scene_city_mesh(void)
@@ -500,8 +494,7 @@ void waterfront_demo_evaluate(float time, WaterfrontSceneFrame *frame)
     time = Clamp(time, 0, WATERFRONT_DEMO_DURATION);
     waterfront_scene_evaluate(0, true, frame);
     frame->time = time;
-    evaluate_life(time, frame);
-    waterfront_harbor_evaluate((BoatWater) { 0 }, time, &frame->harbor);
+    waterfront_scene_evaluate_actors(time, (BoatWater) { 0 }, frame);
     Vector3 center = flock_position(time);
     Vector3 forward = Vector3Normalize(
         Vector3Subtract(flock_position(time + .25f), flock_position(time - .25f)));

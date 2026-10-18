@@ -4,6 +4,7 @@
 #include "boat_water.h"
 #include "renderer3d.h"
 #include "waterfront_harbor.h"
+#include "waterfront_traffic.h"
 
 // Renderer-independent authored data and time evaluation for the waterfront.
 // The returned mesh refers to scene-owned, static generated geometry.
@@ -12,7 +13,6 @@
 #define WATERFRONT_GULL_PARTS 3
 #define WATERFRONT_CAR_COUNT 20
 #define WATERFRONT_MAX_LAMPS 32
-#define WATERFRONT_WAKE_COUNT 8
 #define WATERFRONT_PLAYER_PARTICLES 384
 
 typedef struct {
@@ -46,15 +46,6 @@ typedef struct {
     Vector3 lens;
 } WaterfrontLampState;
 
-typedef struct {
-    float half_width, z_start, z_center;
-} WaterfrontWakeState;
-
-typedef struct {
-    Transform3D hull, cabin, window;
-    WaterfrontWakeState wake[WATERFRONT_WAKE_COUNT];
-} WaterfrontBoatState;
-
 // Owned snapshot: no simulation state or pointers into mutable actor storage.
 // Evaluate once and share it across colour, reflection, shadow, and lighting passes.
 typedef struct {
@@ -76,8 +67,8 @@ typedef struct {
     WaterfrontCarState cars[WATERFRONT_CAR_COUNT];
     WaterfrontLampState lamps[WATERFRONT_MAX_LAMPS];
     int lamp_count;
-    WaterfrontBoatState boat;
     WaterfrontHarborFrame harbor;
+    WaterfrontTrafficFrame traffic;
     int gull_count;
     Transform3D gulls[WATERFRONT_GULL_COUNT][WATERFRONT_GULL_PARTS];
 } WaterfrontSceneFrame;
@@ -89,6 +80,8 @@ typedef struct {
 
 // Four-minute soundtrack route. Deterministic flock and chase camera; holds at the ending.
 void waterfront_demo_evaluate(float time, WaterfrontSceneFrame *frame);
+// Reevaluate scene-owned actors at explicit time/water, preserving the caller's camera/player.
+void waterfront_scene_evaluate_actors(float time, BoatWater water, WaterfrontSceneFrame *frame);
 const Mesh3D *waterfront_gull_mesh(int part);
 const Mesh3D *waterfront_player_hull_mesh(void);
 const Mesh3D *waterfront_player_cabin_mesh(void);

@@ -71,7 +71,7 @@ void boat_reset_course(Boat *boat)
 }
 
 typedef struct {
-    Vector2 local, normal;
+    Vector2 local, normal, velocity;
 } HullContact;
 
 static Vector2 hull_point(Vector2 forward, Vector2 right, Vector2 position, Vector2 local)
@@ -107,7 +107,7 @@ static bool hull_contact(const Boat *boat, HullContact *contact)
             }
         }
         if (!water) {
-            *contact = (HullContact) { samples[i], normal };
+            *contact = (HullContact) { .local = samples[i], .normal = normal };
             return true;
         }
     }
@@ -123,7 +123,8 @@ static void resolve_hull_contact(Boat *boat, Vector2 safe_position, HullContact 
         = Vector2Add(Vector2Scale(right, contact.local.x), Vector2Scale(forward, contact.local.y));
     Vector2 point_velocity = Vector2Add(
         boat->velocity, (Vector2) { -boat->yaw_velocity * arm.y, boat->yaw_velocity * arm.x });
-    float normal_speed = Vector2DotProduct(point_velocity, contact.normal);
+    float normal_speed
+        = Vector2DotProduct(Vector2Subtract(point_velocity, contact.velocity), contact.normal);
     if (normal_speed < 0) {
         float arm_cross_normal = arm.x * contact.normal.y - arm.y * contact.normal.x;
         float impulse = -(1 + CONTACT_RESTITUTION) * normal_speed
@@ -131,12 +132,35 @@ static void resolve_hull_contact(Boat *boat, Vector2 safe_position, HullContact 
         boat->velocity = Vector2Add(boat->velocity, Vector2Scale(contact.normal, impulse));
         boat->yaw_velocity += arm_cross_normal * impulse / YAW_INERTIA;
         // Limit tangential friction by impact strength so shallow scrapes retain momentum.
-        float tangent_speed
-            = Vector2DotProduct(boat->velocity, (Vector2) { -contact.normal.y, contact.normal.x });
+        float tangent_speed = Vector2DotProduct(Vector2Subtract(boat->velocity, contact.velocity),
+            (Vector2) { -contact.normal.y, contact.normal.x });
         float friction = fminf(fabsf(tangent_speed), CONTACT_FRICTION * impulse);
         boat->velocity = Vector2Subtract(boat->velocity,
             Vector2Scale((Vector2) { -contact.normal.y, contact.normal.x },
                 copysignf(friction, tangent_speed)));
+    }
+}
+
+static void resolve_traffic(Boat *boat)
+{
+    if (!boat->eriksberg)
+        return;
+    // Separate the full hull footprints, then match contact velocity against the moving hull.
+    // Multiple passes cover a rare simultaneous contact without advancing traffic time.
+    for (int pass = 0; pass < 4; ++pass) {
+        WaterfrontTrafficContact traffic;
+        if (!waterfront_traffic_contact(boat->position, boat->heading, HULL_BOW, HULL_STERN,
+                HULL_HALF_BEAM, boat->time, &traffic))
+            break;
+        Vector2 previous = boat->position;
+        Vector2 shifted
+            = Vector2Add(previous, Vector2Scale(traffic.normal, traffic.penetration + .002f));
+        resolve_hull_contact(boat, shifted,
+            (HullContact) {
+                .local = traffic.local, .normal = traffic.normal, .velocity = traffic.velocity });
+        HullContact shore;
+        if (hull_contact(boat, &shore))
+            resolve_hull_contact(boat, previous, shore);
     }
 }
 
@@ -459,6 +483,7 @@ void boat_step(Boat *boat, float wheel_change, float throttle_change)
         resolve_hull_contact(boat, boat->position, contact);
         boat->heading = previous_heading;
     }
+    resolve_traffic(boat);
     float camera_delta = remainderf(boat->heading - boat->camera_heading, 2 * PI);
     boat->camera_heading
         = remainderf(boat->camera_heading + camera_delta * (1 - expf(-6 * BOAT_STEP)), 2 * PI);
@@ -548,13 +573,11 @@ void boat_scene_frame(const Boat *boat, BoatCamera camera, WaterfrontSceneFrame 
     _Static_assert(BOAT_WATER_PARTICLES <= WATERFRONT_PLAYER_PARTICLES, "Player particle capacity");
     waterfront_scene_evaluate(0, true, frame);
     frame->camera = boat_camera(boat, camera);
-    frame->time = boat->time;
+    waterfront_scene_evaluate_actors(boat->time, boat->water_settings, frame);
     frame->player_active = true;
     if (!boat->eriksberg)
         basin_scenery(boat, frame);
     frame->player_water = boat->water_settings;
-    if (boat->eriksberg)
-        waterfront_harbor_evaluate(boat->water_settings, boat->time, &frame->harbor);
     WaterfrontPlayerState *p = &frame->player;
     boat_player_pose(boat, p);
     for (int i = 0; i < BOAT_WATER_PARTICLES; ++i) {
@@ -612,6 +635,9 @@ bool boat_draw_with_ghost(Renderer3D *renderer, Color *pixels, int width, int he
         renderer3d_draw_emissive_mesh(renderer, surface, (Transform3D) { .scale = { 1, 1, 1 } });
     }
     if (boat->eriksberg) {
+        WaterfrontTrafficFrame traffic;
+        waterfront_traffic_evaluate(boat->water_settings, boat->time, &traffic);
+        waterfront_draw_traffic(renderer, &traffic);
         WaterfrontHarborFrame harbor;
         waterfront_harbor_evaluate(boat->water_settings, boat->time, &harbor);
         waterfront_draw_harbor(renderer, &harbor);

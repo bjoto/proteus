@@ -12,6 +12,7 @@ typedef enum {
     BOAT_MODEL_SAILBOAT,
     BOAT_MODEL_WORKBOAT,
     BOAT_MODEL_SPEEDBOAT,
+    BOAT_MODEL_FERRY,
     BOAT_MODEL_KIND_COUNT
 } BoatModelKind;
 
@@ -22,7 +23,7 @@ typedef struct {
     float windshield_rake; // 0..0.6, aft displacement per metre of height.
     float mast_height; // Zero omits mast and furled sail.
     int engines; // 0..2 outboards.
-    bool work_deck, fenders;
+    bool work_deck, fenders, passenger_deck;
     Color hull, deck, trim;
 } BoatModelSpec;
 
@@ -35,6 +36,10 @@ typedef struct {
     Mesh3D mesh;
     bool overflow;
 } BoatModel;
+
+// Shared XYZ pose convention for hulls, attachments, lines, and water-relative dressing.
+Vector3 boat_model_rotation(Matrix rotation);
+Vector3 boat_model_point(Transform3D pose, Vector3 local);
 
 BoatModelSpec boat_model_preset(BoatModelKind kind);
 bool boat_model_generate(BoatModel *model, BoatModelSpec spec);

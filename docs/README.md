@@ -11,7 +11,7 @@ the CPU reference supports display-free captures.
 | --- | --- | --- |
 | [Boating design](BOATING_PLAN.md) | Basin, Eriksberg, and river locations; timed S course, recordings, persistent bests, ghosts, and replays | Playtesting and presentation; score-loop and archipelago ideas remain proposals |
 | [Boat physics](BOAT_PHYSICS_PLAN.md) | A–C: reverse/docking, hull contacts, planing, buoyancy, and gentle waves; Phase C accepted by the user | D1 spatial current, then D2 one crossable wake; optional trim/loading after D |
-| [Living city](LIVING_CITY_PLAN.md) | 01–04h: coverage, dressing, materials, waterline fittings, and generated moored boats at two dressed berths; flying gulls also implemented | 05 shared actor evaluation before new interacting actors; people, varied traffic, building activity, ferry, perched gulls, and final polish follow |
+| [Living city](LIVING_CITY_PLAN.md) | 01–05: city dressing, materials, berths, shared actors; travelling boats and a compact ferry brought forward; flying gulls | 06 people/cyclists; varied road traffic, building activity, ferry polish, perched gulls, and final review remain |
 | [River / Älvsborgsbron](eriksberg/bridge/README.md) | Separate source/crop, navigable bridge blockout, blocking tower legs, and grounded road approaches | Bridge/shoreline/building refinement; human handling and camera review |
 | [GPU migration](GPU_WATERFRONT_PLAN.md) | Steps 01–12 implemented; GPU default, lighting, shadows, atmosphere, reflections, and regression checks | Migration is implemented; other-platform and human visual acceptance remain separate from automated checks |
 | [Soundtrack](SOUNDTRACK_PLAN.md) | Approved proof v03, full composition/mix candidate, editable XM, and runtime integration | Timestamped listening feedback and full composition/mix acceptance; continue editing in FastTracker |
@@ -26,6 +26,7 @@ does not authorize advancing every plan. Use the requested track's scope and acc
 - [Water review](WATER_REVIEW.md): dated 04e baseline followed by implemented 04f/04g records.
 - [Generated boats and berths](HARBOR_BOATS.md): visual parameters, mooring/wave evaluation,
   contact envelopes, review commands, and the boundary for future playable boat variants.
+- [Harbor traffic](HARBOR_TRAFFIC.md): travelling craft, ferry, routes, moving contacts, and visual wakes.
 - [Music workflow](MUSIC.md) and [FastTracker guide](../soundtrack/alternate/fasttracker/README.md):
   working XM, section cues, editing, and runtime selection.
 - [Windows builds](WINDOWS_BUILD.md), [dance study](DANCE_STUDY.md), and [Emacs setup](emacs.md).
@@ -35,8 +36,8 @@ does not authorize advancing every plan. Use the requested track's scope and acc
 
 ## Verification baseline
 
-On the development Mac, 2026-10-18, Debug configure/build and all 49 CTests passed,
-including 13 graphics-context tests with `PROTEUS_GPU_TESTS=ON`. This verifies the
+On the development Mac, 2026-10-18, Debug configure/build and all 52 CTests passed,
+including 14 graphics-context tests with `PROTEUS_GPU_TESTS=ON`. This verifies the
 automated suite at this revision; it does not establish Windows behavior, human motion/audio
 assessment, or musical acceptance. See the owning plans for existing manual evidence and limits.
 

@@ -1,0 +1,201 @@
+#include "boat.h"
+#include "boat_map.h"
+#include "waterfront_traffic.h"
+
+#include "raymath.h"
+
+#include <math.h>
+#include <stdio.h>
+#include <string.h>
+
+#define CHECK(test)                                                                                \
+    do {                                                                                           \
+        if (!(test)) {                                                                             \
+            fprintf(stderr, "Traffic check failed at %d: %s\n", __LINE__, #test);                  \
+            return 1;                                                                              \
+        }                                                                                          \
+    } while (0)
+
+static bool near(Vector3 a, Vector3 b, float tolerance)
+{
+    return Vector3Distance(a, b) < tolerance;
+}
+
+static bool footprints_overlap(
+    Vector2 a, float ah, float al, float ab, Vector2 b, float bh, float bl, float bb)
+{
+    // Independent projection of the four physical rectangle vertices onto both frames.
+    Vector2 points[2][4], axes[4];
+    float headings[] = { ah, bh }, lengths[] = { al, bl }, beams[] = { ab, bb };
+    Vector2 centers[] = { a, b };
+    for (int hull = 0; hull < 2; ++hull) {
+        Vector2 right = { cosf(headings[hull]), -sinf(headings[hull]) };
+        Vector2 forward = { -sinf(headings[hull]), -cosf(headings[hull]) };
+        axes[hull * 2] = right;
+        axes[hull * 2 + 1] = forward;
+        for (int corner = 0; corner < 4; ++corner)
+            points[hull][corner] = Vector2Add(centers[hull],
+                Vector2Add(Vector2Scale(right, (corner & 1 ? 1 : -1) * beams[hull] * .5f),
+                    Vector2Scale(forward, (corner & 2 ? 1 : -1) * lengths[hull] * .5f)));
+    }
+    for (int i = 0; i < 4; ++i) {
+        float low[2] = { INFINITY, INFINITY }, high[2] = { -INFINITY, -INFINITY };
+        for (int hull = 0; hull < 2; ++hull)
+            for (int corner = 0; corner < 4; ++corner) {
+                float value = Vector2DotProduct(points[hull][corner], axes[i]);
+                low[hull] = fminf(low[hull], value);
+                high[hull] = fmaxf(high[hull], value);
+            }
+        if (high[0] <= low[1] || high[1] <= low[0])
+            return false;
+    }
+    return true;
+}
+
+static bool hulls_clear(const Boat *boat)
+{
+    // Player geometry is offset 0.2 m toward its 2.0 m bow / 1.6 m stern.
+    Vector2 center = { -boat->position.x - .2f * sinf(boat->heading),
+        boat->position.y - .2f * cosf(boat->heading) };
+    for (int i = 0; i < WATERFRONT_TRAFFIC_VESSELS; ++i) {
+        BoatModelSpec s = waterfront_traffic_spec(i);
+        WaterfrontVesselMotion m = waterfront_traffic_motion(i, boat->time);
+        if (footprints_overlap(center, boat->heading, 3.6f, 1.5f,
+                (Vector2) { m.position.x, m.position.z }, m.heading, s.length, s.beam))
+            return false;
+    }
+    return boat_map_water(boat->position, .5f);
+}
+
+int main(void)
+{
+    for (int river = 0; river < 2; ++river) {
+        boat_map_destroy();
+        waterfront_scene_select_river(river != 0);
+        for (int i = 0; i < WATERFRONT_TRAFFIC_VESSELS; ++i) {
+            BoatModelSpec spec = waterfront_traffic_spec(i);
+            const Mesh3D *mesh = waterfront_traffic_mesh(i);
+            CHECK(mesh && mesh->triangle_count > 0
+                && mesh->triangle_count <= BOAT_MODEL_MAX_TRIANGLES);
+            float period = waterfront_traffic_period(i);
+            for (int tick = 0; tick <= (int)ceilf(period * 12); ++tick) {
+                float time = tick / 12.0f;
+                WaterfrontVesselMotion m = waterfront_traffic_motion(i, time);
+                float speed = Vector3Length(m.velocity);
+                CHECK(speed > .5f && speed < 6.2f && fabsf(m.yaw_rate) < .2f);
+                Transform3D pose = {
+                    .position = m.position, .rotation = { 0, m.heading, 0 }, .scale = { 1, 1, 1 }
+                };
+                for (int corner = 0; corner < 4; ++corner) {
+                    Vector3 p = boat_model_point(pose,
+                        (Vector3) { (corner & 1 ? 1 : -1) * (spec.beam * .5f + 1.5f), 0,
+                            (corner & 2 ? 1 : -1) * (spec.length * .5f + 1.5f) });
+                    CHECK(boat_map_water((Vector2) { -p.x, p.z }, .5f));
+                    CHECK(!waterfront_harbor_contact((Vector2) { -p.x, p.z }, .5f, NULL));
+                }
+            }
+        }
+    }
+    boat_map_destroy();
+    waterfront_scene_select_river(false);
+    for (int i = 0; i < WATERFRONT_TRAFFIC_VESSELS; ++i) {
+        float period = waterfront_traffic_period(i);
+        WaterfrontVesselMotion start = waterfront_traffic_motion(i, 0);
+        WaterfrontVesselMotion end = waterfront_traffic_motion(i, period);
+        CHECK(near(start.position, end.position, .002f));
+        CHECK(near(start.velocity, end.velocity, .002f));
+        CHECK(near(waterfront_traffic_motion(i, -.001f).position,
+            waterfront_traffic_motion(i, .001f).position, .02f));
+        // Velocity and heading follow the actual curve rather than interpolated key rotations.
+        for (int tick = 0; tick < (int)period * 4; ++tick) {
+            float t = tick / 4.0f;
+            WaterfrontVesselMotion m = waterfront_traffic_motion(i, t);
+            Vector3 finite_difference
+                = Vector3Scale(Vector3Subtract(waterfront_traffic_motion(i, t + .01f).position,
+                                   waterfront_traffic_motion(i, t - .01f).position),
+                    50);
+            CHECK(near(m.velocity, finite_difference, .03f));
+            Vector3 bow = Vector3Transform((Vector3) { 0, 0, -1 }, MatrixRotateY(m.heading));
+            CHECK(Vector3DotProduct(bow, Vector3Normalize(m.velocity)) > .9999f);
+        }
+    }
+    // The two river periods repeat together after 4,160 s; all four corridors stay separated.
+    for (int tick = 0; tick <= 8320; ++tick) {
+        float time = tick * .5f;
+        for (int i = 0; i < WATERFRONT_TRAFFIC_VESSELS; ++i)
+            for (int j = i + 1; j < WATERFRONT_TRAFFIC_VESSELS; ++j) {
+                BoatModelSpec a = waterfront_traffic_spec(i), b = waterfront_traffic_spec(j);
+                WaterfrontVesselMotion ma = waterfront_traffic_motion(i, time);
+                WaterfrontVesselMotion mb = waterfront_traffic_motion(j, time);
+                CHECK(!footprints_overlap((Vector2) { ma.position.x, ma.position.z }, ma.heading,
+                    a.length + 1, a.beam + .5f, (Vector2) { mb.position.x, mb.position.z },
+                    mb.heading, b.length + 1, b.beam + .5f));
+            }
+    }
+    WaterfrontTrafficFrame flat, waves, sought;
+    for (int t = 0; t <= 320; ++t) {
+        waterfront_traffic_evaluate((BoatWater) { 0 }, (float)t, &flat);
+        waterfront_traffic_evaluate(boat_water_gentle(), (float)t, &waves);
+        waterfront_traffic_evaluate(boat_water_gentle(), 320 - (float)t, &sought);
+        waterfront_traffic_evaluate(boat_water_gentle(), (float)t, &sought);
+        CHECK(!memcmp(&sought, &waves, sizeof(waves)));
+        CHECK(waves.wake_count == WATERFRONT_TRAFFIC_WAKES);
+        for (int i = 0; i < WATERFRONT_TRAFFIC_VESSELS; ++i) {
+            CHECK(waves.vessels[i].id == 3000 + i);
+            CHECK(fabsf(waves.vessels[i].pose.position.y) < .22f);
+            CHECK(flat.vessels[i].pose.position.y == 0);
+            CHECK(near(flat.vessels[i].motion.position, waves.vessels[i].motion.position, 1e-6f));
+        }
+        for (int j = 0; j < waves.wake_count; ++j) {
+            const WaterfrontTrafficWake *wake = &waves.wakes[j];
+            CHECK(isfinite(wake->pose.rotation.x) && isfinite(wake->pose.rotation.z));
+            CHECK(wake->pose.scale.z > 0 && wake->pose.scale.z < 5);
+            CHECK(boat_map_water((Vector2) { -wake->pose.position.x, wake->pose.position.z }, .5f));
+            CHECK(wake->color.a == 255);
+        }
+    }
+    // A moving vessel catches a neutral boat; the player is separated and can power away.
+    for (int i = 0; i < WATERFRONT_TRAFFIC_VESSELS; ++i) {
+        WaterfrontVesselMotion ship = waterfront_traffic_motion(i, 60);
+        BoatModelSpec spec = waterfront_traffic_spec(i);
+        Boat boat;
+        boat_reset_location(&boat, true);
+        boat.time = 60;
+        boat.heading = boat.camera_heading = ship.heading;
+        Vector3 p = Vector3Add(
+            ship.position, Vector3Scale(Vector3Normalize(ship.velocity), spec.length * .5f + 2.7f));
+        boat.position = (Vector2) { -p.x, p.z };
+        Vector2 initial = boat.position;
+        for (int tick = 0; tick < 120 * 8; ++tick) {
+            boat_step(&boat, 0, 0);
+            CHECK(hulls_clear(&boat));
+            CHECK(Vector2Length(boat.velocity) < 12 && fabsf(boat.yaw_velocity) < 5);
+        }
+        CHECK(Vector2Distance(initial, boat.position) > .5f);
+        boat.throttle = 1;
+        for (int tick = 0; tick < 120 * 6; ++tick) {
+            boat_step(&boat, 0, 0);
+            CHECK(hulls_clear(&boat));
+        }
+        // A deliberate beam-on crossing checks the full SAT hull and moving contact torque.
+        ship = waterfront_traffic_motion(i, 40);
+        Vector2 right = { cosf(ship.heading), sinf(ship.heading) };
+        boat_reset_location(&boat, true);
+        boat.time = 40;
+        boat.position = Vector2Add((Vector2) { -ship.position.x, ship.position.z },
+            Vector2Scale(right, spec.beam * .5f + 3));
+        boat.heading = ship.heading - PI / 2;
+        boat.camera_heading = boat.heading;
+        boat.velocity = (Vector2) { sinf(boat.heading) * 8, -cosf(boat.heading) * 8 };
+        for (int tick = 0; tick < 120 * 5; ++tick) {
+            boat_step(&boat, 0, 0);
+            CHECK(hulls_clear(&boat));
+            CHECK(Vector2Length(boat.velocity) < 16 && fabsf(boat.yaw_velocity) < 6);
+        }
+    }
+    CHECK(waterfront_traffic_mesh(-1) == NULL);
+    CHECK(waterfront_traffic_period(-1) == 0);
+    boat_map_destroy();
+    puts("harbor_traffic=ok routes=4 pairwise_schedule=4160s visual_wakes=64 moving_contacts=ok");
+    return 0;
+}

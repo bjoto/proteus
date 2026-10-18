@@ -16,7 +16,7 @@ static bool transform_equal(Transform3D a, Transform3D b)
         && vector_equal(a.scale, b.scale);
 }
 
-// Independent copy of the pre-step-05 equations: catches phase, lane, orientation,
+// Independent copy of the original street equations: catches phase, lane, orientation,
 // light attachment, and wrap changes rather than merely repeating the new evaluator.
 static bool legacy_matches(const WaterfrontSceneFrame *frame)
 {
@@ -88,21 +88,6 @@ static bool legacy_matches(const WaterfrontSceneFrame *frame)
     }
     if (frame->lamp_count != lamp_count || lamp_count != 25)
         return false;
-    float z = 85 - frame->time * 2;
-    if (!transform_equal(frame->boat.hull,
-            (Transform3D) { .position = { 12, .7f, z }, .scale = { 3.2f, 1.3f, 7 } })
-        || !transform_equal(frame->boat.cabin,
-            (Transform3D) { .position = { 12, 1.9f, z + .5f }, .scale = { 2.5f, 1.3f, 3.2f } })
-        || !transform_equal(frame->boat.window,
-            (Transform3D) { .position = { 12, 2, z - 1.15f }, .scale = { 2, .6f, .1f } }))
-        return false;
-    for (int i = 0; i < WATERFRONT_WAKE_COUNT; ++i) {
-        float drift = fmodf(frame->time * 2 + i * 1.8f, 14);
-        WaterfrontWakeState w = frame->boat.wake[i];
-        if (w.half_width != 1.4f + drift * .14f || w.z_start != z + 3.8f + drift
-            || w.z_center != z + 3.95f + drift)
-            return false;
-    }
     return true;
 }
 
@@ -168,13 +153,30 @@ static uint64_t snapshot_hash(const WaterfrontSceneFrame *f)
         hash_vector(&hash, l->lens);
         hash_transform(&hash, l->pole);
     }
-    hash_transform(&hash, f->boat.hull);
-    hash_transform(&hash, f->boat.cabin);
-    hash_transform(&hash, f->boat.window);
-    for (int i = 0; i < WATERFRONT_WAKE_COUNT; ++i) {
-        hash_float(&hash, f->boat.wake[i].half_width);
-        hash_float(&hash, f->boat.wake[i].z_start);
-        hash_float(&hash, f->boat.wake[i].z_center);
+    hash_transform(&hash, f->harbor.pontoon);
+    hash_transform(&hash, f->harbor.gangway);
+    for (int i = 0; i < WATERFRONT_HARBOR_BOATS; ++i)
+        hash_transform(&hash, f->harbor.boats[i]);
+    for (int i = 0; i < f->harbor.line_count; ++i)
+        hash_transform(&hash, f->harbor.lines[i]);
+    for (int i = 0; i < WATERFRONT_TRAFFIC_VESSELS; ++i) {
+        const WaterfrontVesselState *v = &f->traffic.vessels[i];
+        hash_float(&hash, (float)v->id);
+        hash_transform(&hash, v->pose);
+        hash_vector(&hash, v->motion.position);
+        hash_vector(&hash, v->motion.velocity);
+        hash_float(&hash, v->motion.heading);
+        hash_float(&hash, v->motion.yaw_rate);
+        for (int j = 0; j < WATERFRONT_TRAFFIC_LIGHTS; ++j)
+            hash_vector(&hash, v->lights[j]);
+    }
+    hash_float(&hash, (float)f->traffic.wake_count);
+    for (int i = 0; i < f->traffic.wake_count; ++i) {
+        hash_transform(&hash, f->traffic.wakes[i].pose);
+        Color c = f->traffic.wakes[i].color;
+        hash_float(&hash, c.r);
+        hash_float(&hash, c.g);
+        hash_float(&hash, c.b);
     }
     hash_float(&hash, (float)f->gull_count);
     for (int i = 0; i < f->gull_count; ++i)
@@ -280,7 +282,8 @@ int main(void)
     puts(
         "Five-gull framing, spacing, camera continuity, and direct seeks pass across 240 seconds.");
     printf("Actor snapshots match legacy motion and forward/backward/direct seeks on both routes.\n"
-           "%d cars, 25 lamps, one boat, %d wake patches; snapshot=%zu bytes.\n",
-        WATERFRONT_CAR_COUNT, WATERFRONT_WAKE_COUNT, sizeof(WaterfrontSceneFrame));
+           "%d cars, 25 lamps, %d travelling vessels, %d wake patches; snapshot=%zu bytes.\n",
+        WATERFRONT_CAR_COUNT, WATERFRONT_TRAFFIC_VESSELS, WATERFRONT_TRAFFIC_WAKES,
+        sizeof(WaterfrontSceneFrame));
     return 0;
 }

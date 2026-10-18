@@ -1,9 +1,35 @@
 #include "boat_water.h"
+#include "boat_model.h"
 #include "raymath.h"
 #include "waterfront_scene.h"
 
 #include <math.h>
 #include <stdlib.h>
+
+static float pose_height(BoatWater water, Vector3 p, float time)
+{
+    return boat_water_query(water, (Vector2) { -p.x, p.z }, time).height;
+}
+
+Transform3D boat_water_pose(
+    BoatWater water, float time, Vector3 p, float yaw, float length, float beam)
+{
+    Matrix heading = MatrixRotateY(yaw);
+    Vector3 fore = Vector3Add(p, Vector3Transform((Vector3) { 0, 0, -length * .35f }, heading));
+    Vector3 aft = Vector3Add(p, Vector3Transform((Vector3) { 0, 0, length * .35f }, heading));
+    Vector3 left = Vector3Add(p, Vector3Transform((Vector3) { -beam * .35f, 0, 0 }, heading));
+    Vector3 right = Vector3Add(p, Vector3Transform((Vector3) { beam * .35f, 0, 0 }, heading));
+    float f = pose_height(water, fore, time), a = pose_height(water, aft, time);
+    float l = pose_height(water, left, time), r = pose_height(water, right, time);
+    p.y = (f + a + l + r) * .25f;
+    float pitch = atanf((f - a) / (length * .7f));
+    float roll = atanf((r - l) / (beam * .7f));
+    Matrix rotation
+        = MatrixMultiply(MatrixMultiply(MatrixRotateZ(roll), MatrixRotateX(pitch)), heading);
+    return (Transform3D) {
+        .position = p, .rotation = boat_model_rotation(rotation), .scale = { 1, 1, 1 }
+    };
+}
 
 // Three low crossing components. Frequencies approximate deep-water dispersion at this scale.
 BoatWater boat_water_gentle(void)

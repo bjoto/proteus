@@ -31,15 +31,21 @@ shadows without casting solid shadows. Optional AA uses 4×4 supersampling befor
 GPU is the default for all locations, including the basin course. `--renderer cpu` selects the
 software renderer for window-free captures; GPU captures need a desktop graphics context.
 `--gpu-aa` only enables supersampling and does not select a renderer or location.
-This first integration has static scenery, no overhead
-structure collisions, and no camera occlusion handling near buildings. It does not include the
+Buildings and quays remain static, with no overhead structure collisions or camera
+occlusion handling near buildings. It does not include the
 rest of Gothenburg or the archipelago. Source attribution is retained in the HUD and README.
 
 The [generated boat and berth foundation](HARBOR_BOATS.md) adds six leisure boats at a
 west-bank pontoon and a working east-bank berth in Eriksberg and river locations. Moored
 hulls, pontoon fingers, and gangway have forgiving static contacts. The visual generator
-covers skiff through speedboat recipes; it does not change the player craft or implement
+covers skiff through speedboat and passenger-ferry recipes; it does not change the player craft or implement
 speed tiers, unlocks, prices, or progression saves. Those remain future design work.
+
+Three travelling leisure craft and a compact ferry now follow authored dock/river circuits
+in both geographic locations. [Harbor traffic](HARBOR_TRAFFIC.md) documents continuous
+routes, visual wakes, lights, and moving hull contacts. Traffic follows fixed schedules;
+it does not yield or navigate dynamically. Its wakes do not affect handling. The basin
+course and replay baseline are unchanged.
 
 The boat-level [water review](WATER_REVIEW.md) records a repeatable dock/river/quay circuit
 and the completed 04f surface and 04g selected waterline passes. Those visual changes

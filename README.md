@@ -153,6 +153,12 @@ Inspect them directly with `./build/harbor_review --view marina --waves` or `--v
 See [generated boats and berths](docs/HARBOR_BOATS.md) for parameters, review commands,
 and the foundation for future playable boat variants.
 
+Three travelling leisure craft and a compact passenger ferry now share the waterfront. A yellow
+launch loops inside the dock; a cruiser, motoring sailboat, and ferry follow separate river
+circuits. They have visual wakes, navigation lights, reflections, shadows, and forgiving moving
+hull contacts. Inspect `./build/harbor_review --view ferry --waves` or `--view launch`;
+see [harbor traffic](docs/HARBOR_TRAFFIC.md) for routes and limits.
+
 Shoreline collisions use an oriented bow, stern, and beam footprint; glancing contacts scrub speed,
 turn the craft away, and rebound gently while retaining most speed along the dock. Translation
 and rotation keep the entire footprint in water, so a dock contact can be reversed out of. The
@@ -164,9 +170,9 @@ The hull, engine and airborne spray cast shadows; surface foam receives them wit
 slab shadows. `--gpu-aa` only enables anti-aliasing: it averages 4×4 samples per pixel, retaining
 the 320×200 integer-scaled presentation. It does not select a renderer or location. `--gpu` is an
 alias for `--renderer gpu`. GPU screenshots require a desktop graphics context; use
-`--renderer cpu` for window-free captures. Scenery is static, with no traffic or collision against
-overhead structures. Follow-camera occlusion near buildings is not resolved. These locations cover
-a local waterfront area, not all of Gothenburg.
+`--renderer cpu` for window-free captures. Buildings and quays remain static; overhead
+structures have no collision. Follow-camera occlusion near buildings is not resolved.
+These locations cover a local waterfront area, not all of Gothenburg.
 
 `--location river` opts into the larger 2,450 × 2,400 m waterfront and an Älvsborgsbron
 blockout. Start in the same dock, leave the basin, and follow the river southwest to sail under

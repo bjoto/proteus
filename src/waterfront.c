@@ -182,21 +182,6 @@ static void street_life(Renderer3D *r, const WaterfrontSceneFrame *frame)
     }
 }
 
-static void harbour_life(Renderer3D *r, const WaterfrontBoatState *boat)
-{
-    // A slow launch stays inside the basin, south of Dockbron, for both route lengths.
-    renderer3d_draw_box(r, boat->hull, (Color) { 164, 177, 185, 255 });
-    renderer3d_draw_box(r, boat->cabin, (Color) { 69, 91, 111, 255 });
-    light_box(r, boat->window.position, boat->window.scale, (Color) { 247, 191, 108, 255 });
-    for (int i = 0; i < WATERFRONT_WAKE_COUNT; ++i) {
-        float w = boat->wake[i].half_width;
-        float zz = boat->wake[i].z_start;
-        glow_quad(r, (Vector3) { 12 - w, .04f, zz }, (Vector3) { 12 - w, .04f, zz + .3f },
-            (Vector3) { 12 + w, .04f, zz + .3f }, (Vector3) { 12 + w, .04f, zz },
-            (Color) { 63, 98, 117, 255 });
-    }
-}
-
 static void waterline_details(Renderer3D *r)
 {
     size_t count;
@@ -213,6 +198,26 @@ static void waterline_details(Renderer3D *r)
                 = (Triangle3D) { { faces[f][0], faces[f][1], faces[f][2] }, boxes[i].color };
         Mesh3D mesh = { boxes[i].vertices, triangles, 12 };
         renderer3d_draw_mesh(r, &mesh, (Transform3D) { .scale = { 1, 1, 1 } });
+    }
+}
+
+void waterfront_draw_traffic(Renderer3D *r, const WaterfrontTrafficFrame *frame)
+{
+    static const Vector3 vertices[]
+        = { { -.5f, 0, -.5f }, { -.5f, 0, .5f }, { .5f, 0, .5f }, { .5f, 0, -.5f } };
+    for (int i = 0; i < frame->wake_count; ++i) {
+        const WaterfrontTrafficWake *wake = &frame->wakes[i];
+        Triangle3D triangles[] = { { { 0, 1, 2 }, wake->color }, { { 0, 2, 3 }, wake->color } };
+        Mesh3D mesh = { vertices, triangles, 2 };
+        renderer3d_draw_emissive_mesh(r, &mesh, wake->pose);
+    }
+    const Color colors[] = { { 222, 70, 52, 255 }, { 72, 191, 139, 255 }, { 235, 223, 188, 255 } };
+    for (int i = 0; i < WATERFRONT_TRAFFIC_VESSELS; ++i) {
+        const WaterfrontVesselState *vessel = &frame->vessels[i];
+        renderer3d_draw_mesh(r, waterfront_traffic_mesh(i), vessel->pose);
+        float size = i == 3 ? .32f : .18f;
+        for (int light = 0; light < WATERFRONT_TRAFFIC_LIGHTS; ++light)
+            light_box(r, vessel->lights[light], (Vector3) { size, size, size }, colors[light]);
     }
 }
 
@@ -247,7 +252,7 @@ bool waterfront_draw_frame(
     waterline_details(r);
     windows(r);
     street_life(r, frame);
-    harbour_life(r, &frame->boat);
+    waterfront_draw_traffic(r, &frame->traffic);
     waterfront_draw_harbor(r, &frame->harbor);
     crane(r);
     for (int i = 0; i < frame->gull_count; ++i)
@@ -326,6 +331,11 @@ bool waterfront_check_routes(void)
             else
                 waterfront_scene_evaluate(time, short_route, &frame);
             Vector3 p = frame.camera.position;
+            if (!waterfront_traffic_camera_clear(p, frame.time, 2)) {
+                fprintf(stderr, "Camera route %d at %.3f s is within 2 m of travelling traffic\n",
+                    route, time);
+                return false;
+            }
             if (!waterfront_harbor_camera_clear(p, 2)) {
                 fprintf(
                     stderr, "Camera route %d at %.3f s is within 2 m of a berth\n", route, time);

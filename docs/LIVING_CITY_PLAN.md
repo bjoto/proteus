@@ -3,8 +3,10 @@
 Status, reconciled 2026-10-18: execution steps 01–04 and follow-ups 04b–04d complete
 (2026-09-19); boat-view audit 04e, surface pass 04f, and selected waterline pass 04g
 complete (2026-10-17). Generated moored fleet and dressed berths 04h implemented
-(2026-10-18); see [the generator/berth guide](HARBOR_BOATS.md). Step 05 remains the
-prerequisite for new interacting actors.
+(2026-10-18); see [the generator/berth guide](HARBOR_BOATS.md). Shared actor evaluation
+05 and the user-requested travelling fleet are now implemented, including a compact
+passenger ferry brought forward from 09. See [harbor traffic](HARBOR_TRAFFIC.md).
+People/cyclists 06 are the next numbered city task.
 Flying gulls from step 11 were brought forward for the four-minute demo; perched birds
 remain pending. The [river expansion](eriksberg/bridge/README.md) is a separate scenery
 track, not completion of actor/ferry steps. [All plans](README.md).
@@ -55,12 +57,13 @@ report what remains. A purely documentary step does not require a new manual dem
 | 04f | Reduce unnecessary distant wave geometry and give sheltered dock/exposed river water distinct visual surface character. Preserve current physical waves and handling; use the bounded brief in WATER_REVIEW.md. | Complete |
 | 04g | Finish selected waterline edges: quay contact, fenders, ladders, moorings, and restrained local disturbance. Inspect alongside the boat and approaching shore. | Complete; selected wall fittings, see WATER_REVIEW.md |
 | 04h | Dress two berths with a varied generated leisure fleet and a workboat; share wave poses, mooring attachments, reflection/shadow geometry, and forgiving player contacts. Establish reusable visual recipes for later boat variants. | Complete; see HARBOR_BOATS.md and progress log |
-| 05 | Consolidate the actor evaluation needed for city life into the shared scene layer. Preserve existing behaviour and verify direct seeks before adding actors. | Pending |
+| 05 | Consolidate the actor evaluation needed for city life into the shared scene layer. Preserve existing behaviour and verify direct seeks before adding actors. | Complete; explicit-time shared snapshots and legacy street checks |
 | 06 | Distribute a small cast of pedestrians and cyclists between street destinations and both quays, with readable silhouettes and deterministic paths. Avoid concentrating all life at the cafe. Inspect motion and occlusion. | Pending |
 | 07 | Add varied vehicles and one authored interaction, such as a bus stop or yielding car. Verify spacing, stops, and hidden route wraps. | Pending |
 | 08 | Add sparse room activity, coordinated lamp flicker, and selective vehicle lighting. Verify stills, motion, and direct-seek consistency. | Pending |
-| 09 | Stage a ferry proxy in a visible river shot and validate scale, route clearance, and camera composition before detailed modelling. Preserve the music slot. | Pending |
-| 10 | Finish the ferry silhouette, livery, deck lights, wake, and reflection, plus selected quay details. Review the complete harbour shot. | Pending |
+| 09 | Stage a ferry proxy in a visible river shot and validate scale, route clearance, and camera composition before detailed modelling. Preserve the music slot. | Compact passenger ferry implemented by user request; original large Stena proposal remains deferred |
+| 09b | Add travelling small craft, continuous routes, visual wakes, shared poses, and forgiving moving player contacts. | Complete; see HARBOR_TRAFFIC.md |
+| 10 | Finish the ferry silhouette, livery, deck lights, wake, and reflection, plus selected quay details. Review the complete harbour shot. | Daytime compact-ferry silhouette, livery, windows, navigation lights, wake and reflection implemented; night/deck lighting and final artistic review remain |
 | 11 | Add gulls: a few perched birds and a small number of circling/gliding silhouettes. Keep flight paths deterministic and readable against the sky at 320x200. | Flying flock implemented; perched birds pending |
 | 12 | Refine remaining weak areas after the city-wide coverage pass and add restrained atmosphere. Review both routes, all resolutions, seeking, and final performance. | Pending |
 
@@ -81,15 +84,15 @@ To start, use this prompt in the current or a fresh session:
 
 ```text
 Read AGENTS.md, docs/LIVING_CITY_PLAN.md, and docs/WATER_REVIEW.md.
-Complete execution step 05 only: finish the shared actor evaluation needed for city life.
-Use the existing GPU renderer and retained geographic data. Preserve current actor
-behaviour and verify direct seeks before adding new actors.
+Complete execution step 06 only: add a small cast of pedestrians and cyclists.
+Use the existing shared scene evaluation, GPU renderer, and retained geographic data.
+Inspect deterministic motion, route clearance, and occlusion.
 Follow the plan's verification requirements, record findings and artifact paths in its
 progress log, and commit the completed step. Preserve unrelated changes. Do not implement
 later steps. Report the commit, findings, and any remaining verification limitations.
 ```
 
-For subsequent work, replace `05` and the task-specific sentence with the next step's
+For subsequent work, replace `06` and the task-specific sentence with the next step's
 deliverable, or request a range such as `02–04, with one commit per step`.
 
 ### Progress log
@@ -97,6 +100,41 @@ deliverable, or request a range such as `02–04, with one commit per step`.
 Dated records preserve each revision's findings and verification. Their local “next” tasks,
 old geometry counts, and limitations may be superseded by later entries; the status table
 above owns the current execution order.
+
+- 2026-10-18, **05 shared actors / 09–09b travelling fleet**: brought water traffic
+  forward at the user's request. Replaced the old one-way box launch with a yellow
+  runabout on a closed dock circuit, a river cruiser, a motoring sailboat, and a compact
+  24 m passenger ferry on an outer river corridor. Extended the existing generator with
+  passenger windows, upper bridge, funnel, rails, and deck seating. This is an invented
+  local passenger vessel; the original large Stena proposal remains deferred. Shared
+  explicit-time snapshots now evaluate street actors, berths, vessels, navigation lights,
+  and 64 historical-path wake segments. CPU/GPU, shadows, and reflections reuse poses.
+  Four-sample wave attitude is kinematic; only player contacts use the 120 Hz simulation.
+  Moving-hull response uses obstacle-relative velocity; the basin/course/replay baseline
+  and main-demo music/camera timing remain unchanged. See [traffic guide](HARBOR_TRAFFIC.md).
+  Verification: Debug configure/build and all 52 CTests pass (38 non-GPU plus 14 GPU;
+  GPU subset also reruns its recording fixture). Complete routes checked at 12 Hz in both
+  map crops; 4,160 s pairwise schedule, analytical motion/lap seams, seeks/wakes, full-hull
+  player impacts and recovery pass. Seven generator presets / 35 variants pass. Existing
+  street equations, four-minute gull framing, course recordings and handling remain green.
+  Reviewed CPU opening and ferry, GPU launch at 0/32/158.16 s, ferry at 40/160/320 s,
+  river overview, main-demo frames at 60/120/180 s, both full storyboard sweeps and
+  matching 200/240 comparisons plus 180 framing. Captures/logs: `build/living-city/traffic/`, route comparisons under `routes/`.
+  Opening CPU reference changes from `2445a29318b46e7b` to `80d44611b75ac3fb` after
+  inspecting the distant traffic change. Windowed GPU-AA wave ferry and boating each ran
+  600 frames; short/long storyboard playback completed. No runtime errors were reported.
+  Main GPU profile (923 frames, 120 warm-up, no AA): CPU submission mean/p95
+  2.168/2.259 ms versus previous 1.837/1.931 ms. Ferry wave review at 4× AA:
+  mean/max 2.601/7.448 ms submission including downsample and near-water patch updates.
+  These are CPU submission timings, not GPU execution. Four resident traffic meshes total
+  1,264 triangles, with 213,120 bytes fixed CPU generator storage; lights reuse the cube,
+  and wakes reuse the plane. The fleet submits four hulls per pass, twelve light boxes in
+  color/reflection, and 64 foam planes in color, replacing the old box launch/wake draws.
+  Limits: traffic remains on authored routes without avoidance or ferry stops; contacts
+  move only the player. Foam adds no physical wave source (D1/D2 remain pending).
+  Night/deck lighting and human artistic/handling acceptance remain open; no Windows or
+  new Instruments run. Next numbered city task: 06 people/cyclists; additional ferry
+  polish in 10 remains optional user-directed work.
 
 - 2026-10-18, **04h generated moored fleet and dressed berths**: brought the harbor pass
   forward at the user's request. Added `boat_model.[ch]` visual recipes (skiff, runabout,
@@ -492,6 +530,9 @@ from alongside the hull, as well as from the old aerial routes.
 
 ### Then add relationships on the water
 
+This brief is now implemented as a compact passenger ferry and three small craft; see
+[harbor traffic](HARBOR_TRAFFIC.md). The following preserves the original rationale.
+
 After shared actor evaluation in 05, bring the existing ferry proxy task 09 forward if
 the boat route would benefit from a moving landmark. Review its route from a freely
 moving player as well as from the demo camera. Give it a clear, separate channel and
@@ -578,6 +619,10 @@ window changes and lamp behaviour reproduce at a directly selected scene time.
 
 ### 5. Give the harbour a major presence
 
+The current pass uses a compact passenger ferry and three small craft, with selected
+berth details already implemented. The larger ship brief below is a deferred alternative;
+its scale acceptance is not a requirement for the compact ferry.
+
 - Block out a large Stena Line ferry on the river outside the dock basin. Start with
   hull, layered decks, bridge, funnel, and a broad recognizable colour/livery treatment;
   inspect its silhouette before spending effort on windows or lettering.
@@ -624,9 +669,8 @@ turn small details into distracting pixel noise.
   runs at plausible independent speeds; compose key moments against musical phrases.
   Do not make every window, walk cycle, or lamp pulse with the beat.
 - Keep authored paths, stable IDs, schedules, and evaluated object states in the shared
-  scene layer. `waterfront_scene.[ch]` already owns camera/time evaluation, but traffic
-  placement currently repeats in GPU drawing/light code and the CPU renderer. Consolidate
-  the relevant evaluation before adding interacting actors.
+  scene layer. `waterfront_scene_evaluate_actors` now consolidates cars, lamps, berths,
+  and travelling vessels; extend that explicit-time snapshot when adding actors.
 - Make actor and window states functions of explicit time and stable IDs. Seek directly
   into waiting, walking, braking, and light-change intervals without simulation warm-up.
   Current GPU light selection favours previously selected lights; review that history
@@ -648,9 +692,10 @@ turn small details into distracting pixel noise.
   Report CPU submission and GPU timing separately where available, plus draw counts and
   memory growth; establish a performance target from measurements on the target machine.
 
-Current implementation priority: step 05 follows the selected waterline pass 04g and the
-explicitly brought-forward generated-boat berth pass 04h; it still precedes new interacting actors. The ferry proxy in 09 can follow that foundation if the boat review prioritizes
-harbour activity; inspect its scale and route before modelling the vessel in detail.
+Current implementation priority: people/cyclists in 06 follow the completed shared
+actor foundation. The user brought travelling boats and a compact passenger ferry
+forward; the original large Stena ferry is a deferred alternative, not the current
+vessel. Keep physical currents/crossing wakes on the separate D1/D2 track.
 
 ## Soundtrack and flock follow pass (2026-10-11)
 

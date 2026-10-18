@@ -213,7 +213,7 @@ target_compile_options(waterfront_storyboard PRIVATE
 )
 add_test(NAME waterfront_storyboard_is_valid COMMAND waterfront_storyboard --check)
 add_executable(validate_harbor tools/validate_harbor.c src/boat.c src/renderer3d.c
-  src/boat_model.c src/waterfront_harbor.c src/boat_water.c src/boat_map.c
+  src/boat_model.c src/waterfront_harbor.c src/waterfront_traffic.c src/boat_water.c src/boat_map.c
   src/boat_course.c src/boat_replay.c src/waterfront.c src/waterfront_scene.c src/waterfront_corner.c)
 target_include_directories(validate_harbor PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(validate_harbor PRIVATE raylib)
@@ -221,9 +221,20 @@ target_compile_options(validate_harbor PRIVATE
   $<$<C_COMPILER_ID:AppleClang,Clang,GNU>:-Wall;-Wextra;-Wpedantic>)
 add_test(NAME harbor_geometry COMMAND validate_harbor)
 
+add_executable(validate_traffic tools/validate_traffic.c src/boat.c src/renderer3d.c
+  src/boat_model.c src/waterfront_harbor.c src/waterfront_traffic.c src/boat_water.c src/boat_map.c
+  src/boat_course.c src/boat_replay.c src/waterfront.c src/waterfront_scene.c src/waterfront_corner.c)
+target_include_directories(validate_traffic PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(validate_traffic PRIVATE raylib)
+target_compile_options(validate_traffic PRIVATE
+  $<$<C_COMPILER_ID:AppleClang,Clang,GNU>:-Wall;-Wextra;-Wpedantic>)
+add_test(NAME harbor_traffic COMMAND validate_traffic)
+
 add_executable(harbor_review tools/harbor_review.c src/renderer_gpu.c src/renderer3d.c
   src/waterfront.c src/waterfront_scene.c src/waterfront_corner.c)
 add_dependencies(harbor_review proteus_assets)
+add_test(NAME ferry_cpu_screenshot COMMAND harbor_review --renderer cpu --view ferry
+  --time 40 --screenshot ${CMAKE_CURRENT_BINARY_DIR}/ferry-cpu.png)
 add_test(NAME harbor_cpu_screenshot COMMAND harbor_review --renderer cpu --view marina
   --screenshot ${CMAKE_CURRENT_BINARY_DIR}/harbor-marina-cpu.png)
 target_include_directories(harbor_review PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -235,7 +246,7 @@ target_compile_options(harbor_review PRIVATE
 foreach(target proteus gpu_fixture boat_study validate_boat validate_boat_replay
     boat_water_review waterfront_storyboard validate_waterfront_actors validate_city_dressing
     harbor_review)
-  target_sources(${target} PRIVATE src/boat_model.c src/waterfront_harbor.c)
+  target_sources(${target} PRIVATE src/boat_model.c src/waterfront_harbor.c src/waterfront_traffic.c)
 endforeach()
 foreach(target proteus gpu_fixture waterfront_storyboard validate_waterfront_actors
     validate_city_dressing harbor_review)
@@ -279,12 +290,12 @@ set_tests_properties(interactive_timeline_options PROPERTIES
   PASS_REGULAR_EXPRESSION "Usage:"
 )
 
-# Reviewed daytime CPU reference with the moored fleet in the opening five-gull follow shot.
+# Reviewed daytime CPU reference with harbor vessels in the opening five-gull follow shot.
 add_test(NAME cube_render_checksum
   COMMAND proteus --renderer cpu --profile cube --frames 1 --warmup 0
 )
 set_tests_properties(cube_render_checksum PROPERTIES
-  PASS_REGULAR_EXPRESSION "final_framebuffer_checksum=2445a29318b46e7b"
+  PASS_REGULAR_EXPRESSION "final_framebuffer_checksum=80d44611b75ac3fb"
 )
 
 add_test(NAME cube_start_screenshot
@@ -296,6 +307,9 @@ set_tests_properties(cube_start_screenshot PROPERTIES
 )
 
 if(PROTEUS_GPU_TESTS)
+  add_test(NAME ferry_gpu_screenshot COMMAND harbor_review --renderer gpu --view ferry
+    --waves --time 40 --screenshot ${CMAKE_CURRENT_BINARY_DIR}/ferry-gpu.png)
+  set_tests_properties(ferry_gpu_screenshot PROPERTIES LABELS "gpu" RUN_SERIAL TRUE)
   add_test(NAME harbor_gpu_screenshot COMMAND harbor_review --renderer gpu --view marina
     --waves --time 2 --screenshot ${CMAKE_CURRENT_BINARY_DIR}/harbor-marina-gpu.png)
   set_tests_properties(harbor_gpu_screenshot PROPERTIES LABELS "gpu" RUN_SERIAL TRUE)

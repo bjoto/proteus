@@ -608,6 +608,9 @@ bool waterfront_gpu_scene_init(WaterfrontGpuScene *scene, const char *fragment_s
         || !build_source_mesh(&scene->player_cabin, waterfront_player_cabin_mesh())
         || !build_source_mesh(&scene->player_engine, waterfront_player_engine_mesh()))
         goto failed;
+    for (int i = 0; i < WATERFRONT_TRAFFIC_VESSELS; ++i)
+        if (!build_source_mesh(&scene->traffic_boats[i], waterfront_traffic_mesh(i)))
+            goto failed;
     for (int i = 0; i < WATERFRONT_HARBOR_BOATS; ++i)
         if (!build_source_mesh(&scene->harbor_boats[i], waterfront_harbor_boat_mesh(i)))
             goto failed;
@@ -1027,16 +1030,6 @@ static void set_water_uniforms(WaterfrontGpuScene *scene, const WaterfrontSceneF
     }
 }
 
-static void draw_rectangle(const WaterfrontGpuScene *scene, Material material, Vector3 center,
-    Vector3 forward, float width, float length, Color color)
-{
-    draw_colored_mesh(scene->plane, material,
-        (Transform3D) { .position = center,
-            .rotation = { 0, atan2f(forward.x, forward.z), 0 },
-            .scale = { width, 1, length } },
-        color, false);
-}
-
 // Called only in the main colour pass; ghosts never enter reflection or shadow passes.
 static void draw_ghost(const WaterfrontGpuScene *scene, Material material,
     const WaterfrontSceneFrame *frame, int width)
@@ -1070,11 +1063,33 @@ static void draw_harbor(
             scene->cube, material, harbor->lines[i], (Color) { 169, 153, 113, 255 }, false);
 }
 
+static void draw_traffic(const WaterfrontGpuScene *scene, Material material,
+    const WaterfrontSceneFrame *frame, bool foam)
+{
+    const WaterfrontTrafficFrame *traffic = &frame->traffic;
+    bool lights = material.shader.id != scene->shadow_shader.id;
+    const Color colors[] = { { 222, 70, 52, 255 }, { 72, 191, 139, 255 }, { 235, 223, 188, 255 } };
+    for (int i = 0; i < WATERFRONT_TRAFFIC_VESSELS; ++i) {
+        const WaterfrontVesselState *vessel = &traffic->vessels[i];
+        draw_colored_mesh(scene->traffic_boats[i], material, vessel->pose, WHITE, false);
+        float size = i == 3 ? .32f : .18f;
+        for (int light = 0; lights && light < WATERFRONT_TRAFFIC_LIGHTS; ++light)
+            draw_colored_mesh(scene->cube, material,
+                (Transform3D) { .position = vessel->lights[light], .scale = { size, size, size } },
+                colors[light], true);
+    }
+    for (int i = 0; foam && i < traffic->wake_count; ++i)
+        draw_colored_mesh(
+            scene->plane, material, traffic->wakes[i].pose, traffic->wakes[i].color, false);
+}
+
 static void draw_life(const WaterfrontGpuScene *scene, Material material,
     const WaterfrontSceneFrame *frame, bool emissive)
 {
-    if (!frame->boating_basin)
+    if (!frame->boating_basin) {
         draw_harbor(scene, material, frame);
+        draw_traffic(scene, material, frame, emissive);
+    }
     if (frame->player_active) {
         for (int i = 0; i < frame->lamp_count; ++i) {
             const WaterfrontLampState *lamp = &frame->lamps[i];
@@ -1135,19 +1150,6 @@ static void draw_life(const WaterfrontGpuScene *scene, Material material,
     for (int i = 0; i < frame->gull_count; ++i)
         for (int part = 0; part < WATERFRONT_GULL_PARTS; ++part)
             draw_colored_mesh(scene->gull[part], material, frame->gulls[i][part], WHITE, true);
-    const WaterfrontBoatState *boat = &frame->boat;
-    draw_colored_mesh(scene->cube, material, boat->hull, (Color) { 164, 177, 185, 255 }, false);
-    draw_colored_mesh(scene->cube, material, boat->cabin, (Color) { 69, 91, 111, 255 }, false);
-    if (emissive)
-        draw_colored_mesh(
-            scene->cube, material, boat->window, (Color) { 247, 191, 108, 255 }, true);
-    if (emissive) {
-        for (int i = 0; i < WATERFRONT_WAKE_COUNT; ++i) {
-            draw_rectangle(scene, material, (Vector3) { 12, .04f, boat->wake[i].z_center },
-                (Vector3) { 0, 0, 1 }, boat->wake[i].half_width * 2, .3f,
-                (Color) { 63, 98, 117, 255 });
-        }
-    }
 }
 
 static void draw_crane_lights(const WaterfrontGpuScene *scene, Material material)
@@ -1525,6 +1527,9 @@ void waterfront_gpu_scene_destroy(WaterfrontGpuScene *scene)
             UnloadMesh(scene->gull[part]);
     if (scene->cube.vaoId != 0)
         UnloadMesh(scene->cube);
+    for (int i = 0; i < WATERFRONT_TRAFFIC_VESSELS; ++i)
+        if (scene->traffic_boats[i].vaoId)
+            UnloadMesh(scene->traffic_boats[i]);
     for (int i = 0; i < WATERFRONT_HARBOR_BOATS; ++i)
         if (scene->harbor_boats[i].vaoId)
             UnloadMesh(scene->harbor_boats[i]);

@@ -20,6 +20,10 @@ typedef struct {
     Vector3 normal, velocity; // Y-up, simulation X/Z; velocity is local surface motion.
 } BoatWaterSample;
 
+// Kinematic four-sample rigid pose in renderer/world X/Z (X reflected from simulation).
+// Shared by moored and travelling scenery; the player retains its dynamic six-support model.
+Transform3D boat_water_pose(
+    BoatWater water, float time, Vector3 position, float heading, float length, float beam);
 BoatWater boat_water_gentle(void);
 BoatWaterSample boat_water_query(BoatWater water, Vector2 position, float time);
 // Dissipative normal resistance in simulation coordinates. Positive support is the local upward

@@ -70,6 +70,7 @@ int main(void)
         for (int variant = 0; variant < 5; ++variant) {
             BoatModelSpec varied = spec;
             varied.length *= .85f + variant * .08f;
+            varied.cabin_length *= .85f + variant * .08f;
             varied.beam *= .9f + variant * .04f;
             varied.freeboard *= .85f + variant * .07f;
             varied.bow_width = .025f + variant * .09f;
@@ -188,7 +189,8 @@ int main(void)
         }
         CHECK(Vector2Distance(contact, boat.position) > 3);
     }
-    printf("boat_models=6 variants=30 preset_triangles=%zu harbor_geometry=ok\n", triangles);
+    printf("boat_models=%d variants=%d preset_triangles=%zu harbor_geometry=ok\n",
+        BOAT_MODEL_KIND_COUNT, BOAT_MODEL_KIND_COUNT * 5, triangles);
     boat_map_destroy();
     return 0;
 }

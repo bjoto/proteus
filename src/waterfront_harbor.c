@@ -108,41 +108,9 @@ const Mesh3D *waterfront_harbor_quay_mesh(void)
     return &quay.mesh;
 }
 
-static Vector3 euler(Matrix r)
-{
-    float y = asinf(Clamp(r.m8, -1, 1));
-    if (fabsf(cosf(y)) < .0001f)
-        return (Vector3) { atan2f(r.m6, r.m5), y, 0 };
-    return (Vector3) { atan2f(-r.m9, r.m10), y, atan2f(-r.m4, r.m0) };
-}
-
 Vector3 waterfront_harbor_attachment(Transform3D pose, Vector3 local)
 {
-    return Vector3Add(pose.position,
-        Vector3Transform(Vector3Multiply(local, pose.scale), MatrixRotateXYZ(pose.rotation)));
-}
-
-static float height(BoatWater water, Vector3 p, float time)
-{
-    return boat_water_query(water, (Vector2) { -p.x, p.z }, time).height;
-}
-
-static Transform3D floating_pose(
-    BoatWater water, float time, Vector3 p, float yaw, float length, float beam)
-{
-    Matrix heading = MatrixRotateY(yaw);
-    Vector3 fore = Vector3Add(p, Vector3Transform((Vector3) { 0, 0, -length * .35f }, heading));
-    Vector3 aft = Vector3Add(p, Vector3Transform((Vector3) { 0, 0, length * .35f }, heading));
-    Vector3 left = Vector3Add(p, Vector3Transform((Vector3) { -beam * .35f, 0, 0 }, heading));
-    Vector3 right = Vector3Add(p, Vector3Transform((Vector3) { beam * .35f, 0, 0 }, heading));
-    float f = height(water, fore, time), a = height(water, aft, time);
-    float l = height(water, left, time), r = height(water, right, time);
-    p.y = (f + a + l + r) * .25f;
-    float pitch = atanf((f - a) / (length * .7f));
-    float roll = atanf((r - l) / (beam * .7f));
-    Matrix rotation
-        = MatrixMultiply(MatrixMultiply(MatrixRotateZ(roll), MatrixRotateX(pitch)), heading);
-    return (Transform3D) { .position = p, .rotation = euler(rotation), .scale = { 1, 1, 1 } };
+    return boat_model_point(pose, local);
 }
 
 static Transform3D segment(Vector3 a, Vector3 b, float width)
@@ -162,7 +130,7 @@ static Transform3D segment(Vector3 a, Vector3 b, float width)
         .m10 = forward.z,
         .m15 = 1 };
     return (Transform3D) { .position = Vector3Scale(Vector3Add(a, b), .5f),
-        .rotation = euler(r),
+        .rotation = boat_model_rotation(r),
         .scale = { width, width, Vector3Distance(a, b) } };
 }
 
@@ -177,7 +145,7 @@ static void mooring(WaterfrontHarborFrame *frame, Vector3 a, Vector3 b)
 void waterfront_harbor_evaluate(BoatWater water, float time, WaterfrontHarborFrame *frame)
 {
     *frame = (WaterfrontHarborFrame) { 0 };
-    frame->pontoon = floating_pose(water, time, dock_center, 0, 37, 2.1f);
+    frame->pontoon = boat_water_pose(water, time, dock_center, 0, 37, 2.1f);
     Vector3 shore = { -34.1f, 3.57f, 182 };
     Vector3 landing = waterfront_harbor_attachment(frame->pontoon, (Vector3) { -1, .74f, 0 });
     frame->gangway = segment(shore, landing, 1.5f);
@@ -196,7 +164,7 @@ void waterfront_harbor_evaluate(BoatWater water, float time, WaterfrontHarborFra
     }
     for (int i = 0; i < WATERFRONT_HARBOR_BOATS; ++i) {
         BoatModelSpec spec = waterfront_harbor_spec(i);
-        frame->boats[i] = floating_pose(
+        frame->boats[i] = boat_water_pose(
             water, time, berths[i].position, berths[i].heading, spec.length, spec.beam);
         for (int end = -1; end <= 1; end += 2) {
             Vector3 attachment = waterfront_harbor_attachment(frame->boats[i],

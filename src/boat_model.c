@@ -9,6 +9,20 @@ static const Color rubber = { 39, 48, 53, 255 };
 static const Color cream = { 232, 226, 202, 255 };
 static const Color steel = { 142, 158, 163, 255 };
 
+Vector3 boat_model_rotation(Matrix r)
+{
+    float y = asinf(Clamp(r.m8, -1, 1));
+    if (fabsf(cosf(y)) < .0001f)
+        return (Vector3) { atan2f(r.m6, r.m5), y, 0 };
+    return (Vector3) { atan2f(-r.m9, r.m10), y, atan2f(-r.m4, r.m0) };
+}
+
+Vector3 boat_model_point(Transform3D pose, Vector3 local)
+{
+    return Vector3Add(pose.position,
+        Vector3Transform(Vector3Multiply(local, pose.scale), MatrixRotateXYZ(pose.rotation)));
+}
+
 void boat_model_begin(BoatModel *m)
 {
     m->mesh = (Mesh3D) { m->vertices, m->triangles, 0 };
@@ -141,6 +155,21 @@ BoatModelSpec boat_model_preset(BoatModelKind kind)
         s.hull = (Color) { 225, 228, 221, 255 };
         s.trim = (Color) { 203, 62, 40, 255 };
         break;
+    case BOAT_MODEL_FERRY:
+        s.length = 24;
+        s.beam = 6.2f;
+        s.draft = 1.2f;
+        s.freeboard = 1.6f;
+        s.bow_width = .25f;
+        s.stern_width = .9f;
+        s.cabin_length = 12;
+        s.cabin_height = 2.4f;
+        s.cabin_offset = -.6f;
+        s.windshield_rake = .15f;
+        s.passenger_deck = true;
+        s.hull = (Color) { 222, 220, 201, 255 };
+        s.trim = (Color) { 27, 85, 112, 255 };
+        break;
     default:
         break;
     }
@@ -157,8 +186,8 @@ bool boat_model_generate(BoatModel *m, BoatModelSpec s)
     if (!m)
         return false;
     boat_model_begin(m);
-    if (!between(s.length, 3, 16) || !between(s.beam, 1, 5) || !between(s.draft, .15f, 1.5f)
-        || !between(s.freeboard, .35f, 1.8f) || !between(s.bow_width, .02f, .45f)
+    if (!between(s.length, 3, 40) || !between(s.beam, 1, 10) || !between(s.draft, .15f, 1.5f)
+        || !between(s.freeboard, .35f, 3) || !between(s.bow_width, .02f, .45f)
         || !between(s.stern_width, .5f, 1) || !between(s.cabin_length, 0, s.length * .55f)
         || !between(s.cabin_height, 0, 2.5f)
         || !between(s.cabin_offset, -s.length * .2f, s.length * .2f)
@@ -226,10 +255,44 @@ bool boat_model_generate(BoatModel *m, BoatModelSpec s)
                 pane[i] = Vector3Lerp(center, v[ids[side][i]], .73f);
                 pane[i].x += side ? .015f : -.015f;
             }
-            quad(m, pane[0], pane[1], pane[2], pane[3], glass);
+            if (!s.passenger_deck) {
+                quad(m, pane[0], pane[1], pane[2], pane[3], glass);
+            } else {
+                for (int window = 0; window < 8; ++window) {
+                    float a = (window + .08f) / 8, b = (window + .92f) / 8;
+                    quad(m, Vector3Lerp(pane[0], pane[1], a), Vector3Lerp(pane[0], pane[1], b),
+                        Vector3Lerp(pane[3], pane[2], b), Vector3Lerp(pane[3], pane[2], a), glass);
+                }
+            }
         }
         boat_model_box(m, (Vector3) { 0, top + .07f, z + h * s.windshield_rake * .25f },
             (Vector3) { w * 1.05f, .14f, d - h * s.windshield_rake * .5f + .12f }, s.trim);
+    }
+    if (s.passenger_deck) {
+        float deck = floor + .08f + s.cabin_height + .14f;
+        // Raised forward bridge, red funnel, open upper deck and chunky safety rails.
+        boat_model_box(m, (Vector3) { 0, deck + .78f, -l * .15f },
+            (Vector3) { b * .48f, 1.55f, l * .14f }, cream);
+        boat_model_box(
+            m, (Vector3) { 0, deck + .95f, -l * .221f }, (Vector3) { b * .39f, .65f, .06f }, glass);
+        for (int side = -1; side <= 1; side += 2) {
+            boat_model_box(m, (Vector3) { side * b * .242f, deck + .95f, -l * .15f },
+                (Vector3) { .06f, .65f, l * .11f }, glass);
+            for (int post = 0; post < 7; ++post)
+                boat_model_box(m,
+                    (Vector3) { side * b * .31f, deck + .48f, -l * .22f + post * l * .075f },
+                    (Vector3) { .09f, .96f, .09f }, cream);
+            boat_model_box(m, (Vector3) { side * b * .31f, deck + .96f, l * .005f },
+                (Vector3) { .10f, .10f, l * .46f }, cream);
+        }
+        boat_model_box(m, (Vector3) { 0, deck + 1.6f, -l * .15f },
+            (Vector3) { b * .53f, .17f, l * .16f }, s.trim);
+        boat_model_box(m, (Vector3) { 0, deck + .85f, l * .16f },
+            (Vector3) { b * .22f, 1.7f, l * .08f }, (Color) { 190, 66, 43, 255 });
+        boat_model_box(m, (Vector3) { 0, deck + 1.72f, l * .16f },
+            (Vector3) { b * .24f, .18f, l * .09f }, rubber);
+        boat_model_box(
+            m, (Vector3) { 0, deck + .22f, l * .05f }, (Vector3) { b * .4f, .44f, .5f }, s.trim);
     }
     for (int engine = 0; engine < s.engines; ++engine) {
         float x = s.engines == 1 ? 0 : (engine ? .25f : -.25f) * b;

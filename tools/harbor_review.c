@@ -12,7 +12,8 @@
 
 static void usage(void)
 {
-    puts("Usage: harbor_review [--view marina|workboat|overview] [--renderer cpu|gpu]\n"
+    puts("Usage: harbor_review [--view marina|workboat|overview|launch|traffic|ferry] [--renderer "
+         "cpu|gpu]\n"
          "       [--waves] [--time SECONDS] [--screenshot FILE] [--frames COUNT]\n"
          "       [--resolution 320x180|320x200|320x240]\n"
          "Default: GPU, marina, interactive. Screenshots render once; --frames bounds playback.\n"
@@ -45,6 +46,22 @@ static Mesh patch(Vector3 center)
     return mesh;
 }
 
+static View3D follow_vessel(View3D camera, const char *view, float time)
+{
+    int index = !strcmp(view, "ferry") ? 3 : !strcmp(view, "launch") ? 0 : -1;
+    if (index >= 0) {
+        WaterfrontVesselMotion m = waterfront_traffic_motion(index, time);
+        Vector3 forward = Vector3Normalize(m.velocity);
+        Vector3 right = { -forward.z, 0, forward.x };
+        camera.position = Vector3Add(m.position,
+            Vector3Add(Vector3Add(Vector3Scale(right, index == 3 ? 32 : 13),
+                           Vector3Scale(forward, index == 3 ? 12 : 10)),
+                (Vector3) { 0, index == 3 ? 10 : 7, 0 }));
+        camera.target = Vector3Add(m.position, (Vector3) { 0, index == 3 ? 2 : .9f, 0 });
+    }
+    return camera;
+}
+
 int main(int argc, char **argv)
 {
     const char *view = "marina", *screenshot = NULL;
@@ -57,7 +74,8 @@ int main(int argc, char **argv)
             return 0;
         } else if (!strcmp(argv[i], "--view") && i + 1 < argc) {
             view = argv[++i];
-            if (strcmp(view, "marina") && strcmp(view, "workboat") && strcmp(view, "overview"))
+            if (strcmp(view, "marina") && strcmp(view, "workboat") && strcmp(view, "overview")
+                && strcmp(view, "ferry") && strcmp(view, "launch") && strcmp(view, "traffic"))
                 goto invalid;
         } else if (!strcmp(argv[i], "--renderer") && i + 1 < argc) {
             const char *name = argv[++i];
@@ -105,6 +123,12 @@ int main(int argc, char **argv)
         camera.position = (Vector3) { 145, 145, 85 };
         camera.target = (Vector3) { 4, 0, 125 };
     }
+    if (!strcmp(view, "traffic")) {
+        camera.position = (Vector3) { 220, 65, -80 };
+        camera.target = (Vector3) { 50, 0, -290 };
+    }
+    camera = follow_vessel(camera, view, time);
+    Vector3 patch_center = camera.target;
     bool window = gpu || !screenshot;
     if (window) {
         if (screenshot)
@@ -165,17 +189,27 @@ int main(int argc, char **argv)
     do {
         WaterfrontSceneFrame frame;
         waterfront_scene_evaluate(0, true, &frame);
-        frame.camera = camera;
-        frame.time = time + count / 60.0f;
+        float local_time = time + count / 60.0f;
+        waterfront_scene_evaluate_actors(local_time, water, &frame);
+        frame.camera = follow_vessel(camera, view, local_time);
         frame.player_active = true;
         frame.player_water = water;
         // Keep the player out of the scene; its X/Z still centres the shared GPU wave patch.
         frame.player.hull = frame.player.cabin = frame.player.engine
-            = (Transform3D) { .position = { camera.target.x, -100, camera.target.z },
+            = (Transform3D) { .position = { frame.camera.target.x, -100, frame.camera.target.z },
                   .scale = { 1, 1, 1 } };
-        waterfront_harbor_evaluate(water, frame.time, &frame.harbor);
         double start = window ? GetTime() : 0;
         if (gpu) {
+            if (waves && Vector3Distance(frame.camera.target, patch_center) > 12) {
+                UnloadMesh(near);
+                near = patch(frame.camera.target);
+                if (!near.vaoId) {
+                    result = 1;
+                    break;
+                }
+                scene.near_water = near;
+                patch_center = frame.camera.target;
+            }
             BeginTextureMode(target);
             waterfront_gpu_scene_draw(&scene, &frame, 1280, height * 4);
             EndTextureMode();
@@ -187,7 +221,7 @@ int main(int argc, char **argv)
             EndShaderMode();
             EndTextureMode();
         } else {
-            if (!waterfront_draw_boating(&cpu, pixels, 320, height, camera, waves)) {
+            if (!waterfront_draw_boating(&cpu, pixels, 320, height, frame.camera, waves)) {
                 result = 1;
                 break;
             }
@@ -200,6 +234,7 @@ int main(int argc, char **argv)
                 renderer3d_draw_emissive_mesh(
                     &cpu, surface, (Transform3D) { .scale = { 1, 1, 1 } });
             }
+            waterfront_draw_traffic(&cpu, &frame.traffic);
             waterfront_draw_harbor(&cpu, &frame.harbor);
         }
         if (window) {

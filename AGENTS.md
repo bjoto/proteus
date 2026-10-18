@@ -12,6 +12,7 @@ iterating on effects, timing, audio, and presentation.
 - `src/scenes.c`: single-scene timing and software-rendered waterfront entry point.
 - `src/boat_model.[ch]`: parameterized visual boat recipes and caller-owned generated meshes.
 - `src/waterfront_harbor.[ch]`: moored fleet, berth geometry, shared wave poses, and contact envelopes.
+- `src/waterfront_traffic.[ch]`: travelling craft, ferry routes, visual wakes, and moving contacts.
 - `src/profiler.c`: runtime profiling statistics, reports, and overlay.
 - `src/audio_spectrum.c`: PCM capture, FFT analysis, and smoothed frequency-band levels.
 - `src/xm_audio.c`: XM-specific playback helpers layered over raylib's bundled decoder.

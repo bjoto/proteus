@@ -1,7 +1,8 @@
 # Generated boats and dressed berths
 
 Status, 2026-10-18: living-city step 04h adds a parameterized boat model and two authored
-berths. Six leisure boats share a floating pontoon along the west dock bank; a workboat
+berths. The generator now also supplies [travelling craft and a ferry](HARBOR_TRAFFIC.md).
+Six leisure boats share a floating pontoon along the west dock bank; a workboat
 lies beside equipment on the east quay. They appear in the main demo, both storyboard
 routes, and the Eriksberg and river boating locations. The basin course is unchanged.
 Placements and vessel designs are artistic additions, not surveyed marina facilities.
@@ -21,19 +22,21 @@ The named presets provide starting points rather than fixed assets:
 | `BOAT_MODEL_SAILBOAT` | 8.4 × 2.65 m | Narrower stern, low cabin, mast and furled sail |
 | `BOAT_MODEL_WORKBOAT` | 11 × 3.7 m | Fuller bow, wheelhouse, aft equipment and lifting boom |
 | `BOAT_MODEL_SPEEDBOAT` | 8.1 × 2.25 m | Slender pointed bow, low raked windshield, twin outboards |
+| `BOAT_MODEL_FERRY` | 24 × 6.2 m | Passenger cabin, upper pilot house, funnel, rails and open aft deck |
 
 The second moored sailboat varies length, beam, mast, cabin length, and colors from the
 same recipe. All moored boats enable fenders; base presets leave them off.
 
 | Parameter | Effect / supported range |
 | --- | --- |
-| `length`, `beam` | Overall hull dimensions: 3–16 m long, 1–5 m wide |
-| `draft`, `freeboard` | Hull below/above its rest waterline: 0.15–1.5 m / 0.35–1.8 m |
+| `length`, `beam` | Overall hull dimensions: 3–40 m long, 1–10 m wide |
+| `draft`, `freeboard` | Hull below/above its rest waterline: 0.15–1.5 m / 0.35–3 m |
 | `bow_width`, `stern_width` | End width as a fraction of beam: 0.02–0.45 / 0.5–1 |
 | `cabin_length`, `cabin_height`, `cabin_offset` | Cabin dimensions and fore/aft offset in metres; zero height omits the cabin |
 | `windshield_rake` | Aft displacement per metre of cabin height, 0–0.6 |
 | `mast_height` | Mast top above rest waterline, up to 12 m; zero omits rigging |
 | `engines` | Zero, one, or two visible outboards |
+| `passenger_deck` | Segmented passenger windows, upper bridge, funnel, rails and benches |
 | `work_deck`, `fenders` | Equipment boom/winch and moored-boat fenders |
 | `hull`, `deck`, `trim` | Flat color palette |
 
@@ -66,9 +69,10 @@ CPU, GPU color, reflection, and shadow passes consume the same transforms.
 Calm water keeps the boats still. With `--waves`, four water-height samples provide a
 bounded rigid heave/pitch/roll approximation from the existing `boat_water_query` surface.
 Each boat's centre and heading remain fixed at its berth. Rope ends follow the posed
-cleats and pontoon or fixed quay bollards; there is no rope solver, free drift, traffic,
-or additional wave source. Far GPU water retains the existing displacement-to-flat transition;
-close berth views use the fully displaced patch. Reflections remain planar.
+cleats and pontoon or fixed quay bollards; the mooring model has no rope solver, free
+drift, or additional wave source. Travelling vessels are evaluated separately. Far GPU
+water retains the existing displacement-to-flat transition; close berth views use the
+fully displaced patch. Reflections remain planar.
 
 Player contacts reuse the shoreline's forgiving contact response with stationary, padded
 oriented envelopes for moored hulls, main pontoon, fingers, and gangway. Envelopes include
@@ -100,7 +104,7 @@ CPU screenshots need no window; GPU capture and playback require desktop graphic
 from 0–600 seconds. `--frames` bounds windowed playback at 60 Hz; Esc exits. Timing output
 reports CPU rendering or GPU CPU-submission cost, including downsampling, not GPU execution.
 
-`harbor_geometry` checks six presets and 30 parameter variants, finite/nondegenerate
+`harbor_geometry` checks seven presets and 35 parameter variants, finite/nondegenerate
 bounded geometry, repeatable generation, invalid recipes, water placement in both map crops,
 central-channel clearance, direct-seek consistency, wave bounds, rope attachment continuity,
 modeled pontoon anchors, and real player contact/reverse recovery. CTest also captures CPU marina and opt-in GPU

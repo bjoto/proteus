@@ -57,6 +57,7 @@ typedef struct {
     Mesh bridge;
     Mesh cube;
     Mesh player_hull, player_cabin, player_engine;
+    Mesh traffic_boats[WATERFRONT_TRAFFIC_VESSELS];
     Mesh harbor_boats[WATERFRONT_HARBOR_BOATS], harbor_pontoon, harbor_quay;
     Mesh plane;
     Mesh gull[WATERFRONT_GULL_PARTS];
