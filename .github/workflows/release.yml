@@ -1,0 +1,64 @@
+name: Release boating apps
+
+on:
+  push:
+    tags: ['v*']
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  macos:
+    if: startsWith(github.ref, 'refs/tags/v')
+    uses: ./.github/workflows/macos-boat.yml
+
+  windows:
+    if: startsWith(github.ref, 'refs/tags/v')
+    uses: ./.github/workflows/windows-boat.yml
+
+  publish:
+    needs: [macos, windows]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Check release publisher without network
+        run: python3 tools/test_publish_release.py
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: proteus-boating-macos-arm64
+          path: release-assets
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: boat-study-windows-x64
+          path: windows-package/boat-study-windows-x64
+
+      - name: Create Windows release archive
+        shell: bash
+        run: |
+          cd windows-package
+          zip -r ../release-assets/boat-study-windows-x64.zip boat-study-windows-x64
+          cd ../release-assets
+          sha256sum boat-study-windows-x64.zip > boat-study-windows-x64.zip.sha256
+          sha256sum -c boat-study-windows-x64.zip.sha256
+          sha256sum -c proteus-boating-macos-arm64.zip.sha256
+
+      - name: Publish release with both apps
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: bash tools/publish_release.sh "$RELEASE_TAG" release-assets

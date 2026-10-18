@@ -7,6 +7,10 @@ No Windows development tools are needed on your Mac or the test machine.
 
 ## Download and test
 
+For versioned downloads, use the ZIP under **Releases** once a version is published;
+see [automated releases](RELEASES.md). Extract `boat-study-windows-x64.zip` completely
+on Windows and double-click `launch.bat`. For an ordinary branch build:
+
 1. Commit and push the source and .github/workflows/windows-boat.yml to GitHub.
 2. Open the repository's **Actions** tab and select **Windows boat study**.
 3. Open the successful run and download **boat-study-windows-x64** under **Artifacts**.
@@ -65,5 +69,8 @@ The package now includes `a-little-boat.xm`; its relocation check explicitly sel
 the CPU renderer. On Apple Silicon/macOS 26, Debug configure/build and all 69 CTests
 passed with desktop access (18 GPU checks); the Release handling test also passed.
 Workflow YAML parsing, changed documentation links, and `git diff --check` passed.
-Next: rerun Windows CI, then download and check GPU startup, music, and controls on
-Windows. No successful Windows rerun or human Windows playback is claimed yet.
+The corrected [Windows run at `3bffdb7`](https://github.com/doomdavve/proteus/actions/runs/39164837209)
+passed the build, all three selected tests, packaging, relocation, and artifact upload.
+Next: download and check GPU startup, music, and controls on Windows. Human Windows
+playback remains unverified. Version-tag builds are also reused by the
+[automated release workflow](RELEASES.md).

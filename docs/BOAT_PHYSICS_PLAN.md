@@ -296,7 +296,8 @@ These motivate models, not exact coefficients or a requirement to adopt another 
   No runtime physics or rendering changed. Local Release handling passed;
   full Debug suite and Windows rerun evidence belong in the
   [Windows build status](WINDOWS_BUILD.md#current-status-and-verification).
-  Next: verify the corrected Windows action; manual Windows handling/audio remains pending.
+  The corrected Windows action passed at `3bffdb7`; manual Windows handling/audio
+  remains pending. See the Windows guide for the run and next playback check.
 
 - 2026-10-18: Default/availability follow-up requested by the user. All free-boating
   locations now enable player wakes at launch/reset. `--no-player-wake` opts out;

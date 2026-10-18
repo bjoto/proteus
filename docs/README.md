@@ -16,7 +16,8 @@ Both default to GPU rendering; the CPU reference supports display-free captures.
 | [GPU migration](GPU_WATERFRONT_PLAN.md) | Steps 01–12 implemented; GPU default, lighting, shadows, atmosphere, reflections, and regression checks | Migration is implemented; other-platform and human visual acceptance remain separate from automated checks |
 | [Soundtrack](SOUNDTRACK_PLAN.md) | Approved proof v03, full composition/mix candidate, editable XM, and runtime integration | Timestamped listening feedback and full composition/mix acceptance; continue editing in FastTracker |
 | [macOS app builds](MACOS_BUILD.md) | Apple Silicon action, relocatable app bundle, preferred river launch, ad-hoc signing, ZIP/checksum; local checks and first GitHub run passed | Browser-download security approval; macOS 13 execution and user playback review |
-| [Windows builds](WINDOWS_BUILD.md) | Portable x64 action; reversal check corrected to measure backward travel, music included, relocated CPU check explicit | Corrected workflow rerun and human Windows GPU/audio/control review |
+| [Windows builds](WINDOWS_BUILD.md) | Portable x64 action; corrected reversal check, bundled music, relocated CPU check; corrected GitHub run passed | Human Windows GPU/audio/control review |
+| [Automated releases](RELEASES.md) | Version-tag/UI release workflow reuses both platform builds, uploads ZIPs/checksums, then publishes; offline publication tests passed | Push workflow and verify the first chosen version's full release/download path |
 
 These are separate work tracks, not a single execution queue. A next task in one plan
 does not authorize advancing every plan. Use the requested track's scope and acceptance checks.
@@ -33,7 +34,7 @@ does not authorize advancing every plan. Use the requested track's scope and acc
 - [Music workflow](MUSIC.md) and [FastTracker guide](../soundtrack/alternate/fasttracker/README.md):
   working XM, section cues, editing, and runtime selection.
 - [Windows builds](WINDOWS_BUILD.md), [macOS app builds](MACOS_BUILD.md),
-  [dance study](DANCE_STUDY.md), and [Emacs setup](emacs.md).
+  [automated releases](RELEASES.md), [dance study](DANCE_STUDY.md), and [Emacs setup](emacs.md).
 - [Original waterfront plan](WATERFRONT_PLAN.md), [Eriksberg survey](eriksberg/README.md), and
   [living-city baseline audit](LIVING_CITY_AUDIT.md): historical design and evidence, with links
   to the current owners above. Dated progress entries retain results for their original revisions.

@@ -77,6 +77,8 @@ For a downloadable Windows executable built on GitHub Actions, see
 [Windows boat study builds](docs/WINDOWS_BUILD.md).
 For an Apple Silicon Mac app ZIP built on GitHub Actions, see
 [macOS app builds](docs/MACOS_BUILD.md), including the first-launch security approval.
+Version tags and published releases automatically build and attach both app ZIPs;
+see [automated releases](docs/RELEASES.md).
 
 Explore the bundled Eriksberg waterfront with the same boat and controls:
 

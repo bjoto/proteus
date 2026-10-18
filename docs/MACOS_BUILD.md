@@ -7,6 +7,10 @@ not included. No Apple Developer membership or signing secrets are required.
 
 ## Download and open
 
+For versioned downloads, get `proteus-boating-macos-arm64.zip` from **Releases**
+once a version is published, extract it, and continue with step 4 below. See
+[automated releases](RELEASES.md). For an ordinary branch build:
+
 1. Push the changes, then open **Actions → macOS boat study** in GitHub.
 2. Open a successful run and download **proteus-boating-macos-arm64** under **Artifacts**.
 3. Extract the artifact, then extract the enclosed `proteus-boating-macos-arm64.zip`.
