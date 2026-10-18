@@ -14,8 +14,8 @@ No Windows development tools are needed on your Mac or the test machine.
 5. Double-click launch.bat to run boat_study.exe --location eriksberg --gpu --gpu-aa.
 
 Artifacts expire after 30 days. build.txt records the source commit. The package
-includes shader/texture assets and map attribution; geometry is compiled into the
-executable. Asset loading uses the executable directory, so the folder can be moved.
+includes shader/texture assets, background music, and map attribution; geometry is
+compiled into the executable. Asset loading uses the executable directory, so the folder can be moved.
 raylib and the MSVC runtime are statically linked for this workflow.
 
 The workflow runs the boat handling validator and CPU screenshot checks, including
@@ -50,3 +50,20 @@ Use your configured GitHub credentials for HTTPS, or an SSH remote if you have
 already set up a GitHub SSH key. Pushes upload committed files only.
 
 See [GitHub's artifact download instructions](https://docs.github.com/en/actions/managing-workflow-runs/downloading-workflow-artifacts).
+
+## Current status and verification
+
+2026-10-18: the Windows Release run at commit `73bf1ba` failed the mapped reversing
+assertion while both CPU capture tests passed. A local Release probe reproduced the
+assertion with a starting-heading perturbation of -0.00001 radians: the boat travelled
+10.17 units backward, but ended only 2.27 units from where reverse thrust was selected.
+The validator now measures actual backward displacement along the hull each tick,
+retains the three-unit minimum and shoreline checks, and covers both quay directions
+at three nearby starting headings. This changes validation, not boat handling.
+
+The package now includes `a-little-boat.xm`; its relocation check explicitly selects
+the CPU renderer. On Apple Silicon/macOS 26, Debug configure/build and all 69 CTests
+passed with desktop access (18 GPU checks); the Release handling test also passed.
+Workflow YAML parsing, changed documentation links, and `git diff --check` passed.
+Next: rerun Windows CI, then download and check GPU startup, music, and controls on
+Windows. No successful Windows rerun or human Windows playback is claimed yet.

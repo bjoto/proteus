@@ -286,6 +286,18 @@ These motivate models, not exact coefficients or a requirement to adopt another 
 
 ## Handoff log
 
+- 2026-10-18: Windows CI exposed a brittle mapped reverse assertion: endpoint
+  separation can be small after forward braking and successful backward travel.
+  A local Release probe with a -0.00001-radian heading offset reproduced the old
+  failure (2.27 units final separation despite 10.17 units backward travel).
+  The validator now accumulates actual backward navigation displacement along
+  the hull, retains the three-unit minimum and every-tick shoreline containment,
+  and exercises both quay directions with zero and ±0.00001-radian offsets.
+  No runtime physics or rendering changed. Local Release handling passed;
+  full Debug suite and Windows rerun evidence belong in the
+  [Windows build status](WINDOWS_BUILD.md#current-status-and-verification).
+  Next: verify the corrected Windows action; manual Windows handling/audio remains pending.
+
 - 2026-10-18: Default/availability follow-up requested by the user. All free-boating
   locations now enable player wakes at launch/reset. `--no-player-wake` opts out;
   explicit `--player-wake` remains compatible. Course/replay/ghost modes keep their

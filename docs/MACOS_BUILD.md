@@ -83,6 +83,10 @@ Workflow YAML parsing, Python compilation, changed local documentation links, an
 `git diff --check` passed. No subjective audio listening or interactive control
 review was performed for this change; macOS 13 execution remains untested.
 
-Next: push and run the workflow, download through a browser, and verify the
-Open Anyway path and interactive playback. No GitHub run, browser-download
-Gatekeeper check, user acceptance, Intel support, or notarization is claimed.
+The [first GitHub run](https://github.com/doomdavve/proteus/actions/runs/39163710234)
+at commit `73bf1ba` passed all build, test, packaging, signature, relocation, and
+upload steps; the Apple Silicon artifact was available when checked on 2026-10-18.
+
+Next: download through a browser and verify the Open Anyway path and interactive
+playback. Browser-download Gatekeeper behavior, user acceptance, macOS 13 execution,
+Intel support, and notarization remain unverified or out of scope.

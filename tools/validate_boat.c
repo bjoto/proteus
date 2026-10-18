@@ -929,22 +929,34 @@ int main(void)
         }
         CHECK(bumped);
     }
-    for (int side = -1; side <= 1; side += 2) {
-        boat_reset_location(&mapped, true);
-        mapped.heading = mapped.camera_heading = side * PI / 2;
-        mapped.throttle = 1;
-        for (int tick = 0; tick < 900; ++tick) {
-            boat_step(&mapped, tick > 500 ? side : 0, 0);
-            CHECK(footprint_in_water(&mapped));
+    // The turn can leave the boat moving forward when reverse thrust is selected. Measure
+    // actual backward travel: braking and returning near the initial position is not a jam.
+    // Small heading perturbations cover contact trajectories sensitive to float rounding.
+    const float heading_offsets[] = { 0, -.00001f, .00001f };
+    for (size_t i = 0; i < sizeof(heading_offsets) / sizeof(*heading_offsets); ++i)
+        for (int side = -1; side <= 1; side += 2) {
+            boat_reset_location(&mapped, true);
+            mapped.heading = mapped.camera_heading = side * PI / 2 + heading_offsets[i];
+            mapped.throttle = 1;
+            for (int tick = 0; tick < 900; ++tick) {
+                boat_step(&mapped, tick > 500 ? side : 0, 0);
+                CHECK(footprint_in_water(&mapped));
+            }
+            float reverse_travel = 0;
+            mapped.throttle = -1;
+            for (int tick = 0; tick < 360; ++tick) {
+                Vector2 previous = mapped.position;
+                Vector2 forward = { sinf(mapped.heading), -cosf(mapped.heading) };
+                boat_step(&mapped, 0, 0);
+                CHECK(footprint_in_water(&mapped));
+                reverse_travel += fmaxf(
+                    0, -Vector2DotProduct(Vector2Subtract(mapped.position, previous), forward));
+            }
+            if (reverse_travel <= 3)
+                fprintf(stderr, "Mapped reverse: side=%d heading_offset=%g backward_travel=%g\n",
+                    side, heading_offsets[i], reverse_travel);
+            CHECK(reverse_travel > 3);
         }
-        Vector2 docked = mapped.position;
-        mapped.throttle = -1;
-        for (int tick = 0; tick < 360; ++tick) {
-            boat_step(&mapped, 0, 0);
-            CHECK(footprint_in_water(&mapped));
-        }
-        CHECK(Vector2Distance(docked, mapped.position) > 3);
-    }
     // The channel remains navigable through the crane towards the river.
     boat_reset_location(&mapped, true);
     mapped.throttle = 1;

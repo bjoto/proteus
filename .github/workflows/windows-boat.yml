@@ -50,6 +50,8 @@ jobs:
           Copy-Item build-win/Release/boat_study.exe $package
           Copy-Item build-win/Release/assets/shaders "$package/assets" -Recurse
           Copy-Item build-win/Release/assets/textures "$package/assets" -Recurse
+          New-Item -ItemType Directory -Force -Path "$package/assets/music" | Out-Null
+          Copy-Item build-win/Release/assets/music/a-little-boat.xm "$package/assets/music"
           New-Item -ItemType Directory -Force -Path "$package/assets/geometry/eriksberg" | Out-Null
           Copy-Item assets/geometry/eriksberg/manifest.json "$package/assets/geometry/eriksberg"
           Copy-Item tools/windows/launch.bat $package
@@ -63,7 +65,7 @@ jobs:
           $exe = (Resolve-Path build-win/package/boat-study-windows-x64/boat_study.exe).Path
           Push-Location $env:RUNNER_TEMP
           try {
-            & $exe --location eriksberg --time 3 --screenshot boat-portable.png
+            & $exe --renderer cpu --location eriksberg --time 3 --screenshot boat-portable.png
             if ($LASTEXITCODE -ne 0) { throw "Relocated boat study failed: $LASTEXITCODE" }
           } finally {
             Pop-Location
