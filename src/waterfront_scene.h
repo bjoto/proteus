@@ -11,6 +11,7 @@
 #define WATERFRONT_DEMO_DURATION 240.0f
 #define WATERFRONT_GULL_COUNT 5
 #define WATERFRONT_GULL_PARTS 3
+#define WATERFRONT_HARBOR_GULLS 32
 #define WATERFRONT_CAR_COUNT 20
 #define WATERFRONT_MAX_LAMPS 32
 #define WATERFRONT_PLAYER_PARTICLES 384
@@ -70,7 +71,7 @@ typedef struct {
     WaterfrontHarborFrame harbor;
     WaterfrontTrafficFrame traffic;
     int gull_count;
-    Transform3D gulls[WATERFRONT_GULL_COUNT][WATERFRONT_GULL_PARTS];
+    Transform3D gulls[WATERFRONT_HARBOR_GULLS][WATERFRONT_GULL_PARTS];
 } WaterfrontSceneFrame;
 
 typedef struct {
@@ -82,6 +83,10 @@ typedef struct {
 void waterfront_demo_evaluate(float time, WaterfrontSceneFrame *frame);
 // Reevaluate scene-owned actors at explicit time/water, preserving the caller's camera/player.
 void waterfront_scene_evaluate_actors(float time, BoatWater water, WaterfrontSceneFrame *frame);
+// Boat-study flocks: explicit-time social cues, feeding passes, and vessel avoidance.
+// Player position/velocity use renderer coordinates; no accumulated simulation state.
+void waterfront_boating_gulls(
+    float time, Vector3 player, Vector3 velocity, WaterfrontSceneFrame *frame);
 const Mesh3D *waterfront_gull_mesh(int part);
 const Mesh3D *waterfront_player_hull_mesh(void);
 const Mesh3D *waterfront_player_cabin_mesh(void);

@@ -159,6 +159,12 @@ circuits. They have visual wakes, navigation lights, reflections, shadows, and f
 hull contacts. Inspect `./build/harbor_review --view ferry --waves` or `--view launch`;
 see [harbor traffic](docs/HARBOR_TRAFFIC.md) for routes and limits.
 
+Eriksberg and river boating also have 32 gulls in four small flocks. They circle, dip toward
+imagined food, follow the cruiser's disturbed water, and spread out with staggered alarm climbs.
+They bank into turns, alternate individual wingbeats with gliding, and climb away from passing
+vessels and your boat; faster approaches provoke a wider reaction. The basin stays clear for
+handling practice. See [harbor gulls](docs/HARBOR_GULLS.md) for behavior and review commands.
+
 Shoreline collisions use an oriented bow, stern, and beam footprint; glancing contacts scrub speed,
 turn the craft away, and rebound gently while retaining most speed along the dock. Translation
 and rotation keep the entire footprint in water, so a dock contact can be reversed out of. The

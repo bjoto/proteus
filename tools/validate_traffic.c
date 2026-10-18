@@ -67,8 +67,72 @@ static bool hulls_clear(const Boat *boat)
     return boat_map_water(boat->position, .5f);
 }
 
+// Exercise the boating snapshot as well as the authored paths: both renderers must
+// receive the same flock, and moving stimuli must not introduce frame-history dependence.
+static int check_gulls(void)
+{
+    WaterfrontSceneFrame previous = { 0 }, frame = { 0 }, sought = { 0 };
+    Vector3 far = { 10000, 0, 10000 };
+    waterfront_boating_gulls(0, far, (Vector3) { 0 }, &previous);
+    for (int tick = 0; tick <= 2400; ++tick) {
+        float time = tick / 20.0f;
+        waterfront_boating_gulls(time, far, (Vector3) { 0 }, &frame);
+        waterfront_boating_gulls(120 - time, far, (Vector3) { 0 }, &sought);
+        waterfront_boating_gulls(time, far, (Vector3) { 0 }, &sought);
+        CHECK(frame.gull_count == WATERFRONT_HARBOR_GULLS);
+        for (int i = 0; i < frame.gull_count; ++i) {
+            Vector3 p = frame.gulls[i][0].position;
+            CHECK(isfinite(p.x) && isfinite(p.y) && isfinite(p.z) && p.y > 1);
+            CHECK(Vector3Distance(p, previous.gulls[i][0].position) < 1.5f);
+            for (int j = i / 8 * 8; j < i; ++j)
+                CHECK(Vector3Distance(p, frame.gulls[j][0].position) > 2);
+            for (int part = 0; part < WATERFRONT_GULL_PARTS; ++part) {
+                Transform3D a = frame.gulls[i][part], b = sought.gulls[i][part];
+                CHECK(near(a.position, b.position, 1e-6f) && near(a.rotation, b.rotation, 1e-6f));
+                CHECK(near(a.position, p, 1e-6f));
+                CHECK(isfinite(a.rotation.x) && isfinite(a.rotation.y) && isfinite(a.rotation.z));
+            }
+        }
+        previous = frame;
+    }
+    // A player crosses the nearby flock at speed, testing the avoidance envelope's
+    // entry/exit rather than only undisturbed flight.
+    for (int tick = 0; tick <= 800; ++tick) {
+        float time = tick / 40.0f;
+        waterfront_boating_gulls(
+            time, (Vector3) { -25 + time * 4, 0, 38 }, (Vector3) { 4, 0, 0 }, &frame);
+        if (tick)
+            for (int i = 0; i < frame.gull_count; ++i)
+                CHECK(
+                    Vector3Distance(frame.gulls[i][0].position, previous.gulls[i][0].position) < 1);
+        previous = frame;
+    }
+    waterfront_boating_gulls(3, far, (Vector3) { 0 }, &frame);
+    Vector3 stimulus = frame.gulls[0][0].position;
+    stimulus.y = 0;
+    waterfront_boating_gulls(3, stimulus, (Vector3) { 0 }, &sought);
+    CHECK(sought.gulls[0][0].position.y > frame.gulls[0][0].position.y + 2);
+    float idle_height = sought.gulls[0][0].position.y;
+    waterfront_boating_gulls(3, stimulus, (Vector3) { 8, 0, 0 }, &sought);
+    CHECK(sought.gulls[0][0].position.y > idle_height + 1);
+    Boat boat;
+    boat_reset_location(&boat, true);
+    boat_scene_frame(&boat, BOAT_CAMERA_DEFAULT, &frame);
+    waterfront_boating_gulls(boat.time, frame.player.hull.position,
+        (Vector3) { -boat.velocity.x, 0, boat.velocity.y }, &sought);
+    CHECK(frame.gull_count == WATERFRONT_HARBOR_GULLS);
+    CHECK(!memcmp(frame.gulls, sought.gulls, sizeof(frame.gulls)));
+    boat_reset(&boat);
+    boat_scene_frame(&boat, BOAT_CAMERA_DEFAULT, &frame);
+    CHECK(frame.gull_count == 0);
+    puts("harbor_gulls=ok birds=32 continuity=120s seeks=ok player_stimuli=ok snapshot=ok");
+    return 0;
+}
+
 int main(void)
 {
+    if (check_gulls())
+        return 1;
     for (int river = 0; river < 2; ++river) {
         boat_map_destroy();
         waterfront_scene_select_river(river != 0);

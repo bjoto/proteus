@@ -7,8 +7,9 @@ complete (2026-10-17). Generated moored fleet and dressed berths 04h implemented
 05 and the user-requested travelling fleet are now implemented, including a compact
 passenger ferry brought forward from 09. See [harbor traffic](HARBOR_TRAFFIC.md).
 People/cyclists 06 are the next numbered city task.
-Flying gulls from step 11 were brought forward for the four-minute demo; perched birds
-remain pending. The [river expansion](eriksberg/bridge/README.md) is a separate scenery
+Flying gulls from step 11 were brought forward for the four-minute demo; the boat study
+now adds 32 reactive harbor gulls in four groups (see [harbor gulls](HARBOR_GULLS.md)).
+Perched birds remain pending. The [river expansion](eriksberg/bridge/README.md) is a separate scenery
 track, not completion of actor/ferry steps. [All plans](README.md).
 
 ## Direction
@@ -64,7 +65,7 @@ report what remains. A purely documentary step does not require a new manual dem
 | 09 | Stage a ferry proxy in a visible river shot and validate scale, route clearance, and camera composition before detailed modelling. Preserve the music slot. | Compact passenger ferry implemented by user request; original large Stena proposal remains deferred |
 | 09b | Add travelling small craft, continuous routes, visual wakes, shared poses, and forgiving moving player contacts. | Complete; see HARBOR_TRAFFIC.md |
 | 10 | Finish the ferry silhouette, livery, deck lights, wake, and reflection, plus selected quay details. Review the complete harbour shot. | Daytime compact-ferry silhouette, livery, windows, navigation lights, wake and reflection implemented; night/deck lighting and final artistic review remain |
-| 11 | Add gulls: a few perched birds and a small number of circling/gliding silhouettes. Keep flight paths deterministic and readable against the sky at 320x200. | Flying flock implemented; perched birds pending |
+| 11 | Add gulls: a few perched birds and a small number of circling/gliding silhouettes. Keep flight paths deterministic and readable against the sky at 320x200. | Demo flock and 32 reactive boating gulls implemented; perched birds pending |
 | 12 | Refine remaining weak areas after the city-wide coverage pass and add restrained atmosphere. Review both routes, all resolutions, seeking, and final performance. | Pending |
 
 Steps 02–04 establish the city in a frozen frame before the new moving cast arrives.
@@ -100,6 +101,28 @@ deliverable, or request a range such as `02–04, with one commit per step`.
 Dated records preserve each revision's findings and verification. Their local “next” tasks,
 old geometry counts, and limitations may be superseded by later entries; the status table
 above owns the current execution order.
+
+- 2026-10-18, **11 boating gulls**: added 32 birds in four groups for Eriksberg/river
+  boating, including cruiser followers, low feeding passes, delayed shared alarm cues,
+  personal space, individual flap/glide cycles, banking and pitch, and speed-sensitive
+  player/vessel avoidance. Both renderers evaluate the same explicit-time paths; fixed
+  the GPU player branch's early return so birds enter color/reflection/shadow passes.
+  Lowered the nearby flock after inspecting the default boat camera. The basin remains
+  clear and the four-minute demo retains its five birds and soundtrack camera.
+  See [harbor gulls](HARBOR_GULLS.md) for implementation and reproducible commands.
+  On the development Mac, 2026-10-18: Debug configure/build passed without project
+  compiler warnings; all 52 CTests passed, including 14 GPU checks
+  (`PROTEUS_GPU_TESTS=ON`, final suite 110.45 s). Extended `harbor_traffic` with
+  120 s of path/seek/spacing checks,
+  a moving-player crossing, proximity/speed reactions, wing attachment, and boat-frame
+  integration. Inspected final 320x200 CPU/GPU opening captures (t=0), CPU t=3, and a
+  GPU+AA low-camera wave capture (t=6). Artifacts and build/test logs are under
+  `build/living-city/gulls/`. Bounded 360-frame GPU+AA demo smoke runs completed for
+  Eriksberg and river; the final river run uses the final flight revision. These are
+  automated windowed runs, not human playback/input assessment.
+  Limits: authored visual responses, no persistent bird AI, terrain avoidance, perching,
+  bird audio, or physical contacts. Human motion/handling assessment and artistic acceptance
+  remain open; the next numbered city task is still 06 people/cyclists.
 
 - 2026-10-18, **05 shared actors / 09–09b travelling fleet**: brought water traffic
   forward at the user's request. Replaced the old one-way box launch with a yellow

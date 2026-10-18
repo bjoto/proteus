@@ -1090,6 +1090,9 @@ static void draw_life(const WaterfrontGpuScene *scene, Material material,
         draw_harbor(scene, material, frame);
         draw_traffic(scene, material, frame, emissive);
     }
+    for (int i = 0; i < frame->gull_count; ++i)
+        for (int part = 0; part < WATERFRONT_GULL_PARTS; ++part)
+            draw_colored_mesh(scene->gull[part], material, frame->gulls[i][part], WHITE, true);
     if (frame->player_active) {
         for (int i = 0; i < frame->lamp_count; ++i) {
             const WaterfrontLampState *lamp = &frame->lamps[i];
@@ -1147,9 +1150,6 @@ static void draw_life(const WaterfrontGpuScene *scene, Material material,
             }
         }
     }
-    for (int i = 0; i < frame->gull_count; ++i)
-        for (int part = 0; part < WATERFRONT_GULL_PARTS; ++part)
-            draw_colored_mesh(scene->gull[part], material, frame->gulls[i][part], WHITE, true);
 }
 
 static void draw_crane_lights(const WaterfrontGpuScene *scene, Material material)

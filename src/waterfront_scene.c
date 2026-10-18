@@ -454,6 +454,111 @@ const Mesh3D *waterfront_gull_mesh(int part)
     return &meshes[part];
 }
 
+// Four little communities rather than one rigid formation. Each bird follows the same
+// circling/feeding cue a little late, so turns and alarm climbs ripple through the flock.
+// Everything is sampled analytically: no random generator, integration, or seek history.
+static Vector3 harbor_gull_path(int index, float time, float *alarm)
+{
+    int group = index / 8, bird = index % 8;
+    static const Vector3 roosts[]
+        = { { 15, 0, 38 }, { 16, 0, -20 }, { -70, 0, -245 }, { 135, 0, -235 } };
+    float social_time = time - bird * .21f;
+    float cue = .5f + .5f * sinf(social_time * .31f + group * 1.9f);
+    // A brief imagined splash/food discovery, then a slower return to the thermal.
+    float feeding = powf(cue, 6);
+    float startle = fmaxf(0, sinf(social_time * .47f + group * 2.3f));
+    *alarm = powf(startle, 8);
+    float angle = time * (.29f + group * .025f) * (group % 2 ? -1 : 1) + bird * (2 * PI / 8)
+        + .14f * sinf(social_time * .61f + group) + .18f * sinf(time * .23f + bird * 1.3f);
+    float radius = 13 + (bird % 3) * 3.2f + 5 * feeding + 7 * *alarm
+        + 1.2f * sinf(time * .37f + bird * 2.1f);
+    Vector3 center = roosts[group];
+    if (group == 2) {
+        // Opportunists wheel behind the cruiser, drawn to its disturbed water.
+        WaterfrontVesselMotion boat = waterfront_traffic_motion(1, time);
+        center = Vector3Subtract(boat.position, Vector3Scale(Vector3Normalize(boat.velocity), 18));
+    }
+    return (Vector3) { center.x + radius * cosf(angle),
+        5 + group * 2 + (bird % 3) * 1.1f + 1.1f * sinf(time * .83f + bird * 1.7f) - 2.5f * feeding
+            + 6 * *alarm,
+        center.z + radius * .75f * sinf(angle) };
+}
+
+static Vector3 gull_avoid(Vector3 p, Vector3 source, float radius, float strength, float *alarm)
+{
+    // Smooth finite response even when directly overhead; horizontal distance is intentional.
+    Vector3 away = { p.x - source.x, 0, p.z - source.z };
+    float distance2 = Vector3LengthSqr(away);
+    float response = expf(-distance2 / (radius * radius));
+    *alarm = fmaxf(*alarm, response * strength);
+    p = Vector3Add(p, Vector3Scale(away, response * strength * .4f));
+    p.y += response * strength * 7;
+    return p;
+}
+
+static Vector3 harbor_gull_position(
+    int index, float time, Vector3 player, Vector3 velocity, float *alarm)
+{
+    Vector3 p = harbor_gull_path(index, time, alarm);
+    // Soft personal space from immediate flockmates, evaluated from unmodified paths so
+    // evaluation order cannot change the result. Coherent paths supply alignment/cohesion.
+    Vector3 separation = { 0 };
+    for (int neighbor = index / 8 * 8; neighbor < index / 8 * 8 + 8; ++neighbor) {
+        if (neighbor == index)
+            continue;
+        float ignored;
+        Vector3 delta = Vector3Subtract(p, harbor_gull_path(neighbor, time, &ignored));
+        float distance2 = Vector3LengthSqr(delta);
+        separation = Vector3Add(separation, Vector3Scale(delta, 2 * expf(-distance2 / 16)));
+    }
+    p = Vector3Add(p, separation);
+    float speed = Vector3Length(velocity);
+    // Look ahead of an approaching player; faster engines provoke a wider, stronger climb.
+    p = gull_avoid(p, Vector3Add(player, Vector3Scale(velocity, .8f)), 10 + fminf(speed, 12),
+        .45f + fminf(speed * .08f, .9f), alarm);
+    for (int vessel = 0; vessel < WATERFRONT_TRAFFIC_VESSELS; ++vessel) {
+        WaterfrontVesselMotion boat = waterfront_traffic_motion(vessel, time);
+        p = gull_avoid(p, boat.position, vessel == 3 ? 23 : 9, .65f, alarm);
+    }
+    return p;
+}
+
+void waterfront_boating_gulls(
+    float time, Vector3 player, Vector3 velocity, WaterfrontSceneFrame *frame)
+{
+    frame->gull_count = WATERFRONT_HARBOR_GULLS;
+    for (int i = 0; i < frame->gull_count; ++i) {
+        float alarm, ignored;
+        Vector3 p = harbor_gull_position(i, time, player, velocity, &alarm);
+        // Match orientation to the curved flight, including climbs and dives. Extrapolate
+        // the player's pose too, avoiding artificial turns when sampling a moving stimulus.
+        const float dt = .06f;
+        Vector3 before = harbor_gull_position(
+            i, time - dt, Vector3Subtract(player, Vector3Scale(velocity, dt)), velocity, &ignored);
+        Vector3 after = harbor_gull_position(
+            i, time + dt, Vector3Add(player, Vector3Scale(velocity, dt)), velocity, &ignored);
+        Vector3 forward = Vector3Normalize(Vector3Subtract(after, before));
+        Vector3 incoming = Vector3Normalize(Vector3Subtract(p, before));
+        Vector3 outgoing = Vector3Normalize(Vector3Subtract(after, p));
+        float yaw = atan2f(-forward.z, forward.x);
+        float pitch = asinf(Clamp(forward.y, -.8f, .8f));
+        float bank = Clamp(-Vector3CrossProduct(incoming, outgoing).y * 22, -.65f, .65f);
+        float phase = time * (1.7f + (i % 5) * .09f) + i * 1.37f;
+        float effort = .5f + .5f * sinf(time * .72f + i * 2.1f);
+        effort = Clamp((effort - .58f) * 2.4f + alarm * .9f + fmaxf(0, forward.y), 0, 1);
+        float flap = .65f * effort * sinf(phase * 2 * PI);
+        float size = .78f + (i % 5) * .045f;
+        for (int part = 0; part < WATERFRONT_GULL_PARTS; ++part) {
+            // Slight asymmetric wing trim makes gliding birds look less mechanical.
+            float trim = .035f * sinf(time * 1.9f + i);
+            float wing = part == 1 ? -.12f - flap + trim : part == 2 ? .12f + flap + trim : 0;
+            frame->gulls[i][part] = (Transform3D) { .position = p,
+                .rotation = { bank + wing, yaw, pitch },
+                .scale = { size, size, size } };
+        }
+    }
+}
+
 // Broad circuit above the street, out over the river, and back across the dock.
 // Cue times follow Below the surface's arrangement; Hermite tangents keep turns smooth.
 static const Vector3 flock_keys[]

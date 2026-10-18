@@ -580,6 +580,9 @@ void boat_scene_frame(const Boat *boat, BoatCamera camera, WaterfrontSceneFrame 
     frame->player_water = boat->water_settings;
     WaterfrontPlayerState *p = &frame->player;
     boat_player_pose(boat, p);
+    if (boat->eriksberg)
+        waterfront_boating_gulls(boat->time, p->hull.position,
+            (Vector3) { -boat->velocity.x, 0, boat->velocity.y }, frame);
     for (int i = 0; i < BOAT_WATER_PARTICLES; ++i) {
         const BoatWaterParticle *water = &boat->water[i];
         if (water->lifetime <= 0 || (boat->eriksberg && !boat_map_water(water->position, 0)))
@@ -641,6 +644,14 @@ bool boat_draw_with_ghost(Renderer3D *renderer, Color *pixels, int width, int he
         WaterfrontHarborFrame harbor;
         waterfront_harbor_evaluate(boat->water_settings, boat->time, &harbor);
         waterfront_draw_harbor(renderer, &harbor);
+        WaterfrontSceneFrame birds = { 0 };
+        waterfront_boating_gulls(boat->time,
+            (Vector3) { -boat->position.x, boat->height, boat->position.y },
+            (Vector3) { -boat->velocity.x, 0, boat->velocity.y }, &birds);
+        for (int i = 0; i < birds.gull_count; ++i)
+            for (int part = 0; part < WATERFRONT_GULL_PARTS; ++part)
+                renderer3d_draw_emissive_mesh(
+                    renderer, waterfront_gull_mesh(part), birds.gulls[i][part]);
     }
     for (int i = 0; i < BOAT_WATER_PARTICLES; ++i) {
         const BoatWaterParticle *p = &boat->water[i];
