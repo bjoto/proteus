@@ -121,6 +121,8 @@ static void windows(Renderer3D *r)
     // Derive inset windows from that edge, preserving arbitrary facade orientation.
     const Mesh3D *city = waterfront_scene_city_mesh();
     for (size_t i = 0; i < city->triangle_count; ++i) {
+        if (waterfront_scene_is_bridge_triangle(i))
+            continue;
         const Triangle3D *t = &city->triangles[i];
         Vector3 a = city->vertices[t->vertices[0]];
         Vector3 c = city->vertices[t->vertices[1]];

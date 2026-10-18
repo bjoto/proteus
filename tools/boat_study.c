@@ -17,9 +17,9 @@ static void usage(void)
         "Wheel springs to centre when released; thrust holds. R: reset and centre wheel | Esc: "
         "close\n"
         "+/-: closer/farther | PageUp/PageDown: raise/lower camera | C: reset view\n"
-        "--camera-distance UNITS: 8..48 (default 20)\n"
-        "--camera-height UNITS: 4..36 (default 14)\n"
-        "--location basin|eriksberg (default basin)\n"
+        "--camera-distance UNITS: 8..48 (default 20; river 32)\n"
+        "--camera-height UNITS: 4..36 (default 14; river 6)\n"
+        "--location basin|eriksberg|river (default basin; river extends to Alvsborgsbron)\n"
         "--waves: gentle crossing waves and a floating hull\n"
         "--course: timed S course in the basin; cross highlighted gates in order | R: retry\n"
         "G: ghost on/off | P/B: replay last/best | Space: pause replay | Enter: restart replay\n"
@@ -127,8 +127,10 @@ int main(int argc, char **argv)
     const char *replay_path = NULL, *ghost_path = NULL, *data_dir = NULL, *export_path = NULL;
     float time = 0;
     BoatCamera camera_settings = BOAT_CAMERA_DEFAULT;
+    bool camera_distance_set = false, camera_height_set = false;
     bool time_set = false, demo = false;
     bool eriksberg = false, course = false, waves = false;
+    bool river = false;
     bool gpu_enabled = true, gpu_aa = false;
     bool profiler_visible = false;
     int frame_limit = 0;
@@ -138,7 +140,8 @@ int main(int argc, char **argv)
             return 0;
         } else if (strcmp(argv[i], "--location") == 0 && i + 1 < argc) {
             const char *location = argv[++i];
-            if (strcmp(location, "eriksberg") == 0)
+            river = strcmp(location, "river") == 0;
+            if (strcmp(location, "eriksberg") == 0 || river)
                 eriksberg = true;
             else if (strcmp(location, "basin") == 0)
                 eriksberg = false;
@@ -194,10 +197,13 @@ int main(int argc, char **argv)
             if (end == value || *end || !isfinite(parsed) || parsed < (distance ? 8 : 4)
                 || parsed > (distance ? 48 : 36))
                 goto invalid;
-            if (distance)
+            if (distance) {
                 camera_settings.distance = parsed;
-            else
+                camera_distance_set = true;
+            } else {
                 camera_settings.height = parsed;
+                camera_height_set = true;
+            }
         } else if (strcmp(argv[i], "--frames") == 0 && i + 1 < argc) {
             char *end;
             const char *value = argv[++i];
@@ -217,8 +223,14 @@ int main(int argc, char **argv)
         fprintf(stderr, "--course requires the basin and cannot be combined with --demo.\n");
         goto invalid;
     }
+    const BoatCamera camera_default = river ? (BoatCamera) { 32, 6 } : BOAT_CAMERA_DEFAULT;
+    if (!camera_distance_set)
+        camera_settings.distance = camera_default.distance;
+    if (!camera_height_set)
+        camera_settings.height = camera_default.height;
 
     SetTraceLogLevel(LOG_WARNING);
+    waterfront_scene_select_river(river);
     enum { WIDTH = 320, HEIGHT = 200, HUD_HEIGHT = 200 };
     Color *pixels = malloc(WIDTH * HEIGHT * sizeof(*pixels));
     if (!pixels)
@@ -354,7 +366,7 @@ int main(int argc, char **argv)
             camera_settings.height
                 = fmaxf(4, fminf(36, camera_settings.height + elevation * 8 * dt));
             if (IsKeyPressed(KEY_C))
-                camera_settings = BOAT_CAMERA_DEFAULT;
+                camera_settings = camera_default;
         }
         bool replay_adjusted = false;
         if (!IsWindowFocused())
@@ -483,7 +495,7 @@ int main(int argc, char **argv)
         if (profiler_visible && current_frame_started_at >= next_snapshot_time) {
             snapshot = profiler_snapshot(&profiler, (SceneFrame) { .time = boat.time }, boat.time,
                 size, destination, false, (Music) { 0 }, (AudioSpectrum) { 0 });
-            snapshot.scene_label = eriksberg ? "eriksberg" : "basin";
+            snapshot.scene_label = river ? "river" : eriksberg ? "eriksberg" : "basin";
             snapshot.renderer_label = gpu_enabled ? (gpu_aa ? "GPU 4x SSAA" : "GPU") : "CPU";
             snapshot.texture_upload_kib = gpu_enabled ? 0 : snapshot.framebuffer_kib;
             next_snapshot_time = current_frame_started_at + 0.25;
@@ -495,7 +507,10 @@ int main(int argc, char **argv)
             (Rectangle) { 0, 0, gpu_enabled ? -WIDTH : WIDTH, gpu_enabled ? -HEIGHT : HEIGHT },
             destination, (Vector2) { 0 }, 0, WHITE);
         int hud_y = GetScreenHeight() - HUD_HEIGHT + 10;
-        DrawText(eriksberg ? "ERIKSBERG" : "BOATING SKETCH", 12, hud_y, 20, RAYWHITE);
+        DrawText(river      ? "ERIKSBERG / ALVSBORGSBRON"
+                : eriksberg ? "ERIKSBERG"
+                            : "BOATING SKETCH",
+            12, hud_y, 20, RAYWHITE);
         DrawText(TextFormat("Speed %.1f", hypotf(view->velocity.x, view->velocity.y)), 210,
             hud_y + 3, 16, (Color) { 232, 180, 102, 255 });
         DrawText(TextFormat("Thrust %+.0f%%", view->throttle * 100), 12, hud_y + 27, 16, RAYWHITE);

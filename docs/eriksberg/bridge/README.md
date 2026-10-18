@@ -1,7 +1,17 @@
 # Älvsborgsbron river expansion survey
 
-This is the coverage proposal for extending `boat_study` from Eriksberg to
-Älvsborgsbron. Runtime geometry, navigation boundaries, and the main demo are unchanged.
+The coverage survey below now has an opt-in playable blockout in `boat_study`.
+The original Eriksberg location and main demo retain their existing geometry.
+
+```sh
+./build/boat_study --location river --gpu-aa
+./build/boat_study --location river --gpu-aa --waves
+```
+
+Leave the dock and follow the river southwest to the bridge. The river view defaults
+to 32 m back / 6 m high to show the bridge above the water; C resets that view.
+The map boundary and four tower legs block the hull. The deck, cables, and crossbeams
+are elevated scenery; overhead structure collisions are not implemented.
 
 ![Proposed river extension](coverage.png)
 
@@ -70,7 +80,71 @@ hash, assembles the two main outer banks of river relation 3329487, and verifies
 
 The map shows building way outlines for context. They are not a deduplicated building
 inventory; relation-only buildings, courtyards, terrain, and detailed vegetation need
-the runtime importer's handling in the next stage.
+the runtime importer's handling. The playable mesh preserves mapped courtyards and
+building parts. Outside the authored approach embankments, terrain remains an assumed flat quay.
+
+Generate the separate runtime assets offline with the existing pyproj/shapely dependencies:
+
+```sh
+python tools/prepare_waterfront.py --area river
+```
+
+Output is `assets/geometry/river/geometry.h` and `manifest.json`. Normal builds do not
+run Python. Incomplete building relations are omitted and listed in the manifest;
+`height=0` is treated as missing and its fallback is recorded. Bridge support parents
+are excluded from normal building extrusion. Only the four mapped legs cut the water;
+the open towers, deck, main cables, and hangers are authored by `tools/prepare_bridge.py`.
+The blockout assumes a constant 45 m deck underside, a 3 m deck slab, and 107.6 m
+tower tops. Cable sag, beam sizes, flat ground, and deck height remain modeling assumptions.
+
+Both ends now connect to the existing inland road network. The north approach follows
+Västerleden/Hisingsleden for approximately 529 m; the south approach follows the mapped
+Västerleden carriageway for approximately 363 m, landing before the current crop boundary.
+The shared road is offset toward the centre of the mapped carriageway pair and descends
+from the 48 m deck top to the scene's 3.5 m ground. The short south descent is deliberately
+steeper than the north descent; neither grade claims to reproduce the real terrain.
+Grassy embankments support the slabs throughout their descent, concrete abutments meet
+the suspended deck underside, and asphalt plus road markings continue across the joins.
+
+The generator checks road-chain continuity, exact deck/ground endpoint heights, and that
+the full reserved grading corridors remain on mapped dry land inside the crop. Ground road
+paint inside those corridors is replaced by the elevated roadway. Five building footprints
+overlapping the reserved grading are omitted and listed in the river manifest. River water
+and navigation boundaries are unchanged. Authored bridge/approach triangles are explicitly
+marked so abutments and ramps receive no generated apartment windows or roof textures.
+
+## Repeatable route verification
+
+The existing boat water review now accepts `--river`, driving the real 120 Hz boat
+simulation from the dock, through the bridge, and beyond it. It checks the enclosing
+hull rectangle stays in water throughout the voyage, the four leg centres are blocked,
+water below the deck is open, and the outer crop remains closed.
+
+```sh
+./build/boat_water_review --check --river
+./build/boat_water_review --check --river --waves
+./build/boat_water_review --river --renderer cpu --output build/river-cpu
+./build/boat_water_review --river --renderer gpu --output build/river-gpu
+./build/boat_water_review --river --renderer gpu --waves --output build/river-wave-gpu
+```
+
+GPU checks require desktop graphics access. Each capture run exports named dock,
+river, approach, under-bridge, past-bridge, beyond, and final look-back images plus a
+CSV of actual boat poses. GPU runs also sample rendering throughout the journey.
+Additional `north-landfall.png` and `south-landfall.png` captures inspect the connections from
+fixed water positions. `connections-overview.png` uses an elevated inspection camera to show
+the road-to-deck and road-to-ground joins; these views are separate from the recorded voyage.
+Use `--visible` for live GPU playback, and `--sequence` to export every sampled frame.
+The river's default review view matches the playable 32/6 camera; close captures retain
+the existing 12/6 water-detail view.
+
+Both water presets reach the end in approximately 101 seconds without a hull-clearance
+failure. Inspected CPU and GPU captures show the suspension silhouette on approach,
+the deck shadow during passage, and the bridge behind the boat at the end. Flat-water
+CPU rendering averaged about 35 ms per sampled frame; GPU with 4×4 AA averaged about
+9.1 ms per frame submission on the development machine (9.9 ms with waves). Submission timings are not
+complete display-frame timings. The CPU wave reference tessellates the entire expanded
+water footprint (about 2.24 million triangles), so GPU is recommended for interactive waves.
 
 ## Landmark findings
 
@@ -87,21 +161,18 @@ structural dimensions before treating them as modeling measurements. Nearby towe
 node 2495322719 also has a 331 m aviation-related height tag; do not use it as the
 bridge's structural height. Path `ele=50` is not a deck profile or clearance survey.
 
-## Next implementation stage
+## Implementation status and remaining work
 
-1. Adapt the importer to accept a separately pinned source and crop, preserving the
-   existing Eriksberg output as the default. Keep the larger scene opt-in for the boat
-   until the existing demo and city dressing have been checked against it.
-2. Produce water/land and coarse buildings. Preserve the water-first triangle ordering
-   required by `src/boat_map.c`. Handle incomplete unrelated relations explicitly;
-   never close missing geometry across the playable crop.
-3. Add one shared bridge blockout with deck and open towers, visible in CPU and GPU.
-   Treat the deck as elevated geometry, not a cut in the navigable water. Use separate
-   support footprints for boat collisions.
-4. Add deterministic route captures and a repeatable boat traversal through the bridge.
-   Check camera clipping, shore contacts, reflections, shadows, and CPU/GPU frame times.
-   The boat camera currently has a 2,200 m far plane; review it from the turnaround
-   point before increasing it. Profile linear water/contact queries with the larger mesh.
-5. Refine cables, hangers, quays, shoreline rocks, and nearby waterfront buildings after
-   the full trip works. Build, run CTest, inspect representative frames, and manually
-   sail the route before calling the extension playable.
+1. Implemented: separately pinned source/crop, with the existing Eriksberg output preserved
+   as the default and the larger boat scene opt-in.
+2. Implemented: water/land and coarse buildings preserve the water-first triangle ordering
+   required by `src/boat_map.c`. Incomplete building relations are explicitly omitted.
+3. Implemented: shared CPU/GPU bridge blockout with open towers and separate solid leg footprints.
+4. Implemented: deterministic captures and actual boat traversal, including shoreline checks,
+   reflections, shadows, and rendering timings. The existing 2,200 m camera far plane
+   covers the bridge and crane from the turnaround point without an increase.
+5. Implemented: grounded approach roads, embankments, and abutments on both banks, following
+   retained mapped road alignments with authored vertical profiles.
+6. Next: refine cables, hangers, road interchanges, quays, shoreline rocks, and nearby waterfront
+   buildings. Surveyed terrain and detailed approach gradients remain future work. Freehand handling
+   and camera occlusion beside buildings still need a human playthrough.

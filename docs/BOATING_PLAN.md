@@ -7,6 +7,13 @@ plan as we discover what is enjoyable to play.
 
 ## Current prototype
 
+`--location river` extends the geographic area to Älvsborgsbron, using the same dock spawn
+and boat physics. A shared CPU/GPU blockout includes the deck, open towers, main cables,
+and hangers. The four tower-leg footprints obstruct navigation while the deck stays above
+the navigable water. Its default follow view is 32 m back / 6 m high; C restores that view.
+The original Eriksberg crop and main demo remain the defaults for their existing modes.
+See the [bridge expansion record](eriksberg/bridge/README.md) for assumptions and route checks.
+
 `--location eriksberg` selects the bundled geographic waterfront; `--location basin` selects the
 physics test area (the default). The Eriksberg spawn is in the dock basin facing the crane and river.
 Buildings, shore, bridge, crane and sky reuse the bundled offline scene. The held controls, follow

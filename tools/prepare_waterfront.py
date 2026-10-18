@@ -12,7 +12,7 @@ import math
 from pathlib import Path
 
 from pyproj import Transformer
-from shapely import constrained_delaunay_triangles
+from shapely import constrained_delaunay_triangles, make_valid
 from shapely.geometry import LineString, Point, Polygon, box
 from shapely.geometry.polygon import orient
 from shapely.ops import unary_union
@@ -123,17 +123,25 @@ def resolve_parts(parent, parts):
     return result
 
 
-def prepare(output):
+def prepare(output, expanded=False):
     raw = gzip.decompress(SOURCE.read_bytes())
     assert hashlib.sha256(raw).hexdigest() == EXPECTED_HASH, "Unexpected source snapshot"
     data = json.loads(raw)
     elements = data["elements"]
     transform = Transformer.from_crs(4326, 3007, always_xy=True)
     ox, oy = transform.transform(11.9089495, 57.6973921)
+    incomplete_relations = set()
 
     def coordinates(geometry):
         return [(x - ox, z - oy) for p in geometry if p and "lat" in p
                 for x, z in [transform.transform(p["lon"], p["lat"])]]
+
+    def height_for(e, area):
+        tags = e["tags"]
+        if expanded and tags.get("height") == "0":
+            height, basis = building_height({k: v for k, v in tags.items() if k != "height"}, area)
+            return height, basis + "; ignored invalid height=0"
+        return building_height(tags, area)
 
     def footprint(e):
         if e["type"] == "way":
@@ -141,18 +149,29 @@ def prepare(output):
             if len(points) < 4 or points[0] != points[-1]:
                 raise ValueError(f"Incomplete building {e['id']}")
             return Polygon(points)
+        if expanded and any(m["type"] == "way" and m.get("role") in {"outer", "inner"}
+                            and not m.get("geometry") for m in e["members"]):
+            incomplete_relations.add(f"relation/{e['id']}")
+            return Polygon()
         outers = join_chains([coordinates(m.get("geometry", [])) for m in e["members"]
                              if m.get("role") == "outer"])
         inners = join_chains([coordinates(m.get("geometry", [])) for m in e["members"]
                              if m.get("role") == "inner"])
-        assert all(r[0] == r[-1] for r in outers + inners), e["id"]
+        if not all(r[0] == r[-1] for r in outers + inners):
+            if expanded:
+                # Map API relations can extend outside the download envelope. A partial
+                # building must not be closed across the playable area.
+                incomplete_relations.add(f"relation/{e['id']}")
+                return Polygon()
+            raise ValueError(f"Incomplete relation {e['id']}")
         shape = unary_union([Polygon(r) for r in outers])
         if inners:
             shape = shape.difference(unary_union([Polygon(r) for r in inners]))
         return shape
 
     river = next(e for e in elements if e["type"] == "relation" and e["id"] == 3329487)
-    banks = sorted(join_chains([coordinates(m.get("geometry", [])) for m in river["members"]]),
+    banks = sorted(join_chains([coordinates(m.get("geometry", [])) for m in river["members"]
+                               if not expanded or m["role"] == "outer"]),
                    key=len, reverse=True)
     a, b = banks[:2]
     if math.dist(a[-1], b[0]) > math.dist(a[-1], b[-1]):
@@ -162,9 +181,25 @@ def prepare(output):
     assert not LineString([a[-1], b[0]]).intersects(CROP)
     assert not LineString([b[-1], a[0]]).intersects(CROP)
     water = Polygon(a + b)
-    assert water.is_valid, "Invalid river-bank assembly"
-    water = water.intersection(CROP)
+    if expanded:
+        assert all(not LineString(c).intersects(CROP) for c in banks[2:])
+        water = make_valid(water).intersection(CROP)
+        for bank in [a, b]:
+            assert water.boundary.buffer(1e-6).covers(LineString(bank).intersection(CROP))
+        # Only the four actual tower legs obstruct water; the tower envelopes include
+        # open space beneath crossbeams. Deck and cables must not block navigation.
+        legs = {1244572189, 1244572190, 1244572193, 1356632936}
+        supports = unary_union([footprint(e) for e in elements
+                                if e["type"] == "way" and e["id"] in legs])
+        water = water.difference(supports)
+    else:
+        assert water.is_valid, "Invalid river-bank assembly"
+        water = water.intersection(CROP)
     land = CROP.difference(water)
+    approaches, approach_footprint, omitted_approach_buildings = [], Polygon(), []
+    if expanded:
+        from prepare_bridge import bridge_approaches
+        approaches, approach_footprint = bridge_approaches(elements, coordinates, land)
 
     vertices, triangles, lookup = [], [], {}
 
@@ -197,7 +232,8 @@ def prepare(output):
     surface(water, 0, (45, 79, 104))
     surface(land, GROUND, (135, 139, 144))
     walls(land, 0, GROUND, (94, 102, 114))
-    buildings = [e for e in elements if "building" in e.get("tags", {})]
+    buildings = [e for e in elements if "building" in e.get("tags", {})
+                 and (not expanded or "bridge:support" not in e["tags"])]
     members = {m["ref"] for e in buildings if e["type"] == "relation"
                for m in e["members"] if m["type"] == "way"}
     parts = []
@@ -207,7 +243,7 @@ def prepare(output):
         shape = footprint(e)
         if not shape.intersects(CROP):
             continue
-        height, _ = building_height(e["tags"], shape.area)
+        height, _ = height_for(e, shape.area)
         bottom = float(e["tags"].get("min_height", "0").replace(",", "."))
         assert math.isfinite(bottom) and 0 <= bottom < height, e["id"]
         parts.append((e, shape.intersection(CROP), height, bottom))
@@ -218,11 +254,16 @@ def prepare(output):
         shape = footprint(e)
         if not shape.intersects(CROP):
             continue
+        if expanded and not shape.is_valid:
+            shape = make_valid(shape)
         assert shape.is_valid, f"Invalid footprint {e['id']}"
         shape = shape.intersection(CROP)
         if shape.area < 1:
             continue
-        height, basis = building_height(e["tags"], shape.area)
+        if expanded and shape.intersects(approach_footprint):
+            omitted_approach_buildings.append(f"{e['type']}/{e['id']}")
+            continue
+        height, basis = height_for(e, shape.area)
         tint = [(166, 173, 195), (185, 183, 191), (154, 166, 188), (190, 177, 163)][e["id"] % 4]
         # Parts remain within their parent footprint. Use original unsimplified outlines
         # for partitioning so shared edges do not grow slivers from separate simplification.
@@ -253,7 +294,10 @@ def prepare(output):
         width = 2 if tags["highway"] in {"path", "footway", "steps", "cycleway"} else 6
         roads.append(LineString(pts).buffer(width / 2, cap_style=2, join_style=2))
     road_union = unary_union(roads)
-    surface(road_union.intersection(land).difference(solid_union), GROUND + .03, (83, 89, 99))
+    road_surface = road_union.intersection(land).difference(solid_union)
+    if expanded:
+        road_surface = road_surface.difference(approach_footprint)
+    surface(road_surface, GROUND + .03, (83, 89, 99))
 
     # Authored landscape zones, not additional surveyed buildings. Keep mapped paths,
     # building entrances, and water clear, and turn unused slabs into legible gardens.
@@ -306,6 +350,11 @@ def prepare(output):
     # vertices/topology intact and append a submerged continuation in the same wall material.
     walls(land, -2, 0, (94, 102, 114))
 
+    if expanded:
+        from prepare_bridge import add_bridge
+        bridge_first_triangle = len(triangles)
+        add_bridge(elements, coordinates, triangle, approaches)
+
     output.mkdir(parents=True, exist_ok=True)
     lines = ["// Generated by tools/prepare_waterfront.py. Do not edit.",
              "// Map data (c) OpenStreetMap contributors, ODbL 1.0; see manifest.json.",
@@ -316,9 +365,14 @@ def prepare(output):
               for i, c in triangles]
     lines += ["};", ""]
     content = "\n".join(lines)
+    if expanded:
+        content = content.replace("waterfront_vertices", "river_vertices").replace(
+            "waterfront_triangles", "river_triangles")
+        content += f"static const size_t river_bridge_first_triangle = {bridge_first_triangle};\n"
     (output / "geometry.h").write_text(content)
-    manifest = {"source": "docs/eriksberg/osm-survey.json.gz", "source_sha256": EXPECTED_HASH,
-                "snapshot": data["osm3s"]["timestamp_osm_base"], "origin_epsg3007": [ox, oy],
+    manifest = {"source": str(SOURCE.relative_to(ROOT)), "source_sha256": EXPECTED_HASH,
+                "snapshot": data.get("osm3s", {}).get("timestamp_osm_base", data.get("retrieved_utc")),
+                "origin_epsg3007": [ox, oy],
                 "license": "ODbL-1.0", "license_url": "https://opendatacommons.org/licenses/odbl/1-0/",
                 "attribution": "Map data © OpenStreetMap contributors",
                 "attribution_url": "https://www.openstreetmap.org/copyright",
@@ -329,13 +383,33 @@ def prepare(output):
                 "buildings": manifest_buildings, "landscape": garden_manifest,
                 "building_parts": [{"osm": f"{e['type']}/{e['id']}", "height": h,
                                     "min_height": bottom} for e, _, h, bottom in parts]}
+    if expanded:
+        manifest["omitted_incomplete_relations"] = sorted(incomplete_relations)
+        manifest["bridge"] = {
+            "relation": 5776295, "outline_way": 387711139,
+            "tower_leg_ways": sorted(legs), "deck_underside_m": 45, "deck_thickness_m": 3,
+            "tower_top_m": 107.6,
+            "assumptions": "Mapped alignment and legs; constant deck height, cable sag, "
+                           "beam sizes, approach slopes and embankments are authored blockout assumptions",
+            "approaches": [{"bank": a["name"], "road_ways": a["ways"],
+                            "length_m": round(a["line"].length, 2),
+                            "road_end_east_north": list(a["line"].coords)[-1],
+                            "deck_top_m": 48, "ground_top_m": GROUND,
+                            "grading_on_land": land.covers(a["footprint"])} for a in approaches],
+            "omitted_buildings_in_approach_grading": omitted_approach_buildings,
+        }
     (output / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     print(f"Prepared {len(manifest_buildings)} buildings, {len(vertices)} vertices, {len(triangles)} triangles")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", type=Path, default=ROOT / "assets/geometry/eriksberg")
+    parser.add_argument("--output", type=Path)
+    parser.add_argument("--area", choices=["eriksberg", "river"], default="eriksberg")
     args = parser.parse_args()
+    if args.area == "river":
+        SOURCE = ROOT / "docs/eriksberg/bridge/osm-survey.json.gz"
+        EXPECTED_HASH = "688c7cf277af904c44ce820c941b83cd23f383b9d5a492040edcf46cfcb6778a"
+        CROP = box(-1500, -1600, 950, 800)
     self_test()
-    prepare(args.output)
+    prepare(args.output or ROOT / "assets/geometry" / args.area, args.area == "river")

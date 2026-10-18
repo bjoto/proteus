@@ -294,7 +294,9 @@ static bool build_city(Mesh *city_mesh, Mesh *facades, Mesh *roofs, Mesh *quay, 
         }
         bool planting = (triangle->color.r == 72 && triangle->color.g == 105)
             || (triangle->color.r == 61 && triangle->color.g == 91);
-        CitySurface surface = planting ? CITY_SURFACE_FLAT : city_surface(a, b, c);
+        // Authored bridge beams retain their flat steel/concrete colors.
+        bool bridge = waterfront_scene_is_bridge_triangle(i);
+        CitySurface surface = planting || bridge ? CITY_SURFACE_FLAT : city_surface(a, b, c);
         Vector3 normal
             = Vector3Normalize(Vector3CrossProduct(Vector3Subtract(b, a), Vector3Subtract(c, a)));
         bool road = ColorIsEqual(triangle->color, (Color) { 83, 89, 99, 255 });
@@ -339,6 +341,8 @@ static bool build_windows(Mesh *mesh)
     const Mesh3D *city = waterfront_scene_city_mesh();
     MeshBuilder builder = { 0 };
     for (size_t i = 0; i < city->triangle_count; ++i) {
+        if (waterfront_scene_is_bridge_triangle(i))
+            continue;
         const Triangle3D *triangle = &city->triangles[i];
         Vector3 a = city->vertices[triangle->vertices[0]];
         Vector3 c = city->vertices[triangle->vertices[1]];

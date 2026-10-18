@@ -80,6 +80,7 @@ Explore the bundled Eriksberg waterfront with the same boat and controls:
 ```sh
 ./build/boat_study --location eriksberg
 ./build/boat_study --location eriksberg --gpu --gpu-aa
+./build/boat_study --location river --gpu-aa
 ./build/boat_study --location basin
 ./build/boat_study --renderer cpu --location eriksberg --screenshot build/eriksberg-boat.png --time 3
 ```
@@ -154,7 +155,21 @@ slab shadows. `--gpu-aa` only enables anti-aliasing: it averages 4×4 samples pe
 the 320×200 integer-scaled presentation. It does not select a renderer or location. `--gpu` is an
 alias for `--renderer gpu`. GPU screenshots require a desktop graphics context; use
 `--renderer cpu` for window-free captures. Scenery is static, with no traffic or collision against
-overhead structures. Follow-camera occlusion near buildings is not resolved. This is the local Eriksberg crop, not all of Gothenburg.
+overhead structures. Follow-camera occlusion near buildings is not resolved. These locations cover
+a local waterfront area, not all of Gothenburg.
+
+`--location river` opts into the larger 2,450 × 2,400 m waterfront and an Älvsborgsbron
+blockout. Start in the same dock, leave the basin, and follow the river southwest to sail under
+the bridge and continue beyond it. Both bridge ends meet descending approach roads on grassy
+embankments, with concrete abutments connecting the deck to the land. The approaches follow mapped
+road alignments; their elevations are authored for the flat scene. The four mapped tower legs
+block the boat; the elevated deck remains passable underneath. The river location defaults to a lower follow view (32 m back,
+6 m high) so the bridge stays visible; C restores that view. The original Eriksberg location and
+main demo keep their existing scenery and camera defaults. Both renderers support the extension;
+GPU is recommended for waves because the CPU reference tessellates the whole water footprint.
+Geometry and height assumptions are in the [river manifest](assets/geometry/river/manifest.json).
+See the [bridge survey and blockout notes](docs/eriksberg/bridge/README.md) for the route and
+repeatable CPU/GPU captures.
 
 Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), ODbL 1.0.
 See the bundled [source manifest](assets/geometry/eriksberg/manifest.json) for provenance.

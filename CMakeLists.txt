@@ -109,6 +109,8 @@ endforeach()
 add_test(NAME boat_handling COMMAND validate_boat)
 add_test(NAME boat_water_route COMMAND boat_water_review --check)
 add_test(NAME boat_water_wave_route COMMAND boat_water_review --check --waves)
+add_test(NAME boat_river_route COMMAND boat_water_review --check --river)
+add_test(NAME boat_river_wave_route COMMAND boat_water_review --check --river --waves)
 set(BOAT_REPLAY_TEST_DIR "${CMAKE_CURRENT_BINARY_DIR}/replay-tests")
 add_test(NAME boat_replay COMMAND validate_boat_replay ${BOAT_REPLAY_TEST_DIR})
 set_tests_properties(boat_replay PROPERTIES FIXTURES_SETUP boat_recording)
@@ -143,6 +145,8 @@ add_test(NAME boat_cpu_aa_option_reversed COMMAND boat_study --gpu-aa --renderer
   --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-cpu-aa-option-reversed.png)
 add_test(NAME boat_eriksberg_screenshot COMMAND boat_study --renderer cpu --location eriksberg --time 3
   --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-eriksberg.png)
+add_test(NAME boat_river_screenshot COMMAND boat_study --renderer cpu --location river --time 0
+  --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-river.png)
 
 add_executable(dance_study tools/dance_study.c src/dance.c src/choreography.c src/renderer3d.c src/xm_audio.c)
 target_include_directories(dance_study PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
