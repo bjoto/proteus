@@ -12,11 +12,12 @@
 #define BOAT_LIMIT_X (BOAT_BASIN_HALF_X - 2.5f)
 #define BOAT_LIMIT_Z (BOAT_BASIN_HALF_Z - 2.5f)
 #define BOAT_WATER_PARTICLES 384
-#define BOAT_CAMERA_DEFAULT ((BoatCamera) { 20, 14 })
+#define BOAT_CAMERA_DEFAULT ((BoatCamera) { .distance = 20, .height = 14 })
 
 typedef struct {
     float distance; // Horizontal distance behind the boat, 8..48 world units.
     float height; // Height above the water, 4..36 world units.
+    bool fixed_fov; // Disable the modest speed lens for a constant 55-degree vertical view.
 } BoatCamera;
 
 typedef struct {
@@ -61,7 +62,7 @@ void boat_reset_course(Boat *boat);
 void boat_player_pose(const Boat *boat, WaterfrontPlayerState *player);
 void boat_scene_frame(const Boat *boat, BoatCamera camera, WaterfrontSceneFrame *frame);
 // Advance one fixed tick. Inputs are adjustment rates in -1..1; zero centres the wheel and holds
-// throttle.
+// throttle. Opposite steering unwinds the existing wheel angle three times faster than turn-in.
 void boat_step(Boat *boat, float wheel_change, float throttle_change);
 bool boat_draw(Renderer3D *renderer, Color *pixels, int width, int height, const Boat *boat,
     BoatCamera camera_settings);

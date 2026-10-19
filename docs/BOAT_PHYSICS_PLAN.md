@@ -1,12 +1,14 @@
 # Boat physics: learnable handling
 
-Status, 2026-10-18: A1–D3 implemented. Phase C is accepted; Phase D handling and
+Status, 2026-10-19: A1–D3 implemented; the user-requested
+[handling feel pass](#handling-feel-pass--2026-10-19) adds quicker countersteering and a speed view, accepted by the user on 2026-10-19. Phase C is accepted; Phase D handling and
 player-wake motion are provisionally accepted by the user, with continued evaluation
 over time. Current/scripted-wake options now work in all locations; player-path wakes are
 enabled by default in free boating, with `--no-player-wake` available for calm practice.
-Next task: preserve this baseline and collect longer-term handling feedback; tune only
-when that feedback warrants it. E1/E2 remain optional future work, not started by this
-acceptance. Calm-water handling and the accepted C3 wave baseline must be preserved.
+Next task: preserve the accepted handling feel baseline and collect longer-term feedback.
+Closer camera comparisons remain an optional design experiment; E1/E2 have not started.
+Thrust, passive resistance, uncommanded wheel return, and the accepted C3 wave model are preserved;
+commanded wheel reversal is deliberately faster under the 2026-10-19 request.
 The separate [04h harbor pass](HARBOR_BOATS.md) adds fixed berth collision envelopes and
 kinematic moored-boat wave poses. [Travelling harbor vessels](HARBOR_TRAFFIC.md) add
 player contacts using obstacle-relative velocity and visual foam wakes. Those harbor
@@ -87,6 +89,73 @@ Reusable prompt for a smaller coding model:
 > Read AGENTS.md and docs/BOAT_PHYSICS_PLAN.md. Implement only task [ID]. Preserve existing unrelated
 > changes. Follow its scope, acceptance checks, and the working contract. Do not start later tasks.
 > Update the task status and handoff notes, and report verification and limitations. Do not commit.
+
+## Handling feel pass — 2026-10-19
+
+Scope: the user requested steering/handling review and more fast, fun play. This named follow-up
+precedes optional Phase E. Research, the wider experience audit, and proposed next experiments
+belong to the [boating design review](BOATING_PLAN.md#handling-and-speed-review--2026-10-19).
+
+Implemented, automatically verified, and accepted by the user on 2026-10-19 ("Feels great!"):
+
+- **H1 — Catch a turn promptly.** Opposite input unwinds the existing wheel setting at 3 units/s;
+  after crossing centre it returns to the original 1 unit/s turn-in. Full lock reaches centre in
+  about 0.33 s, instead of 1 s. The tick is split at centre so the faster rate cannot leak into
+  the new turn. Fractional inputs retain their proportional rate. Normal turn-in, release spring,
+  outboard slew, thrust/neutral/reverse, drag, lateral grip, yaw inertia, and waves keep their
+  existing tuning. This changes player command response, not the passive hull model.
+- **H2 — Bounded speed-view experiment.** Shared CPU/GPU camera widens from 55° to 62° vertical
+  FOV over 4–18 units/s forward ground speed using a smoothstep curve. Docking/reverse retain
+  55°. Height, distance, level horizon and heading lag keep their existing settings. `--fixed-fov`
+  restores the constant lens and survives C/reset. The camera derives the lens from pose and
+  velocity, including replay, with no state that needs to catch up after seeking.
+- Handling revision is now 2. New personal-best filenames include `physics2`; old files are
+  preserved. Old exported recordings are rejected by the existing compatibility contract.
+
+Deterministic comparison at 120 Hz: start at 12 units/s, establish one second of full steering,
+then hold opposite steering. Powered yaw reversal improved from 0.992 s to 0.383 s; heading
+overshoot fell from 40.0° to 16.8°. In neutral/coasting, reversal improved from 1.133 s to
+0.542 s and overshoot from 16.2° to 8.1°. These are scripted basin measurements, not player
+ratings or a guarantee for every speed/wave/contact situation. Build-local comparison probe
+and pre-change executable are in `build/handling-review/`.
+
+Acceptance checks: mirror left/right recovery at cruise and in neutral; no energy gain when
+coasting under countersteering; fractional/clamped inputs and centre crossing; existing docking,
+contact, planing, waves, currents and long-run checks; bounded/monotone lens with stable horizon
+and unchanged docking/reverse lens; fixed-lens captures and compatible replay/best handling.
+
+Verification on 2026-10-19, macOS Apple Silicon, Debug:
+
+- Configure/build completed without project compiler warnings (raylib retains its existing
+  macOS OpenGL deprecation configure notice). All 69 CTests passed across the full run and
+  targeted rerun, including 18 GPU checks. The initial run exposed an overly exact float
+  comparison in the new steering test; it passed after using a tolerance. No production tuning
+  was changed to satisfy it. Existing environment, route, replay, hull and audio checks passed.
+- CPU river before/after acceleration frames at 2.9 s were inspected. The new `--fixed-fov`
+  river capture matches the pre-change capture byte for byte, preserving the baseline view and
+  straight acceleration. GPU AA Eriksberg acceleration and GPU player-wake turning frames,
+  plus CPU neutral/coast and reverse frames, were inspected at 320x200. Hull/spray attachments
+  and horizon remain coherent; the river boat is still small at its distant default view.
+- Desktop `--location eriksberg --gpu-aa --demo --frames 360` exited successfully with desktop
+  graphics access. The sandboxed window stalled on macOS application services and was terminated
+  before retrying. This is a scripted desktop smoke check, not hands-on keyboard or listening
+  acceptance. Reference captures and the smoke log are under `build/handling-review/`.
+- Changed documentation links, launch flags, and whitespace were checked. No Instruments run
+  was needed for this small input/presentation change; no performance improvement is claimed.
+
+User acceptance, 2026-10-19: "Feels great!" accepts this handling/speed-view pass.
+The feedback does not specify individual scenarios, platforms, or fixed-FOV comparisons.
+Next task: retain this baseline and collect longer-term feedback before further tuning.
+Repeatable play checklist for future evaluation: accelerate, tap small corrections, hold a sweeping turn, countersteer into an S,
+coast through a turn, then reverse alongside a quay. Compare speed view with `--fixed-fov` in
+the basin and river. Judge recoverability, boat readability at 320x200, speed sensation, and
+camera comfort. Trim controls and extra handling systems remain optional future work.
+
+Known limitations: the lens follows instantaneous forward velocity; impacts or a large sideways
+slide can close it rapidly. It has no camera occlusion solution. The river's 32/6 view already
+makes the boat small. The lens change is an experiment, not a proven perceptual improvement.
+The user accepted the overall feel; exhaustive keyboard, camera-comfort and platform coverage
+is not established by that feedback.
 
 ## Phase A — Reverse and docking
 

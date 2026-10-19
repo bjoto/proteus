@@ -125,7 +125,7 @@ static int check_gpu_water(void)
     boat.water_settings = boat_water_gentle();
     boat.water_settings.amplitude = 1e-8f;
     boat.water_settings.crossing[0].amplitude = boat.water_settings.crossing[1].amplitude = 0;
-    const BoatCamera view = { 48, 36 };
+    const BoatCamera view = { .distance = 48, .height = 36 };
     boat_gpu_draw(&gpu, &boat, view);
     Image image = LoadImageFromTexture(gpu.target.texture);
     if (!image.data)
@@ -296,9 +296,10 @@ int main(int argc, char **argv)
         }
     }
     size_t destination = 0, captured_destination = 0;
-    const BoatCamera default_camera = river ? (BoatCamera) { 32, 6 } : BOAT_CAMERA_DEFAULT;
+    const BoatCamera default_camera
+        = river ? (BoatCamera) { .distance = 32, .height = 6 } : BOAT_CAMERA_DEFAULT;
     const BoatCamera review_camera
-        = default_view || river ? default_camera : (BoatCamera) { 12, 6 };
+        = default_view || river ? default_camera : (BoatCamera) { .distance = 12, .height = 6 };
     printf("sequence_camera=%.1f/%.1f\n", review_camera.distance, review_camera.height);
     int frames = 0, ticks = 0, timing_count = 0;
     double timings[MAX_TICKS / 2 + 1], total = 0;
@@ -320,7 +321,7 @@ int main(int argc, char **argv)
                 ticks * (double)BOAT_STEP, boat.position.x, boat.position.y, boat.heading);
             captured_destination = destination;
             if (!check) {
-                const BoatCamera cameras[] = { default_camera, { 12, 6 } };
+                const BoatCamera cameras[] = { default_camera, { .distance = 12, .height = 6 } };
                 for (int view = 0; view < 2; ++view) {
                     snprintf(path, sizeof(path), "%s/%s-%s.png", output, name,
                         view ? "close" : "default");
@@ -352,7 +353,8 @@ int main(int argc, char **argv)
                     overview.position = (Vector2) { 425, -762 };
                     overview.camera_heading = overview.heading = -PI / 2;
                     snprintf(path, sizeof(path), "%s/connections-overview.png", output);
-                    if (!capture(&gpu, &cpu, &overview, (BoatCamera) { 1100, 300 }, use_gpu, path))
+                    if (!capture(&gpu, &cpu, &overview,
+                            (BoatCamera) { .distance = 1100, .height = 300 }, use_gpu, path))
                         goto cleanup;
                 }
             }

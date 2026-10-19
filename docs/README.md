@@ -1,6 +1,6 @@
 # Documentation and current plans
 
-Current status reconciled on 2026-10-18. The main demo is a four-minute Eriksberg
+Current status reconciled on 2026-10-19. The main demo is a four-minute Eriksberg
 journey following five gulls to “Below the surface” at 120 BPM. The separate
 `boat_study`, with quiet engine/water audio and a gentle XM background loop, provides free boating and a basin time trial.
 Both default to GPU rendering; the CPU reference supports display-free captures.
@@ -9,8 +9,8 @@ Both default to GPU rendering; the CPU reference supports display-free captures.
 
 | Area and owning document | Implemented | Remaining / next task |
 | --- | --- | --- |
-| [Boating design](BOATING_PLAN.md) | Basin, Eriksberg, and river locations; timed S course, recordings, persistent bests, ghosts, replays, full-window presentation with modal `?` help, and quiet engine/water audio with a joyful repeating XM | [Stern-wake motion](BOATING_PLAN.md#stern-wake-motion--2026-10-18): implemented and verified, user motion review next; score-loop and archipelago remain proposals |
-| [Boat physics](BOAT_PHYSICS_PLAN.md) | A–D3: reverse/docking, hull contacts, planing, buoyancy, gentle waves, current/scripted wake options in all locations and default player wakes; C accepted and D provisionally accepted | Continued handling evaluation; measured currents/fleet wakes remain future work; optional trim/loading not started |
+| [Boating design](BOATING_PLAN.md) | Basin, Eriksberg, and river locations; timed S course, recordings, persistent bests, ghosts, replays, full-window presentation with modal `?` help, and quiet engine/water audio with a joyful repeating XM | [Handling/speed review](BOATING_PLAN.md#handling-and-speed-review--2026-10-19): research and first tuning pass implemented and user-accepted; optional closer-camera comparison next; score-loop and archipelago remain proposals |
+| [Boat physics](BOAT_PHYSICS_PLAN.md) | A–D3: reverse/docking, hull contacts, planing, buoyancy, gentle waves, current/scripted wake options in all locations and default player wakes; C accepted and D provisionally accepted | [H1/H2 feel pass](BOAT_PHYSICS_PLAN.md#handling-feel-pass--2026-10-19): quicker countersteering and speed view, verified and user-accepted; retain baseline and collect feedback; optional trim/loading not started |
 | [Living city](LIVING_CITY_PLAN.md) | 01–05: city dressing, materials, berths, shared actors; travelling boats and a compact ferry brought forward; demo flock and 32 reactive boating gulls | 06 people/cyclists; varied road traffic, building activity, ferry polish, perched gulls, and final review remain |
 | [River / Älvsborgsbron](eriksberg/bridge/README.md) | Separate source/crop, navigable bridge blockout, blocking tower legs, and grounded road approaches | Bridge/shoreline/building refinement; human handling and camera review |
 | [GPU migration](GPU_WATERFRONT_PLAN.md) | Steps 01–12 implemented; GPU default, lighting, shadows, atmosphere, reflections, and regression checks | Migration is implemented; other-platform and human visual acceptance remain separate from automated checks |
@@ -40,6 +40,14 @@ does not authorize advancing every plan. Use the requested track's scope and acc
   to the current owners above. Dated progress entries retain results for their original revisions.
 
 ## Verification baseline
+
+Handling/speed pass, 2026-10-19, macOS: Debug configure/build completed; all 69 CTests
+passed across the full run and targeted handling rerun, including 18 GPU checks. CPU/GPU
+frames were inspected and an Eriksberg GPU+AA desktop demo smoke run completed. Countersteer
+recovery improved in deterministic trials. The user accepted the handling/speed-view pass on
+2026-10-19: "Feels great!" Old personal-best files are preserved separately from handling
+revision 2. Exhaustive scenario and platform coverage remain unverified. Detailed measurements and limits are in the
+[physics feel-pass record](BOAT_PHYSICS_PLAN.md#handling-feel-pass--2026-10-19).
 
 All-location/default-wake update, 2026-10-18, macOS: Debug build and all 69 CTests passed,
 including 18 GPU checks. Default and explicit player-wake captures match byte for byte;

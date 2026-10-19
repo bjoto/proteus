@@ -74,6 +74,92 @@ static float kinetic_energy(const Boat *boat)
         + 1.1f * boat->yaw_velocity * boat->yaw_velocity;
 }
 
+static int validate_countersteering(void)
+{
+    for (int direction = -1; direction <= 1; direction += 2) {
+        for (int coast = 0; coast <= 1; ++coast) {
+            Boat boat = { .velocity = { 0, -12 },
+                .throttle = coast ? 0 : 1,
+                .engine_response = coast ? 0 : 1,
+                .planing = 1 };
+            // Establish a powered or unpowered turn, then ask to catch it.
+            for (int tick = 0; tick < 120; ++tick)
+                boat_step(&boat, direction, 0);
+            CHECK(fabsf(boat.wheel - direction) < .00001f && boat.yaw_velocity * direction > 0);
+            float heading = boat.heading;
+            float overshoot = 0;
+            int reversed = 0;
+            for (int tick = 1; tick <= 120; ++tick) {
+                float energy = kinetic_energy(&boat);
+                boat_step(&boat, -direction, 0);
+                if (coast)
+                    CHECK(kinetic_energy(&boat) <= energy + .00001f);
+                if (tick == 42)
+                    CHECK(boat.wheel * direction < 0 && boat.engine_angle * direction <= 0);
+                if (!reversed && boat.yaw_velocity * direction <= 0) {
+                    reversed = tick;
+                    overshoot = direction * remainderf(boat.heading - heading, 2 * PI);
+                }
+            }
+            // Baseline needed ~1.0s powered / 1.13s coasting and overshot by 40 / 16 degrees.
+            CHECK(reversed > 0 && reversed <= 84);
+            CHECK(overshoot > 0 && overshoot < (coast ? 10 : 24) * DEG2RAD);
+        }
+    }
+    // Tiny corrections that cross centre use the ordinary rate for the rest of that tick.
+    Boat small = { .wheel = .001f };
+    boat_step(&small, -1, 0);
+    CHECK(small.wheel < 0 && small.wheel >= -BOAT_STEP);
+    Boat partial = { .wheel = 1 }, clamped = partial, full = partial;
+    for (int tick = 0; tick < 40; ++tick) {
+        boat_step(&partial, -.5f, 0);
+        boat_step(&clamped, -8, 0);
+        boat_step(&full, -1, 0);
+    }
+    CHECK(fabsf(partial.wheel - .5f) < .0001f);
+    CHECK(fabsf(full.wheel) < .0001f);
+    CHECK(memcmp(&clamped, &full, sizeof(Boat)) == 0);
+    return 0;
+}
+
+static int validate_speed_view(void)
+{
+    Boat boat;
+    boat_reset(&boat);
+    WaterfrontSceneFrame frame;
+    float previous = 55 * DEG2RAD;
+    for (int step = 0; step <= 240; ++step) {
+        boat.velocity.y = -(float)step * .1f;
+        boat_scene_frame(&boat, BOAT_CAMERA_DEFAULT, &frame);
+        float fov = frame.camera.vertical_fov;
+        CHECK(fov >= previous && fov <= 62 * DEG2RAD + .000001f);
+        CHECK(fov - previous < .08f * DEG2RAD);
+        if (step <= 40)
+            CHECK(fov == 55 * DEG2RAD);
+        if (step >= 180)
+            CHECK(fabsf(fov - 62 * DEG2RAD) < .000001f);
+        CHECK(frame.camera.up.x == 0 && frame.camera.up.y == 1 && frame.camera.up.z == 0);
+        CHECK(frame.camera.position.y == BOAT_CAMERA_DEFAULT.height);
+        previous = fov;
+    }
+    BoatCamera fixed = BOAT_CAMERA_DEFAULT;
+    fixed.fixed_fov = true;
+    boat_scene_frame(&boat, fixed, &frame);
+    CHECK(frame.camera.vertical_fov == 55 * DEG2RAD);
+    // Reverse, sideways drift and rest do not open the lens; it uses ground travel, not flow.
+    boat.velocity = (Vector2) { 0, 20 };
+    boat_scene_frame(&boat, BOAT_CAMERA_DEFAULT, &frame);
+    CHECK(frame.camera.vertical_fov == 55 * DEG2RAD);
+    boat.velocity = (Vector2) { 20, 0 };
+    boat_scene_frame(&boat, BOAT_CAMERA_DEFAULT, &frame);
+    CHECK(frame.camera.vertical_fov == 55 * DEG2RAD);
+    boat_reset(&boat);
+    boat.water_settings.current = (Vector2) { 0, -20 };
+    boat_scene_frame(&boat, BOAT_CAMERA_DEFAULT, &frame);
+    CHECK(frame.camera.vertical_fov == 55 * DEG2RAD);
+    return 0;
+}
+
 static int validate_coasting(void)
 {
     Boat fast = { .velocity = { 0, -10 }, .wheel = 0.6f, .engine_angle = 0.33f };
@@ -970,6 +1056,8 @@ int main(void)
     boat_map_destroy();
     CHECK(validate_course() == 0);
     CHECK(validate_coasting() == 0);
+    CHECK(validate_countersteering() == 0);
+    CHECK(validate_speed_view() == 0);
     CHECK(validate_wake_independence() == 0);
     CHECK(validate_signed_propulsion() == 0);
     CHECK(validate_signed_throttle() == 0);
@@ -1013,7 +1101,7 @@ int main(void)
     for (int i = 0; i < 600; ++i)
         boat_step(&boat, -1, 0);
     CHECK(boat.wheel == -1);
-    for (int i = 0; i < 120; ++i)
+    for (int i = 0; i < 40; ++i)
         boat_step(&boat, 1, 0);
     CHECK(fabsf(boat.wheel) < 0.001f);
     boat_reset(&boat);

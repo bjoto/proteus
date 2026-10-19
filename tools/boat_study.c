@@ -25,6 +25,7 @@ static void usage(void)
         "--current / --crossing-wake: opt-in authored tests in all locations; R restarts passage\n"
         "--camera-distance UNITS: 8..48 (default 20; river 32)\n"
         "--camera-height UNITS: 4..36 (default 14; river 6)\n"
+        "--fixed-fov: keep the 55-degree view instead of widening gently with speed\n"
         "--location basin|eriksberg|river (default basin; river extends to Alvsborgsbron)\n"
         "--waves: gentle crossing waves and a floating hull\n"
         "--course: timed S course in the basin; cross highlighted gates in order | R: retry\n"
@@ -253,6 +254,8 @@ int main(int argc, char **argv)
                 || time > BOAT_REPLAY_MAX_SECONDS)
                 goto invalid;
             time_set = true;
+        } else if (strcmp(argv[i], "--fixed-fov") == 0) {
+            camera_settings.fixed_fov = true;
         } else if ((strcmp(argv[i], "--camera-distance") == 0
                        || strcmp(argv[i], "--camera-height") == 0)
             && i + 1 < argc) {
@@ -302,7 +305,9 @@ int main(int argc, char **argv)
     }
     if (course || ghost_path)
         player_wake = false; // Existing course/replay comparisons retain their original water.
-    const BoatCamera camera_default = river ? (BoatCamera) { 32, 6 } : BOAT_CAMERA_DEFAULT;
+    BoatCamera camera_default
+        = river ? (BoatCamera) { .distance = 32, .height = 6 } : BOAT_CAMERA_DEFAULT;
+    camera_default.fixed_fov = camera_settings.fixed_fov;
     if (!camera_distance_set)
         camera_settings.distance = camera_default.distance;
     if (!camera_height_set)
@@ -340,8 +345,8 @@ int main(int argc, char **argv)
     if (course) {
         char directory[1800];
         if (data_dir || boat_replay_data_directory(directory, sizeof(directory))) {
-            int n = snprintf(runs.best_path, sizeof(runs.best_path), "%s/course-%s.run",
-                data_dir ? data_dir : directory, waves ? "waves" : "calm");
+            int n = snprintf(runs.best_path, sizeof(runs.best_path), "%s/course-%s-physics%d.run",
+                data_dir ? data_dir : directory, waves ? "waves" : "calm", BOAT_PHYSICS_REVISION);
             if (n < 0 || (size_t)n >= sizeof(runs.best_path))
                 runs.best_path[0] = 0;
         }

@@ -12,10 +12,10 @@
 #include <windows.h>
 #endif
 
-// Bump these when the course, handling, or gentle-wave preset changes.
+// Bump these when the file format or course changes. Handling/water revision lives in the header
+// so automatic best filenames and recording compatibility use the same value.
 #define REPLAY_VERSION 1
 #define COURSE_REVISION 1
-#define PHYSICS_REVISION 1
 
 BoatReplaySample boat_replay_pose(const Boat *b)
 {
@@ -204,9 +204,9 @@ bool boat_replay_load(BoatReplay *run, const char *path)
     bool ok = fscanf(file, "PROTEUS_RUN %d %d %d %lf %d %zu", &version, &course, &physics, &step,
                   &waves, &count)
             == 6
-        && version == REPLAY_VERSION && course == COURSE_REVISION && physics == PHYSICS_REVISION
-        && step == (double)BOAT_STEP && (waves == 0 || waves == 1) && count >= 2
-        && count <= BOAT_REPLAY_MAX_SAMPLES;
+        && version == REPLAY_VERSION && course == COURSE_REVISION
+        && physics == BOAT_PHYSICS_REVISION && step == (double)BOAT_STEP
+        && (waves == 0 || waves == 1) && count >= 2 && count <= BOAT_REPLAY_MAX_SAMPLES;
     if (ok) {
         loaded.waves = waves != 0;
         loaded.complete = true;
@@ -250,7 +250,7 @@ bool boat_replay_save(const BoatReplay *run, const char *path)
     bool ok = file != NULL;
     if (file) {
         ok = fprintf(file, "PROTEUS_RUN %d %d %d %.17g %d %zu\n", REPLAY_VERSION, COURSE_REVISION,
-                 PHYSICS_REVISION, (double)BOAT_STEP, run->waves, run->count)
+                 BOAT_PHYSICS_REVISION, (double)BOAT_STEP, run->waves, run->count)
             > 0;
         for (int i = 0; i < BOAT_COURSE_GATES; ++i)
             if (fprintf(file, "%.17g%c", run->splits[i], i == BOAT_COURSE_GATES - 1 ? '\n' : ' ')

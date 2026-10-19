@@ -13,6 +13,12 @@ static const float ENGINE_THRUST = 11.0f;
 static const float ENGINE_RESPONSE_RATE = 3.5f;
 // Overdamped spring return when steering is released; larger values centre faster (1/seconds).
 static const float WHEEL_RETURN_RATE = 3.0f;
+// Keep progressive turn-in, but unwind promptly when the player asks for the other direction.
+static const float WHEEL_UNWIND_RATE = 3.0f;
+static const float CAMERA_BASE_FOV = 55 * DEG2RAD;
+static const float CAMERA_SPEED_FOV = 7 * DEG2RAD;
+static const float CAMERA_SPEED_START = 4.0f;
+static const float CAMERA_SPEED_FULL = 18.0f;
 static const float YAW_INERTIA = 2.2f;
 static const float HULL_DRAG_LINEAR = 0.22f;
 static const float HULL_DRAG_QUADRATIC = 0.025f;
@@ -451,9 +457,18 @@ static void water_step(Boat *boat)
 void boat_step(Boat *boat, float wheel_change, float throttle_change)
 {
     boat->time += BOAT_STEP;
-    // One second from centre to either lock. Opposite inputs cancel before this call.
+    // One second from centre to either lock. Countersteering spends only 1/3 second
+    // unwinding full lock; any time left in this tick uses the normal turn-in rate.
+    // Splitting at centre keeps the faster rate from overshooting into the new turn.
     if (wheel_change != 0) {
-        boat->wheel = Clamp(boat->wheel + Clamp(wheel_change, -1, 1) * BOAT_STEP, -1, 1);
+        float input = Clamp(wheel_change, -1, 1);
+        float remaining = BOAT_STEP;
+        if (input * boat->wheel < 0) {
+            float unwind = fminf(remaining, fabsf(boat->wheel / input) / WHEEL_UNWIND_RATE);
+            boat->wheel += input * WHEEL_UNWIND_RATE * unwind;
+            remaining -= unwind;
+        }
+        boat->wheel = Clamp(boat->wheel + input * remaining, -1, 1);
     } else {
         boat->wheel *= expf(-WHEEL_RETURN_RATE * BOAT_STEP);
         if (fabsf(boat->wheel) < 0.001f)
@@ -563,6 +578,15 @@ static void box(Renderer3D *renderer, Vector3 position, Vector3 scale, Color col
 
 static View3D boat_camera(const Boat *boat, BoatCamera camera_settings)
 {
+    // A small, bounded lens change accompanies forward travel. Derive it from recorded
+    // pose/velocity so seeking a replay gives the same view without hidden camera history.
+    // Ground speed matches scenery passing the camera; reverse/docking retain the base lens.
+    Vector2 forward = { sinf(boat->heading), -cosf(boat->heading) };
+    float speed = Vector2DotProduct(boat->velocity, forward);
+    float travel = camera_settings.fixed_fov
+        ? 0
+        : Clamp((speed - CAMERA_SPEED_START) / (CAMERA_SPEED_FULL - CAMERA_SPEED_START), 0, 1);
+    travel = travel * travel * (3 - 2 * travel);
     Vector3 boat_position = { -boat->position.x, 0, boat->position.y };
     Vector3 follow = { -sinf(boat->camera_heading), 0, -cosf(boat->camera_heading) };
     Vector3 eye = Vector3Subtract(boat_position, Vector3Scale(follow, camera_settings.distance));
@@ -572,7 +596,7 @@ static View3D boat_camera(const Boat *boat, BoatCamera camera_settings)
     return (View3D) { .position = eye,
         .target = look_at,
         .up = { 0, 1, 0 },
-        .vertical_fov = 55 * DEG2RAD,
+        .vertical_fov = CAMERA_BASE_FOV + CAMERA_SPEED_FOV * travel,
         .near_plane = 0.3f,
         .far_plane = boat->eriksberg ? 2200 : 350 };
 }

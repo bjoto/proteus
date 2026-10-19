@@ -7,6 +7,8 @@ has quiet engine/water audio and a repeating, gentle XM background piece. The
 [stern-wake motion pass](#stern-wake-motion--2026-10-18) and physics Phase D are implemented;
 the user has provisionally accepted Phase D handling and revised player-wake motion,
 with continued evaluation over time.
+The [handling and speed review](#handling-and-speed-review--2026-10-19) adds quicker
+countersteering and a modest speed view, accepted by the user on 2026-10-19.
 The score-loop arcade mode and archipelago remain proposals.
 
 This document owns gameplay direction. Detailed next tasks belong to the
@@ -74,8 +76,8 @@ preserve handling; the separately implemented river expansion adds playable geog
 
 Run `./build/boat_study`. Left/right or A/D adjust the wheel, clamped from full
 left to full right. Centre to either limit takes one second. Releasing keys lets an overdamped
-spring return the wheel smoothly to centre without overshooting; opposite input brings it back
-through centre. Return strength is set by `WHEEL_RETURN_RATE` in `src/boat.c` (initially 3/s,
+spring return the wheel smoothly to centre without overshooting; opposite input now unwinds
+full lock in about 0.33 seconds, then builds the new turn at the original rate. Return strength is set by `WHEEL_RETURN_RATE` in `src/boat.c` (initially 3/s,
 about 1.5 seconds from full lock to within 1% of centre). Up/W raises signed thrust and down/S
 lowers it; releasing the keys holds the setting.
 The thrust range is -100% (reverse) through 0% (idle) to 100% (forward), with four seconds of
@@ -125,6 +127,69 @@ without changing them. Settings are per-run; `--camera-distance` and `--camera-h
 interactive runs and screenshots. Eriksberg geographical scenery is implemented;
 collision splashes belong to later stages. Player evaluation of handling is the
 next design input: especially steering responsiveness, the amount of slide, and coasting into a turn.
+
+## Handling and speed review — 2026-10-19
+
+Completed and user-accepted on 2026-10-19: a focused feel pass requested by the user,
+building on the provisionally accepted Phase D baseline. Implementation details, measurements and acceptance evidence belong to the
+[physics plan](BOAT_PHYSICS_PLAN.md#handling-feel-pass--2026-10-19).
+
+The code review found that opposite steering used the same one-second centre-to-lock ramp
+as initial turn-in: a full-lock correction spent a second merely unwinding the existing turn.
+Release centring initially unwound faster than explicitly countersteering. The first change
+therefore improves correction response while keeping the existing hull forces and gradual turn-in.
+
+Other findings: the 55° lens was identical at docking and cruise; the river follow view is distant
+at 32/6 and the basin/Eriksberg view is high at 20/14. The full-window pass removed thrust feedback,
+so persistent throttle and the neutral crossing now depend on boat/wash response. Reverse is still
+a four-second full-range throttle adjustment, which supports deliberate docking but deserves a
+separate usability test. Accepted stern foam, spray, waves and quiet audio already provide useful
+feedback. The existing S course, retry, personal best and ghost supply a short practice loop.
+
+### Research and how it applies
+
+Sources reviewed 2026-10-19. These support design hypotheses, not claims that a particular number
+makes Proteus more fun. Older talks/papers are used for design principles, not current APIs.
+
+| Primary source | Relevant finding | Application here |
+| --- | --- | --- |
+| [Matthew Harris / Criterion, Vehicle Feel Masterclass, GDC 2018](https://www.gdcvault.com/play/1025295/Vehicle-Feel-Masterclass-Balancing-Arcade) | The session frames vehicle feel as physical simulation plus camera behavior and handling assists. | Tune the input/camera layer around the existing hull model. The session overview was reviewed; the full presentation was not watched. |
+| [Richard Goodenough, Clemson, 2010](https://open.clemson.edu/all_theses/978/) | Changing geometric FOV affected perceived speed; in that simulator larger geometric FOV generally reduced perceived speed. | Wider does not automatically mean faster. Test a small 55–62° lens change with a constant-lens comparison; evaluate the actual 320x200 view. This study used a driving simulator, not this boat camera. |
+| [Matt Small / Vector Unit, Hydro Heritage, 2017](https://vector-unit.squarespace.com/blog-posts/2017/2/24/hydro-heritage-evolution-of-an-arcade-racer) | Hydro Thunder emphasized shortcuts/powerups; Riptide added interactive waves and risk timing for stunt rewards. | Give the player satisfying lines and well-signalled water encounters; use the existing route/ghost foundation before adding a boost economy. |
+
+### Ordered experiments
+
+These priorities are design judgments from the audit and research, not measured player preference.
+Only the first row is implemented and user-accepted in this pass. The remaining rows are proposals.
+
+| Priority | Experiment | Success criterion / guardrail |
+| --- | --- | --- |
+| 1 | Accepted quicker countersteering and small speed view; `--fixed-fov` for comparison | Catch the S turn with less correction delay; keep docking precision, readable boat and comfortable horizon. See physics H1/H2. |
+| 2 | Compare a closer, lower follow view using existing `--camera-distance 18 --camera-height 6` | Stronger nearby water/scenery motion and clearer hull attitude without hiding upcoming buoys. Test camera positioning before more FOV or camera shake. No new default selected yet. |
+| 3 | A short course with a broad sweeper, one S, an exit straight and an optional tighter line | Meaningful throttle/line choices and rapid R retries; measure clean completion and voluntary retries, not just best time. Retain forgiving contacts; new gate layouts require a course revision. |
+| 4 | Brief neutral/thrust feedback after adjustment, consistent with the clean full-window direction | Know when the persistent throttle crosses neutral without opening help or restoring the removed dashboard. Prototype only after play confirms the need. |
+| 5 | Put an existing crossable wake where its approach and alternate line are visible | Choosing to ease off or cross at an angle is enjoyable and recoverable. Use current wave physics; avoid invisible impulses or required jumps. |
+| 6 | Restrained gate/finish confirmation and readable split improvement | Completing a clean line feels rewarding; preserve the accepted peaceful audio balance. Sound changes need listening review. |
+
+Speed/handling follow-ups to defer until play warrants them: high-speed steering-angle limits,
+extra yaw damping, automatic countersteer, boosts, drift scoring and manual trim. Each changes
+skill or adds systems; the current problem can be tested with input-response changes alone.
+Avoid piling on blur, speed lines or camera shake at this resolution before establishing whether
+camera placement and world motion provide enough sensation.
+
+Suggested comparison commands (GPU, optional AA):
+
+```sh
+./build/boat_study --location river --gpu-aa
+./build/boat_study --location river --gpu-aa --fixed-fov
+./build/boat_study --location river --gpu-aa --camera-distance 18 --camera-height 6
+./build/boat_study --course --gpu-aa --data-dir build/handling-review/profile
+```
+
+User acceptance, 2026-10-19: "Feels great!" Priority 1 is accepted. Next: preserve this baseline
+and collect longer-term feedback; a closer camera comparison is the next optional experiment.
+Trim/loading and score-loop work remain unstarted. The physics plan owns the latest verification
+record and limits; the feedback does not establish exhaustive scenario or platform coverage.
 
 ## Direction
 

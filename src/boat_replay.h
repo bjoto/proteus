@@ -4,6 +4,7 @@
 #include "boat.h"
 
 #define BOAT_REPLAY_MAX_SECONDS 600
+#define BOAT_PHYSICS_REVISION 2
 #define BOAT_REPLAY_MAX_SAMPLES (BOAT_REPLAY_MAX_SECONDS * 120 + 2)
 
 typedef struct {

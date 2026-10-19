@@ -183,7 +183,9 @@ int main(int argc, char **argv)
     CHECK(snprintf(best_path, sizeof(best_path), "%s/best.run", argv[1]) > 0);
     CHECK(snprintf(invalid, sizeof(invalid), "%s/invalid.run", argv[1]) > 0);
     CHECK(snprintf(wave_path, sizeof(wave_path), "%s/waves.run", argv[1]) > 0);
-    CHECK(snprintf(saved_best, sizeof(saved_best), "%s/course-calm.run", argv[1]) > 0);
+    CHECK(snprintf(saved_best, sizeof(saved_best), "%s/course-calm-physics%d.run", argv[1],
+              BOAT_PHYSICS_REVISION)
+        > 0);
     BoatReplay run = { 0 }, loaded = { 0 }, waves = { 0 };
     CHECK(route(&run, NULL, 480, false) == 0);
     CHECK(run.complete && !run.failed && run.count > 1000);
@@ -229,10 +231,16 @@ int main(int argc, char **argv)
     CHECK(fabsf(fabsf(playback.camera_heading) - PI) < .0001f);
     // Reject truncated, unsupported, oversized and non-finite recordings without losing a best.
     CHECK(malformed(&loaded, invalid, "") == 0);
-    CHECK(malformed(&loaded, invalid, "PROTEUS_RUN 999 1 1 0.0083333337679505348 0 2\n") == 0);
-    CHECK(malformed(&loaded, invalid, "PROTEUS_RUN 1 1 1 0.0083333337679505348 0 99999999\n") == 0);
-    CHECK(malformed(&loaded, invalid, "PROTEUS_RUN 1 1 1 0.0083333337679505348 0 2\n0 1 2 nan\n")
+    CHECK(malformed(&loaded, invalid, "PROTEUS_RUN 999 1 2 0.0083333337679505348 0 2\n") == 0);
+    CHECK(malformed(&loaded, invalid, "PROTEUS_RUN 1 1 2 0.0083333337679505348 0 99999999\n") == 0);
+    CHECK(malformed(&loaded, invalid, "PROTEUS_RUN 1 1 2 0.0083333337679505348 0 2\n0 1 2 nan\n")
         == 0);
+    // An otherwise valid previous-handling run cannot become an opponent or personal best.
+    CHECK(boat_replay_save(&run, invalid));
+    FILE *old = fopen(invalid, "r+");
+    CHECK(old && fseek(old, 16, SEEK_SET) == 0 && fputc('1', old) != EOF && fclose(old) == 0);
+    BoatReplaySample *retained_samples = loaded.samples;
+    CHECK(!boat_replay_load(&loaded, invalid) && loaded.samples == retained_samples);
     CHECK(boat_replay_save(&run, invalid));
     FILE *trailer = fopen(invalid, "a");
     CHECK(trailer && fputs("garbage", trailer) >= 0 && fclose(trailer) == 0);

@@ -124,7 +124,10 @@ The HUD shows your best time and the time difference at each gate (negative mean
 Personal bests persist between launches, with separate files for calm water and `--waves`.
 On macOS they live in `~/Library/Application Support/Proteus/`; Windows uses `%LOCALAPPDATA%/Proteus/`,
 and Linux uses `$XDG_DATA_HOME/proteus/` (or `~/.local/share/proteus/`). The files are
-`course-calm.run` and `course-waves.run`. Use `--data-dir DIR` to select another directory.
+`course-calm-physics2.run` and `course-waves-physics2.run`. Use `--data-dir DIR` to select another
+directory. Handling revision 2 starts a separate set of bests; older `course-calm.run` and
+`course-waves.run` files remain on disk and are not loaded or overwritten automatically.
+Old handling recordings are rejected as replays/ghosts by this version.
 Incompatible or damaged saved bests are ignored with a message. Failed saves preserve the best in
 memory. Recording is limited to ten minutes per attempt; longer attempts can still finish, but
 cannot replace your recorded best.
@@ -142,7 +145,8 @@ an imported ghost must match your selected water preset (`--waves` for a wave ru
 An imported ghost stays selected across retries while your personal best is tracked separately.
 Recordings store poses at the 120 Hz simulation rate, with exact START/FINISH boundary samples and
 gate splits, so playback does not rerun physics. File, course, and physics revisions are checked when
-loading; bump the revisions in `src/boat_replay.c` when changing handling, gates, or wave presets.
+loading; bump `BOAT_PHYSICS_REVISION` in `src/boat_replay.h` when changing handling or wave presets,
+and the course revision in `src/boat_replay.c` when changing gates.
 Screenshot `--time` accepts up to 600 seconds with `--replay` and clamps to the recorded finish;
 other screenshot modes retain the 60 second limit.
 
@@ -206,8 +210,9 @@ units (four times wider and deeper than the original). The camera follows positi
 smooths heading changes, and looks ahead along the course. Hold left/right (or A/D) to turn the
 wheel; release to let it spring smoothly back to centre without overshooting. The return is
 stronger farther from centre, reaching within 1% of centre from full lock in about 1.5 seconds.
-One second of held input moves it from centre to either limit; opposite input brings it back through
-centre. Hold up/W to increase thrust and down/S to reduce it, from -100% reverse through 0% neutral to 100% forward; releasing keys
+One second of held input moves it from centre to either limit. Opposite input unwinds full lock
+in about a third of a second, then builds the new turn at the normal rate. This makes catching a
+turn quicker while retaining progressive steering and hull inertia. Hold up/W to increase thrust and down/S to reduce it, from -100% reverse through 0% neutral to 100% forward; releasing keys
 holds the setting. Full-range adjustment takes four seconds. Passing through neutral is deliberate
 and smooth; R resets to neutral thrust and centres the wheel. Esc closes the window.
 The scene uses the full window with no dashboard or persistent shortcut hints. Press `?` for a
@@ -227,6 +232,11 @@ Its soft keys, humming melody, and rounded bass repeat every 91.43 seconds at 84
 there are no drums or dynamic arrangement changes. Music pauses on focus loss or replay pause.
 The shared overlay's music-analysis readings remain off/zero. See [music notes](docs/MUSIC.md)
 for regeneration and editing.
+
+The view gently widens from 55° to 62° vertical field of view as forward ground speed rises
+from 4 to 18 units/s. Reverse and docking keep the 55° view; `--fixed-fov` keeps it at all speeds,
+including replay. The handling and speed-view pass was accepted by the user on 2026-10-19.
+The horizon stays level and camera height stays fixed.
 
 The follow camera defaults to 20 units back and 14 units above the water. Hold `-` to pull back,
 `+` (or `=`) to move closer, and PageUp/PageDown to raise/lower the camera. `C` restores the default
