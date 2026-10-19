@@ -4,6 +4,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 static int compare_floats(const void *left, const void *right)
 {
@@ -197,6 +200,8 @@ void profiler_draw(const Profiler *profiler, const ProfilerSnapshot *snapshot, V
 
 ProfileStats profile_stats_linear(float *samples, int count)
 {
+    if (!samples || count <= 0)
+        return (ProfileStats) { 0 };
     ProfileStats stats = {
         .latest = samples[count - 1],
         .minimum = samples[0],
@@ -224,9 +229,16 @@ void profile_stats_print(const char *name, ProfileStats stats)
 
 double profile_time(void)
 {
-    struct timespec time;
-    timespec_get(&time, TIME_UTC);
-    return (double)time.tv_sec + (double)time.tv_nsec / 1000000000.0;
+#ifdef _WIN32
+    LARGE_INTEGER frequency, counter;
+    QueryPerformanceFrequency(&frequency);
+    QueryPerformanceCounter(&counter);
+    return (double)counter.QuadPart / (double)frequency.QuadPart;
+#else
+    struct timespec stamp;
+    clock_gettime(CLOCK_MONOTONIC, &stamp);
+    return (double)stamp.tv_sec + (double)stamp.tv_nsec / 1000000000.0;
+#endif
 }
 
 uint64_t framebuffer_checksum(const Color *pixels, size_t pixel_count)

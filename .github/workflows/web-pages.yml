@@ -1,0 +1,64 @@
+name: Web boating / GitHub Pages
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Check out official Emscripten SDK
+        uses: actions/checkout@v6
+        with:
+          repository: emscripten-core/emsdk
+          ref: 3b3963d86a5c97adaf6eaa845cdfe0b811c2f960
+          path: .emsdk
+          persist-credentials: false
+
+      - name: Install SDK and build
+        shell: bash
+        run: |
+          version=$(cat web/emsdk-version)
+          .emsdk/emsdk install "$version"
+          .emsdk/emsdk activate "$version"
+          source .emsdk/emsdk_env.sh
+          emcmake cmake -S . -B build-web -DCMAKE_BUILD_TYPE=MinSizeRel
+          cmake --build build-web --target web --parallel 2
+          test -s build-web/site/index.html
+
+      - name: Upload site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: build-web/site
+
+  deploy:
+    # Publish version tags; main is also available for an explicit manual deployment.
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@v5
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v5

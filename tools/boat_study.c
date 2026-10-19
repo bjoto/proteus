@@ -3,6 +3,7 @@
 #include "boat_audio.h"
 #include "boat_gpu.h"
 #include "boat_map.h"
+#include "boat_profile.h"
 #include "boat_replay.h"
 #include "profiler.h"
 #include "raymath.h"
@@ -53,27 +54,40 @@ static BoatWater study_water(bool waves, bool current, bool crossing, bool playe
     return water;
 }
 
-static void demo_step(Boat *boat, int tick)
+static void timed_boat_step(Boat *boat, float steering, float throttle, BoatFrameMetrics *metrics)
+{
+    double started = boat_profile_time(IsWindowReady());
+    boat_step(boat, steering, throttle);
+    float elapsed = (float)((boat_profile_time(IsWindowReady()) - started) * 1000.0);
+    if (metrics) {
+        metrics->physics_ms += elapsed;
+        metrics->physics_max_ms = fmaxf(metrics->physics_max_ms, elapsed);
+        ++metrics->ticks;
+    }
+}
+
+static void demo_step(Boat *boat, int tick, BoatFrameMetrics *metrics)
 {
     if (boat->water_settings.player_wake_enabled) {
         float throttle = tick < 1440 ? 1 : 0;
         float wheel = tick >= 420 && tick < 1440 ? 1 : 0;
-        boat_step(boat, Clamp((wheel - boat->wheel) / BOAT_STEP, -1, 1),
-            Clamp((throttle - boat->throttle) / (.5f * BOAT_STEP), -1, 1));
+        timed_boat_step(boat, Clamp((wheel - boat->wheel) / BOAT_STEP, -1, 1),
+            Clamp((throttle - boat->throttle) / (.5f * BOAT_STEP), -1, 1), metrics);
         return;
     }
     if (boat->water_settings.wake_amplitude != 0
         || Vector2LengthSqr(boat->water_settings.current) > 0) {
         // Let the source become visible, approach its spreading wake, then recover in neutral.
         float target = tick < 720 ? 0 : tick < 1200 ? .65f : 0;
-        boat_step(boat, 0, Clamp((target - boat->throttle) / (.5f * BOAT_STEP), -1, 1));
+        timed_boat_step(
+            boat, 0, Clamp((target - boat->throttle) / (.5f * BOAT_STEP), -1, 1), metrics);
         return;
     }
     // Ease through neutral into reverse with the same held steering.
     float target_wheel = tick >= 360 ? 0.65f : 0;
     float wheel_change = fmaxf(-1, fminf(1, (target_wheel - boat->wheel) / BOAT_STEP));
     float throttle_change = tick < 240 ? 1 : tick < 480 ? 0 : tick < 960 ? -1 : 0;
-    boat_step(boat, wheel_change, throttle_change);
+    timed_boat_step(boat, wheel_change, throttle_change, metrics);
 }
 
 static void draw_help(bool course, bool eriksberg)
@@ -88,7 +102,11 @@ static void draw_help(bool course, bool eriksberg)
         "R: reset boat / restart demo",
         "+/-: zoom | PgUp/PgDn: height",
         "C: reset camera | F3: profiler",
+#if defined(__EMSCRIPTEN__)
+        "Esc: leave fullscreen | Page Restart: new game",
+#else
         "Esc: close window",
+#endif
         course ? "G: ghost | P/B: replay last/best" : "",
         course ? "Replay: Space pause | Enter restart" : "",
         course ? "Left/Right: seek | Shift: 5 seconds" : "",
@@ -373,7 +391,7 @@ int main(int argc, char **argv)
         boat_replay_sample(runs.playing, time, &boat);
     } else if (screenshot) {
         for (int tick = 0; tick < (int)roundf(time / BOAT_STEP); ++tick)
-            demo_step(&boat, tick);
+            demo_step(&boat, tick, NULL);
     }
     Boat ghost;
     const Boat *ghost_view = NULL;
@@ -393,7 +411,12 @@ int main(int argc, char **argv)
         goto cleanup;
     }
 
+#if defined(__EMSCRIPTEN__)
+    // The page scales a fixed 8:5 canvas; raylib's web resize fills the entire viewport.
+    SetConfigFlags(0);
+#else
     SetConfigFlags(screenshot ? FLAG_WINDOW_HIDDEN : FLAG_WINDOW_RESIZABLE);
+#endif
     InitWindow(WIDTH * 3, HEIGHT * 3, "Proteus / boating sketch");
     if (!IsWindowReady())
         goto cleanup;
@@ -448,18 +471,17 @@ int main(int argc, char **argv)
     bool help_visible = false;
     SetExitKey(KEY_NULL);
     Profiler profiler = { 0 };
+    BoatProfile boat_profile = { 0 };
+    BoatProfileSnapshot boat_snapshot = { 0 };
     ProfilerSnapshot snapshot = { 0 };
     VirtualSize size = { WIDTH, HEIGHT };
-    double frame_started_at = GetTime();
+    double frame_started_at = boat_profile_time(true);
     double next_snapshot_time = 0;
-    float previous_scene_ms = 0, previous_present_ms = 0;
     result = 0;
     while (!WindowShouldClose() && (!frame_limit || frames < frame_limit)) {
-        double current_frame_started_at = GetTime();
-        if (frames > 0)
-            profiler_add(&profiler, (float)((current_frame_started_at - frame_started_at) * 1000),
-                previous_scene_ms, previous_present_ms);
+        double current_frame_started_at = boat_profile_time(true);
         frame_started_at = current_frame_started_at;
+        BoatFrameMetrics metrics = { 0 }; // Reset once before any tick in this frame.
         int character;
         bool help_pressed = false;
         while ((character = GetCharPressed()) != 0)
@@ -469,8 +491,10 @@ int main(int argc, char **argv)
         if (IsKeyPressed(KEY_ESCAPE)) {
             if (help_visible)
                 help_visible = false;
+#if !defined(__EMSCRIPTEN__)
             else
                 break;
+#endif
         }
         bool active = IsWindowFocused() && !help_visible;
         if (active && IsKeyPressed(KEY_F3)) {
@@ -492,6 +516,7 @@ int main(int argc, char **argv)
         bool replay_adjusted = false;
         if (!active)
             replay_dragging = false;
+        double course_input_started_at = boat_profile_time(true);
         if (course && active) {
             if (IsKeyPressed(KEY_G))
                 runs.ghost_visible = !runs.ghost_visible;
@@ -547,6 +572,9 @@ int main(int argc, char **argv)
                 }
             }
         }
+        metrics.course_replay_ms
+            += (float)((boat_profile_time(true) - course_input_started_at) * 1000.0);
+        double simulation_started_at = boat_profile_time(true);
         if (active && IsKeyPressed(KEY_R)) {
             if (course)
                 boat_reset_course(&boat);
@@ -561,27 +589,42 @@ int main(int argc, char **argv)
             replay_dragging = false;
         } else if (runs.playing) {
             accumulator = 0;
+            double course_started_at = boat_profile_time(true);
             boat_replay_advance(&runs, replay_adjusted ? 0 : GetFrameTime(), active);
+            metrics.course_replay_ms
+                += (float)((boat_profile_time(true) - course_started_at) * 1000.0);
         } else if (active) {
             float steering = (IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D))
                 - (IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A));
             float throttle_change = (IsKeyDown(KEY_UP) || IsKeyDown(KEY_W))
                 - (IsKeyDown(KEY_DOWN) || IsKeyDown(KEY_S));
-            accumulator += fmin(GetFrameTime(), 0.1);
+            double raw_active_delta = GetFrameTime();
+            metrics.discarded_active_ms
+                = boat_profile_discarded_seconds(raw_active_delta, true) * 1000.0f;
+            accumulator += fmin(raw_active_delta, 0.1);
             while (accumulator >= BOAT_STEP) {
                 if (demo)
-                    demo_step(&boat, demo_tick++);
+                    demo_step(&boat, demo_tick++, &metrics);
                 else {
+                    double course_started_at = boat_profile_time(true);
                     BoatReplaySample before = boat_replay_pose(&boat);
-                    boat_step(&boat, steering, throttle_change);
+                    metrics.course_replay_ms
+                        += (float)((boat_profile_time(true) - course_started_at) * 1000.0);
+                    timed_boat_step(&boat, steering, throttle_change, &metrics);
+                    course_started_at = boat_profile_time(true);
                     if (course)
                         boat_replay_runs_step(&runs, before, &boat);
+                    metrics.course_replay_ms
+                        += (float)((boat_profile_time(true) - course_started_at) * 1000.0);
                 }
                 accumulator -= BOAT_STEP;
             }
         } else {
             accumulator = 0;
         }
+        metrics.paused = !active || (runs.playing && runs.paused);
+        metrics.simulation_ms = (float)((boat_profile_time(true) - simulation_started_at) * 1000.0);
+        double audio_started_at = boat_profile_time(true);
         Boat playback;
         const Boat *view = &boat;
         if (runs.playing && boat_replay_sample(runs.playing, runs.replay_time, &playback))
@@ -600,6 +643,8 @@ int main(int argc, char **argv)
                 PauseMusicStream(music);
             UpdateMusicStream(music);
         }
+        metrics.audio_ms = (float)((boat_profile_time(true) - audio_started_at) * 1000.0);
+        double ghost_started_at = boat_profile_time(true);
         ghost_view = NULL;
         ghost_opacity = 0;
         if (course && !runs.playing && runs.ghost_visible && runs.opponent.complete) {
@@ -610,7 +655,8 @@ int main(int argc, char **argv)
                 ghost_opacity = .5f * (float)fade;
             }
         }
-        double scene_started_at = GetTime();
+        metrics.course_replay_ms += (float)((boat_profile_time(true) - ghost_started_at) * 1000.0);
+        double scene_started_at = boat_profile_time(true);
         if (gpu_enabled) {
             boat_gpu_draw_with_ghost(&gpu, view, camera_settings, ghost_view, ghost_opacity);
         } else if (!boat_draw_with_ghost(&renderer, pixels, WIDTH, HEIGHT, view, camera_settings,
@@ -620,7 +666,7 @@ int main(int argc, char **argv)
         }
         if (!gpu_enabled)
             UpdateTexture(texture, pixels);
-        previous_scene_ms = (float)((GetTime() - scene_started_at) * 1000);
+        metrics.snapshot_render_ms = (float)((boat_profile_time(true) - scene_started_at) * 1000.0);
         int scale_x = GetScreenWidth() / WIDTH;
         int scale_y = GetScreenHeight() / HEIGHT;
         int scale = scale_x < scale_y ? scale_x : scale_y;
@@ -631,12 +677,13 @@ int main(int argc, char **argv)
         if (profiler_visible && current_frame_started_at >= next_snapshot_time) {
             snapshot = profiler_snapshot(&profiler, (SceneFrame) { .time = boat.time }, boat.time,
                 size, destination, false, (Music) { 0 }, (AudioSpectrum) { 0 });
+            boat_snapshot = boat_profile_snapshot(&boat_profile);
             snapshot.scene_label = river ? "river" : eriksberg ? "eriksberg" : "basin";
             snapshot.renderer_label = gpu_enabled ? (gpu_aa ? "GPU 4x SSAA" : "GPU") : "CPU";
             snapshot.texture_upload_kib = gpu_enabled ? 0 : snapshot.framebuffer_kib;
             next_snapshot_time = current_frame_started_at + 0.25;
         }
-        double present_started_at = GetTime();
+        double present_started_at = boat_profile_time(true);
         BeginDrawing();
         ClearBackground((Color) { 14, 23, 32, 255 });
         DrawTexturePro(texture,
@@ -649,10 +696,15 @@ int main(int argc, char **argv)
             DrawText("PAUSED", 12, 12, 20, RAYWHITE);
         if (profiler_visible)
             profiler_draw(&profiler, &snapshot, size);
+        if (profiler_visible)
+            boat_profile_draw(&boat_snapshot, 12, 355);
         if (help_visible)
             draw_help(course, eriksberg);
         EndDrawing();
-        previous_present_ms = (float)((GetTime() - present_started_at) * 1000);
+        metrics.present_ms = (float)((boat_profile_time(true) - present_started_at) * 1000.0);
+        metrics.frame_ms = (float)((boat_profile_time(true) - frame_started_at) * 1000.0);
+        boat_profile_add(&boat_profile, metrics);
+        profiler_add(&profiler, metrics.frame_ms, metrics.snapshot_render_ms, metrics.present_ms);
         ++frames;
     }
 cleanup:

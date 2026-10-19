@@ -1,0 +1,60 @@
+# The same boat_study sources and raylib target are used by native and web builds.
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+# raylib's EM_ASM calls require GNU extensions; the game itself remains strict C17.
+set_target_properties(raylib PROPERTIES C_EXTENSIONS ON)
+set(WEB_ASSETS "${CMAKE_CURRENT_BINARY_DIR}/web-assets")
+file(GLOB WEB_SHADERS CONFIGURE_DEPENDS
+  "${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/waterfront_*.vs"
+  "${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/waterfront_*.fs"
+  "${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/gpu_downsample.fs")
+foreach(shader IN LISTS WEB_SHADERS)
+  get_filename_component(name "${shader}" NAME)
+  file(READ "${shader}" source)
+  # These two fragments use raylib's default vertex shader (mediump varyings).
+  if(name STREQUAL "waterfront_sky.fs" OR name STREQUAL "gpu_downsample.fs")
+    set(precision mediump)
+  else()
+    set(precision highp)
+  endif()
+  string(REPLACE "#version 330" "#version 300 es\nprecision ${precision} float;\nprecision highp int;"
+    source "${source}")
+  file(GENERATE OUTPUT "${WEB_ASSETS}/shaders/${name}" CONTENT "${source}")
+endforeach()
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${WEB_SHADERS})
+file(GLOB WEB_TEXTURES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/textures/*.png")
+foreach(texture IN LISTS WEB_TEXTURES)
+  get_filename_component(name "${texture}" NAME)
+  configure_file("${texture}" "${WEB_ASSETS}/textures/${name}" COPYONLY)
+endforeach()
+configure_file(assets/music/a-little-boat.xm "${WEB_ASSETS}/music/a-little-boat.xm" COPYONLY)
+
+set_target_properties(boat_study PROPERTIES SUFFIX ".js")
+# Asyncify is raylib's supported way to yield from its existing synchronous loop.
+# Keep optimization enabled for Asyncify even in a development build.
+target_compile_options(boat_study PRIVATE -Os)
+target_compile_definitions(boat_study PRIVATE _POSIX_C_SOURCE=200809L)
+target_compile_options(raylib PRIVATE -Os)
+target_link_options(boat_study PRIVATE
+  -Os -sASYNCIFY -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=1048576
+  -sASYNCIFY_STACK_SIZE=65536 -sENVIRONMENT=web -sEXIT_RUNTIME=1
+  -lidbfs.js
+  "SHELL:--preload-file \"${WEB_ASSETS}@/assets\""
+  "SHELL:--pre-js \"${CMAKE_CURRENT_SOURCE_DIR}/web/runtime.js\"")
+set_property(TARGET boat_study APPEND PROPERTY LINK_DEPENDS
+  ${WEB_SHADERS} ${WEB_TEXTURES}
+  "${CMAKE_CURRENT_SOURCE_DIR}/assets/music/a-little-boat.xm"
+  "${CMAKE_CURRENT_SOURCE_DIR}/web/runtime.js")
+
+# Only this directory is served/deployed. Content hashes keep JS, Wasm and data in sync.
+add_custom_target(web ALL
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/package_web.py
+    --build-dir ${CMAKE_CURRENT_BINARY_DIR}
+    --raylib-license ${raylib_SOURCE_DIR}/LICENSE
+  DEPENDS boat_study
+  VERBATIM)
+add_custom_target(web-serve
+  COMMAND ${Python3_EXECUTABLE} -m http.server 8000 --bind 127.0.0.1
+    --directory ${CMAKE_CURRENT_BINARY_DIR}/site
+  DEPENDS web
+  USES_TERMINAL
+  VERBATIM)

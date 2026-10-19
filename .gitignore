@@ -1,5 +1,6 @@
 build/
 build-profile/
+build-web/
 .cache/
 __pycache__/
 *.pyc

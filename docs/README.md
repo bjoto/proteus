@@ -9,6 +9,7 @@ Both default to GPU rendering; the CPU reference supports display-free captures.
 
 | Area and owning document | Implemented | Remaining / next task |
 | --- | --- | --- |
+| [Boating foundations](BOATING_FOUNDATIONS_PLAN.md) | P1 frame/tick instrumentation implemented; later phases pending | P2: repeatable benchmark/report tool and renderer counters; then baseline, clock correction, explicit world ownership, and simulation/presentation separation |
 | [Boating design](BOATING_PLAN.md) | Basin, Eriksberg, and river locations; timed S course, recordings, persistent bests, ghosts, replays, full-window presentation with modal `?` help, and quiet engine/water audio with a joyful repeating XM | [Handling/speed review](BOATING_PLAN.md#handling-and-speed-review--2026-10-19): research and first tuning pass implemented and user-accepted; optional closer-camera comparison next; score-loop and archipelago remain proposals |
 | [Boat physics](BOAT_PHYSICS_PLAN.md) | A–D3: reverse/docking, hull contacts, planing, buoyancy, gentle waves, current/scripted wake options in all locations and default player wakes; C accepted and D provisionally accepted | [H1/H2 feel pass](BOAT_PHYSICS_PLAN.md#handling-feel-pass--2026-10-19): quicker countersteering and speed view, verified and user-accepted; retain baseline and collect feedback; optional trim/loading not started |
 | [Living city](LIVING_CITY_PLAN.md) | 01–05: city dressing, materials, berths, shared actors; travelling boats and a compact ferry brought forward; demo flock and 32 reactive boating gulls | 06 people/cyclists; varied road traffic, building activity, ferry polish, perched gulls, and final review remain |
@@ -18,12 +19,16 @@ Both default to GPU rendering; the CPU reference supports display-free captures.
 | [macOS app builds](MACOS_BUILD.md) | Apple Silicon action, relocatable app bundle, preferred river launch, ad-hoc signing, ZIP/checksum; local checks and first GitHub run passed | Browser-download security approval; macOS 13 execution and user playback review |
 | [Windows builds](WINDOWS_BUILD.md) | Portable x64 action; reversal correction, bundled music, relocated CPU check; latest basin impact-bound correction implemented | Verify Windows CI after impact-bound correction; human Windows GPU/audio/control review |
 | [Automated releases](RELEASES.md) | Version-tag/UI release workflow reuses both platform builds, uploads ZIPs/checksums, then publishes; offline publication tests passed | Push workflow and verify the first chosen version's full release/download path |
+| [Browser boating](WEB_BUILD.md) | Emscripten/WebGL 2 build, audio start gesture, IndexedDB bests, local server, `v*` tag Pages workflow; Chrome automation/native suite passed and user confirmed local startup | Enable Pages, allow version tags, and verify first tag deployment; Safari/Firefox, physical GPU performance, and human playback review |
 
 These are separate work tracks, not a single execution queue. A next task in one plan
 does not authorize advancing every plan. Use the requested track's scope and acceptance checks.
 
 ## Guides and evidence
 
+- [Architecture review](ARCHITECTURE_REVIEW.md): 2026-10-19 assessment of ownership, performance,
+  iteration, and growth risks; the [foundations plan](BOATING_FOUNDATIONS_PLAN.md) owns the
+  selected implementation sequence. These do not replace the gameplay plans.
 - [Project README](../README.md): build, launch, controls, renderer options, course/replay storage.
 - [3D renderer and scene guide](3D.md): current scene evaluation, CPU API, GPU materials, geometry.
 - [Water review](WATER_REVIEW.md): dated 04e baseline followed by implemented 04f/04g records.
@@ -34,7 +39,8 @@ does not authorize advancing every plan. Use the requested track's scope and acc
 - [Music workflow](MUSIC.md) and [FastTracker guide](../soundtrack/alternate/fasttracker/README.md):
   working XM, section cues, editing, and runtime selection.
 - [Windows builds](WINDOWS_BUILD.md), [macOS app builds](MACOS_BUILD.md),
-  [automated releases](RELEASES.md), [dance study](DANCE_STUDY.md), and [Emacs setup](emacs.md).
+  [automated releases](RELEASES.md), [browser boating](WEB_BUILD.md),
+  [dance study](DANCE_STUDY.md), and [Emacs setup](emacs.md).
 - [Original waterfront plan](WATERFRONT_PLAN.md), [Eriksberg survey](eriksberg/README.md), and
   [living-city baseline audit](LIVING_CITY_AUDIT.md): historical design and evidence, with links
   to the current owners above. Dated progress entries retain results for their original revisions.

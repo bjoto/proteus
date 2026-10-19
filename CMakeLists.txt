@@ -8,6 +8,12 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(PROTEUS_GPU_TESTS "Enable GPU-context CTest cases and the GPU review target" OFF)
 
+if(EMSCRIPTEN)
+  set(PLATFORM Web CACHE STRING "" FORCE)
+  set(OPENGL_VERSION "ES 3.0" CACHE STRING "" FORCE)
+  set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+endif()
+
 include(FetchContent)
 set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(
@@ -17,6 +23,24 @@ FetchContent_Declare(
   GIT_SHALLOW TRUE
 )
 FetchContent_MakeAvailable(raylib)
+
+set(PROTEUS_BOAT_WORLD_SOURCES
+  src/boat_water.c src/boat_course.c src/boat_replay.c src/boat_map.c
+  src/waterfront.c src/waterfront_scene.c src/waterfront_corner.c)
+set(PROTEUS_HARBOR_SOURCES
+  src/boat_model.c src/waterfront_harbor.c src/waterfront_traffic.c)
+add_executable(boat_study tools/boat_study.c src/boat.c src/renderer3d.c src/profiler.c
+  src/boat_profile.c src/boat_audio.c src/xm_audio.c src/boat_gpu.c src/renderer_gpu.c
+  ${PROTEUS_BOAT_WORLD_SOURCES} ${PROTEUS_HARBOR_SOURCES})
+target_include_directories(boat_study PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(boat_study PRIVATE raylib)
+target_compile_options(boat_study PRIVATE
+  $<$<C_COMPILER_ID:AppleClang,Clang,GNU>:-Wall;-Wextra;-Wpedantic>)
+
+if(EMSCRIPTEN)
+  include(cmake/Web.cmake)
+  return() # Desktop demo, studies, and CTest tools remain native targets.
+endif()
 
 add_executable(proteus
   src/audio_spectrum.c
@@ -97,17 +121,17 @@ target_compile_options(validate_boat_audio PRIVATE
   $<$<C_COMPILER_ID:AppleClang,Clang,GNU>:-Wall;-Wextra;-Wpedantic>)
 add_test(NAME boat_audio_is_valid COMMAND validate_boat_audio)
 
-add_executable(boat_study tools/boat_study.c src/boat.c src/renderer3d.c src/profiler.c)
-target_sources(boat_study PRIVATE src/boat_audio.c src/xm_audio.c src/boat_gpu.c src/renderer_gpu.c)
 add_dependencies(boat_study proteus_assets)
 add_executable(validate_boat tools/validate_boat.c src/boat.c src/renderer3d.c)
+add_executable(validate_boat_profile tools/validate_boat_profile.c src/boat_profile.c src/boat.c
+  src/renderer3d.c)
 add_executable(validate_boat_environment tools/validate_boat_environment.c src/boat.c src/renderer3d.c)
 add_executable(validate_boat_replay tools/validate_boat_replay.c src/boat.c src/renderer3d.c)
 add_executable(boat_water_review tools/boat_water_review.c src/boat.c src/renderer3d.c
   src/boat_gpu.c src/renderer_gpu.c)
 add_dependencies(boat_water_review proteus_assets)
-foreach(target boat_study validate_boat validate_boat_environment validate_boat_replay boat_water_review)
-  target_sources(${target} PRIVATE src/boat_water.c src/boat_course.c src/boat_replay.c src/boat_map.c src/waterfront.c src/waterfront_scene.c src/waterfront_corner.c)
+foreach(target validate_boat validate_boat_profile validate_boat_environment validate_boat_replay boat_water_review)
+  target_sources(${target} PRIVATE ${PROTEUS_BOAT_WORLD_SOURCES})
   target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
   target_link_libraries(${target} PRIVATE raylib)
   target_compile_options(${target} PRIVATE
@@ -115,6 +139,7 @@ foreach(target boat_study validate_boat validate_boat_environment validate_boat_
   )
 endforeach()
 add_test(NAME boat_handling COMMAND validate_boat)
+add_test(NAME boat_profile_records COMMAND validate_boat_profile)
 add_test(NAME boat_environment COMMAND validate_boat_environment)
 add_test(NAME boat_player_wake_screenshot COMMAND boat_study --renderer cpu --player-wake --time 9
   --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-player-wake.png)
@@ -278,10 +303,10 @@ target_compile_options(harbor_review PRIVATE
   $<$<C_COMPILER_ID:AppleClang,Clang,GNU>:-Wall;-Wextra;-Wpedantic>)
 
 # Shared generated boats and berth evaluation feed all waterfront consumers.
-foreach(target proteus gpu_fixture boat_study validate_boat validate_boat_environment validate_boat_replay
+foreach(target proteus gpu_fixture validate_boat validate_boat_profile validate_boat_environment validate_boat_replay
     boat_water_review waterfront_storyboard validate_waterfront_actors validate_city_dressing
     harbor_review)
-  target_sources(${target} PRIVATE src/boat_model.c src/waterfront_harbor.c src/waterfront_traffic.c)
+  target_sources(${target} PRIVATE ${PROTEUS_HARBOR_SOURCES})
 endforeach()
 foreach(target proteus gpu_fixture waterfront_storyboard validate_waterfront_actors
     validate_city_dressing harbor_review)

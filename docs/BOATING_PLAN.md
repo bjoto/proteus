@@ -16,6 +16,14 @@ This document owns gameplay direction. Detailed next tasks belong to the
 [river expansion record](eriksberg/bridge/README.md). See the [plan index](README.md)
 for status across tracks. Revise the design as we discover what is enjoyable to play.
 
+The [2026-10-19 architecture review](ARCHITECTURE_REVIEW.md) records growth risks and a proposed
+technical sequence for exploration/racing. The review is complete; P1 instrumentation is implemented.
+The [foundations implementation plan](BOATING_FOUNDATIONS_PLAN.md) now owns the ordered tasks:
+instrumentation, clock correction, explicit world ownership, and simulation/presentation
+separation. P2 benchmark/report tooling and renderer counters are next; later phases remain pending.
+Verification evidence and limits belong to those documents; existing gameplay acceptance and
+the feature tracks below remain separate.
+
 ## Window presentation — 2026-10-19
 
 Implemented: the 320x200 scene uses the entire window's integer-scaled presentation area,

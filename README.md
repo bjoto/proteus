@@ -1,6 +1,6 @@
 # Proteus
 
-A small native C/raylib demo playground with deliberately low-resolution output
+A small C/raylib demo playground with deliberately low-resolution output
 and tracker music. The demo is now a single four-minute Eriksberg waterfront journey,
 following five gulls to the 120 BPM “Below the surface” soundtrack.
 
@@ -73,6 +73,9 @@ Unused screen space is letterboxed.
 
 ## Boating sketch
 
+The boating game also builds for browsers from the same C sources. See
+[browser builds and GitHub Pages](#browser-build-and-github-pages) below.
+
 For a downloadable Windows executable built on GitHub Actions, see
 [Windows boat study builds](docs/WINDOWS_BUILD.md).
 For an Apple Silicon Mac app ZIP built on GitHub Actions, see
@@ -122,6 +125,7 @@ The HUD shows your best time and the time difference at each gate (negative mean
   without advancing the clock.
 
 Personal bests persist between launches, with separate files for calm water and `--waves`.
+The browser version stores these in IndexedDB for the current site; clearing site data removes them.
 On macOS they live in `~/Library/Application Support/Proteus/`; Windows uses `%LOCALAPPDATA%/Proteus/`,
 and Linux uses `$XDG_DATA_HOME/proteus/` (or `~/.local/share/proteus/`). The files are
 `course-calm-physics2.run` and `course-waves-physics2.run`. Use `--data-dir DIR` to select another
@@ -218,10 +222,14 @@ and smooth; R resets to neutral thrust and centres the wheel. Esc closes the win
 The scene uses the full window with no dashboard or persistent shortcut hints. Press `?` for a
 modal keyboard guide; `?` or Esc dismisses it. Boating and audio pause while help is open or the
 window loses focus. The view remains 320x200 with integer scaling and letterboxing as needed.
-Press `F3` to toggle the same debug profiler overlay used in the main demo, or pass `--profiler`
-to show it on startup. It shows rolling frame, scene rendering/upload, and presentation timings,
-a frame-time graph, display dimensions, and the active location and CPU/GPU backend. GPU scene
-measurements cover CPU submission, not GPU execution; GPU mode uploads no CPU framebuffer.
+Press `F3` to toggle the debug profiler overlay, or pass `--profiler` to show it on startup.
+Alongside the main demo's rolling frame graph, boating rows show simulation, physics tick
+total/max and count, course/replay, audio, rendering/upload, present/wait, and active time
+discarded by the 0.1-second catch-up clamp. Paused help or focus-loss frames show no discarded
+time. Frame wall includes all sections; simulation includes physics and in-loop course work, so
+parent and child totals overlap. The scene row retains its rendering/upload meaning. The boating
+rows show latest, mean, p95, and maximum over up to 240 frames. GPU rendering time measures CPU
+submission, not GPU execution; GPU mode uploads no CPU framebuffer.
 The study mixes a quiet, low engine with soft hull-water wash. The engine follows thrust;
 water follows hull speed and swells gently with live bow entry when using `--waves`.
 Wash continues while coasting and quiets as the boat stops. The default 750–4800 RPM acoustic
@@ -532,3 +540,65 @@ height assumptions are recorded in `assets/geometry/eriksberg/manifest.json`.
 
 See the [Emacs development guide](docs/emacs.md) for `c-ts-mode`, Eglot,
 clangd, formatting, compilation, navigation, and LLDB debugging.
+
+## Browser build and GitHub Pages
+
+The web target is the playable `boat_study` distributed in the native ZIPs. It includes
+River, Eriksberg, Basin, and the basin time trial with ghosts/replays and saved bests.
+The separate four-minute `proteus` demo and development tools remain native targets.
+
+Install CMake 3.24+, Python 3, and the [official Emscripten SDK](https://emscripten.org/docs/getting_started/downloads.html).
+Use the SDK version pinned in `web/emsdk-version` (currently 6.0.12), then activate it in
+this terminal. For an SDK checkout at `../emsdk`, from the Proteus repository root:
+
+```sh
+../emsdk/emsdk install "$(cat web/emsdk-version)"
+../emsdk/emsdk activate "$(cat web/emsdk-version)"
+source ../emsdk/emsdk_env.sh
+emcmake cmake -S . -B build-web -DCMAKE_BUILD_TYPE=MinSizeRel
+cmake --build build-web --target web --parallel
+cmake --build build-web --target web-serve
+```
+
+Open **http://127.0.0.1:8000/** and press **Play** to start with sound. Stop the server
+with Ctrl+C. Serve `build-web/site/` over HTTP; opening its HTML as a local file will
+not work. The CMake targets provide the build/serve shortcuts without a second build system.
+Keep native builds in `build/`, using the commands above.
+
+The **Web boating / GitHub Pages** workflow builds and deploys when you push a `v*` tag,
+alongside the existing native Release workflow. Ordinary branch pushes do not update the site.
+Set up GitHub once:
+
+1. Select **Settings → Pages → Build and deployment → Source → GitHub Actions**.
+2. Under **Settings → Environments → github-pages → Deployment branches and tags**, if
+   deployment restrictions are enabled, use **Selected branches and tags** and add a
+   **Tag** rule for `v*`. Retain/add a **Branch** rule for `main` for manual deployments.
+   A branch rule named `v*` does not authorize tags.
+
+Commit and push the web support before tagging, so the tagged commit contains the workflow
+and all its build inputs. For example, using a new version:
+
+```sh
+git tag -a v0.0.6 -m "Proteus boating v0.0.6"
+git push origin v0.0.6
+```
+
+This starts the browser build/deployment and native ZIP release independently. Any `v*` tag,
+including a prerelease tag, updates the same site; the last successful deployment wins,
+without comparing version numbers. Manual runs deploy from `main` or a `v*` tag; other
+branches only build. To deploy manually, first commit the workflow to the default branch.
+The deployment job reports the site URL (normally `https://doomdavve.github.io/proteus/`).
+Existing native build and Release workflows are unchanged. Only `build-web/site/` is published;
+generated files stay out of Git. Deployments use content-hashed JavaScript, Wasm, and asset
+URLs, with no service worker; reload to load the deployed version. GitHub's CDN can briefly
+cache the previous HTML after a deployment.
+
+A desktop browser with WebAssembly, WebGL 2, and a keyboard is required. The canvas uses
+nearest-neighbour scaling in multiples of the 320x200 scene, with a 320x200 minimum.
+Fullscreen is available through the page button; Escape closes help or leaves fullscreen.
+Use Restart to select another location. Audio requires the Play gesture. Browser throttling
+can affect animation/audio in background tabs. Bests are local to this browser and site,
+can be lost when storage is cleared or unavailable, and do not sync with native saves.
+Local recording import/export and native screenshot/profiling commands are not exposed by
+the page. Touch controls are not implemented. See [web build details and verification](docs/WEB_BUILD.md)
+for the implementation trade-offs and remaining browser checks.

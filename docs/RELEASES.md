@@ -15,10 +15,21 @@ git tag -a v0.1.0 -m "Proteus boating v0.1.0"
 git push origin v0.1.0
 ```
 
+The same tag push also starts the separate **Web boating / GitHub Pages** workflow,
+which builds the browser game and updates the Pages site. Complete the one-time
+[Pages setup](../README.md#browser-build-and-github-pages), including allowing `v*` tags
+in the deployment environment, before the first web release. The tagged commit must
+contain the web workflow and build inputs. Web deployment and native ZIP publication
+run independently; either can succeed if the other fails. All `v*` tags, including
+prereleases, update the same Pages site. The [web build guide](WEB_BUILD.md) owns its
+deployment status and verification.
+
 Alternatively, publish a release in GitHub's **Releases → Draft a new release** UI
 using a tag beginning with `v`. Publishing it triggers the same builds and automatic
 attachments. Existing tags/releases created before this workflow was present are
 not processed retroactively; create the next version from a commit containing it.
+Publishing a Release for an existing tag alone does not trigger Pages; use a new tag
+push or a manual run of the web workflow for that deployment.
 
 The version-tag path creates a draft after both platform jobs succeed, uploads all
 four assets, then publishes it. A tag containing a hyphen, such as `v0.1.0-rc.1`,

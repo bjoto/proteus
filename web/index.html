@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Proteus Boating</title>
+  <link rel="icon" href="data:,">
+  <style>
+    :root { color-scheme: dark; font: 16px system-ui, sans-serif; background: #0e1720; color: #e3edf3; }
+    body { margin: 0; text-align: center; }
+    header, footer { padding: .6rem 1rem; }
+    h1 { margin: .3rem; font-size: 1.4rem; }
+    button, select { font: inherit; margin: .25rem; padding: .35rem .65rem; }
+    #stage { display: flex; align-items: center; justify-content: center; background: #000; }
+    #stage:fullscreen { width: 100vw; height: 100vh; }
+    canvas { display: block; image-rendering: pixelated; outline: none; }
+    #status, #storage { margin: .3rem; min-height: 1.2em; }
+    footer { font-size: .85rem; }
+    a { color: #a9d8f3; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Proteus Boating</h1>
+    <label>Location <select id="location">
+      <option value="river">River</option>
+      <option value="eriksberg">Eriksberg</option>
+      <option value="basin">Basin</option>
+      <option value="course">Basin time trial</option>
+    </select></label>
+    <label><input id="waves" type="checkbox" checked> Waves</label>
+    <label><input id="aa" type="checkbox"> Smooth edges</label>
+    <button id="play" disabled>Loading…</button>
+    <button id="fullscreen" disabled>Fullscreen</button>
+    <button onclick="location.reload()">Restart</button>
+    <p id="status" role="status">Downloading game…</p>
+    <p id="storage" role="status"></p>
+  </header>
+  <main id="stage">
+    <canvas id="canvas" width="960" height="600" tabindex="0" aria-label="Boating game"></canvas>
+  </main>
+  <footer>WASD / arrows: steer and throttle · R: reset · ?: help · Click the game to focus<br>
+    Keyboard required. Best times are saved in this browser. Restart to change location.
+    <a href="raylib-LICENSE.txt">raylib license</a><br>
+    Map data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>,
+    <a href="https://opendatacommons.org/licenses/odbl/1-0/">ODbL 1.0</a>.
+  </footer>
+  <script>
+    const webFiles = @WEB_FILES@;
+    var Module = {
+      canvas: document.getElementById('canvas'),
+      noInitialRun: true,
+      locateFile: path => webFiles[path] || path,
+      print: text => console.log(text),
+      printErr: text => console.error(text),
+      onAbort: () => {
+        document.getElementById('status').textContent = 'The game could not start. Check WebGL 2 support and reload.';
+        document.getElementById('play').disabled = true;
+      }
+    };
+    const script = document.createElement('script');
+    script.src = webFiles['boat_study.js'];
+    script.onerror = () => Module.onAbort();
+    document.body.appendChild(script);
+  </script>
+</body>
+</html>
