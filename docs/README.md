@@ -16,7 +16,7 @@ Both default to GPU rendering; the CPU reference supports display-free captures.
 | [GPU migration](GPU_WATERFRONT_PLAN.md) | Steps 01–12 implemented; GPU default, lighting, shadows, atmosphere, reflections, and regression checks | Migration is implemented; other-platform and human visual acceptance remain separate from automated checks |
 | [Soundtrack](SOUNDTRACK_PLAN.md) | Approved proof v03, full composition/mix candidate, editable XM, and runtime integration | Timestamped listening feedback and full composition/mix acceptance; continue editing in FastTracker |
 | [macOS app builds](MACOS_BUILD.md) | Apple Silicon action, relocatable app bundle, preferred river launch, ad-hoc signing, ZIP/checksum; local checks and first GitHub run passed | Browser-download security approval; macOS 13 execution and user playback review |
-| [Windows builds](WINDOWS_BUILD.md) | Portable x64 action; corrected reversal check, bundled music, relocated CPU check; corrected GitHub run passed | Human Windows GPU/audio/control review |
+| [Windows builds](WINDOWS_BUILD.md) | Portable x64 action; reversal correction, bundled music, relocated CPU check; latest basin impact-bound correction implemented | Verify Windows CI after impact-bound correction; human Windows GPU/audio/control review |
 | [Automated releases](RELEASES.md) | Version-tag/UI release workflow reuses both platform builds, uploads ZIPs/checksums, then publishes; offline publication tests passed | Push workflow and verify the first chosen version's full release/download path |
 
 These are separate work tracks, not a single execution queue. A next task in one plan

@@ -407,6 +407,40 @@ static bool footprint_in_water(const Boat *boat)
     return true;
 }
 
+// Contact trajectories diverge with float rounding; exercise nearby headings on every platform.
+static int validate_basin_stress(float heading)
+{
+    Boat boat = (Boat) { .position = { 116, 76 }, .velocity = { 8, 8 }, .heading = heading };
+    bool corner_contact = false;
+    for (int i = 0; i < 120; ++i) {
+        boat_step(&boat, 0, 0);
+        CHECK(boat.position.x < BOAT_BASIN_HALF_X && boat.position.y < BOAT_BASIN_HALF_Z);
+        if (boat.velocity.x < 0 || boat.velocity.y < 0) {
+            corner_contact = true;
+            break;
+        }
+    }
+    CHECK(corner_contact);
+    for (int i = 0; i < 120 * 120; ++i) {
+        boat_step(&boat, sinf(i * 0.003f), 1);
+        CHECK(isfinite(boat.heading) && isfinite(boat.velocity.x) && isfinite(boat.velocity.y));
+        CHECK(isfinite(boat.yaw_velocity));
+        // Wall impulses can exchange translation for rotation. Bound their combined energy
+        // using the old speed/yaw budget rather than imposing a free-turn yaw limit on impacts.
+        float energy_limit = .5f * 23 * 23 + 1.1f * 4 * 4;
+        if (!(kinetic_energy(&boat) < energy_limit))
+            fprintf(stderr, "Basin stress: heading=%g tick=%d yaw=%g speed=%g energy=%g\n", heading,
+                i, boat.yaw_velocity, hypotf(boat.velocity.x, boat.velocity.y),
+                kinetic_energy(&boat));
+        CHECK(kinetic_energy(&boat) < energy_limit);
+        CHECK(isfinite(boat.camera_heading));
+        CHECK(fabsf(boat.position.x) < BOAT_BASIN_HALF_X);
+        CHECK(fabsf(boat.position.y) < BOAT_BASIN_HALF_Z);
+        CHECK(hypotf(boat.velocity.x, boat.velocity.y) < 23);
+    }
+    return 0;
+}
+
 static int validate_hull_contacts(void)
 {
     // A starboard-bow glancing impact should rebound, scrub speed, and turn the hull away.
@@ -425,6 +459,19 @@ static int validate_hull_contacts(void)
     CHECK(contacted);
     CHECK(glancing.heading < 0);
     CHECK(kinetic_energy(&glancing) < energy);
+
+    // A faster beam impact legitimately exceeds the old 4 rad/s stress-test limit.
+    // It must exchange translation for rotation without creating kinetic energy.
+    Boat fast = { .position = { 118.5f, 10 }, .velocity = { 19, -3 } };
+    float peak_yaw = 0;
+    for (int tick = 0; tick < 180; ++tick) {
+        float before = kinetic_energy(&fast);
+        boat_step(&fast, 0, 0);
+        CHECK(footprint_in_water(&fast));
+        CHECK(kinetic_energy(&fast) <= before + .00001f);
+        peak_yaw = fmaxf(peak_yaw, fabsf(fast.yaw_velocity));
+    }
+    CHECK(peak_yaw > 4);
 
     // A shallow scrape retains useful forward motion while the contact redirects the hull.
     Boat sliding = { .position = { 118.89f, 10 }, .velocity = { .3f, -6 } };
@@ -1195,26 +1242,9 @@ int main(void)
     CHECK(
         fabsf(left.velocity.x * cosf(left.heading) + left.velocity.y * sinf(left.heading)) > 0.1f);
 
-    boat = (Boat) { .position = { 116, 76 }, .velocity = { 8, 8 } };
-    bool corner_contact = false;
-    for (int i = 0; i < 120; ++i) {
-        boat_step(&boat, 0, 0);
-        CHECK(boat.position.x < BOAT_BASIN_HALF_X && boat.position.y < BOAT_BASIN_HALF_Z);
-        if (boat.velocity.x < 0 || boat.velocity.y < 0) {
-            corner_contact = true;
-            break;
-        }
-    }
-    CHECK(corner_contact);
-    for (int i = 0; i < 120 * 120; ++i) {
-        boat_step(&boat, sinf(i * 0.003f), 1);
-        CHECK(isfinite(boat.heading) && isfinite(boat.velocity.x) && isfinite(boat.velocity.y));
-        CHECK(isfinite(boat.yaw_velocity) && fabsf(boat.yaw_velocity) < 4);
-        CHECK(isfinite(boat.camera_heading));
-        CHECK(fabsf(boat.position.x) < BOAT_BASIN_HALF_X);
-        CHECK(fabsf(boat.position.y) < BOAT_BASIN_HALF_Z);
-        CHECK(hypotf(boat.velocity.x, boat.velocity.y) < 23);
-    }
+    CHECK(validate_basin_stress(-.00001f) == 0);
+    CHECK(validate_basin_stress(0) == 0);
+    CHECK(validate_basin_stress(.00001f) == 0);
     boat_reset(&boat);
     CHECK(boat.position.x == 0 && boat.position.y == 10);
     CHECK(boat.heading == 0 && boat.velocity.x == 0 && boat.velocity.y == 0);

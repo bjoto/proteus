@@ -57,6 +57,21 @@ See [GitHub's artifact download instructions](https://docs.github.com/en/actions
 
 ## Current status and verification
 
+2026-10-19: [run 39273971121](https://github.com/doomdavve/proteus/actions/runs/39273971121/job/118133350281)
+failed the basin stress test's `abs(yaw_velocity) < 4` assertion; both CPU capture tests
+passed. Local heading perturbations reproduced wall-impact peaks of 5.07 and 5.66 rad/s.
+The old limit treated impact-induced rotation as a free-steering turn. The validator now
+bounds combined linear/rotational kinetic energy by the old combined speed/yaw budget,
+retains finite-state, speed, and basin bounds, and runs three nearby starting headings.
+A separate unpowered impact check verifies energy decreases even when yaw exceeds 4 rad/s.
+Production physics and the accepted handling baseline are unchanged.
+
+Local macOS checks passed: all 69 Debug tests across split runs and all three
+Windows-selected Release CPU tests. Evidence and remaining checks are recorded in the
+[physics CI follow-up](BOAT_PHYSICS_PLAN.md#windows-ci-impact-bound-follow-up--2026-10-19).
+Next: verify the Windows workflow after this correction is pushed, then perform the outstanding
+human Windows GPU/audio/control review. Local checks do not establish an MSVC pass.
+
 2026-10-18: the Windows Release run at commit `73bf1ba` failed the mapped reversing
 assertion while both CPU capture tests passed. A local Release probe reproduced the
 assertion with a starting-heading perturbation of -0.00001 radians: the boat travelled

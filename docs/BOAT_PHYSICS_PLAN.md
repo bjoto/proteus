@@ -5,7 +5,9 @@ Status, 2026-10-19: A1–D3 implemented; the user-requested
 player-wake motion are provisionally accepted by the user, with continued evaluation
 over time. Current/scripted-wake options now work in all locations; player-path wakes are
 enabled by default in free boating, with `--no-player-wake` available for calm practice.
-Next task: preserve the accepted handling feel baseline and collect longer-term feedback.
+Next task: verify Windows CI after the
+[impact-bound validator correction](#windows-ci-impact-bound-follow-up--2026-10-19);
+preserve the accepted handling feel baseline and collect longer-term feedback.
 Closer camera comparisons remain an optional design experiment; E1/E2 have not started.
 Thrust, passive resistance, uncommanded wheel return, and the accepted C3 wave model are preserved;
 commanded wheel reversal is deliberately faster under the 2026-10-19 request.
@@ -600,3 +602,33 @@ notes are superseded by the C3 acceptance below. Test counts refer to those revi
   Play gate B still needs player feedback on acceleration and docking before starting C1.
 - 2026-10-17: Plan saved. Control recommendations and coefficients remain proposals until their
   respective implementation step. Each play gate needs user feedback before starting the next phase.
+
+## Windows CI impact-bound follow-up — 2026-10-19
+
+Implemented: corrected the long-run basin validator after Windows run 39273971121
+failed the 4 rad/s yaw assertion. A local 41-heading probe (±0.000020 radians in
+0.000001-radian steps) reproduced brief wall-impact yaw above 4; the +0.000010 case
+peaked at 5.06927 rad/s, and the -0.000008 case at 5.65856 rad/s. Collision-sensitive
+trajectories can differ with floating-point rounding; this does not identify the exact
+MSVC trajectory because the CI log reports only the failed assertion.
+
+The stress test now checks combined energy against the former combined limits:
+`0.5 * 23² + 1.1 * 4² = 282.1` (normalized mass 1, yaw inertia 2.2).
+This allows conversion between translation and rotation while retaining a finite energy
+budget, finite-state checks, the 23-unit/s speed limit, and basin bounds. It runs headings
+-0.000010, zero, and +0.000010 on every platform and reports heading/tick/yaw/speed/energy
+if the energy bound fails. A separate 19-unit/s unpowered beam impact exceeds 4 rad/s
+while checking non-increasing energy and hull containment on every tick. Production
+handling, replay compatibility, and user acceptance remain as recorded above.
+
+Verification on 2026-10-19, Apple Silicon/macOS: Debug configure/build completed;
+Release configure/build and the three Windows-selected CPU checks passed locally.
+All 69 Debug CTests passed across split runs: tests 1–50 passed before the sandbox
+stalled on graphics startup; all 18 GPU tests then passed with desktop access (along
+with their replay fixture), and the remaining boating XM test passed separately.
+No new audiovisual review was performed for this validator/documentation change. The existing raylib OpenGL deprecation configure
+notice and Release stb_vorbis warning remain dependency warnings.
+
+Next: verify the Windows workflow after this correction is pushed. Known limitations:
+Windows/MSVC execution is not available locally; the precise failing trajectory is not
+in the supplied CI log. Human Windows GPU/audio/control review remains outstanding.
