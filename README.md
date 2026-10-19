@@ -207,12 +207,12 @@ smooths heading changes, and looks ahead along the course. Hold left/right (or A
 wheel; release to let it spring smoothly back to centre without overshooting. The return is
 stronger farther from centre, reaching within 1% of centre from full lock in about 1.5 seconds.
 One second of held input moves it from centre to either limit; opposite input brings it back through
-centre. The HUD shows a rotating wheel and its left/right percentage. Hold up/W to increase thrust
-and down/S to reduce it, from -100% reverse through 0% neutral to 100% forward; releasing keys
-holds the setting. Full-range adjustment takes four seconds. The HUD shows signed thrust and actual
-engine response separately from speed. Passing through neutral is deliberate and smooth; R resets
-to neutral thrust and centres the wheel. Esc closes the window.
-The simulation pauses when the window loses focus. The view remains 320x200 with integer scaling.
+centre. Hold up/W to increase thrust and down/S to reduce it, from -100% reverse through 0% neutral to 100% forward; releasing keys
+holds the setting. Full-range adjustment takes four seconds. Passing through neutral is deliberate
+and smooth; R resets to neutral thrust and centres the wheel. Esc closes the window.
+The scene uses the full window with no dashboard or persistent shortcut hints. Press `?` for a
+modal keyboard guide; `?` or Esc dismisses it. Boating and audio pause while help is open or the
+window loses focus. The view remains 320x200 with integer scaling and letterboxing as needed.
 Press `F3` to toggle the same debug profiler overlay used in the main demo, or pass `--profiler`
 to show it on startup. It shows rolling frame, scene rendering/upload, and presentation timings,
 a frame-time graph, display dimensions, and the active location and CPU/GPU backend. GPU scene
@@ -288,8 +288,8 @@ Currents and the separate scripted crossing wake remain opt-in in **all three lo
 ./build/boat_study --no-player-wake --current --crossing-wake --demo
 ```
 
-`--current` adds an authored smooth channel with drifting surface streaks. The HUD shows
-speed over ground and speed through water; water-relative speed drives resistance,
+`--current` adds an authored smooth channel with drifting surface streaks. Water-relative
+speed drives resistance,
 planing, wake/spray, and water audio. The basin channel is centred on simulation X=0;
 the mapped channel is centred on X=-12. These are test flows, not measured Gothenburg currents.
 `--crossing-wake` adds a separate scripted boat for the first 12 seconds after launch/reset.

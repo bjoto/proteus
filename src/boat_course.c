@@ -92,7 +92,7 @@ void boat_course_hud(const BoatCourse *course, Vector2 position, int width)
                  centiseconds % 100),
         16, 14, 20, RAYWHITE);
     const char *status = course->next_gate == 0  ? "Cross START to begin"
-        : course->next_gate == BOAT_COURSE_GATES ? "FINISHED! R: try again"
+        : course->next_gate == BOAT_COURSE_GATES ? "FINISHED!"
         : course->next_gate == BOAT_COURSE_GATES - 1
         ? "Next: FINISH"
         : TextFormat("Next: buoy gate %d / 2", course->next_gate);

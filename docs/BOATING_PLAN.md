@@ -1,6 +1,6 @@
 # Gothenburg boating playground
 
-Status: updated 2026-10-18. `boat_study` implements free boating in basin, Eriksberg,
+Status: updated 2026-10-19. `boat_study` implements free boating in basin, Eriksberg,
 and river locations, reverse/docking, planing, buoyancy, optional gentle waves, opt-in
 current/scripted-wake options in all locations, a default player-path wake, and a timed S course with recordings, persistent personal bests, ghosts, and replay controls. The study
 has quiet engine/water audio and a repeating, gentle XM background piece. The
@@ -13,6 +13,23 @@ This document owns gameplay direction. Detailed next tasks belong to the
 [physics plan](BOAT_PHYSICS_PLAN.md), [living-city plan](LIVING_CITY_PLAN.md), and
 [river expansion record](eriksberg/bridge/README.md). See the [plan index](README.md)
 for status across tracks. Revise the design as we discover what is enjoyable to play.
+
+## Window presentation — 2026-10-19
+
+Implemented: the 320x200 scene uses the entire window's integer-scaled presentation area,
+with letterboxing when needed. The dashboard, wheel, speed/thrust instruments, and persistent
+shortcut hints are removed. `?` opens a modal keyboard guide; `?` or Esc closes it. Help pauses
+simulation, replay, and audio and blocks driving/camera/replay controls. Esc outside help exits.
+Course timing, route map, and replay progress remain visible in course mode. Map attribution
+moves to help. The optional F3 profiler remains available.
+
+Next: user review of window presentation and help; instruments may return in a later design.
+Verification on 2026-10-19, macOS: Debug configure/build and all 69 CTests
+(including 18 GPU checks) passed. A default GPU
+`--demo --frames 120` desktop smoke run exited successfully; a 600-frame preview was captured
+and inspected at the initial 960x600 client size, confirming the scene fills the window without
+the dashboard or hints. Manual keyboard-modal, resize, and audible playback review remain
+unverified; user acceptance is pending.
 
 ## Current prototype
 
@@ -37,7 +54,7 @@ software renderer for window-free captures; GPU captures need a desktop graphics
 `--gpu-aa` only enables supersampling and does not select a renderer or location.
 Buildings and quays remain static, with no overhead structure collisions or camera
 occlusion handling near buildings. It does not include the
-rest of Gothenburg or the archipelago. Source attribution is retained in the HUD and README.
+rest of Gothenburg or the archipelago. Source attribution is retained in the help modal and README.
 
 The [generated boat and berth foundation](HARBOR_BOATS.md) adds six leisure boats at a
 west-bank pontoon and a working east-bank berth in Eriksberg and river locations. Moored
@@ -59,11 +76,10 @@ Run `./build/boat_study`. Left/right or A/D adjust the wheel, clamped from full
 left to full right. Centre to either limit takes one second. Releasing keys lets an overdamped
 spring return the wheel smoothly to centre without overshooting; opposite input brings it back
 through centre. Return strength is set by `WHEEL_RETURN_RATE` in `src/boat.c` (initially 3/s,
-about 1.5 seconds from full lock to within 1% of centre). A rotating wheel and left/right percentage show
-the setting. Up/W raises signed thrust and down/S lowers it; releasing the keys holds the setting.
+about 1.5 seconds from full lock to within 1% of centre). Up/W raises signed thrust and down/S
+lowers it; releasing the keys holds the setting.
 The thrust range is -100% (reverse) through 0% (idle) to 100% (forward), with four seconds of
-held input covering the full range. A signed percentage and centred bar show the setting
-independently of speed, and the HUD shows actual signed engine response separately. Lowering
+held input covering the full range. Lowering
 thrust passes smoothly through idle and continues into reverse only while Down/S remains held.
 R resets to neutral thrust, centres the wheel, and clears effects; Esc exits.
 The handling sketch has a third-person follow camera, stern-applied engine thrust, rotational
@@ -104,7 +120,7 @@ The 240x160-world-unit basin is a handling test area, not yet a representation o
 It is four times wider and deeper than the original basin. The camera follows the boat from
 20 units behind and 14 units above, looking 5 units ahead. Its heading eases through turns on fixed
 simulation ticks, including angle wraparound. `-`/`+` adjust distance (8..48), PageUp/PageDown adjust
-height (4..36), and `C` restores the default view. The HUD shows both values; `R` resets the boat
+height (4..36), and `C` restores the default view. `R` resets the boat
 without changing them. Settings are per-run; `--camera-distance` and `--camera-height` also configure
 interactive runs and screenshots. Eriksberg geographical scenery is implemented;
 collision splashes belong to later stages. Player evaluation of handling is the

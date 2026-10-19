@@ -75,25 +75,41 @@ static void demo_step(Boat *boat, int tick)
     boat_step(boat, wheel_change, throttle_change);
 }
 
-static void draw_wheel(float setting, int hud_y)
+static void draw_help(bool course, bool eriksberg)
 {
-    Vector2 centre = { 44, hud_y + 78 };
-    Color accent = { 232, 180, 102, 255 };
-    DrawCircleLines((int)centre.x, (int)centre.y, 24, LIGHTGRAY);
-    DrawCircleLines((int)centre.x, (int)centre.y, 21, LIGHTGRAY);
-    // A coloured top spoke and fixed centre mark make the held rotation readable.
-    DrawLine(44, hud_y + 46, 44, hud_y + 50, accent);
-    for (int spoke = 0; spoke < 3; ++spoke) {
-        float angle = setting * 0.75f * PI + spoke * 2 * PI / 3 - PI / 2;
-        Vector2 end = { centre.x + cosf(angle) * 22, centre.y + sinf(angle) * 22 };
-        DrawLineEx(centre, end, 2, spoke == 0 ? accent : LIGHTGRAY);
+    int width = GetScreenWidth(), height = GetScreenHeight();
+    const char *lines[] = {
+        "BOATING / KEYBOARD",
+        "Left/Right or A/D: steer",
+        "Up/Down or W/S: adjust thrust",
+        "Release steering: centre wheel",
+        "Release thrust: hold setting",
+        "R: reset boat / restart demo",
+        "+/-: zoom | PgUp/PgDn: height",
+        "C: reset camera | F3: profiler",
+        "Esc: close window",
+        course ? "G: ghost | P/B: replay last/best" : "",
+        course ? "Replay: Space pause | Enter restart" : "",
+        course ? "Left/Right: seek | Shift: 5 seconds" : "",
+        course ? "Home/End: start/end | [ / ]: speed" : "",
+        course ? "Click/drag timeline: seek and pause" : "",
+        "? or Esc: dismiss help",
+        eriksberg ? "Map: OpenStreetMap contributors (ODbL)" : "",
+    };
+    DrawRectangle(0, 0, width, height, (Color) { 8, 15, 22, 220 });
+    int font = height < 300 ? 8 : width < 600 || height < 500 ? 10 : 20;
+    int spacing = font + (height < 300 ? 3 : 6);
+    int count = (int)(sizeof(lines) / sizeof(lines[0]));
+    int visible = 0;
+    for (int i = 0; i < count; ++i)
+        visible += lines[i][0] != '\0';
+    int y = (height - visible * spacing) / 2;
+    for (int i = 0; i < count; ++i) {
+        if (!lines[i][0])
+            continue;
+        DrawText(lines[i], (width - MeasureText(lines[i], font)) / 2, y, font, RAYWHITE);
+        y += spacing;
     }
-    DrawCircleV(centre, 4, accent);
-    const char *label = fabsf(setting) < 0.005f
-        ? "Wheel centred"
-        : TextFormat("Wheel %s %2.0f%%", setting < 0 ? "L" : "R", fabsf(setting) * 100);
-    DrawText(label, 84, hud_y + 61, 16, RAYWHITE);
-    DrawText("Holds when released", 84, hud_y + 83, 12, LIGHTGRAY);
 }
 
 static Rectangle replay_timeline(int width)
@@ -117,11 +133,9 @@ static void course_runs_hud(
     }
     if (runs->playing) {
         double duration = runs->playing->splits[BOAT_COURSE_GATES - 1];
-        DrawText("Left/Right: seek | Shift: 5s | Home/End | [ / ]: speed", 16, 96, 12, RAYWHITE);
         DrawText(TextFormat("REPLAY %s %.2gx  %.2f / %.2fs", runs->paused ? "PAUSED" : "",
                      boat_replay_speed(runs), runs->replay_time, duration),
             16, 116, 16, (Color) { 90, 240, 255, 255 });
-        DrawText("Space: pause | Enter: restart | R: race", 16, 138, 12, RAYWHITE);
         Rectangle bar = replay_timeline(width);
         DrawRectangleRec(bar, (Color) { 40, 58, 68, 255 });
         float playhead = bar.x + bar.width * (float)(runs->replay_time / duration);
@@ -137,10 +151,6 @@ static void course_runs_hud(
         }
         DrawCircle((int)playhead, (int)(bar.y + bar.height / 2), 3, (Color) { 90, 240, 255, 255 });
     } else {
-        DrawText(boat->course.next_gate > 0 && boat->course.next_gate < BOAT_COURSE_GATES
-                ? "G: ghost on/off | R: retry"
-                : "G: ghost | P: replay last | B: replay best",
-            16, 116, 12, RAYWHITE);
         if (runs->notice)
             DrawText(runs->notice, 16, 138, 12, RAYWHITE);
     }
@@ -300,7 +310,7 @@ int main(int argc, char **argv)
 
     SetTraceLogLevel(LOG_WARNING);
     waterfront_scene_select_river(river);
-    enum { WIDTH = 320, HEIGHT = 200, HUD_HEIGHT = 200 };
+    enum { WIDTH = 320, HEIGHT = 200 };
     Color *pixels = malloc(WIDTH * HEIGHT * sizeof(*pixels));
     if (!pixels)
         return 1;
@@ -379,11 +389,11 @@ int main(int argc, char **argv)
     }
 
     SetConfigFlags(screenshot ? FLAG_WINDOW_HIDDEN : FLAG_WINDOW_RESIZABLE);
-    InitWindow(WIDTH * 3, HEIGHT * 3 + HUD_HEIGHT, "Proteus / boating sketch");
+    InitWindow(WIDTH * 3, HEIGHT * 3, "Proteus / boating sketch");
     if (!IsWindowReady())
         goto cleanup;
     window_ready = true;
-    SetWindowMinSize(WIDTH, HEIGHT + HUD_HEIGHT);
+    SetWindowMinSize(WIDTH, HEIGHT);
     SetTargetFPS(60);
     if (gpu_enabled) {
         if (!boat_gpu_init(&gpu, gpu_aa)) {
@@ -430,6 +440,8 @@ int main(int argc, char **argv)
     double accumulator = 0;
     int frames = 0, demo_tick = 0;
     bool replay_dragging = false;
+    bool help_visible = false;
+    SetExitKey(KEY_NULL);
     Profiler profiler = { 0 };
     ProfilerSnapshot snapshot = { 0 };
     VirtualSize size = { WIDTH, HEIGHT };
@@ -443,11 +455,24 @@ int main(int argc, char **argv)
             profiler_add(&profiler, (float)((current_frame_started_at - frame_started_at) * 1000),
                 previous_scene_ms, previous_present_ms);
         frame_started_at = current_frame_started_at;
-        if (IsKeyPressed(KEY_F3)) {
+        int character;
+        bool help_pressed = false;
+        while ((character = GetCharPressed()) != 0)
+            help_pressed |= character == '?';
+        if (help_pressed)
+            help_visible = !help_visible;
+        if (IsKeyPressed(KEY_ESCAPE)) {
+            if (help_visible)
+                help_visible = false;
+            else
+                break;
+        }
+        bool active = IsWindowFocused() && !help_visible;
+        if (active && IsKeyPressed(KEY_F3)) {
             profiler_visible = !profiler_visible;
             next_snapshot_time = 0;
         }
-        if (IsWindowFocused()) {
+        if (active) {
             float dt = fminf(GetFrameTime(), 0.1f);
             int zoom = (IsKeyDown(KEY_MINUS) || IsKeyDown(KEY_KP_SUBTRACT))
                 - (IsKeyDown(KEY_EQUAL) || IsKeyDown(KEY_KP_ADD));
@@ -460,9 +485,9 @@ int main(int argc, char **argv)
                 camera_settings = camera_default;
         }
         bool replay_adjusted = false;
-        if (!IsWindowFocused())
+        if (!active)
             replay_dragging = false;
-        if (course && IsWindowFocused()) {
+        if (course && active) {
             if (IsKeyPressed(KEY_G))
                 runs.ghost_visible = !runs.ghost_visible;
             if (boat.course.next_gate == 0 || boat.course.next_gate == BOAT_COURSE_GATES
@@ -517,7 +542,7 @@ int main(int argc, char **argv)
                 }
             }
         }
-        if (IsKeyPressed(KEY_R)) {
+        if (active && IsKeyPressed(KEY_R)) {
             if (course)
                 boat_reset_course(&boat);
             else
@@ -531,8 +556,8 @@ int main(int argc, char **argv)
             replay_dragging = false;
         } else if (runs.playing) {
             accumulator = 0;
-            boat_replay_advance(&runs, replay_adjusted ? 0 : GetFrameTime(), IsWindowFocused());
-        } else if (IsWindowFocused()) {
+            boat_replay_advance(&runs, replay_adjusted ? 0 : GetFrameTime(), active);
+        } else if (active) {
             float steering = (IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D))
                 - (IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A));
             float throttle_change = (IsKeyDown(KEY_UP) || IsKeyDown(KEY_W))
@@ -557,16 +582,14 @@ int main(int argc, char **argv)
         if (runs.playing && boat_replay_sample(runs.playing, runs.replay_time, &playback))
             view = &playback;
         Vector2 flow = boat_water_current(view->water_settings, view->position);
-        float ground_speed = hypotf(view->velocity.x, view->velocity.y);
         float water_speed = hypotf(view->velocity.x - flow.x, view->velocity.y - flow.y);
         BoatAudioInput audio_input = { .thrust = view->engine_response,
             .speed = water_speed,
             .planing = view->planing,
             .wave_entry = view->wave_spray };
-        boat_audio_update(
-            &audio, audio_input, IsWindowFocused() && (!runs.playing || !runs.paused));
+        boat_audio_update(&audio, audio_input, active && (!runs.playing || !runs.paused));
         if (music_ready) {
-            if (IsWindowFocused() && (!runs.playing || !runs.paused))
+            if (active && (!runs.playing || !runs.paused))
                 ResumeMusicStream(music);
             else
                 PauseMusicStream(music);
@@ -594,12 +617,12 @@ int main(int argc, char **argv)
             UpdateTexture(texture, pixels);
         previous_scene_ms = (float)((GetTime() - scene_started_at) * 1000);
         int scale_x = GetScreenWidth() / WIDTH;
-        int scale_y = (GetScreenHeight() - HUD_HEIGHT) / HEIGHT;
+        int scale_y = GetScreenHeight() / HEIGHT;
         int scale = scale_x < scale_y ? scale_x : scale_y;
         if (scale < 1)
             scale = 1;
         Rectangle destination = { (GetScreenWidth() - WIDTH * scale) / 2,
-            (GetScreenHeight() - HUD_HEIGHT - HEIGHT * scale) / 2, WIDTH * scale, HEIGHT * scale };
+            (GetScreenHeight() - HEIGHT * scale) / 2, WIDTH * scale, HEIGHT * scale };
         if (profiler_visible && current_frame_started_at >= next_snapshot_time) {
             snapshot = profiler_snapshot(&profiler, (SceneFrame) { .time = boat.time }, boat.time,
                 size, destination, false, (Music) { 0 }, (AudioSpectrum) { 0 });
@@ -614,46 +637,15 @@ int main(int argc, char **argv)
         DrawTexturePro(texture,
             (Rectangle) { 0, 0, gpu_enabled ? -WIDTH : WIDTH, gpu_enabled ? -HEIGHT : HEIGHT },
             destination, (Vector2) { 0 }, 0, WHITE);
-        int hud_y = GetScreenHeight() - HUD_HEIGHT + 10;
-        DrawText(river      ? "ERIKSBERG / ALVSBORGSBRON"
-                : eriksberg ? "ERIKSBERG"
-                            : "BOATING SKETCH",
-            12, hud_y, 20, RAYWHITE);
-        DrawText(TextFormat("Ground %.1f | Water %.1f", ground_speed, water_speed), 210, hud_y + 3,
-            14, (Color) { 232, 180, 102, 255 });
-        if (current || crossing_wake)
-            DrawText(TextFormat("Test water: %s %s | R restarts source",
-                         current ? "current channel" : "", crossing_wake ? "crossing wake" : ""),
-                12, 12, 14, RAYWHITE);
-        DrawText(TextFormat("Thrust %+.0f%%", view->throttle * 100), 12, hud_y + 27, 16, RAYWHITE);
-        DrawRectangle(150, hud_y + 28, 156, 12, (Color) { 40, 58, 68, 255 });
-        int thrust_width = (int)(78 * fabsf(view->throttle));
-        DrawRectangle(228 + (view->throttle < 0 ? -thrust_width : 0), hud_y + 28, thrust_width, 12,
-            view->throttle < 0 ? (Color) { 104, 190, 220, 255 } : (Color) { 232, 180, 102, 255 });
-        DrawText(TextFormat("Engine %+.0f%%", view->engine_response * 100), 12, hud_y + 47, 16,
-            (Color) { 232, 180, 102, 255 });
-        draw_wheel(view->wheel, hud_y);
-        const char *demo_label = player_wake ? "DEMO: loop across your wake, neutral"
-            : (current || crossing_wake)     ? "DEMO: wait, wake approach, neutral"
-                                             : "DEMO: forward, neutral, reverse";
-        DrawText(demo ? demo_label : "Left/Right A/D: wheel | Up/Down W/S: thrust", 12, hud_y + 113,
-            12, LIGHTGRAY);
-        DrawText(demo ? "R: replay | Esc: close" : "Both hold | R: reset + centre | Esc: close", 12,
-            hud_y + 131, 12, LIGHTGRAY);
-        DrawText(TextFormat("View %.1f back / %.1f high | +/-: zoom", camera_settings.distance,
-                     camera_settings.height),
-            12, hud_y + 153, 12, LIGHTGRAY);
-        DrawText(
-            "PgUp/PgDn: height | C: reset view | F3: profiler", 12, hud_y + 171, 12, LIGHTGRAY);
         boat_course_hud(&view->course, view->position, GetScreenWidth());
         if (course)
             course_runs_hud(&runs, view, ghost_view, GetScreenWidth());
         if (!IsWindowFocused())
             DrawText("PAUSED", 12, 12, 20, RAYWHITE);
-        if (eriksberg)
-            DrawText("Map: OpenStreetMap contributors (ODbL)", 12, 28, 10, RAYWHITE);
         if (profiler_visible)
             profiler_draw(&profiler, &snapshot, size);
+        if (help_visible)
+            draw_help(course, eriksberg);
         EndDrawing();
         previous_present_ms = (float)((GetTime() - present_started_at) * 1000);
         ++frames;

@@ -182,7 +182,8 @@ API supports uniform flow or a compact polynomial channel with zero slope at its
 the authored preset peaks at (0.85, -0.25) units/s, centred on simulation X=0 with a 32 m
 half-width. Axial drag/planing use centre water-relative speed; lateral hull stations and
 the outboard sample their own local flow. Surface foam drifts with the flow, and spray
-load, HUD water speed, and water audio use water-relative travel. Ground velocity remains
+load and water audio use water-relative travel. The water-speed HUD readout was removed
+in the 2026-10-19 full-window presentation pass. Ground velocity remains
 the navigation/contact velocity. Material vertical water velocity includes current travel
 along the local slope as well as the explicit time derivative.
 
