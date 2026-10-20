@@ -1,7 +1,8 @@
 # Turn banking for the playable boat
 
-Status, 2026-10-20: **T1–T4 implemented: load-driven physical roll, dynamics and presentation/replay fixtures, handling revision 3**.
-Next task: T5, measured tuning and playback/feel review. T1–T4 deliver the requested feature; T5 is its playback/tuning gate.
+Status, 2026-10-20: **T1–T5 implemented: load-driven roll, dynamics/presentation/replay fixtures and quicker turn-exit recovery; handling revision 3**.
+Next gate: hands-on T5 controls/replay/focus/camera review and user acceptance of the quicker recovery.
+T5 tuning and automated/scripted verification are implemented; hands-on review remains pending.
 The [physics plan](BOAT_PHYSICS_PLAN.md) owns the overall handling track; this document
 owns the banking specification and task evidence. Optional trim/loading remains separate.
 
@@ -85,15 +86,15 @@ multiplier is allowed.
 ### 2. Convert lateral load into a bounded applied roll moment
 
 Use a small named tuning group in `boat.c`, not a new generic hull-profile framework.
-Initial values below are design hypotheses to measure and tune in T5, not experimental
-hydrodynamic data.
+Values below include the T5 tuning pass; they are game handling choices, not experimental
+hydrodynamic data. The dated handoffs retain earlier coefficients.
 
 ```text
 q           = clamp((u - 1.0) / (6.0 - 1.0), 0, 1)
 forward_mix = q*q*(3 - 2*q)
-gain        = lerp(0.12, 0.85, planing * forward_mix)
+gain        = lerp(0.12, 0.28, planing * forward_mix)
 load_target = gain * a_side
-load       += (load_target - load) * (1 - exp(-dt / 0.12))
+load       += (load_target - load) * (1 - exp(-dt / 0.06))
 phi_scale   = radians(12)
 phi_equiv   = phi_scale * tanh((load / gravity) / phi_scale)
 K_roll      = sum((BUOYANCY_STIFFNESS / 6) * support_across²)
@@ -182,7 +183,7 @@ requested. Never advance the foundations, trim/loading, or harbor tracks as part
 | T2 | Load-driven roll moment, filter, recovery term and compatibility revision | T1 | Complete (2026-10-20; evidence below) |
 | T3 | Full dynamics/environment regression coverage | T2 | Complete (2026-10-20; evidence below) |
 | T4 | Presentation/replay review fixtures and documentation | T3 | Complete (2026-10-20; evidence below) |
-| T5 | Measured tuning, playback and user feel review | T4 | Pending |
+| T5 | Measured tuning, playback and user feel review | T4 | Tuning/automated and scripted verification implemented (2026-10-20); hands-on checklist and user acceptance pending |
 
 ### T1 — Make the behavior measurable
 
@@ -329,16 +330,10 @@ or review exposes a runtime problem; no performance improvement is claimed here.
 For each T task record: starting revision/dirty files; completed change; changed coefficients;
 commands/platform/results; report/capture paths; manual/user review; known limits; next task.
 
-Current next-task prompt for the implementation model:
-
-> Read AGENTS.md, docs/BOAT_TURN_BANKING_PLAN.md and the working contract in
-> docs/BOAT_PHYSICS_PLAN.md. Implement only T5 from the banking plan; read the T1–T4 handoffs
-> and baseline artifacts. Preserve unrelated edits and accepted horizontal handling.
-> Complete its measured tuning/playback review and documentation handoff; distinguish user acceptance.
-> Commit only if requested; do not push.
-
-For later tasks, use the requested task or explicit range. Read prerequisite
-handoffs and current source before assuming names or physics revision numbers are unchanged.
+Current next gate: review the T5 handoff and collect hands-on feedback on turn exit,
+wake crossings, reset/replay, focus/pause and camera comfort across basin, Eriksberg and
+river. Do not infer user acceptance from automated checks or advance optional trim/loading,
+foundations or harbor work. Further tuning should follow concrete player feedback.
 
 ### Planning evidence — 2026-10-20
 
@@ -763,3 +758,157 @@ also passed in a focused replay rerun. Formatting, changed Markdown file targets
 `build/`. T4 is complete; stop before T5. T5 owns measured tuning, the full hands-on location/
 controls/replay checklist, and user banking acceptance; the high transient roll rates and
 own-wake margin recorded in T3 remain open review concerns.
+
+### T5 handoff — 2026-10-20
+
+Starting revision: `8afe75a`, clean worktree, macOS Apple Silicon. The user requested T5
+and retained the instruction to commit each step. Initial hands-on T4 feedback was positive
+overall, with one specific concern: “it stays banked a little too long after I straightened
+out.” That is initial feedback, not acceptance of this revised tuning or the complete
+location/controls checklist. T5 implementation and automated/scripted verification are now
+available for review; full hands-on playback, focus/pause/camera comfort and user acceptance
+remain pending. No other project track was advanced.
+
+The new shared steering-release fixture starts at speed 12 and full throttle, holds wheel
+0.25/0.55/1 for eight seconds, then releases steering for three seconds while keeping power.
+It drives through normal controls and preserves yaw/roll/filter momentum. At release it
+translates the boat and its particle history once to basin centre on uniform, flat,
+current/wake-free water, keeping the entire measured exit clear of contacts. This changes
+neither horizontal motion nor physical attitude; it is not a spatial-wave invariance test.
+Mirrored runs check sign symmetry and continuous roll integration. Per-tick measurements
+and capture views use these same inputs. Recovery times below are the final crossing below
+2° bank, with no later recrossing during the three-second observation window, measured
+from steering release; they are not measured from zero yaw or zero lateral force.
+
+| Held wheel | Steady bank before → after | Below 2° bank before → after | Bank at 1 s before → after |
+| --- | --- | --- | --- |
+| 0.25 | 12.381° → 9.712° | 1.517 s → 1.075 s | 8.185° → 2.601° |
+| 0.55 | 12.419° → 11.771° | 1.750 s → 1.300 s | 11.165° → 5.026° |
+| 1.00 | 12.419° → 11.786° | 1.892 s → 1.458 s | 12.126° → 7.355° |
+
+Yaw falls below 0.05 rad/s at 0.450/0.633/0.808 s in both versions. The old high gain
+saturates the moment through much of the fading lateral load; a .25 wheel fast turn already
+holds nearly maximum bank. Shortening only the filter to .06 s improves recovery by about
+.083 s and leaves that saturation intact (and increases some turn-entry overshoot).
+T5 instead changes only **`TURN_ROLL_PLANING_GAIN` .85 → .28** and
+**`TURN_ROLL_RESPONSE_SECONDS` .12 → .06 s**. Lowering gain is the main recovery change;
+the shorter filter removes the remaining avoidable delay. The quarter-wheel sustained fast
+turn now meets the 5–10° artistic target, and harder turns remain around 12°.
+A gain .30/filter .12 comparison gave 10.056° in the quarter-wheel fixture and slower
+1.183/1.400/1.558 s recovery; the selected values give a little more recovery margin.
+
+Low-speed gain .12, speed blend 1–6, 12° moment scale, physical roll inertia, buoyancy,
+damping, 25°/5° guard engagement/blend and guard 180/12 are unchanged. There is no steering-
+position multiplier, angle/rate reset, hard clamp, or change to propulsion/grip/yaw/camera.
+Countersteering still carries the old bank through reversal; the mirrored transition crosses
+zero after 0.991667 s (formerly 1.05 s). Its peak drops to 12.263609°. Passive ±10°/±32°
+recovery remains 0.625/1.016667 s with the same energy checks. The reverse tow peaks at
+1.169904°, docking tow at 0.208131°, and neutral-coast free drive at 2.815781°: reduced gain
+still allows force-driven coasting bank. Speed/radius monotonicity and uniform-flow checks
+pass with the new gains. Controlled tow remains external horizontal work, not free handling.
+
+The new exit assertions require sustained 5–10°/10–12° banks, <13° entry peaks, below-2°
+recovery by 1.10/1.35/1.50 s, and below-2°/s angular motion within another .4 s. They also
+retain >5° lean at .5 s, so a cosmetic instant return cannot pass. The accepted calm
+reference's horizontal/planing samples remain unchanged; its turning attitude is updated to
+height `.0500000045`, pitch `.0531335883`, roll `.213792399` radians, load `5.26432753`,
+backed by independent force/filter/tow tests. All **37,320** common calm-water horizontal,
+control, acceleration and energy CSV rows match the preserved T4 executable exactly.
+
+Final wave-circle and stress observations:
+
+| Initial environment | Duration | Peak roll | Peak roll rate |
+| --- | --- | --- | --- |
+| Beam waves | 120 s | 26.419369° | 60.120811°/s |
+| Head waves | 360 s | 23.375481° | 68.070900°/s |
+| Following waves | 120 s | 21.598619° | 44.692997°/s |
+| Scripted wake | 120 s | 11.217952° | 9.446991°/s |
+| Own wake | 120 s | 28.775251° | 107.906357°/s |
+| Calm | 120 s | 10.294631° | 10.245651°/s |
+
+The existing repeated-transition fixture drops from 177.445450°/s to 99.506981°/s, peaking
+at 28.908022°. The existing 300-second powered/reversing gentle-wave drive peaks at
+28.954075° (formerly 29.457630°). Own-wake margin improves from 0.335° to 1.225° below 30°;
+its high angular rate remains a hands-on review concern. Its peak height is .672679 and
+pitch 14.325754°, within unchanged 1/.65-rad wake bounds. Contacts retain finite state,
+clear footprints, filter agreement and calm recovery; maximum contact roll is 8.093884°.
+
+One wave assertion was revised explicitly: the old `late_peak <= early_peak + 1°` failed
+for the head-wave drive even though its entire roll envelope was smaller than T4. The first
+60 seconds peaked at 19.421°, the next at 23.308°. Free turning changes wave encounter
+phase; those windows are not identical forcing. T5 extends this drive to **360 seconds**:
+successive minute peaks are 19.421/23.308/19.473/20.121/23.375/20.851°. The late-half check
+now permits sub-guard phase variation using `late_peak <= max(early_peak, 25°) + 1°`.
+This relaxes the window-comparison assertion below guard engagement; it does not increase
+the per-tick 30° bound, height/pitch limits, deterministic repetition or post-forcing
+recovery requirements. The measured long envelope is bounded, not monotonically growing;
+this is fixture evidence, not general stability proof.
+
+Wave-coupled horizontal consequences were measured against the T4 executable over common
+120-second inputs. Maximum speed differences for beam/head/following waves are
+.058520/.058095/.062197, maximum yaw-rate differences .013080/.013686/.015994 rad/s.
+Integrated yaw-rate differences at 120 s are -2.389/-3.482/-1.985°. Scripted wake gives
+.022759 speed, .006045 rad/s yaw-rate and -.195° integrated yaw difference. Own wake gives
+**1.125332 speed**, **.112229 rad/s yaw-rate** and **-71.505° integrated yaw difference**:
+a noticeably different repeated own-wake encounter history over two minutes. These are
+speed/yaw diagnostics, not positional path-error measurements. Shared wave-normal forces
+use the changed hull pose, so identical force coefficients do not imply an identical wake
+trajectory. That feedback behavior and wake comfort remain explicit user-review limits.
+
+The presentation audit found a concrete numerical problem at heading 1.57253, pitch
+.00121496, roll .287961: `asin` Euler extraction produced about .0000405 world-unit probe
+error, exceeding the existing .00003 attachment tolerance. Extraction now uses
+`atan2(sine, hypot(cosine components))`, with a tighter singular branch; physics continues
+using its original matrix. Exact and nearby ±π/2 cases were added. The tight pose and
+spray checks pass without increasing their tolerances. Physics revision stays 3 for this
+banking sequence; the serialized layout stays unchanged and old best files remain separate.
+
+Reproduce current measurements and review artifacts from the repository root:
+
+```sh
+./build/validate_boat_banking --straightening
+./build/validate_boat_banking --report build/banking-review/t5.csv \
+  > build/banking-review/t5-measurements.txt
+./build/validate_boat_banking --report build/banking-review/t5-rerun.csv \
+  > build/banking-review/t5-rerun.txt
+cmp build/banking-review/t5.csv build/banking-review/t5-rerun.csv
+./build/boat_banking_review --output build/banking-review/t5-cpu
+./build/boat_banking_review --gpu --output build/banking-review/t5-gpu
+./build/boat_study --demo --location basin --no-player-wake --gpu-aa --waves --frames 900
+./build/boat_study --demo --location eriksberg --no-player-wake --gpu-aa --waves --frames 900
+./build/boat_study --demo --location river --no-player-wake --gpu-aa --waves --frames 900
+./build/boat_study --replay build/replay-tests/banked.run --gpu-aa --frames 240
+```
+
+The final 138,120-row report pair matches byte for byte. Baseline executable/report and
+candidate comparisons are local ignored artifacts under `build/banking-review/`; the
+baseline report adds the same steering-release measurement inputs to T4 physics before
+changing coefficients. CPU/GPU directories each contain **43** native 320x200 images:
+T4's 19 views plus quarter/half/full-wheel exit captures at 0/.5/1/1.5 s, in default and
+close rear cameras. Native CPU/GPU right-side, S-reversal-side, wave-peak-rear,
+quarter-wheel one-second default/rear and full-wheel 1.5-second rear pairs were inspected,
+along with baseline/current quarter-wheel one-second rear frames. Faster settling is
+visible, with coherent hull/cabin/outboard, spray/waterline and GPU shadow/reflection
+presentation and an upright camera.
+
+All four final desktop playback commands above exited successfully. They exercise scripted
+basin/Eriksberg/river GPU+AA wave motion, neutral/reversing demo controls and the reloaded
+banked course. This is scripted desktop playback/asset-loading evidence, not a person
+performing the hands-on checklist or listening assessment. Automated tests cover reset,
+reverse, countersteer, coasting, contacts, wave/wake forcing, recording, paused seek and
+transport focus behavior; OS focus/input ergonomics, camera comfort, the full hands-on
+location checklist, Windows/browser execution and user acceptance remain unverified.
+No performance issue warranting Instruments was observed; no profiling claim is made.
+
+Verification, 2026-10-20: Debug configure and full build passed without project compiler
+warnings; the existing raylib/macOS OpenGL deprecation configure notice remains.
+`PROTEUS_GPU_TESTS=ON` was preserved. Full desktop CTest passed **73/73**, including
+**19 GPU-labelled tests**, in **172.79 s** (`build/banking-review/ctest-t5-desktop.log`).
+The final suite includes the updated dynamics/reference checks and tighter pose conversion
+cases. Earlier focused checks exposed the pose precision failure described above; the
+final suite and refreshed CPU/GPU captures include its correction. Formatting, changed
+Markdown file targets, documented command executions and `git diff --check` passed.
+All logs, reports, baseline/candidate executables, fixtures and captures remain ignored
+under `build/`. T5's tuning and automated/scripted verification are implemented; its full
+hands-on checklist and user acceptance are the next gate. No further coefficient changes
+or optional-track work are implied by this handoff.

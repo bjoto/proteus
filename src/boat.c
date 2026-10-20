@@ -47,10 +47,11 @@ static const float WAVE_SPRAY_RESPONSE = 8.0f;
 static const float SKEG_RESISTANCE = 0.10f;
 // One-way lateral-load coupling into the existing physical roll integration.
 static const float TURN_ROLL_LOW_GAIN = .12f;
-static const float TURN_ROLL_PLANING_GAIN = .85f;
+// Keep ordinary turns below sustained saturation so fading load can unwind the bank.
+static const float TURN_ROLL_PLANING_GAIN = .28f;
 static const float TURN_ROLL_SPEED_START = 1;
 static const float TURN_ROLL_SPEED_FULL = 6;
-static const float TURN_ROLL_RESPONSE_SECONDS = .12f;
+static const float TURN_ROLL_RESPONSE_SECONDS = .06f;
 static const float TURN_ROLL_SCALE = 12 * DEG2RAD;
 static const float ROLL_GUARD_START = 25 * DEG2RAD;
 static const float ROLL_GUARD_BLEND = 5 * DEG2RAD;
@@ -185,8 +186,10 @@ static void resolve_traffic(Boat *boat)
 // in hull space first, then convert to the existing renderer transform convention.
 static Vector3 pose_rotation(Matrix rotation)
 {
-    float y = asinf(Clamp(rotation.m8, -1, 1));
-    if (fabsf(cosf(y)) < .0001f)
+    // atan2 retains precision near +/-pi/2 where asin rounds the sine to one.
+    float cy = hypotf(rotation.m0, rotation.m4);
+    float y = atan2f(rotation.m8, cy);
+    if (cy < .000001f)
         return (Vector3) { atan2f(rotation.m6, rotation.m5), y, 0 };
     return (Vector3) { atan2f(-rotation.m9, rotation.m10), y, atan2f(-rotation.m4, rotation.m0) };
 }

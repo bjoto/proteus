@@ -29,7 +29,9 @@ planing dependence; speed and turn tightness both affect the bank. Waves share t
 physical hull and the camera remains upright. Handling revision 3 preserves earlier best
 files separately. The [banking plan](BOAT_TURN_BANKING_PLAN.md) records T3 dynamics coverage
 and large-angle recovery tuning, followed by T4 presentation/replay fixtures and the spray
-attachment correction. T5 tuning/playback and user acceptance remain pending.
+attachment correction. T5 now tunes quicker turn-exit recovery while retaining roughly
+12° in hard turns. Automated/scripted verification is recorded there; the hands-on location,
+controls/replay/focus checklist and user acceptance remain pending.
 
 ## Window presentation — 2026-10-19
 

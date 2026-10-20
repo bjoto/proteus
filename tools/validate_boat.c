@@ -858,7 +858,7 @@ static int validate_calm_reference(void)
                 boat.velocity.y, boat.heading, boat.yaw_velocity, boat.height, boat.pitch,
                 boat.roll, boat.planing };
             for (int i = 0; i < 10; ++i) {
-                // T2 changes turning attitude only; accepted horizontal handling stays fixed.
+                // Banking changes turning attitude only; accepted horizontal handling stays fixed.
                 if (sample == 1 && i >= 6 && i <= 8)
                     continue;
                 CHECK(fabsf(actual[i] - expected[sample][i]) < (i < 4 ? .002f : .00001f));
@@ -866,10 +866,10 @@ static int validate_calm_reference(void)
             if (sample == 1) {
                 printf("banked_calm_reference height=%.9g pitch=%.9g roll=%.9g load=%.9g\n",
                     boat.height, boat.pitch, boat.roll, boat.turn_roll_load);
-                // Measured T2 baseline, backed by the independent force/filter/tow checks.
+                // Measured T5 attitude, backed by independent force/filter/tow/exit checks.
                 CHECK(fabsf(boat.height - .0500000007f) < .00001f);
-                CHECK(fabsf(boat.pitch - .0531556047f) < .00001f);
-                CHECK(fabsf(boat.roll - .216758370f) < .00001f);
+                CHECK(fabsf(boat.pitch - .0531335883f) < .00001f);
+                CHECK(fabsf(boat.roll - .213792399f) < .00001f);
                 CHECK(boat.roll > 5 * DEG2RAD && boat.roll < 25 * DEG2RAD);
                 CHECK(fabsf(boat.height) < .2f && fabsf(boat.pitch) < .15f);
                 CHECK(boat.turn_roll_load > 0);

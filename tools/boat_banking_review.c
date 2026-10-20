@@ -42,8 +42,9 @@ static int pose_check(const Boat *b)
     const Vector3 probes[] = { { 0, 0, 0 }, { 1, .3f, -.7f }, { -.8f, 1, 1 } };
     for (int i = 0; i < 3; ++i) {
         Vector3 q = probes[i];
-        CHECK(Vector3Distance(point(p.hull, q), Vector3Add(base, rotate(Vector3Scale(q, 1.4f), b)))
-            < .00003f);
+        float error
+            = Vector3Distance(point(p.hull, q), Vector3Add(base, rotate(Vector3Scale(q, 1.4f), b)));
+        CHECK(error < .00003f);
         Vector3 cabin
             = Vector3Add(Vector3Multiply(q, (Vector3) { 1, .7f, 1 }), (Vector3) { 0, 1.1f, 0 });
         CHECK(Vector3Distance(point(p.cabin, q), Vector3Add(base, rotate(cabin, b))) < .00003f);
@@ -210,6 +211,42 @@ int main(int argc, char **argv)
             b.engine_angle = .4f;
             CHECK(pose_check(&b) == 0);
         }
+    // The wave turn found an asin precision loss near a side-on heading; keep
+    // the tight attachment tolerance and exercise exact/near gimbal neighborhoods.
+    for (int sign = -1; sign <= 1; sign += 2) {
+        const float offsets[] = { 0, -.000001f, .000001f, -.002f, .002f };
+        for (int i = 0; i < 5; ++i) {
+            Boat b;
+            boat_reset(&b);
+            b.heading = sign * (PI / 2 + offsets[i]);
+            b.roll = .287961f;
+            b.pitch = i < 3 ? 0 : .00121496f;
+            b.engine_angle = .4f;
+            CHECK(pose_check(&b) == 0);
+        }
+    }
+    const float exit_wheels[] = { .25f, .55f, 1 };
+    const char *exit_names[] = { "quarter", "half", "full" };
+    for (int trial = 0; trial < 3; ++trial) {
+        Boat b;
+        banking_exit_reset(&b);
+        for (int tick = 0; tick < BANKING_EXIT_TICKS; ++tick) {
+            banking_exit_step(&b, exit_wheels[trial], tick);
+            CHECK(pose_check(&b) == 0);
+            int since = tick + 1 - BANKING_EXIT_HOLD_TICKS;
+            if (!output || since < 0 || since > 180 || since % 60 != 0)
+                continue;
+            for (int view = 0; view < 2; ++view) {
+                char path[2048];
+                CHECK(snprintf(path, sizeof(path), "%s/exit-%s-%04dms-%s.png", output,
+                          exit_names[trial], since * 1000 / 120, view ? "rear" : "default")
+                    < (int)sizeof(path));
+                BoatCamera camera
+                    = view ? (BoatCamera) { .distance = 8, .height = 4 } : BOAT_CAMERA_DEFAULT;
+                CHECK(capture(&gpu, &cpu, &b, gpu_enabled, camera, path, false) == 0);
+            }
+        }
+    }
     renderer3d_destroy(&cpu);
     if (gpu_enabled) {
         boat_gpu_destroy(&gpu);

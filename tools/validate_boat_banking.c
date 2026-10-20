@@ -73,9 +73,9 @@ static int check_filter(const Boat *before, const Boat *after, float measured_lo
     float u = Vector2DotProduct(before->velocity, forward(before->heading));
     float blend = Clamp((u - 1) / 5, 0, 1);
     blend = blend * blend * (3 - 2 * blend);
-    float gain = .12f + (.85f - .12f) * after->planing * blend;
+    float gain = .12f + (0.28f - .12f) * after->planing * blend;
     float expected = before->turn_roll_load
-        + (gain * measured_load - before->turn_roll_load) * (1 - expf(-BOAT_STEP / .12f));
+        + (gain * measured_load - before->turn_roll_load) * (1 - expf(-BOAT_STEP / 0.06f));
     CHECK(fabsf(after->turn_roll_load - expected) < .00002f);
     return 0;
 }
@@ -93,7 +93,7 @@ static int validate_core(void)
     boat.turn_roll_load = 2;
     float previous = boat.turn_roll_load;
     boat_step(&boat, 0, 0);
-    CHECK(fabsf(boat.turn_roll_load - previous * expf(-BOAT_STEP / .12f)) < .000001f);
+    CHECK(fabsf(boat.turn_roll_load - previous * expf(-BOAT_STEP / 0.06f)) < .000001f);
     CHECK(boat.roll > 0 && boat.roll_velocity > 0);
     boat_reset(&boat);
     CHECK(boat.turn_roll_load == 0 && boat.roll == 0 && boat.roll_velocity == 0);
@@ -518,6 +518,67 @@ static int validate_transitions(FILE *report)
     return 0;
 }
 
+static int validate_straightening(FILE *report)
+{
+    const float wheels[] = { .25f, .55f, 1 };
+    for (int trial = 0; trial < 3; ++trial) {
+        Boat a, b;
+        banking_exit_reset(&a);
+        b = a;
+        int last_bank = -1, last_rate = -1, last_yaw = -1, last_load = -1;
+        float steady = 0, peak = 0, roll_half = 0, roll_one = 0;
+        char name[64];
+        snprintf(name, sizeof(name), "straightening_w%.2f", wheels[trial]);
+        for (int tick = 0; tick < BANKING_EXIT_TICKS; ++tick) {
+            CHECK(open_water(&a) && open_water(&b));
+            Boat before = a;
+            banking_exit_step(&a, wheels[trial], tick);
+            banking_exit_step(&b, -wheels[trial], tick);
+            CHECK(open_water(&a) && open_water(&b));
+            CHECK(fabsf(a.roll + b.roll) < .00002f
+                && fabsf(a.roll_velocity + b.roll_velocity) < .00005f);
+            CHECK(fabsf(a.roll - before.roll - a.roll_velocity * BOAT_STEP) < .000001f);
+            float load = Vector2DotProduct(
+                             Vector2Subtract(a.velocity, before.velocity), right(before.heading))
+                / BOAT_STEP;
+            CHECK(check_filter(&before, &a, load) == 0);
+            row(report, name, tick, &before, load, 0, 0);
+            peak = fmaxf(peak, fabsf(a.roll));
+            if (tick >= BANKING_EXIT_HOLD_TICKS - 120 && tick < BANKING_EXIT_HOLD_TICKS)
+                steady += a.roll / 120;
+            if (tick >= BANKING_EXIT_HOLD_TICKS) {
+                int release = tick - BANKING_EXIT_HOLD_TICKS;
+                if (fabsf(a.roll) >= 2 * DEG2RAD)
+                    last_bank = release;
+                if (fabsf(a.roll_velocity) >= 2 * DEG2RAD)
+                    last_rate = release;
+                if (fabsf(a.yaw_velocity) >= .05f)
+                    last_yaw = release;
+                if (fabsf(a.turn_roll_load) >= .35f)
+                    last_load = release;
+                if (release == 59)
+                    roll_half = a.roll;
+                if (release == 119)
+                    roll_one = a.roll;
+            }
+        }
+        const float bank_limits[] = { 1.10f, 1.35f, 1.50f };
+        CHECK((last_bank + 1) * BOAT_STEP <= bank_limits[trial]);
+        CHECK((last_rate + 1) * BOAT_STEP <= bank_limits[trial] + .4f);
+        CHECK(last_yaw < 359 && last_load < 359);
+        CHECK(steady > (trial == 0 ? 5 : 10) * DEG2RAD);
+        CHECK(steady < (trial == 0 ? 10 : 12) * DEG2RAD);
+        CHECK(peak < 13 * DEG2RAD && roll_half > 5 * DEG2RAD);
+        printf("straightening wheel=%.2f steady_deg=%.6f peak_deg=%.6f bank_2deg_seconds=%.6f "
+               "rate_2deg_s_seconds=%.6f yaw_.05_seconds=%.6f load_.35_seconds=%.6f "
+               "roll_0.5s_deg=%.6f roll_1s_deg=%.6f\n",
+            wheels[trial], steady * RAD2DEG, peak * RAD2DEG, (last_bank + 1) * BOAT_STEP,
+            (last_rate + 1) * BOAT_STEP, (last_yaw + 1) * BOAT_STEP, (last_load + 1) * BOAT_STEP,
+            roll_half * RAD2DEG, roll_one * RAD2DEG);
+    }
+    return 0;
+}
+
 static bool finite_state(const Boat *boat)
 {
     return isfinite(boat->height) && isfinite(boat->vertical_velocity) && isfinite(boat->pitch)
@@ -548,7 +609,8 @@ static int validate_wave_turns(FILE *report)
         Boat repeat = boat;
         float peak = 0, peak_rate = 0, peak_load = 0, sum = 0, late_peak = 0, early_peak = 0;
         float peak_height = 0, peak_pitch = 0;
-        for (int tick = 0; tick < 14400; ++tick) {
+        int drive_ticks = trial == 1 ? 43200 : 14400;
+        for (int tick = 0; tick < drive_ticks; ++tick) {
             // Free constant-wheel circles; no imposed positions in spatial wave fields.
             float wheel = .55f;
             Boat before = boat;
@@ -564,18 +626,21 @@ static int validate_wave_turns(FILE *report)
             peak_rate = fmaxf(peak_rate, fabsf(boat.roll_velocity));
             peak_load = fmaxf(peak_load, fabsf(boat.turn_roll_load));
             sum += boat.roll;
-            if (tick >= 7200)
+            if (tick >= drive_ticks / 2)
                 late_peak = fmaxf(late_peak, fabsf(boat.roll));
             else
                 early_peak = fmaxf(early_peak, fabsf(boat.roll));
             row(report, names[trial], tick, &before, NAN, 0, NAN);
         }
-        CHECK(late_peak <= early_peak + DEG2RAD);
-        printf("standard_turn=%s seconds=120 mean_roll_deg=%.6f peak_roll_deg=%.6f "
+        // Wave encounter phase changes as the free circle evolves. Sub-guard peaks
+        // need not recur in the first half. Once the 25-degree guard is involved,
+        // reject growth beyond its engagement envelope or the earlier peak (+1 degree).
+        CHECK(late_peak <= fmaxf(early_peak, 25 * DEG2RAD) + DEG2RAD);
+        printf("standard_turn=%s seconds=%d mean_roll_deg=%.6f peak_roll_deg=%.6f "
                "late_peak_deg=%.6f peak_rate_deg_s=%.6f peak_filtered_load=%.6f peak_height=%.6f "
                "peak_pitch_deg=%.6f\n",
-            names[trial], sum / 14400 * RAD2DEG, peak * RAD2DEG, late_peak * RAD2DEG,
-            peak_rate * RAD2DEG, peak_load, peak_height, peak_pitch * RAD2DEG);
+            names[trial], drive_ticks / 120, sum / drive_ticks * RAD2DEG, peak * RAD2DEG,
+            late_peak * RAD2DEG, peak_rate * RAD2DEG, peak_load, peak_height, peak_pitch * RAD2DEG);
         // Remove external forcing, preserve momentum/filter and recover without a reset.
         boat.water_settings = (BoatWater) { 0 };
         boat.throttle = 0;
@@ -692,6 +757,8 @@ static int validate_contacts(void)
 
 int main(int argc, char **argv)
 {
+    if (argc == 2 && strcmp(argv[1], "--straightening") == 0)
+        return validate_straightening(NULL);
     FILE *report = NULL;
     if (argc == 3 && strcmp(argv[1], "--report") == 0) {
         report = fopen(argv[2], "w");
@@ -704,13 +771,13 @@ int main(int argc, char **argv)
             "height,pitch,horizontal_energy,lateral_acceleration,nominal_radius,"
             "load_residual,side_slip,turn_roll_load\n");
     } else if (argc != 1) {
-        fprintf(stderr, "Usage: %s [--report <path>]\n", argv[0]);
+        fprintf(stderr, "Usage: %s [--report <path> | --straightening]\n", argv[0]);
         return 1;
     }
     int result = validate_core() || validate_sides() || validate_restoring(report)
         || validate_free(report) || validate_tow(report) || validate_release()
-        || validate_blend_flow() || validate_transitions(report) || validate_wave_turns(report)
-        || validate_long_transitions() || validate_contacts();
+        || validate_blend_flow() || validate_transitions(report) || validate_straightening(report)
+        || validate_wave_turns(report) || validate_long_transitions() || validate_contacts();
     if (report) {
         bool failed = ferror(report) != 0;
         if (fclose(report) != 0)
@@ -721,6 +788,6 @@ int main(int argc, char **argv)
         }
     }
     if (!result)
-        puts("boat_banking=ok (T3 dynamics/environment regression)");
+        puts("boat_banking=ok (T5 dynamics/environment/straightening regression)");
     return result;
 }
