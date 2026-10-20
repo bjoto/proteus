@@ -341,6 +341,7 @@ int main(int argc, char **argv)
                     for (int bank = 0; bank < 2; ++bank) {
                         Boat inspection = boat;
                         inspection.position = landfalls[bank].position;
+                        inspection.flag.initialized = false;
                         Vector2 delta = Vector2Subtract(targets[bank], inspection.position);
                         inspection.camera_heading = inspection.heading = atan2f(delta.x, -delta.y);
                         if (!hull_clear(&inspection))
@@ -351,6 +352,7 @@ int main(int argc, char **argv)
                     }
                     Boat overview = boat;
                     overview.position = (Vector2) { 425, -762 };
+                    overview.flag.initialized = false;
                     overview.camera_heading = overview.heading = -PI / 2;
                     snprintf(path, sizeof(path), "%s/connections-overview.png", output);
                     if (!capture(&gpu, &cpu, &overview,

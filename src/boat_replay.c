@@ -1,4 +1,5 @@
 #include "boat_replay.h"
+#include "raymath.h"
 
 #include <ctype.h>
 #include <math.h>
@@ -137,6 +138,44 @@ bool boat_replay_sample(const BoatReplay *run, double at, Boat *boat)
         if (at >= run->splits[i])
             boat->course.next_gate = i + 1;
     return true;
+}
+
+void boat_replay_animate_flag(const BoatReplay *run, Boat *boat, BoatReplayFlag *cache)
+{
+    if (!run->count)
+        return;
+    double end = boat->course.elapsed;
+    int last = (int)floor(end / (double)BOAT_STEP);
+    bool restart = cache->run != run || cache->samples != run->samples
+        || cache->start_time != run->samples[0].world_time || last < cache->tick
+        || last - cache->tick > 24 || !cache->flag.initialized;
+    int first = cache->tick + 1;
+    if (restart) {
+        cache->flag = (BoatFlag) { 0 };
+        first = last > 120 ? last - 120 : 0;
+    }
+    Boat historical;
+    for (int tick = first; tick <= last; ++tick) {
+        boat_replay_sample(run, tick * (double)BOAT_STEP, &historical);
+        historical.flag = cache->flag;
+        boat_update_flag(&historical);
+        cache->flag = historical.flag;
+    }
+    cache->run = run;
+    cache->samples = run->samples;
+    cache->start_time = run->samples[0].world_time;
+    cache->tick = last;
+    boat->flag = cache->flag;
+    // Presentation may lie between simulation ticks. Translate cloth to the exact current
+    // hoist, then pin each row to the current attitude; retain tick state in the cache.
+    WaterfrontPlayerState player = { 0 };
+    boat_player_pose(boat, &player);
+    Vector3 offset
+        = Vector3Subtract(boat_flag_attachment(player.hull, 0), boat->flag.surface.points[0]);
+    for (int i = 0; i < BOAT_FLAG_POINTS; ++i)
+        boat->flag.surface.points[i] = Vector3Add(boat->flag.surface.points[i], offset);
+    for (int row = 0; row < BOAT_FLAG_ROWS; ++row)
+        boat->flag.surface.points[row * BOAT_FLAG_COLS] = boat_flag_attachment(player.hull, row);
 }
 
 void boat_replay_destroy(BoatReplay *run)

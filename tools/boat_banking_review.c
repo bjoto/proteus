@@ -101,6 +101,12 @@ static int capture(BoatGpu *gpu, Renderer3D *cpu, const Boat *b, bool use_gpu, B
     Boat opponent = *b;
     opponent.position.x += 7 * sinf(b->heading) + 3 * cosf(b->heading);
     opponent.position.y += -7 * cosf(b->heading) + 3 * sinf(b->heading);
+    Vector3 cloth_shift
+        = { -(opponent.position.x - b->position.x), 0, opponent.position.y - b->position.y };
+    for (int i = 0; i < BOAT_FLAG_POINTS; ++i) {
+        opponent.flag.surface.points[i] = Vector3Add(opponent.flag.surface.points[i], cloth_shift);
+        opponent.flag.previous[i] = Vector3Add(opponent.flag.previous[i], cloth_shift);
+    }
     Image image;
     if (use_gpu) {
         boat_gpu_draw_with_ghost(gpu, b, camera, ghost ? &opponent : NULL, .6f);

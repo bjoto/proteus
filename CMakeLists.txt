@@ -28,7 +28,7 @@ set(PROTEUS_BOAT_WORLD_SOURCES
   src/boat_water.c src/boat_course.c src/boat_replay.c src/boat_map.c
   src/waterfront.c src/waterfront_scene.c src/waterfront_corner.c)
 set(PROTEUS_HARBOR_SOURCES
-  src/boat_model.c src/waterfront_harbor.c src/waterfront_traffic.c)
+  src/boat_flag.c src/boat_model.c src/waterfront_harbor.c src/waterfront_traffic.c)
 add_executable(boat_study tools/boat_study.c src/boat.c src/renderer3d.c src/profiler.c
   src/boat_profile.c src/boat_audio.c src/xm_audio.c src/boat_gpu.c src/renderer_gpu.c
   ${PROTEUS_BOAT_WORLD_SOURCES} ${PROTEUS_HARBOR_SOURCES})
@@ -114,6 +114,12 @@ target_compile_options(validate_audio_spectrum PRIVATE
 )
 
 enable_testing()
+add_executable(validate_boat_flag tools/validate_boat_flag.c src/boat_flag.c)
+target_include_directories(validate_boat_flag PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(validate_boat_flag PRIVATE raylib)
+target_compile_options(validate_boat_flag PRIVATE
+  $<$<C_COMPILER_ID:AppleClang,Clang,GNU>:-Wall;-Wextra;-Wpedantic>)
+add_test(NAME boat_flag_cloth COMMAND validate_boat_flag)
 add_executable(validate_boat_audio tools/validate_boat_audio.c src/boat_audio.c)
 target_include_directories(validate_boat_audio PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(validate_boat_audio PRIVATE raylib)
@@ -135,8 +141,11 @@ add_dependencies(boat_water_review proteus_assets)
 add_executable(boat_banking_review tools/boat_banking_review.c src/boat.c src/renderer3d.c
   src/boat_gpu.c src/renderer_gpu.c)
 add_dependencies(boat_banking_review proteus_assets)
+add_executable(boat_flag_review tools/boat_flag_review.c src/boat.c src/renderer3d.c
+  src/boat_gpu.c src/renderer_gpu.c)
+add_dependencies(boat_flag_review proteus_assets)
 foreach(target validate_boat validate_boat_banking validate_boat_turn_entry validate_boat_profile
-    validate_boat_environment validate_boat_replay boat_water_review boat_banking_review)
+    validate_boat_environment validate_boat_replay boat_water_review boat_banking_review boat_flag_review)
   target_sources(${target} PRIVATE ${PROTEUS_BOAT_WORLD_SOURCES})
   target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
   target_link_libraries(${target} PRIVATE raylib)
@@ -148,6 +157,9 @@ add_test(NAME boat_handling COMMAND validate_boat)
 add_test(NAME boat_banking COMMAND validate_boat_banking)
 add_test(NAME boat_turn_entry COMMAND validate_boat_turn_entry)
 add_test(NAME boat_banking_presentation COMMAND boat_banking_review)
+add_test(NAME boat_flag_cpu COMMAND boat_flag_review --scenario cruise --time 5
+  --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-flag-cpu.png)
+set_tests_properties(boat_flag_cpu PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 add_test(NAME boat_profile_records COMMAND validate_boat_profile)
 add_test(NAME boat_environment COMMAND validate_boat_environment)
 add_test(NAME boat_player_wake_screenshot COMMAND boat_study --renderer cpu --player-wake --time 9
@@ -282,7 +294,8 @@ target_compile_options(waterfront_storyboard PRIVATE
 )
 add_test(NAME waterfront_storyboard_is_valid COMMAND waterfront_storyboard --check)
 add_executable(validate_harbor tools/validate_harbor.c src/boat.c src/renderer3d.c
-  src/boat_model.c src/waterfront_harbor.c src/waterfront_traffic.c src/boat_water.c src/boat_map.c
+  src/boat_flag.c src/boat_model.c src/waterfront_harbor.c src/waterfront_traffic.c
+  src/boat_water.c src/boat_map.c
   src/boat_course.c src/boat_replay.c src/waterfront.c src/waterfront_scene.c src/waterfront_corner.c)
 target_include_directories(validate_harbor PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(validate_harbor PRIVATE raylib)
@@ -291,7 +304,8 @@ target_compile_options(validate_harbor PRIVATE
 add_test(NAME harbor_geometry COMMAND validate_harbor)
 
 add_executable(validate_traffic tools/validate_traffic.c src/boat.c src/renderer3d.c
-  src/boat_model.c src/waterfront_harbor.c src/waterfront_traffic.c src/boat_water.c src/boat_map.c
+  src/boat_flag.c src/boat_model.c src/waterfront_harbor.c src/waterfront_traffic.c
+  src/boat_water.c src/boat_map.c
   src/boat_course.c src/boat_replay.c src/waterfront.c src/waterfront_scene.c src/waterfront_corner.c)
 target_include_directories(validate_traffic PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(validate_traffic PRIVATE raylib)
@@ -314,7 +328,7 @@ target_compile_options(harbor_review PRIVATE
 # Shared generated boats and berth evaluation feed all waterfront consumers.
 foreach(target proteus gpu_fixture validate_boat validate_boat_banking validate_boat_turn_entry
     validate_boat_profile validate_boat_environment validate_boat_replay
-    boat_water_review boat_banking_review waterfront_storyboard validate_waterfront_actors
+    boat_water_review boat_banking_review boat_flag_review waterfront_storyboard validate_waterfront_actors
     validate_city_dressing harbor_review)
   target_sources(${target} PRIVATE ${PROTEUS_HARBOR_SOURCES})
 endforeach()
@@ -394,6 +408,10 @@ if(PROTEUS_GPU_TESTS)
   set_tests_properties(boat_environment_gpu_screenshot PROPERTIES LABELS "gpu" RUN_SERIAL TRUE)
   add_test(NAME boat_environment_gpu COMMAND validate_boat_environment --gpu)
   set_tests_properties(boat_environment_gpu PROPERTIES LABELS "gpu" RUN_SERIAL TRUE)
+  add_test(NAME boat_flag_gpu COMMAND boat_flag_review --renderer gpu --scenario turn --time 5
+    --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-flag-gpu.png)
+  set_tests_properties(boat_flag_gpu PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    LABELS "gpu" RUN_SERIAL TRUE)
   add_test(NAME boat_banking_gpu COMMAND boat_banking_review --gpu
     --output ${CMAKE_CURRENT_BINARY_DIR}/banking-gpu)
   set_tests_properties(boat_banking_gpu PROPERTIES LABELS "gpu" RUN_SERIAL TRUE)

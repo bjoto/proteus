@@ -1,6 +1,6 @@
 # Gothenburg boating playground
 
-Status: updated 2026-10-19. `boat_study` implements free boating in basin, Eriksberg,
+Status: updated 2026-10-20. `boat_study` implements free boating in basin, Eriksberg,
 and river locations, reverse/docking, planing, buoyancy, optional gentle waves, opt-in
 current/scripted-wake options in all locations, a default player-path wake, and a timed S course with recordings, persistent personal bests, ghosts, and replay controls. The study
 has quiet engine/water audio and a repeating, gentle XM background piece. The
@@ -9,6 +9,7 @@ the user has provisionally accepted Phase D handling and revised player-wake mot
 with continued evaluation over time.
 The [handling and speed review](#handling-and-speed-review--2026-10-19) adds quicker
 countersteering and a modest speed view, accepted by the user on 2026-10-19.
+A [Swedish ensign](#swedish-ensign--2026-10-20) now responds to a light breeze and boat-relative air flow.
 The score-loop arcade mode and archipelago remain proposals.
 
 This document owns gameplay direction. Detailed next tasks belong to the
@@ -38,6 +39,62 @@ hull grip while keeping the outboard as the force source. The user accepted the 
 banking/carving feel on 2026-10-20: "This is way better. I think we're good here." No further
 tuning is queued. The exhaustive hands-on location/controls/replay/focus checklist remains
 unverified; acceptance does not establish that each check occurred.
+
+## Swedish ensign — 2026-10-20
+
+Implemented: the player boat carries a two-sided Swedish flag on a starboard stern
+staff raked about 11° aft and shortened from 1.40 m to 0.75 m. Following user feedback, the flag is one-third smaller
+in each dimension (0.64 × 0.40 m); weaker air flow and softer fabric let it hang almost
+vertically at rest. A fixed-tick cloth simulation responds to gravity, a gentle world-space breeze,
+particle-relative air pressure/drag, and small wake eddies. Moving attachments carry
+hull translation and attitude into the cloth; the fly can lag through turns and change
+direction in reverse. CPU and GPU color/reflection/shadow passes share a vertex snapshot.
+Playback and ghosts animate the flag without changing recording files or handling.
+[The flag guide](BOAT_FLAG.md) records the model, playback approximation, and review commands.
+
+Completed task: implement wind-driven cloth, renderer integration, playback history,
+and close idle/cruise/turn/reverse inspection fixtures; revised idle drape, size, and
+aft rake after user feedback, then shortened the staff by 46%. The user accepted the
+flag on 2026-10-20: "I like it a lot!" Next task: the saved
+[boat visual improvement proposal](#boat-visual-improvement--saved-2026-10-20);
+no further handling tuning is queued.
+
+Verification, 2026-10-20, macOS: Debug configure/build completed. Cloth dynamics and
+replay checks passed; CPU idle/cruise/reverse and GPU turning captures were inspected,
+including closely spaced cruise frames to inspect changing folds. The revised stopping
+fixture with the shortened staff settles with 0.603 m fly drop and 0.183 m horizontal reach. A 300-frame desktop
+GPU flag review and a 300-frame Eriksberg GPU+AA/waves demo smoke run exited successfully.
+All 77 CTests passed in the full run, including 20 GPU checks. After shortening the
+staff, all seven affected cloth/replay/presentation and CPU/GPU screenshot checks passed
+again. The final short-staff GPU idle capture was inspected, and a 180-frame desktop
+flag animation smoke run exited successfully. Formatting and changed local file links
+were checked.
+Flag appearance is user-accepted. Hands-on controls/audio assessment, Windows/browser
+verification, and exhaustive wind-relative headings remain unverified. The small solver has no
+self-collision or hull/cabin collision; seek cloth reconstructs bounded history.
+
+## Boat visual improvement — saved 2026-10-20
+
+Status: saved proposal for a future boat improvement pass; implementation has not started.
+The user likes the flag but finds the existing boat too crude beside its fabric and motion.
+The proposed direction is a small improvement in shape, proportions, and material cues
+while preserving the low-poly, toy-like character and the accepted flag.
+
+Proposed sequence:
+
+1. Refine the cabin silhouette with a slightly raked windscreen, narrower roof overhang,
+   and a few chamfered corners.
+2. Give the hull a clearer bow flare, shaped transom, and more deliberate gunwale.
+3. Simplify the palette around cream and teal, with fewer competing yellow/red accents;
+   let the Swedish flag remain the strongest color accent.
+4. Reassess the flag alongside the improved boat. Reduce its subdivisions slightly only
+   if it still feels too refined, preserving the accepted hanging and wind response.
+
+Next task: a focused silhouette-and-proportions pass, followed by side-by-side captures
+at native resolution in the normal boating cameras. Favor shaped geometry over extra
+accessories or textures. Keep the current handling and nearest-neighbor presentation.
+The future implementation needs CPU/GPU still-frame inspection and motion review before
+user acceptance; no audiovisual verification is claimed for this unimplemented proposal.
 
 ## Window presentation — 2026-10-19
 

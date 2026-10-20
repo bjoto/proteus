@@ -93,6 +93,12 @@ Explore the bundled Eriksberg waterfront with the same boat and controls:
 ./build/boat_study --renderer cpu --location eriksberg --screenshot build/eriksberg-boat.png --time 3
 ```
 
+The player boat carries a Swedish flag on a stern staff. A light breeze moves the cloth
+at rest; apparent wind and moving attachments make it stream aft, flutter, and lag through
+turns. Playback and ghosts animate it too. See [the flag guide](docs/BOAT_FLAG.md) for
+model limits and close inspection commands, including
+`./build/boat_flag_review --renderer gpu --scenario cruise --time 3 --frames 300`.
+
 For the repeatable boat-level water audit, run `python3 tools/boat_water_review.py --sequence`.
 It captures a driven dock/river/quay circuit in both water presets and camera heights;
 GPU captures need a desktop graphics context. Findings, artifact names, optional movie

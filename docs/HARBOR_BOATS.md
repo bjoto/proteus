@@ -114,7 +114,7 @@ recording/replay tests retain the unchanged basin physics baseline.
 ## Future playable boats
 
 This step establishes visual recipes and shared rendering. The player still uses the existing
-hull and handling. There are no prices, unlocks, save migrations, selectable craft, or speed tiers.
+hull and handling, with its own [wind-driven Swedish ensign](BOAT_FLAG.md). There are no prices, unlocks, save migrations, selectable craft, or speed tiers.
 The skiff-to-speedboat visual range can support that later design without tying appearance
 to an arbitrary speed multiplier now.
 

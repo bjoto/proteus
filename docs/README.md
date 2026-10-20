@@ -10,7 +10,7 @@ Both default to GPU rendering; the CPU reference supports display-free captures.
 | Area and owning document | Implemented | Remaining / next task |
 | --- | --- | --- |
 | [Boating foundations](BOATING_FOUNDATIONS_PLAN.md) | P1 frame/tick instrumentation implemented; later phases pending | P2: repeatable benchmark/report tool and renderer counters; then baseline, clock correction, explicit world ownership, and simulation/presentation separation |
-| [Boating design](BOATING_PLAN.md) | Basin, Eriksberg, and river locations; timed S course, recordings, persistent bests, ghosts, replays, full-window presentation with modal `?` help, and quiet engine/water audio with a joyful repeating XM | [Handling/speed review](BOATING_PLAN.md#handling-and-speed-review--2026-10-19): research and first tuning pass implemented and user-accepted; optional closer-camera comparison next; score-loop and archipelago remain proposals |
+| [Boating design](BOATING_PLAN.md) | Basin, Eriksberg, and river locations; timed S course, recordings, persistent bests, ghosts, replays, full-window presentation with modal `?` help, quiet engine/water audio with a joyful repeating XM, and a user-accepted wind-driven Swedish ensign | [Boat visual improvement](BOATING_PLAN.md#boat-visual-improvement--saved-2026-10-20) saved for later: cabin/hull shapes and palette; optional closer-camera comparison, score-loop, and archipelago remain proposals |
 | [Boat physics](BOAT_PHYSICS_PLAN.md) | A–D3 plus accepted H1/H2 countersteering and speed view; T1–T5 load-driven banking and quicker recovery; user-accepted H3 firmer planing hull grip for stern-led turns, revision 4 | [H3 carving pass](BOAT_PHYSICS_PLAN.md#h3--stern-led-carving-feel-2026-10-20): feel accepted on 2026-10-20; exhaustive hands-on/platform checks unverified; optional trim/loading not started |
 | [Living city](LIVING_CITY_PLAN.md) | 01–05: city dressing, materials, berths, shared actors; travelling boats and a compact ferry brought forward; demo flock and 32 reactive boating gulls | 06 people/cyclists; varied road traffic, building activity, ferry polish, perched gulls, and final review remain |
 | [River / Älvsborgsbron](eriksberg/bridge/README.md) | Separate source/crop, navigable bridge blockout, blocking tower legs, and grounded road approaches | Bridge/shoreline/building refinement; human handling and camera review |
@@ -34,6 +34,7 @@ does not authorize advancing every plan. Use the requested track's scope and acc
 - [Water review](WATER_REVIEW.md): dated 04e baseline followed by implemented 04f/04g records.
 - [Generated boats and berths](HARBOR_BOATS.md): visual parameters, mooring/wave evaluation,
   contact envelopes, review commands, and the boundary for future playable boat variants.
+- [Player flag](BOAT_FLAG.md): breeze, apparent wind, cloth, playback, and close review commands.
 - [Harbor gulls](HARBOR_GULLS.md): boating flocks, social cues, vessel reactions, and review commands.
 - [Harbor traffic](HARBOR_TRAFFIC.md): travelling craft, ferry, routes, moving contacts, and visual wakes.
 - [Music workflow](MUSIC.md) and [FastTracker guide](../soundtrack/alternate/fasttracker/README.md):
@@ -46,6 +47,11 @@ does not authorize advancing every plan. Use the requested track's scope and acc
   to the current owners above. Dated progress entries retain results for their original revisions.
 
 ## Verification baseline
+
+Swedish flag, 2026-10-20, macOS: Debug build and all 77 CTests passed, including 20 GPU
+checks; seven affected checks passed again after shortening the staff. CPU/GPU captures
+and scripted desktop animation were checked. The user accepted the final flag;
+[the boating record](BOATING_PLAN.md#swedish-ensign--2026-10-20) owns details and limits.
 
 Handling/speed pass, 2026-10-19, macOS: Debug configure/build completed; all 69 CTests
 passed across the full run and targeted handling rerun, including 18 GPU checks. CPU/GPU

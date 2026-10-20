@@ -352,6 +352,7 @@ int main(int argc, char **argv)
     boat.water_settings = study_water(waves, current, crossing_wake, player_wake, eriksberg);
     int result = 1;
     BoatReplayRuns runs = { .ghost_visible = true, .export_path = export_path };
+    BoatReplayFlag playback_flag = { 0 }, ghost_flag = { 0 };
     if (replay_path) {
         if (!boat_replay_load(&runs.last, replay_path) || (waves && !runs.last.waves)) {
             fprintf(stderr, "Invalid or incompatible course replay: %s\n", replay_path);
@@ -389,6 +390,7 @@ int main(int argc, char **argv)
     }
     if (screenshot && runs.playing) {
         boat_replay_sample(runs.playing, time, &boat);
+        boat_replay_animate_flag(runs.playing, &boat, &playback_flag);
     } else if (screenshot) {
         for (int tick = 0; tick < (int)roundf(time / BOAT_STEP); ++tick)
             demo_step(&boat, tick, NULL);
@@ -398,6 +400,7 @@ int main(int argc, char **argv)
     float ghost_opacity = 0;
     if (course && !runs.playing && runs.opponent.complete
         && boat_replay_sample(&runs.opponent, boat.course.elapsed, &ghost)) {
+        boat_replay_animate_flag(&runs.opponent, &ghost, &ghost_flag);
         ghost_view = &ghost;
         ghost_opacity = .5f;
     }
@@ -627,8 +630,10 @@ int main(int argc, char **argv)
         double audio_started_at = boat_profile_time(true);
         Boat playback;
         const Boat *view = &boat;
-        if (runs.playing && boat_replay_sample(runs.playing, runs.replay_time, &playback))
+        if (runs.playing && boat_replay_sample(runs.playing, runs.replay_time, &playback)) {
+            boat_replay_animate_flag(runs.playing, &playback, &playback_flag);
             view = &playback;
+        }
         Vector2 flow = boat_water_current(view->water_settings, view->position);
         float water_speed = hypotf(view->velocity.x - flow.x, view->velocity.y - flow.y);
         BoatAudioInput audio_input = { .thrust = view->engine_response,
@@ -651,6 +656,7 @@ int main(int argc, char **argv)
             double fade
                 = 1 - fmax(0, boat.course.elapsed - runs.opponent.splits[BOAT_COURSE_GATES - 1]);
             if (fade > 0 && boat_replay_sample(&runs.opponent, boat.course.elapsed, &ghost)) {
+                boat_replay_animate_flag(&runs.opponent, &ghost, &ghost_flag);
                 ghost_view = &ghost;
                 ghost_opacity = .5f * (float)fade;
             }

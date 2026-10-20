@@ -232,8 +232,29 @@ static HullMotion hull_motion(const Boat *boat, Vector3 local)
     return motion;
 }
 
+static Transform3D flag_hull(const Boat *boat)
+{
+    return (Transform3D) { .position = { -boat->position.x, boat->height, boat->position.y },
+        .rotation = pose_rotation(hull_rotation(boat)),
+        .scale = { 1, 1, 1 } };
+}
+
+void boat_update_flag(Boat *boat)
+{
+    boat_flag_step(&boat->flag, flag_hull(boat),
+        (Vector3) { -boat->velocity.x, boat->vertical_velocity, boat->velocity.y }, boat->time);
+}
+
 void boat_player_pose(const Boat *boat, WaterfrontPlayerState *player)
 {
+    if (boat->flag.initialized) {
+        player->flag = boat->flag.surface;
+    } else {
+        BoatFlag flag = { 0 };
+        boat_flag_reset(&flag, flag_hull(boat),
+            (Vector3) { -boat->velocity.x, boat->vertical_velocity, boat->velocity.y }, boat->time);
+        player->flag = flag.surface;
+    }
     Matrix rotation = hull_rotation(boat);
     player->hull
         = (Transform3D) { .position = { -boat->position.x, boat->height, boat->position.y },
@@ -601,6 +622,7 @@ void boat_step(Boat *boat, float wheel_change, float throttle_change)
             boat->physical_wake_time = 0;
         }
     }
+    boat_update_flag(boat);
     water_step(boat);
     boat_course_step(&boat->course, previous, boat->position, BOAT_STEP);
 }
@@ -870,12 +892,16 @@ bool boat_draw_with_ghost(Renderer3D *renderer, Color *pixels, int width, int he
     renderer3d_draw_mesh(renderer, waterfront_player_hull_mesh(), player.hull);
     renderer3d_draw_mesh(renderer, waterfront_player_cabin_mesh(), player.cabin);
     renderer3d_draw_mesh(renderer, waterfront_player_engine_mesh(), player.engine);
+    Mesh3D flag_mesh = boat_flag_mesh(&player.flag);
+    renderer3d_draw_mesh(renderer, &flag_mesh, (Transform3D) { .scale = { 1, 1, 1 } });
     if (ghost && opacity > 0) {
         boat_player_pose(ghost, &player);
         renderer->ghost_opacity = opacity;
         renderer3d_draw_mesh(renderer, waterfront_player_hull_mesh(), player.hull);
         renderer3d_draw_mesh(renderer, waterfront_player_cabin_mesh(), player.cabin);
         renderer3d_draw_mesh(renderer, waterfront_player_engine_mesh(), player.engine);
+        flag_mesh = boat_flag_mesh(&player.flag);
+        renderer3d_draw_mesh(renderer, &flag_mesh, (Transform3D) { .scale = { 1, 1, 1 } });
         renderer->ghost_opacity = 0;
     }
     return true;

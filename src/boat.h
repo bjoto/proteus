@@ -29,6 +29,7 @@ typedef struct {
 } BoatWaterParticle;
 
 typedef struct {
+    BoatFlag flag; // Visual cloth only; never contributes forces to the hull.
     Vector2 position; // Water-plane X/Z coordinates.
     bool eriksberg;
     BoatWater water_settings;
@@ -60,6 +61,7 @@ typedef struct {
 void boat_reset(Boat *boat);
 void boat_reset_location(Boat *boat, bool eriksberg);
 void boat_reset_course(Boat *boat);
+void boat_update_flag(Boat *boat);
 void boat_player_pose(const Boat *boat, WaterfrontPlayerState *player);
 void boat_scene_frame(const Boat *boat, BoatCamera camera, WaterfrontSceneFrame *frame);
 // Advance one fixed tick. Inputs are adjustment rates in -1..1; zero centres the wheel and holds

@@ -1,6 +1,7 @@
 #ifndef PROTEUS_WATERFRONT_SCENE_H
 #define PROTEUS_WATERFRONT_SCENE_H
 
+#include "boat_flag.h"
 #include "boat_water.h"
 #include "renderer3d.h"
 #include "waterfront_harbor.h"
@@ -24,6 +25,7 @@ typedef struct {
 
 typedef struct {
     Transform3D hull, cabin, engine;
+    BoatFlagSurface flag;
     int particle_count;
     WaterfrontPlayerParticle particles[WATERFRONT_PLAYER_PARTICLES];
 } WaterfrontPlayerState;
@@ -62,6 +64,7 @@ typedef struct {
     WaterfrontPlayerState player;
     float ghost_opacity;
     Transform3D ghost_hull, ghost_cabin, ghost_engine;
+    BoatFlagSurface ghost_flag;
     float time;
     Transform3D bridge;
     Color bridge_color;

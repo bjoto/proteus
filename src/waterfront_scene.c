@@ -41,8 +41,8 @@ static void player_box(Vector3 *vertices, Triangle3D *triangles, int *count, Vec
 
 const Mesh3D *waterfront_player_hull_mesh(void)
 {
-    static Vector3 vertices[360];
-    static Triangle3D triangles[120];
+    static Vector3 vertices[432];
+    static Triangle3D triangles[144];
     static Mesh3D mesh = { vertices, triangles, 0 };
     if (mesh.triangle_count == 0) {
         const Vector2 outline[]
@@ -71,6 +71,16 @@ const Mesh3D *waterfront_player_hull_mesh(void)
             triangles[mesh.triangle_count++] = (Triangle3D) { { 0, v + 1, v }, colors[0] };
         }
         int count = (int)mesh.triangle_count;
+        // Stern ensign staff on the starboard quarter, clear of the steering outboard.
+        int staff_start = count * 3;
+        player_box(vertices, triangles, &count,
+            (Vector3) { .69f / 1.4f, (BOAT_FLAG_STAFF_BASE_Y + BOAT_FLAG_STAFF_HEIGHT * .5f) / 1.4f,
+                1.30f / 1.4f },
+            (Vector3) { .032f / 1.4f, BOAT_FLAG_STAFF_HEIGHT / 1.4f, .032f / 1.4f },
+            (Color) { 210, 172, 112, 255 });
+        // Rake aft around the foot; match the cloth hoist's physical attachment line.
+        for (int i = staff_start; i < count * 3; ++i)
+            vertices[i].z += .2f * (vertices[i].y - BOAT_FLAG_STAFF_BASE_Y / 1.4f);
         // Raised side treads and a little foredeck hatch sit clear of the deck surface.
         for (int side = -1; side <= 1; side += 2)
             player_box(vertices, triangles, &count, (Vector3) { side * .49f, .565f, -.05f },

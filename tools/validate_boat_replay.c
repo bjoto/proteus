@@ -15,6 +15,53 @@
     } while (0)
 
 // Prescribed route exercises the real swept gate timer and recorder without input/window timing.
+static int flag_playback(void)
+{
+    BoatReplaySample samples[41] = { 0 };
+    for (int i = 0; i < 41; ++i) {
+        float t = i * .1f;
+        samples[i] = (BoatReplaySample) { .at = t,
+            .world_time = t + 7,
+            .position = { t, -5 * t },
+            .velocity = { 1, -5 },
+            .heading = .2f * t,
+            .roll = .15f * sinf(t * 2),
+            .pitch = .03f * sinf(t) };
+    }
+    BoatReplay run = { .samples = samples, .count = 41 };
+    BoatReplayFlag fine = { 0 }, coarse = { 0 };
+    Boat a, b;
+    for (int tick = 0; tick < 240; ++tick) {
+        CHECK(boat_replay_sample(&run, tick * (double)BOAT_STEP, &a));
+        boat_replay_animate_flag(&run, &a, &fine);
+        if (tick % 2 == 0) {
+            CHECK(boat_replay_sample(&run, tick * (double)BOAT_STEP, &b));
+            boat_replay_animate_flag(&run, &b, &coarse);
+            CHECK(memcmp(&fine.flag, &coarse.flag, sizeof(BoatFlag)) == 0);
+        }
+    }
+    BoatReplayFlag seek = { 0 }, fresh = { 0 };
+    CHECK(boat_replay_sample(&run, 3.175, &a));
+    boat_replay_animate_flag(&run, &a, &seek);
+    BoatFlagSurface paused = a.flag.surface;
+    boat_replay_animate_flag(&run, &a, &seek);
+    CHECK(memcmp(&paused, &a.flag.surface, sizeof(paused)) == 0);
+    CHECK(boat_replay_sample(&run, .2, &a));
+    boat_replay_animate_flag(&run, &a, &seek);
+    CHECK(boat_replay_sample(&run, 3.175, &a));
+    CHECK(boat_replay_sample(&run, 3.175, &b));
+    boat_replay_animate_flag(&run, &a, &seek);
+    boat_replay_animate_flag(&run, &b, &fresh);
+    CHECK(memcmp(&a.flag, &b.flag, sizeof(BoatFlag)) == 0);
+    WaterfrontPlayerState player = { 0 };
+    boat_player_pose(&a, &player);
+    for (int row = 0; row < BOAT_FLAG_ROWS; ++row)
+        CHECK(Vector3Distance(
+                  player.flag.points[row * BOAT_FLAG_COLS], boat_flag_attachment(player.hull, row))
+            < .00001f);
+    return 0;
+}
+
 static int route(BoatReplay *recording, BoatReplayRuns *runs, int ticks, bool waves)
 {
     const Vector2 points[] = { { 0, 37 }, { 22, 7 }, { -22, -23 }, { 0, -55 } };
@@ -266,6 +313,7 @@ static int banked_course(const char *directory)
 
 int main(int argc, char **argv)
 {
+    CHECK(flag_playback() == 0);
     CHECK(argc == 2);
     CHECK(ghost_rendering() == 0);
     CHECK(MakeDirectory(argv[1]) == 0);

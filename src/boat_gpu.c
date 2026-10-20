@@ -69,6 +69,7 @@ void boat_gpu_draw_with_ghost(
         frame.ghost_hull = pose.hull;
         frame.ghost_cabin = pose.cabin;
         frame.ghost_engine = pose.engine;
+        frame.ghost_flag = pose.flag;
     }
     RenderTexture2D target = gpu->supersampled.id ? gpu->supersampled : gpu->target;
     Mesh original_water = gpu->scene.water;

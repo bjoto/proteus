@@ -26,6 +26,17 @@ BoatReplaySample boat_replay_pose(const Boat *boat);
 // Called after each physics tick, with the pose immediately before that tick.
 void boat_replay_record(BoatReplay *run, BoatReplaySample before, const Boat *boat);
 bool boat_replay_sample(const BoatReplay *run, double at, Boat *boat);
+// Caller-owned visual history, separate for playback and ghost. Zero-initialize.
+// Continuous playback advances at fixed ticks; jumps reconstruct at most one second.
+// Seek cloth is an approximation, not additional recorded physics or a file-format change.
+typedef struct {
+    const BoatReplay *run;
+    const BoatReplaySample *samples;
+    double start_time;
+    BoatFlag flag;
+    int tick;
+} BoatReplayFlag;
+void boat_replay_animate_flag(const BoatReplay *run, Boat *boat, BoatReplayFlag *cache);
 bool boat_replay_copy(BoatReplay *destination, const BoatReplay *source);
 void boat_replay_destroy(BoatReplay *run);
 // Versioned portable text; load preserves destination on failure, save atomically replaces path.

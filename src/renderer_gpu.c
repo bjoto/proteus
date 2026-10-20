@@ -168,6 +168,31 @@ static bool build_source_mesh(Mesh *mesh, const Mesh3D *source)
     return mesh->vaoId != 0;
 }
 
+static void update_flag_mesh(Mesh *mesh, const BoatFlagSurface *surface)
+{
+    Mesh3D source = boat_flag_mesh(surface);
+    if (!mesh->vaoId) {
+        if (!build_source_mesh(mesh, &source))
+            return;
+    }
+    for (size_t i = 0; i < source.triangle_count; ++i) {
+        const Triangle3D *triangle = &source.triangles[i];
+        Vector3 a = source.vertices[triangle->vertices[0]];
+        Vector3 b = source.vertices[triangle->vertices[1]];
+        Vector3 c = source.vertices[triangle->vertices[2]];
+        Vector3 normal
+            = Vector3Normalize(Vector3CrossProduct(Vector3Subtract(b, a), Vector3Subtract(c, a)));
+        for (int j = 0; j < 3; ++j) {
+            size_t v = i * 3 + j;
+            memcpy(
+                &mesh->vertices[v * 3], &source.vertices[triangle->vertices[j]], sizeof(Vector3));
+            memcpy(&mesh->normals[v * 3], &normal, sizeof(Vector3));
+        }
+    }
+    UpdateMeshBuffer(*mesh, 0, mesh->vertices, mesh->vertexCount * 3 * (int)sizeof(float), 0);
+    UpdateMeshBuffer(*mesh, 2, mesh->normals, mesh->vertexCount * 3 * (int)sizeof(float), 0);
+}
+
 typedef enum {
     CITY_SURFACE_FLAT,
     CITY_SURFACE_FACADE,
@@ -1064,6 +1089,9 @@ static void draw_ghost(const WaterfrontGpuScene *scene, Material material,
     draw_colored_mesh(scene->player_hull, material, frame->ghost_hull, WHITE, true);
     draw_colored_mesh(scene->player_cabin, material, frame->ghost_cabin, WHITE, true);
     draw_colored_mesh(scene->player_engine, material, frame->ghost_engine, WHITE, true);
+    if (scene->ghost_flag.vaoId)
+        draw_colored_mesh(
+            scene->ghost_flag, material, (Transform3D) { .scale = { 1, 1, 1 } }, WHITE, true);
     float zero = 0;
     SetShaderValue(material.shader, opacity, &zero, SHADER_UNIFORM_FLOAT);
 }
@@ -1127,6 +1155,9 @@ static void draw_life(const WaterfrontGpuScene *scene, Material material,
         draw_colored_mesh(scene->player_hull, material, p->hull, WHITE, false);
         draw_colored_mesh(scene->player_cabin, material, p->cabin, WHITE, false);
         draw_colored_mesh(scene->player_engine, material, p->engine, WHITE, false);
+        if (scene->player_flag.vaoId)
+            draw_colored_mesh(
+                scene->player_flag, material, (Transform3D) { .scale = { 1, 1, 1 } }, WHITE, false);
         for (int i = 0; i < p->particle_count; ++i) {
             // Surface foam receives shadows/depth but does not cast a solid slab shadow.
             // Airborne spray participates in both the reflection and shadow passes.
@@ -1422,6 +1453,10 @@ static void draw_water(WaterfrontGpuScene *scene, const WaterfrontSceneFrame *fr
 void waterfront_gpu_scene_draw(
     WaterfrontGpuScene *scene, const WaterfrontSceneFrame *frame, int width, int height)
 {
+    if (frame->player_active)
+        update_flag_mesh(&scene->player_flag, &frame->player.flag);
+    if (frame->ghost_opacity > 0)
+        update_flag_mesh(&scene->ghost_flag, &frame->ghost_flag);
     Camera3D camera = { .position = frame->camera.position,
         .target = frame->camera.target,
         .up = frame->camera.up,
@@ -1557,6 +1592,10 @@ void waterfront_gpu_scene_destroy(WaterfrontGpuScene *scene)
         UnloadMesh(scene->harbor_pontoon);
     if (scene->harbor_quay.vaoId)
         UnloadMesh(scene->harbor_quay);
+    if (scene->player_flag.vaoId)
+        UnloadMesh(scene->player_flag);
+    if (scene->ghost_flag.vaoId)
+        UnloadMesh(scene->ghost_flag);
     if (scene->player_hull.vaoId != 0)
         UnloadMesh(scene->player_hull);
     if (scene->player_cabin.vaoId != 0)
