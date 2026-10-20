@@ -1,4 +1,5 @@
 #include "boat_replay.h"
+#include "raymath.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -173,6 +174,94 @@ static int playback_controls(const BoatReplay *run)
     return 0;
 }
 
+// Freely simulated banked S-course: the controller supplies inputs only.
+static int banked_course(const char *directory)
+{
+    Boat b;
+    boat_reset_course(&b);
+    BoatReplay live = { 0 }, loaded = { 0 };
+    float peak = 0;
+    for (int tick = 0; tick < 120 * 120 && !live.complete; ++tick) {
+        int gate = b.course.next_gate;
+        CHECK(gate < BOAT_COURSE_GATES);
+        Vector2 target = boat_course_gates[gate].centre;
+        target.y -= 2;
+        Vector2 delta = Vector2Subtract(target, b.position);
+        float error = remainderf(atan2f(delta.x, -delta.y) - b.heading, 2 * PI);
+        float wheel = Clamp(1.8f * error - 1.2f * b.yaw_velocity, -.8f, .8f);
+        float throttle = fabsf(error) > .5f ? .25f : .45f;
+        BoatReplaySample before = boat_replay_pose(&b);
+        boat_step(&b, Clamp((wheel - b.wheel) / BOAT_STEP, -1, 1),
+            Clamp((throttle - b.throttle) / (.5f * BOAT_STEP), -1, 1));
+        boat_replay_record(&live, before, &b);
+        if (live.count && !live.complete) {
+            Boat sampled;
+            CHECK(boat_replay_sample(&live, b.course.elapsed, &sampled));
+            CHECK(fabsf(sampled.roll - b.roll) < .000002f
+                && fabsf(sampled.pitch - b.pitch) < .000002f);
+            WaterfrontPlayerState actual = { 0 }, recorded = { 0 };
+            boat_player_pose(&b, &actual);
+            boat_player_pose(&sampled, &recorded);
+            CHECK(Vector3Distance(actual.engine.position, recorded.engine.position) < .00002f);
+        }
+        peak = fmaxf(peak, fabsf(b.roll));
+        CHECK(fabsf(b.position.x) + 3 < BOAT_BASIN_HALF_X
+            && fabsf(b.position.y) + 3 < BOAT_BASIN_HALF_Z);
+    }
+    printf("Banked course complete=%d gates=%d peak=%.6f position=%.3f,%.3f\n", live.complete,
+        b.course.next_gate, peak * RAD2DEG, b.position.x, b.position.y);
+    CHECK(live.complete && peak > 5 * DEG2RAD);
+    char path[2048];
+    CHECK(snprintf(path, sizeof(path), "%s/banked.run", directory) < (int)sizeof(path));
+    CHECK(boat_replay_save(&live, path) && boat_replay_load(&loaded, path));
+    CHECK(loaded.count == live.count);
+    BoatReplayRuns transport = { 0 };
+    CHECK(boat_replay_play(&transport, &loaded));
+    transport.paused = true;
+    // Exact samples and midpoints, then backward seeking through the same banked poses.
+    for (int direction = 0; direction < 2; ++direction)
+        for (size_t j = 0; j + 1 < live.count; ++j) {
+            size_t i = direction ? live.count - 2 - j : j;
+            for (int half = 0; half <= 1; ++half) {
+                double at = live.samples[i].at;
+                if (half)
+                    at = (at + live.samples[i + 1].at) * .5;
+                Boat original, replay, ghost;
+                CHECK(boat_replay_sample(&live, at, &original));
+                boat_replay_seek(&transport, at);
+                boat_replay_advance(&transport, .1, true);
+                CHECK(transport.paused && transport.replay_time == at);
+                CHECK(boat_replay_sample(transport.playing, transport.replay_time, &replay));
+                CHECK(boat_replay_sample(&loaded, at, &ghost));
+                float expected = half ? (live.samples[i].roll + live.samples[i + 1].roll) * .5f
+                                      : live.samples[i].roll;
+                CHECK(fabsf(replay.roll - expected) < .000002f);
+                CHECK(fabsf(replay.pitch - original.pitch) < .000002f);
+                CHECK(fabsf(replay.roll - original.roll) < .000002f);
+                CHECK(replay.turn_roll_load == 0 && replay.roll_velocity == 0);
+                WaterfrontPlayerState a = { 0 }, c = { 0 }, g = { 0 };
+                boat_player_pose(&original, &a);
+                boat_player_pose(&replay, &c);
+                boat_player_pose(&ghost, &g);
+                CHECK(Vector3Distance(a.engine.position, c.engine.position) < .00002f);
+                CHECK(Vector3Distance(c.cabin.position, g.cabin.position) < .000001f);
+                CHECK(Vector3Distance(c.hull.rotation, g.hull.rotation) < .000001f);
+            }
+        }
+    // Physical stress angles fit the existing file bounds; arbitrary and nonfinite angles fail.
+    loaded.samples[1].roll = 29.7f * DEG2RAD;
+    CHECK(boat_replay_save(&loaded, path));
+    loaded.samples[1].roll = PI;
+    CHECK(!boat_replay_save(&loaded, path));
+    loaded.samples[1].roll = NAN;
+    CHECK(!boat_replay_save(&loaded, path));
+    CHECK(boat_replay_save(&live, path));
+    boat_replay_runs_destroy(&transport);
+    boat_replay_destroy(&live);
+    boat_replay_destroy(&loaded);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     CHECK(argc == 2);
@@ -186,6 +275,7 @@ int main(int argc, char **argv)
     CHECK(snprintf(saved_best, sizeof(saved_best), "%s/course-calm-physics%d.run", argv[1],
               BOAT_PHYSICS_REVISION)
         > 0);
+    CHECK(banked_course(argv[1]) == 0);
     BoatReplay run = { 0 }, loaded = { 0 }, waves = { 0 };
     CHECK(route(&run, NULL, 480, false) == 0);
     CHECK(run.complete && !run.failed && run.count > 1000);
@@ -238,9 +328,14 @@ int main(int argc, char **argv)
     // An otherwise valid previous-handling run cannot become an opponent or personal best.
     CHECK(boat_replay_save(&run, invalid));
     FILE *old = fopen(invalid, "r+");
-    CHECK(old && fseek(old, 16, SEEK_SET) == 0 && fputc('1', old) != EOF && fclose(old) == 0);
+    CHECK(old && fseek(old, 16, SEEK_SET) == 0 && fputc('2', old) != EOF && fclose(old) == 0);
     BoatReplaySample *retained_samples = loaded.samples;
     CHECK(!boat_replay_load(&loaded, invalid) && loaded.samples == retained_samples);
+    old = fopen(invalid, "r");
+    int old_version, old_course, old_physics;
+    CHECK(old && fscanf(old, "PROTEUS_RUN %d %d %d", &old_version, &old_course, &old_physics) == 3);
+    CHECK(old_physics == 2 && fclose(old) == 0); // Rejection leaves the old file intact.
+
     CHECK(boat_replay_save(&run, invalid));
     FILE *trailer = fopen(invalid, "a");
     CHECK(trailer && fputs("garbage", trailer) >= 0 && fclose(trailer) == 0);

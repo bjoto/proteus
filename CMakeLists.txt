@@ -131,8 +131,11 @@ add_executable(validate_boat_replay tools/validate_boat_replay.c src/boat.c src/
 add_executable(boat_water_review tools/boat_water_review.c src/boat.c src/renderer3d.c
   src/boat_gpu.c src/renderer_gpu.c)
 add_dependencies(boat_water_review proteus_assets)
+add_executable(boat_banking_review tools/boat_banking_review.c src/boat.c src/renderer3d.c
+  src/boat_gpu.c src/renderer_gpu.c)
+add_dependencies(boat_banking_review proteus_assets)
 foreach(target validate_boat validate_boat_banking validate_boat_profile validate_boat_environment
-    validate_boat_replay boat_water_review)
+    validate_boat_replay boat_water_review boat_banking_review)
   target_sources(${target} PRIVATE ${PROTEUS_BOAT_WORLD_SOURCES})
   target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
   target_link_libraries(${target} PRIVATE raylib)
@@ -142,6 +145,7 @@ foreach(target validate_boat validate_boat_banking validate_boat_profile validat
 endforeach()
 add_test(NAME boat_handling COMMAND validate_boat)
 add_test(NAME boat_banking COMMAND validate_boat_banking)
+add_test(NAME boat_banking_presentation COMMAND boat_banking_review)
 add_test(NAME boat_profile_records COMMAND validate_boat_profile)
 add_test(NAME boat_environment COMMAND validate_boat_environment)
 add_test(NAME boat_player_wake_screenshot COMMAND boat_study --renderer cpu --player-wake --time 9
@@ -308,8 +312,8 @@ target_compile_options(harbor_review PRIVATE
 # Shared generated boats and berth evaluation feed all waterfront consumers.
 foreach(target proteus gpu_fixture validate_boat validate_boat_banking validate_boat_profile
     validate_boat_environment validate_boat_replay
-    boat_water_review waterfront_storyboard validate_waterfront_actors validate_city_dressing
-    harbor_review)
+    boat_water_review boat_banking_review waterfront_storyboard validate_waterfront_actors
+    validate_city_dressing harbor_review)
   target_sources(${target} PRIVATE ${PROTEUS_HARBOR_SOURCES})
 endforeach()
 foreach(target proteus gpu_fixture waterfront_storyboard validate_waterfront_actors
@@ -388,6 +392,9 @@ if(PROTEUS_GPU_TESTS)
   set_tests_properties(boat_environment_gpu_screenshot PROPERTIES LABELS "gpu" RUN_SERIAL TRUE)
   add_test(NAME boat_environment_gpu COMMAND validate_boat_environment --gpu)
   set_tests_properties(boat_environment_gpu PROPERTIES LABELS "gpu" RUN_SERIAL TRUE)
+  add_test(NAME boat_banking_gpu COMMAND boat_banking_review --gpu
+    --output ${CMAKE_CURRENT_BINARY_DIR}/banking-gpu)
+  set_tests_properties(boat_banking_gpu PROPERTIES LABELS "gpu" RUN_SERIAL TRUE)
   add_test(NAME gpu_water_surface COMMAND boat_water_review --check-gpu)
   set_tests_properties(gpu_water_surface PROPERTIES LABELS "gpu" RUN_SERIAL TRUE)
   add_test(NAME boat_ghost_gpu_screenshot COMMAND boat_study --gpu-aa

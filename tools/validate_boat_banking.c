@@ -1,4 +1,5 @@
 #include "boat.h"
+#include "boat_banking_fixture.h"
 #include "boat_map.h"
 #include "raymath.h"
 #include "waterfront_harbor.h"
@@ -204,24 +205,13 @@ static int validate_free(FILE *report)
         = { "straight", "left", "right", "countersteer", "coast", "reverse", "stop" };
     for (int scenario = 0; scenario < 7; ++scenario) {
         Boat boat;
-        boat_reset(&boat);
-        boat.position.y = scenario == 5 ? -40 : 40;
-        if (scenario == 4 || scenario == 6)
-            boat.velocity.y = -12;
+        banking_fixture_reset(&boat, scenario);
         Boat repeat = boat;
         float peak_roll = 0, peak_rate = 0, peak_load = 0, sum_roll = 0;
-        int ticks = scenario == 0 ? 720 : scenario == 5 ? 600 : 960;
+        int ticks = banking_fixture_ticks(scenario);
         for (int tick = 0; tick < ticks; ++tick) {
-            float wheel = scenario == 1 ? -1
-                : scenario == 2         ? 1
-                : scenario == 3         ? (tick < 480 ? 1 : -1)
-                : scenario == 4         ? .5f
-                                        : 0;
-            float throttle = scenario == 5 ? -1
-                : scenario == 4            ? 0
-                : scenario == 6            ? (tick < 240 ? -1 : 0)
-                                           : 1;
-            boat.throttle = repeat.throttle = throttle;
+            float wheel = banking_fixture_input(&boat, scenario, tick);
+            banking_fixture_input(&repeat, scenario, tick);
             CHECK(open_water(&boat));
             Boat before = boat;
             boat_step(&boat, wheel, 0);

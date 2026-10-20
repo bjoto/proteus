@@ -1,7 +1,7 @@
 # Turn banking for the playable boat
 
-Status, 2026-10-20: **T1–T3 implemented: load-driven physical roll, broader dynamics coverage, handling revision 3**.
-Next task: T4, presentation/replay review fixtures. T1–T4 deliver the requested feature; T5 is its playback/tuning gate.
+Status, 2026-10-20: **T1–T4 implemented: load-driven physical roll, dynamics and presentation/replay fixtures, handling revision 3**.
+Next task: T5, measured tuning and playback/feel review. T1–T4 deliver the requested feature; T5 is its playback/tuning gate.
 The [physics plan](BOAT_PHYSICS_PLAN.md) owns the overall handling track; this document
 owns the banking specification and task evidence. Optional trim/loading remains separate.
 
@@ -181,7 +181,7 @@ requested. Never advance the foundations, trim/loading, or harbor tracks as part
 | T1 | Baseline traces and coordinate/load fixtures | — | Complete (2026-10-20; evidence below) |
 | T2 | Load-driven roll moment, filter, recovery term and compatibility revision | T1 | Complete (2026-10-20; evidence below) |
 | T3 | Full dynamics/environment regression coverage | T2 | Complete (2026-10-20; evidence below) |
-| T4 | Presentation/replay review fixtures and documentation | T3 | Pending |
+| T4 | Presentation/replay review fixtures and documentation | T3 | Complete (2026-10-20; evidence below) |
 | T5 | Measured tuning, playback and user feel review | T4 | Pending |
 
 ### T1 — Make the behavior measurable
@@ -332,12 +332,12 @@ commands/platform/results; report/capture paths; manual/user review; known limit
 Current next-task prompt for the implementation model:
 
 > Read AGENTS.md, docs/BOAT_TURN_BANKING_PLAN.md and the working contract in
-> docs/BOAT_PHYSICS_PLAN.md. Implement only T4 from the banking plan; read the T1–T3 handoffs
+> docs/BOAT_PHYSICS_PLAN.md. Implement only T5 from the banking plan; read the T1–T4 handoffs
 > and baseline artifacts. Preserve unrelated edits and accepted horizontal handling.
-> Complete its presentation/replay checks and documentation handoff, then stop before T5.
+> Complete its measured tuning/playback review and documentation handoff; distinguish user acceptance.
 > Commit only if requested; do not push.
 
-For later tasks, replace T4 with the requested task or explicit range. Read prerequisite
+For later tasks, use the requested task or explicit range. Read prerequisite
 handoffs and current source before assuming names or physics revision numbers are unchanged.
 
 ### Planning evidence — 2026-10-20
@@ -665,3 +665,101 @@ execution, human banking acceptance, exhaustive wave/contact coverage and genera
 outside these fixtures remain unverified. High measured roll rates and the narrow own-wake
 margin below 30° remain explicit T5 tuning/review concerns. T3 is complete; implement only
 T4 next, preserving this evidence and the accepted horizontal handling baseline.
+
+### T4 handoff — 2026-10-20
+
+Starting revision: `79c32cd`, clean worktree, macOS Apple Silicon. The user authorized
+continuing and committing each step. T4 implements presentation/replay review tooling;
+T5 is next. No banking coefficients, horizontal handling, camera settings, physics revision
+or replay layout changed. Hands-on banking acceptance remains pending.
+
+`tools/boat_banking_fixture.h` now owns the existing T1/T3 free-drive reset, tick counts and
+inputs, shared by the dynamics validator and new `boat_banking_review`. The new tool checks
+every driven tick and selects deterministic straight, established left/right, S reversal,
+coast peak and gentle-wave/turn peak snapshots. The coast and wave captures select the
+largest absolute roll over the existing eight-second drive; they are peaks of these named
+fixtures, not the longer T3 stress matrix. All drives stay inside open basin water.
+
+| Snapshot | Tick | Roll | Roll rate |
+| --- | --- | --- | --- |
+| Straight | 720 | 0° | 0°/s |
+| Left | 960 | -12.418953° | -0.000051°/s |
+| Right | 960 | 12.418953° | 0.000048°/s |
+| S reversal | 600 | 3.504119° | -70.072227°/s |
+| Coast peak | 269 | 7.488263° | 0.010200°/s |
+| Gentle-wave/turn peak | 495 | 28.049162° | 6.270194°/s |
+
+Independent elementary rotations compare transformed hull/cabin/outboard probes within
+0.00003 world units, including headings 0, ±π/2, near ±π, and ±29° roll. Every driven tick
+also checks the shared scene's upright camera. Both renderers consume this shared pose;
+this is numerical pose agreement, not pixel identity or a GPU vertex readback claim.
+New spray births are compared with rolled rail origins, the queried waterline and an
+independent symmetric derivative of attachment height (lift tolerance 0.0002). This exposed
+one concrete attachment error: calm-water spray inherited a small-angle vertical-velocity
+estimate, whereas displaced-water spray already inherited full hull attachment velocity.
+Both now use `motion.velocity.y`; displaced water retains its existing entry boost.
+Floating foam/wash continue following water, and spray's existing horizontal emission
+recipe is preserved. Particles do not feed the physical solver.
+
+The existing replay validator now drives a complete S course with ordinary steering/throttle
+inputs, without prescribed position/velocity/attitude. It reaches all four gates, peaks at
+12.348737° bank, and writes `build/replay-tests/banked.run` using the normal course recorder.
+Live physical poses match recorded end-of-tick samples, excluding the interpolated finish.
+Reloaded sample and midpoint roll agree with independently calculated expected roll within
+0.000002 rad; original/reloaded attachment positions agree within 0.00002 world units.
+The checks traverse forward and backward while paused, compare direct ghost sampling with
+transport replay, and verify sampled playback has no roll-rate/filter reconstruction.
+The original fractional gate recording and transport checks remain intact.
+
+Replay validation previously accepted any finite pitch/roll up to 100000 radians. The same
+save/load validator now bounds both to ±π/2: this admits the measured <30° physical stress
+excursions with margin while rejecting inverted/arbitrary attitudes. Tests save a 29.7°
+sample and reject π/NaN without replacing the valid output. Handling revision remains 3,
+serialized format remains 1. The previous-handling rejection fixture now uses revision 2
+and explicitly rereads the rejected source header to verify preservation. Existing
+revision-derived best-path and destination-preservation behavior is retained; no personal
+best paths were used for this review.
+
+Reproduce from the repository root:
+
+```sh
+./build/boat_banking_review
+./build/boat_banking_review --output build/banking-review/t4-cpu
+./build/boat_banking_review --gpu --output build/banking-review/t4-gpu
+./build/validate_boat_replay build/banking-review/t4-replay
+./build/validate_boat_banking --report build/banking-review/t4.csv \
+  > build/banking-review/t4-measurements.txt
+cmp build/banking-review/t3.csv build/banking-review/t4.csv
+./build/boat_study --renderer cpu --replay build/replay-tests/banked.run --time 5 \
+  --camera-distance 8 --camera-height 4 --screenshot build/banking-review/t4-replay-cpu.png
+./build/boat_study --gpu-aa --replay build/replay-tests/banked.run --time 5 \
+  --camera-distance 8 --camera-height 4 --screenshot build/banking-review/t4-replay-gpu.png
+./build/boat_study --demo --location eriksberg --gpu-aa --waves --frames 600
+```
+
+CPU/GPU output directories each contain 19 native 320x200 images: six fixtures in default,
+close rear (8/4) and offset side/rear cameras, plus a banked ghost view. Representative
+straight/default, left/rear, right/side, reversal/side, coast/default, wave-peak/rear and ghost
+pairs were inspected, along with the reloaded course frames above. Hull/cabin/outboard and
+spray/waterline remain coherent; GPU reflections/shadows follow the rolled craft and the
+camera keeps its upright view. CPU reference lighting/water differs by design. These are
+sampled presentation checks, not exhaustive occlusion or human comfort acceptance.
+The full 105,360-row dynamics report matches the preserved T3 report byte for byte.
+
+The 600-frame Eriksberg GPU+AA wave demo exited successfully with desktop graphics access:
+scripted motion/rendering/asset-loading smoke only, not hands-on controls, subjective audio
+review or user acceptance. An initial sandboxed GPU capture stalled on macOS desktop
+services, was stopped, and succeeded with desktop access. No Instruments run was warranted
+by an observed performance issue. Windows/browser execution, human control/seek comfort,
+and high-rate/narrow-stability-margin tuning remain unverified; T5 owns those review gates.
+
+Verification, 2026-10-20: Debug configure and full build passed without project compiler
+warnings (existing raylib macOS OpenGL deprecation configure notice). `PROTEUS_GPU_TESTS=ON`
+was preserved. Full desktop CTest passed **73/73**, including **19 GPU-labelled tests**,
+in 168.24 s (`build/banking-review/ctest-t4-desktop.log`). The new headless presentation check
+and GPU capture fixture passed; the final live-versus-recorded end-of-tick replay assertions
+also passed in a focused replay rerun. Formatting, changed Markdown file targets and
+`git diff --check` passed. Logs, CSVs, replay fixtures and captures remain ignored under
+`build/`. T4 is complete; stop before T5. T5 owns measured tuning, the full hands-on location/
+controls/replay checklist, and user banking acceptance; the high transient roll rates and
+own-wake margin recorded in T3 remain open review concerns.

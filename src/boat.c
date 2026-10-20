@@ -456,10 +456,8 @@ static void water_step(Boat *boat)
                                 + .03f,
                             origin.y),
                         .lift = (2.0f + variation * 2 + fminf(fabsf(slip) * 0.25f, 1.5f)) * strength
-                            + (boat_water_displaced(boat->water_settings)
-                                    ? motion.velocity.y + boat->wave_spray
-                                    : boat->vertical_velocity + .4f * boat->pitch_velocity
-                                        - side * 1.05f * boat->roll_velocity),
+                            + motion.velocity.y
+                            + (boat_water_displaced(boat->water_settings) ? boat->wave_spray : 0),
                         .lifetime = 1.1f,
                         .size = (.22f + variation * .18f) * Lerp(1, 1.3f, boat->planing) * strength,
                         .spray = true });

@@ -183,6 +183,9 @@ static bool valid(const BoatReplay *run)
         for (size_t j = 0; j < sizeof(values) / sizeof(values[0]); ++j)
             if (!isfinite(values[j]) || fabsf(values[j]) > 100000)
                 return false;
+        // Pose recordings allow stress excursions, but not inverted/arbitrary attitudes.
+        if (fabsf(s.roll) > PI / 2 || fabsf(s.pitch) > PI / 2)
+            return false;
         if (!isfinite(s.at)
             || (i
                 && (s.at <= run->samples[i - 1].at

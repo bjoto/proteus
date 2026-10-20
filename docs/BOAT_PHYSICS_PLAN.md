@@ -5,12 +5,13 @@ Status, 2026-10-20: A1–D3 implemented; the user-requested
 player-wake motion are provisionally accepted by the user, with continued evaluation
 over time. Current/scripted-wake options now work in all locations; player-path wakes are
 enabled by default in free boating, with `--no-player-wake` available for calm practice.
-Next physics task: T4 in the [turn-banking plan](BOAT_TURN_BANKING_PLAN.md). T1 supplies
+Next physics task: T5 in the [turn-banking plan](BOAT_TURN_BANKING_PLAN.md). T1 supplies
 baseline/load fixtures; T2 adds filtered lateral-load roll, planing dependence, and passive
 large-angle recovery through the shared physical hull. Handling revision is now 3;
 revision-2 best files remain preserved. T3 adds broader dynamics coverage and stronger passive
-recovery beyond 25°; presentation/replay review and feel tuning remain T4–T5, with user
-banking acceptance pending.
+recovery beyond 25°. T4 adds shared deterministic capture/measurement inputs, attachment and
+spray checks, and a physically driven banked course recording/seek fixture. Measured tuning
+and playback/feel review remain T5, with user banking acceptance pending.
 Preserve the accepted horizontal handling baseline. Windows CI follow-up remains tracked
 in the [Windows build guide](WINDOWS_BUILD.md).
 Closer camera comparisons remain an optional design experiment; E1/E2 have not started.

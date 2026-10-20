@@ -101,8 +101,17 @@ encoding, and the implemented surface pass are in [the water review](docs/WATER_
 The hull banks into established forward turns according to lateral load: speed and turn
 tightness both matter. Roll inertia carries the lean through steering changes and coasting;
 waves continue moving the same hull, while the chase camera keeps a level horizon.
-Presentation/replay review and feel tuning remain pending in the
+Deterministic presentation/replay fixtures cover banked poses and paused seeking; measured
+tuning and hands-on feel acceptance remain pending in the
 [turn-banking plan](docs/BOAT_TURN_BANKING_PLAN.md).
+
+Capture the shared banking measurement fixtures at native 320x200 with
+`./build/boat_banking_review --output build/banking-review/cpu`; add `--gpu` for GPU+AA
+captures with desktop graphics access. Each fixture includes default, close rear and side
+views. Running without options performs the headless attachment/spray/horizon checks.
+The replay validator also writes a physically driven banked S-course under its test directory;
+`./build/boat_study --replay build/replay-tests/banked.run` plays it after CTest
+(use the configured replay test directory if different).
 
 Run `./build/boat_study --course` for the first timed S course in the basin. Cross the
 start line northbound to start the clock, pass the two offset buoy gates in order, then cross
