@@ -103,7 +103,7 @@ static void draw_help(bool course, bool eriksberg)
         "+/-: zoom | PgUp/PgDn: height",
         "C: reset camera | F3: profiler",
 #if defined(__EMSCRIPTEN__)
-        "Esc: leave fullscreen | Page Restart: new game",
+        "Esc: leave fullscreen | Reload page: new game",
 #else
         "Esc: close window",
 #endif

@@ -595,8 +595,10 @@ cache the previous HTML after a deployment.
 
 A desktop browser with WebAssembly, WebGL 2, and a keyboard is required. The canvas uses
 nearest-neighbour scaling in multiples of the 320x200 scene, with a 320x200 minimum.
-Fullscreen is available through the page button; Escape closes help or leaves fullscreen.
-Use Restart to select another location. Audio requires the Play gesture. Browser throttling
+Press **PLAY** to start with sound. The compact **Settings** toggle holds location, waves,
+smooth edges, and fullscreen; smooth edges and fullscreen default to on. The launcher disappears during play; the game fills
+the browser using integer scaling. Press `?` for the built-in controls; Escape closes help
+or leaves fullscreen. Reload the page to choose another location. Browser throttling
 can affect animation/audio in background tabs. Bests are local to this browser and site,
 can be lost when storage is cleared or unavailable, and do not sync with native saves.
 Local recording import/export and native screenshot/profiling commands are not exposed by

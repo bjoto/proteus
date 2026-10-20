@@ -8,9 +8,16 @@ HTTP serving, and a separate GitHub Pages workflow. The workflow now builds and 
 `v*` tag pushes, alongside the existing native release workflow. Ordinary branch pushes do
 not deploy; manual deployment is available from `main` or a `v*` tag. Native releases keep
 their existing behavior. The user confirmed local startup works after SDK activation.
-Next task: enable the GitHub Actions Pages source, allow version tags in the `github-pages`
-environment if restricted, commit/push the web support, and push the next version tag.
-Actual Pages deployment and full browser handling/music acceptance remain pending.
+The user confirmed the deployed web game plays well on 2026-10-20.
+The compact launch page keeps the game screenshot, a PLAY button, a settings toggle, and
+OpenStreetMap attribution. Smooth edges and fullscreen default to on; location, waves,
+and both presentation settings are available in the collapsed panel. All page UI hides
+during play. In-game `?` remains the sole controls guide; reload
+returns to location selection. A bundled game capture supplies the launch-page preview.
+The visible raylib license link is removed; its license file remains distributed. Map
+attribution stays on the launcher and in the mapped-location game help.
+Next: review the new launcher in the deployed build; Safari/Firefox, physical GPU
+performance, and human audio review remain outstanding.
 
 ## Build and deployment
 
@@ -55,7 +62,8 @@ sources remain C17. Its POSIX clock calls are enabled through `_POSIX_C_SOURCE=2
   texel fetches. Antialiasing is optional because it shades sixteen times as many pixels.
 - **Window:** the browser keeps a fixed 960x600 drawing buffer, containing the 320x200 scene,
   and scales it to whole scene-pixel multiples. This avoids raylib's web resize handler,
-  which otherwise takes the entire browser viewport including page controls. Escape does
+  which otherwise takes over canvas sizing. The launcher hides before the game starts;
+  the canvas then fits the full viewport. Fullscreen is selected before launch. Escape does
   not terminate the browser game. All other simulation/input/audio paths remain shared.
 - **Assets:** preload only `a-little-boat.xm`, textures, and the used shaders into `/assets`.
   `boat_asset_path()` already resolves that path under Wasm. Geometry is compiled from C
@@ -142,3 +150,57 @@ remain unverified; no tag was created or pushed during this change.
 - [Emscripten Asyncify](https://emscripten.org/docs/porting/asyncify.html)
 - [Emscripten filesystem / IDBFS](https://emscripten.org/docs/api_reference/Filesystem-API.html)
 - [GitHub Pages custom workflows](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)
+
+## Launch-page refresh — 2026-10-20 (superseded design)
+
+Implemented: responsive editorial layout, bundled river preview, simplified location/settings,
+optional fullscreen at launch, and game-only presentation after the audio start gesture.
+Removed the duplicate page controls guide and visible raylib link. Retained the distributed
+raylib license and OpenStreetMap attribution. Updated in-game browser help to say reload
+rather than reference the removed Restart button.
+
+Verification on 2026-10-20, Apple Silicon macOS: native Debug configure/build and
+Emscripten `web` packaging passed. Chrome/SwiftShader automation passed desktop and 390px
+layout, launch/focus, integer resizing, in-game help, course fullscreen/exit, reload, and
+abort recovery, with no JavaScript errors. Desktop Chrome smoke launched the river,
+applied throttle, and opened/dismissed in-game help. Desktop/narrow launch, game-only, and
+help captures were inspected (`build-web/launcher-*.png`). Local documentation links and
+`git diff --check` passed. Listening and Safari/Firefox were not checked.
+All 70 native CTests passed, including 18 GPU checks, with desktop graphics access and a
+120-second per-test timeout (`ctest --test-dir build --output-on-failure --timeout 120 -j 4`).
+The initial sandboxed run was stopped at its first GPU check; the full desktop rerun passed.
+No user acceptance of this redesign yet.
+Next: deploy with the normal version-tag/manual workflow and review the new launch page.
+Limitations: keyboard required; reload is the way back to setup; browser-specific fullscreen
+restrictions may fall back to ordinary full-window play.
+
+## Compact technical launcher — 2026-10-20
+
+Implemented after user feedback: retained the screenshot and colors, removed promotional
+copy/captions, and replaced the editorial layout with a monospace launcher, prominent PLAY
+button, and collapsed Settings toggle. Smooth edges and fullscreen now default to on.
+Location, waves, smooth edges, and fullscreen remain configurable before launch. The
+OpenStreetMap notice remains visible; game-only presentation is unchanged.
+
+Verification on 2026-10-20, Apple Silicon macOS: native Debug configure/build and
+Emscripten web packaging passed. Desktop Chrome/SwiftShader checks passed desktop and
+390px layouts, collapsed/open settings, checked AA/fullscreen defaults, fullscreen
+launch/focus, throttle and in-game help, and a configured windowed course launch; no
+JavaScript errors. Desktop and narrow-layout captures were inspected
+(`build-web/compact-*.png`). Documentation links and `git diff --check` passed.
+All 70 native CTests passed, including 18 GPU checks, with desktop graphics access
+and a 120-second timeout (`ctest --test-dir build --output-on-failure --timeout 120 -j 4`).
+Listening and Safari/Firefox were not checked.
+Next: review the compact launcher in the deployed build. No user acceptance of this revision yet. Keyboard input remains
+required; browsers may refuse fullscreen, in which case play continues in the window.
+
+## Canvas focus outline — 2026-10-20
+
+Removed the game canvas focus outline after the user reported a yellow border during play.
+Launcher controls retain visible keyboard focus indicators. The user accepted the compact
+launcher before this correction. Next: review the border correction in the browser.
+Verification on 2026-10-20, Apple Silicon macOS: native Debug configure/build and web
+packaging passed. Chrome keyboard-focus check confirmed no canvas outline and retained
+launcher focus indicators; `build-web/canvas-no-outline.png` was inspected. All 70 native
+CTests passed, including 18 GPU checks, with desktop access and a 120-second per-test
+timeout. Safari/Firefox and listening remain unchecked.

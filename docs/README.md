@@ -1,6 +1,6 @@
 # Documentation and current plans
 
-Current status reconciled on 2026-10-19. The main demo is a four-minute Eriksberg
+Current status reconciled on 2026-10-20. The main demo is a four-minute Eriksberg
 journey following five gulls to “Below the surface” at 120 BPM. The separate
 `boat_study`, with quiet engine/water audio and a gentle XM background loop, provides free boating and a basin time trial.
 Both default to GPU rendering; the CPU reference supports display-free captures.
@@ -19,7 +19,7 @@ Both default to GPU rendering; the CPU reference supports display-free captures.
 | [macOS app builds](MACOS_BUILD.md) | Apple Silicon action, relocatable app bundle, preferred river launch, ad-hoc signing, ZIP/checksum; local checks and first GitHub run passed | Browser-download security approval; macOS 13 execution and user playback review |
 | [Windows builds](WINDOWS_BUILD.md) | Portable x64 action; reversal and basin impact-bound corrections, bundled music, relocated CPU check; latest MSVC timing-header fix awaits CI | Verify workflow after 2026-10-20 timing-header fix; then human Windows GPU/audio/control review |
 | [Automated releases](RELEASES.md) | Version-tag/UI release workflow reuses both platform builds, uploads ZIPs/checksums, then publishes; offline publication tests passed | Push workflow and verify the first chosen version's full release/download path |
-| [Browser boating](WEB_BUILD.md) | Emscripten/WebGL 2 build, audio start gesture, IndexedDB bests, local server, `v*` tag Pages workflow; Chrome automation/native suite passed and user confirmed local startup | Enable Pages, allow version tags, and verify first tag deployment; Safari/Firefox, physical GPU performance, and human playback review |
+| [Browser boating](WEB_BUILD.md) | Emscripten/WebGL 2 build, IndexedDB bests, `v*` Pages workflow; deployed gameplay user-confirmed; user-accepted compact screenshot/PLAY/settings launcher; AA/fullscreen default on; canvas focus-border fix | Review focus-border correction after deployment; Safari/Firefox, physical GPU performance, and human audio review |
 
 These are separate work tracks, not a single execution queue. A next task in one plan
 does not authorize advancing every plan. Use the requested track's scope and acceptance checks.

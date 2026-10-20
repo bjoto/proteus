@@ -25,6 +25,7 @@ def main():
         files[original] = name
     template = (root / "web/index.html").read_text()
     (site / "index.html").write_text(template.replace("@WEB_FILES@", json.dumps(files)))
+    shutil.copyfile(root / "web/river.png", site / "river.png")
     (site / ".nojekyll").touch()
     shutil.copyfile(args.raylib_license, site / "raylib-LICENSE.txt")
     # Remove outputs from earlier builds only, never unrelated files.
