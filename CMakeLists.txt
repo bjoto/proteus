@@ -123,6 +123,7 @@ add_test(NAME boat_audio_is_valid COMMAND validate_boat_audio)
 
 add_dependencies(boat_study proteus_assets)
 add_executable(validate_boat tools/validate_boat.c src/boat.c src/renderer3d.c)
+add_executable(validate_boat_banking tools/validate_boat_banking.c src/boat.c src/renderer3d.c)
 add_executable(validate_boat_profile tools/validate_boat_profile.c src/boat_profile.c src/boat.c
   src/renderer3d.c)
 add_executable(validate_boat_environment tools/validate_boat_environment.c src/boat.c src/renderer3d.c)
@@ -130,7 +131,8 @@ add_executable(validate_boat_replay tools/validate_boat_replay.c src/boat.c src/
 add_executable(boat_water_review tools/boat_water_review.c src/boat.c src/renderer3d.c
   src/boat_gpu.c src/renderer_gpu.c)
 add_dependencies(boat_water_review proteus_assets)
-foreach(target validate_boat validate_boat_profile validate_boat_environment validate_boat_replay boat_water_review)
+foreach(target validate_boat validate_boat_banking validate_boat_profile validate_boat_environment
+    validate_boat_replay boat_water_review)
   target_sources(${target} PRIVATE ${PROTEUS_BOAT_WORLD_SOURCES})
   target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
   target_link_libraries(${target} PRIVATE raylib)
@@ -139,6 +141,7 @@ foreach(target validate_boat validate_boat_profile validate_boat_environment val
   )
 endforeach()
 add_test(NAME boat_handling COMMAND validate_boat)
+add_test(NAME boat_banking COMMAND validate_boat_banking)
 add_test(NAME boat_profile_records COMMAND validate_boat_profile)
 add_test(NAME boat_environment COMMAND validate_boat_environment)
 add_test(NAME boat_player_wake_screenshot COMMAND boat_study --renderer cpu --player-wake --time 9
@@ -303,7 +306,8 @@ target_compile_options(harbor_review PRIVATE
   $<$<C_COMPILER_ID:AppleClang,Clang,GNU>:-Wall;-Wextra;-Wpedantic>)
 
 # Shared generated boats and berth evaluation feed all waterfront consumers.
-foreach(target proteus gpu_fixture validate_boat validate_boat_profile validate_boat_environment validate_boat_replay
+foreach(target proteus gpu_fixture validate_boat validate_boat_banking validate_boat_profile
+    validate_boat_environment validate_boat_replay
     boat_water_review waterfront_storyboard validate_waterfront_actors validate_city_dressing
     harbor_review)
   target_sources(${target} PRIVATE ${PROTEUS_HARBOR_SOURCES})

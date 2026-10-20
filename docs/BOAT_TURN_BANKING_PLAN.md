@@ -1,0 +1,444 @@
+# Turn banking for the playable boat
+
+Status, 2026-10-20: **T1 baseline/sign/load fixtures implemented; no banking physics yet**.
+Next task: T2, the specified load-driven roll moment and compatibility revision. T1–T4 deliver the requested feature; T5 is its playback/tuning gate.
+The [physics plan](BOAT_PHYSICS_PLAN.md) owns the overall handling track; this document
+owns the banking specification and task evidence. Optional trim/loading remains separate.
+
+## Outcome
+
+The boat leans into an established forward turn, more strongly as lateral load grows.
+Fast straight running stays level. A fast sweeping turn banks less than a fast tight turn.
+The hull takes time to lean, carries roll momentum through countersteering, and settles
+when the turn ends. Coasting still banks while water forces turn the boat. Docking and
+reverse show restrained motion. Waves and banking act on the same physical hull; the
+camera keeps its level horizon.
+
+This is a tunable approximation for the current small planing motorboat. It is not a
+universal rule for all vessels. Published model experiments report inward heel increasing
+with steady turning speed for the studied waterjet planing boat. That supports the chosen
+direction, but does not calibrate this outboard boat or its numerical coefficients.
+[Research abstract: Turning characteristics of waterjet propelled planing boat at semi-planing speeds](https://www.sciencedirect.com/science/article/pii/S0029801817304079).
+The abstract was available through search on 2026-10-20; full-text access was unavailable.
+
+Ambition here means load-driven response, inertia, planing dependence, wave interaction,
+reproducible measurements, and coherent presentation. New boat classes, a hull selector,
+capsizing, passenger loading, propeller ventilation, collision-induced rolling, and a full
+six-degree-of-freedom solver are outside T1–T5. Harbor traffic and moored boats remain
+kinematic. Their future banking would need a separate specification.
+
+## Existing implementation and constraints
+
+Source audit at `7d5fd48`, with a clean starting worktree:
+
+| Location | Relevant behavior / required integration |
+| --- | --- |
+| `src/boat.c`, `boat_step` | 120 Hz. Computes water-relative propulsion, longitudinal drag, two lateral hull-station forces, and skeg force; applies horizontal/yaw motion, contacts, then buoyancy. Capture loads before contacts. |
+| `src/boat.c`, `buoyancy_step` | Six unilateral supports already integrate heave, pitch, roll and their velocities. Add one applied roll moment here, before integration. |
+| `src/boat.c`, `hull_rotation`, `hull_motion`, `boat_player_pose` | Shared rolled pose and attachment velocities already exist. Rendering reflects simulation X. Test physical sides, not Euler-component guesses. |
+| `src/boat.h` | Owns `roll`, `roll_velocity`, `planing`; add only the filtered turn-load state if using the specified filter. |
+| `src/boat_replay.[ch]` | Samples already store/interpolate roll. Playback samples poses, not resumable physics state. Physics revision currently 2. |
+| `tools/validate_boat.c` | Existing buoyancy/energy, countersteer, calm-reference, contact, planing and wave checks must be reconciled explicitly. |
+| `tools/validate_boat_environment.c`, `tools/validate_boat_replay.c`, `tools/validate_boat_profile.c` | Environment bounds, playback/storage, and instrumentation independence also consume the changed state. |
+| `tools/boat_study.c`, `tools/boat_water_review.c`, `CMakeLists.txt` | Existing preview, route-review and test registration patterns. Prefer a small dedicated banking validator/review fixture over expanding runtime UI. |
+
+Use C17/raylib and the existing tick rate. Preserve steering response, propulsion, drag,
+grip, yaw inertia, camera settings, course rules, controls and audio. Do not introduce
+render-time physics or a second cosmetic roll angle. The foundations migration is an
+independent track, not a prerequisite. If it lands first, follow its moved owners/APIs and
+integer tick authority; do not duplicate the old implementation.
+
+## Fixed model decisions
+
+### 1. Measure the force that actually changes sideways motion
+
+At the existing pre-integration force evaluation, keep these signed scalar loads in
+simulation coordinates:
+
+```text
+forward = (sin(heading), -cos(heading))
+right   = (cos(heading),  sin(heading))
+u       = dot(velocity - current_at_center, forward)
+F_side  = dot(propulsion_force, right)
+          + sum(existing_hull_station_lateral_forces)
+          + dot(existing_skeg_force, right)
+a_side  = F_side / mass                  # current normalized mass is 1
+```
+
+Reuse the forces already evaluated; preserve their horizontal accumulation order.
+Longitudinal drag is excluded explicitly. Do not use wheel position as the load, estimate
+acceleration from post-contact velocity differences, or add the water-normal resistance
+again: `buoyancy_step` already gives that resistance a roll moment.
+
+For a steady turn with little sideslip, the diagnostic approximation is
+`a_side ≈ u * yaw_velocity ≈ speed² / radius`. This explains speed/radius dependence; it
+is **not** a second force to add. During turn entry, sideways skid, reverse, or countersteer,
+the force and this approximation can disagree. The measured force wins. Brief outward
+response at entry is allowed when the stern initially pushes outward; a sustained forward
+turn must settle inward. Do not force the sign to follow the steering input.
+
+Currents are already sampled at the hull stations and stern. Keep those samples, including
+spatial differences. A craft drifting with uniform flow has no hydrodynamic banking load;
+side flow resisting a stationary hull can create a small load. No extra ground-speed
+multiplier is allowed.
+
+### 2. Convert lateral load into a bounded applied roll moment
+
+Use a small named tuning group in `boat.c`, not a new generic hull-profile framework.
+Initial values below are design hypotheses to measure and tune in T5, not experimental
+hydrodynamic data.
+
+```text
+q           = clamp((u - 1.0) / (6.0 - 1.0), 0, 1)
+forward_mix = q*q*(3 - 2*q)
+gain        = lerp(0.12, 0.85, planing * forward_mix)
+load_target = gain * a_side
+load       += (load_target - load) * (1 - exp(-dt / 0.12))
+phi_scale   = radians(12)
+phi_equiv   = phi_scale * tanh((load / gravity) / phi_scale)
+K_roll      = sum((BUOYANCY_STIFFNESS / 6) * support_across²)
+            = BUOYANCY_STIFFNESS * 0.65²   # 27.04 in the current normalized model
+M_turn      = K_roll * phi_equiv
+```
+
+`load` is the sole new persistent float, e.g. `Boat.turn_roll_load`, in acceleration units.
+The short filter represents unresolved hydrodynamic response and suppresses abrupt force
+changes; the existing physical inertia/damping supplies the hull's principal settling.
+Zero it on reset. Update it exactly once per tick, including neutral/reverse; it must decay
+when the force vanishes. `planing` is the already updated, smoothed state.
+
+The positive sign is intentional: at heading zero, simulation starboard maps to rendered
+local **negative X**. Positive `roll` about local Z lowers that side, so positive lateral
+force produces inward roll for an established right turn. Verify through transformed
+points at headings 0, ±π/2, and near ±π before using this sign.
+
+`phi_equiv` is a bounded demand used to size a moment, not an angle written into `Boat`.
+Existing buoyancy supplies righting and damping. Near upright its restoring moment is
+approximately `-K_roll * roll`. Nonlinear support unloading means actual equilibrium
+need not equal `phi_equiv`. The initial moment limit is about 5.66 normalized torque units,
+below the upright single-side support righting capacity `gravity * 0.65 ≈ 6.38`.
+This is an initial stability rationale, not a proof for waves, pitch, or all roll angles.
+Do not raise the limit for stronger visuals without repeating the support/stability checks.
+
+Add `M_turn` once to `roll_torque` in `buoyancy_step` and retain semi-implicit integration
+through `roll_velocity` then `roll`. Pass the computed moment explicitly into the helper.
+Do not alter support heights, gravity, pitch trim or roll damping to manufacture the bank.
+
+### 3. Keep combined wave and turn motion recoverable
+
+Ordinary banking is bounded by the moment above, not by clamping the final roll angle.
+Waves retain their existing forces. Use a passive large-angle recovery term only beyond
+25° total roll, leaving ordinary banking and small-wave response untouched:
+
+```text
+excess = max(abs(roll) - radians(25), 0)
+q      = clamp(excess / radians(5), 0, 1)
+M_guard = -60 * excess * sign(roll)
+          -4 * q*q*(3 - 2*q) * roll_velocity
+```
+
+Add it to the same torque sum. The spring is continuous at engagement; damping always
+opposes angular velocity. Its potential is `0.5 * 60 * excess²` for energy tests.
+This is a deliberate game stability aid, not calibrated hull stability. It is not a
+hard cap: stress tests must measure overshoot and recoverability. Never silently clamp
+roll velocity, erase roll at contacts, or reset the boat to pass a test.
+
+The new moment uses a pre-contact force snapshot, never an impact impulse. A one-tick stale
+load followed by filtered decay after impact is acceptable; sustained impact-driven roll
+or growing oscillations are not. Log representative quay and traffic impacts.
+
+This is one-way coupling from horizontal handling to roll. It does not debit horizontal
+energy for roll work, so it cannot claim conservation of total six-axis energy. Calm-water
+horizontal coasting must still dissipate energy; unforced floating recovery must still
+dissipate energy. Turning in waves may change the trajectory because the existing water
+normal forces already use the full pose. Measure and report that consequence.
+
+### 4. Presentation, replay and compatibility
+
+Hull, cabin, engine, spray births, shadows, reflections and ghost use the existing shared
+pose. Keep floating foam on the water. Audit emitter positions and velocities for assumptions
+that became visible with larger roll; correct concrete attachment errors without redesigning
+spray or audio. The chase camera stays upright and retains the accepted speed FOV.
+
+Bump `BOAT_PHYSICS_REVISION` once when the new model becomes active (2 → 3 if still current).
+Use the repository's existing revision-derived best paths and rejection rules; preserve old
+files. Do not bump `REPLAY_VERSION` unless the serialized layout changes. No layout change
+is needed: roll is already recorded. A sampled replay/ghost must not run the turn-load
+filter or physical simulation to reconstruct its appearance. Do not add a state field to
+the file merely because live simulation gained one. If resumable simulation is introduced
+by another change, revisit that contract explicitly.
+
+## Tasks for the implementation model
+
+Implement one named task at a time unless the user requests a range. Each task must end
+with a compiling tree, relevant checks, and a dated handoff here. No commit or push unless
+requested. Never advance the foundations, trim/loading, or harbor tracks as part of this work.
+
+| Task | Deliverable | Depends on | Status |
+| --- | --- | --- | --- |
+| T1 | Baseline traces and coordinate/load fixtures | — | Complete (2026-10-20; evidence below) |
+| T2 | Load-driven roll moment, filter, recovery term and compatibility revision | T1 | Pending |
+| T3 | Full dynamics/environment regression coverage | T2 | Pending |
+| T4 | Presentation/replay review fixtures and documentation | T3 | Pending |
+| T5 | Measured tuning, playback and user feel review | T4 | Pending |
+
+### T1 — Make the behavior measurable
+
+Add a focused deterministic validator (`tools/validate_boat_banking.c`, using the existing
+validator linkage pattern). Add a small `--report <path>` mode if useful; check write errors.
+Keep artifacts under `build/`. Do not change production physics in this task.
+
+Record per-tick time, signed water-relative speed, wheel, engine angle, planing, yaw rate,
+roll/rate, height/pitch and horizontal energy. Capture a pre-change executable or trace
+for later comparison. Assert that tests intended for open water do not touch basin walls.
+Extend named-state comparisons when the new field arrives; avoid raw struct-byte hashes.
+
+Provide reproducible fixtures for straight acceleration, sustained left/right turns,
+countersteer, neutral coasting, reverse, and stopping. For matched curvature comparisons,
+use a controlled-tow fixture: prescribe horizontal velocity and yaw before each tick,
+keep vertical state evolving, and measure load/roll. Explicitly label the imposed
+horizontal motion as external work. Keep it separate from freely simulated handling.
+An aligned velocity plus yaw alone is insufficient: the two lateral stations can cancel
+without any net centripetal force. For each prescribed `u` and `r = u / radius`, solve a
+constant body-side slip velocity such that the existing net lateral force is `u*r`.
+In calm water with neutral propulsion, use copied boats and one-tick velocity differences
+projected on the **pre-tick** right vector to measure that force; bracket/bisect the slip
+in the fixture and fail clearly if no root is found. Do not add a production force just to
+make the fixture turn. Restore the prescribed `u`, solved slip and `r` each tick, rotating
+the velocity with heading. Record the residual and call this a nominal radius: sideslip
+means it is not an exact freely simulated trajectory radius. Test actual free turns too.
+
+Verify side-height signs from `boat_player_pose`/transformed points for an imposed positive
+and negative roll at several headings. Record the existing small-angle restoring stiffness
+and recovery time from the support formula and a free-decay run. Add passing assertions for
+existing behavior only; new banking expectations activate with T2.
+
+### T2 — Implement the specified model
+
+Edit `src/boat.[ch]`, the focused validator, replay revision and directly affected fixtures.
+Expose load diagnostics only as needed for tests/reports; no runtime HUD/API framework.
+Preserve existing force ordering and use the specified moment/filter/guard equations.
+
+Acceptance: correct sign in established mirrored turns; zero turn load at still rest and
+straight calm running; bounded moment; deterministic reset; filter and roll continue through
+neutral; low reverse gain; free recovery; no full-lock tilt in a stationary unpowered boat.
+Audit all resets and named-state comparisons with `rg`.
+
+The old `validate_calm_reference` includes **zero roll during turning**. Preserve its old
+position, velocity, heading, yaw and planing expectations. Replace only the now-obsolete
+turning vertical/attitude expectations with independently checked banking assertions and
+documented measured baselines. Straight/rest expectations remain. Investigate each other
+changed bound, especially environment/replay bounds; do not bulk regenerate goldens or
+loosen tolerances until green.
+
+T2 must already pass the existing suite plus core banking checks. T3 adds broader coverage,
+not a deferred repair of a failing T2.
+
+### T3 — Verify dynamics and difficult cases
+
+Required independent properties and initial acceptance targets:
+
+| Scenario | Check |
+| --- | --- |
+| Controlled radius 30 units, speeds 4/8/12, planing held consistently for the comparison | Steady mean inward roll grows with measured lateral load before saturation; report radius/load/roll together. |
+| Speed 8, radii 20/40/80 | Tighter turn gives larger steady bank before saturation. |
+| Same imposed load at planing 0/0.5/1, positive cruise speed | Stronger response on plane, continuous through the blend. |
+| Mirrored calm turns | Roll/rate mirror; height, pitch and speed agree within recorded float tolerances. |
+| Straight 0/4/12/18 speed, no lateral flow or steering | No sustained bank; speed alone cannot drive roll. |
+| Forward turn then neutral | Bank follows remaining lateral force, not throttle; horizontal kinetic energy does not increase in calm stationary water. |
+| Established turn then countersteer | Continuous roll, delayed side change, then inward bank on the new turn; no instantaneous angle sign flip. |
+| No-force release fixture | With zero filtered load and no horizontal motion, from 10° roll settle below 0.5° and 0.5°/s within 3 s; no growth of unforced floating energy, including guard potential where engaged. Separately verify decay after a driven turn; residual filtered load can still perform work. |
+| Low-speed docking / reverse | Controlled 1-unit/s docking bank below 2°; prescribed reverse `u=-3`, `yaw=0.4` below 3°. Test force direction, not a universal reverse-wheel sign. |
+| Matched hull-relative velocity under uniform flow | Identical bank in a controlled fixture with equal local relative motion; production spatial-current presets are not uniform-flow fixtures. |
+| Beam/head/following waves, scripted wake, own wake in a turn | Finite coupled state, no growing oscillation; initial target total roll below 30° on documented standard drives, recovery after forcing passes. |
+| Shore, basin corner, moored and moving traffic contacts | No impulse-derived banking spike, escape, or sustained instability; valid footprint retained. |
+| Repeated turns and transitions, at least 120 simulated seconds | Finite state and bounded roll; reproducible rerun on the same build; no long-run drift at rest. |
+
+For controlled circles reset/recenter only horizontal coordinates as needed on flat,
+current-free water; do not teleport through a spatial water field and call it an invariance
+test. Use the existing query/helper conventions to supply synthetic uniform flow if needed,
+without adding a user-facing water preset. Controlled-tow tests cannot prove passive energy
+behavior. Real free-drive tests must cover that separately.
+
+Print mean/peak roll, peak roll rate, lateral acceleration, settling time, and peak combined
+wave/turn roll. Targets are design acceptance criteria, not measured results yet. If an
+initial coefficient misses a target, diagnose force/sign/integration first; tune only the
+new named banking constants, record why, and rerun the affected matrix.
+
+### T4 — Make the result reviewable
+
+Extend the focused fixture or existing review tooling with deterministic snapshots at
+straight running, established left/right turns, S-turn reversal, coasting, and combined
+wave/turn peaks. Share fixture inputs between measurement and capture; avoid two independent
+driving scripts. Register a fast headless regression test and GPU checks under the existing
+GPU option/label. Avoid screenshot comparisons that merely bless whatever the model produced.
+
+Inspect CPU/GPU captures at native 320x200, with a close side/rear review view as well as
+the default camera. Compare transformed hull/cabin/outboard attachment points numerically;
+require tight pose agreement, not pixel identity between renderers. Inspect waterline,
+spray, engine attachment, reflections/shadows and stable horizon.
+
+Record and reload a banked course run; compare live/sampled poses at sample times and
+intermediate times, ghost versus replay, and seek forward/backward while paused. Test old
+revision rejection and preservation of old best files. Replay bounds must admit the tested
+physical angles without accepting arbitrary/nonfinite values.
+
+Update the boating section in `README.md`, the current summaries in `BOAT_PHYSICS_PLAN.md`,
+`BOATING_PLAN.md` where affected, and `docs/README.md`. Explain speed **and turn tightness**,
+inertia and continued wave motion. Keep historical accepted handling records dated.
+Do not describe planning targets as implemented behavior.
+
+### T5 — Tune and review the feel
+
+Use the recorded matrix to tune only the new model. Aim for readable 5–10° sustained bank
+in ordinary fast turns and roughly 10–12° in hard calm-water turns; these are initial
+artistic targets, not strict monotonic promises for identical wheel input at different
+speeds. Real turn radius, slip and speed loss all change with that input.
+
+Manually run basin, Eriksberg GPU+AA and river: accelerate straight, sweep both ways, make
+small corrections, countersteer into an S, coast, cross a wake while turning, reverse along
+a quay, reset, and replay a banked run. Check window focus/pause and camera comfort. A
+scripted desktop smoke is useful evidence but is not hands-on handling acceptance.
+
+Record automated verification, manual playback, and user acceptance separately. T5 may be
+implemented and verified while user feel acceptance remains pending. Ask for that feedback
+with concrete captures/measurements once the result exists; do not claim acceptance from
+a successful test run. Further hull/roll-to-grip coupling is a new design decision after
+this gate, not automatic follow-on work.
+
+## Verification and handoff
+
+At implementation handoffs, run from the repository root:
+
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+cmake --build build -j
+ctest --test-dir build --output-on-failure --timeout 60
+git diff --check
+```
+
+Record the current `PROTEUS_GPU_TESTS` value. Use desktop graphics access for the GPU suite;
+report unavailable checks explicitly. Do not silently turn the shared option off. New
+fixtures must use separate output paths and temporary replay storage, not personal bests.
+Publish exact new report/capture commands after implementing their parsers; their CLI is
+not available at planning time. Use Instruments only if the added constant-time arithmetic
+or review exposes a runtime problem; no performance improvement is claimed here.
+
+For each T task record: starting revision/dirty files; completed change; changed coefficients;
+commands/platform/results; report/capture paths; manual/user review; known limits; next task.
+
+Current next-task prompt for the implementation model:
+
+> Read AGENTS.md, docs/BOAT_TURN_BANKING_PLAN.md and the working contract in
+> docs/BOAT_PHYSICS_PLAN.md. Implement only T2 from the banking plan; read the T1 handoff
+> and baseline artifacts. Preserve unrelated edits and accepted horizontal handling.
+> Complete its physics, core checks and
+> documentation handoff, then stop before T3. Do not commit or push.
+
+For later tasks, replace T2 with the requested task or explicit range. Read prerequisite
+handoffs and current source before assuming names or physics revision numbers are unchanged.
+
+### Planning evidence — 2026-10-20
+
+Source/consumer and existing-test audit completed on macOS at `7d5fd48`. This change adds
+documentation only. Banking behavior, coefficients, new fixtures and acceptance targets
+have not been implemented or measured.
+
+Debug configure/build succeeded with the existing `PROTEUS_GPU_TESTS=ON`; CMake emitted
+raylib's existing macOS OpenGL deprecation notice. The full CTest command above passed
+70/70 tests, including 18 GPU checks, in 143.31 seconds. This validates the existing
+runtime baseline, not the proposed banking model. Changed local file links and whitespace
+were checked. No new audiovisual review was required or performed for this documentation
+change. Implementation, manual banking review, and user feel acceptance all remain pending.
+
+### T1 handoff — 2026-10-20
+
+Starting revision: `7d5fd48`, macOS Apple Silicon. Existing dirty files were
+`docs/BOAT_PHYSICS_PLAN.md`, `docs/README.md`, and the untracked copy of this plan;
+those planning edits were preserved. T1 adds `tools/validate_boat_banking.c`, its
+shared-world/harbor linkage in CMake, and the headless `boat_banking` CTest. Production
+physics, tuning, rendering and replay revision remain unchanged. T2 is next; T3–T5 and
+manual/user banking review remain pending.
+
+The validator provides straight acceleration (6 s), sustained mirrored turns (8 s),
+countersteering (4 s each direction), neutral coasting with steering from speed 12,
+reverse acceleration (5 s), braking/stopping (2 s reverse command then 6 s neutral),
+and a 3 s unforced roll-decay fixture. Every free-drive tick is repeated independently
+and compared using named physical/control fields. Conservative hull clearance is checked
+before and after stepping; initial straight/reverse fixture durations/positions were
+corrected when these checks detected approach to a basin wall. No contact baseline was
+accepted as open-water evidence.
+
+The separate 8 s controlled-tow cases impose horizontal position/velocity/yaw and planing
+before each tick while leaving vertical state evolving. This is **external work**, not a
+passive-energy test or a freely simulated circle. Planing is reset to 1 before each tick
+(the existing speed-dependent update still runs inside that tick). Calm water is spatially
+uniform. A copied, neutral, one-tick probe and bracketed bisection solve constant body-side
+slip for the specified lateral load. No production force/API was added. Nominal radius is
+signed by turn direction; it is not an exact path radius in the presence of sideslip.
+
+Measured positive-turn baseline (negative turns mirror these loads/slips):
+
+| Forward speed | Nominal radius | Solved side slip | Lateral acceleration |
+| --- | --- | --- | --- |
+| 4 | 30 | -0.193978 | 0.533333 |
+| 8 | 30 | -0.553380 | 2.133333 |
+| 12 | 30 | -0.964936 | 4.800000 |
+| 8 | 20 | -0.809129 | 3.200000 |
+| 8 | 40 | -0.420329 | 1.600000 |
+| 8 | 80 | -0.214162 | 0.800000 |
+
+Across both directions the maximum measured load residual was 0.00006437; the per-tick
+assertion allows 0.0003 for finite-difference float rounding at rotated headings. Steady
+mean/peak roll rounds to 0.000000° in all current calm fixtures, confirming the missing
+banking baseline rather than asserting that turns should stay level in T2. Free mirrored
+turns reach 13.495104 peak lateral acceleration; countersteer reaches 18.021446. Those are
+transient loads, not steady circular-turn calibration values.
+
+Transformed hull-side checks at heading 0, ±π/2 and near ±π confirm that positive roll
+lowers simulation starboard (renderer local negative X); negative roll lowers port.
+Small-angle one-tick restoring stiffness measures 27.040218 against the independent
+support-formula value 27.04. An initially stationary 10° roll disturbance remains below
+both 0.5° and 0.5°/s from 0.625 s through the end of the 3 s test. This is the existing
+small-angle recovery baseline, not verification of the proposed large-angle guard.
+
+Reproduce from the repository root (the report directory must already exist):
+
+```sh
+mkdir -p build/banking-review
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+cmake --build build -j
+./build/validate_boat_banking --report build/banking-review/baseline.csv \
+  > build/banking-review/baseline.txt
+./build/validate_boat_banking --report build/banking-review/rerun.csv \
+  > build/banking-review/rerun.txt
+cmp build/banking-review/baseline.csv build/banking-review/rerun.csv
+ctest --test-dir build --output-on-failure --timeout 60
+git diff --check
+```
+
+Each CSV has 18,000 per-tick rows plus its header. Angles/rates use radians, time uses
+seconds, and all columns describe pre-tick state except lateral acceleration (the next
+velocity change projected onto the **pre-tick** right vector) and its target residual.
+The report records signed water-relative speed, wheel, engine angle, planing, yaw rate,
+roll/rate, height/pitch, horizontal kinetic energy including yaw, nominal radius and slip.
+Report open/write/close failures produce a nonzero exit. Invalid-option and nonexistent
+parent-directory cases were exercised and rejected. A subprocess restricted to a 1,024-byte
+file limit also returned failure on an incomplete report, exercising the write-error path.
+Two complete reports matched byte
+for byte. T1's preserved executables are
+`build/banking-review/validate_boat-pre-banking` (existing handling validator) and
+`build/banking-review/validate_boat_banking-t1` (the focused baseline validator).
+All artifacts are local ignored build outputs, not committed baselines.
+
+Verification: Debug configure/build passed without project compiler warnings; raylib
+retains its existing macOS OpenGL deprecation configure notice. `PROTEUS_GPU_TESTS=ON`
+was preserved. The first sandboxed full-suite run was interrupted at the first GPU
+screenshot after macOS window startup stalled; the suite was rerun with desktop graphics
+access (log: `build/banking-review/ctest-desktop.log`). No new audiovisual
+review is required for this fixture-only task; no manual playback, hands-on handling,
+user acceptance, other-platform execution or Instruments measurement is claimed.
+
+Full verification result, 2026-10-20: the desktop Debug run passed **71/71 CTests**,
+including 18 GPU-labelled tests, in 144.92 seconds with `PROTEUS_GPU_TESTS=ON`.
+Changed documentation file targets exist and `git diff --check` passed.

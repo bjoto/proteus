@@ -1,13 +1,16 @@
 # Boat physics: learnable handling
 
-Status, 2026-10-19: A1–D3 implemented; the user-requested
+Status, 2026-10-20: A1–D3 implemented; the user-requested
 [handling feel pass](#handling-feel-pass--2026-10-19) adds quicker countersteering and a speed view, accepted by the user on 2026-10-19. Phase C is accepted; Phase D handling and
 player-wake motion are provisionally accepted by the user, with continued evaluation
 over time. Current/scripted-wake options now work in all locations; player-path wakes are
 enabled by default in free boating, with `--no-player-wake` available for calm practice.
-Next task: verify Windows CI after the
-[impact-bound validator correction](#windows-ci-impact-bound-follow-up--2026-10-19);
-preserve the accepted handling feel baseline and collect longer-term feedback.
+Next physics task: T2 in the [turn-banking plan](BOAT_TURN_BANKING_PLAN.md). T1 now supplies
+deterministic baseline traces, transformed-side checks, restoring/decay measurements, and
+solved-slip controlled-tow load fixtures. Banking physics is not implemented yet;
+T2–T5 specify load-driven roll, planing dependence, settling, verification and feel review.
+Preserve the accepted horizontal handling baseline. Windows CI follow-up remains tracked
+in the [Windows build guide](WINDOWS_BUILD.md).
 Closer camera comparisons remain an optional design experiment; E1/E2 have not started.
 Thrust, passive resistance, uncommanded wheel return, and the accepted C3 wave model are preserved;
 commanded wheel reversal is deliberately faster under the 2026-10-19 request.
@@ -86,7 +89,9 @@ Eriksberg GPU+AA where applicable. Report checks that could not run. Mark a task
 its acceptance checks pass; record files changed, tests, tuning choices, and remaining limitations.
 Do not commit unless asked. Stop for player feedback at the play gates before adding complexity.
 
-Reusable prompt for a smaller coding model:
+For turn banking, use the task IDs and implementation prompt in
+[its owning plan](BOAT_TURN_BANKING_PLAN.md); that named follow-up precedes optional Phase E.
+Otherwise use this reusable prompt for a smaller coding model:
 
 > Read AGENTS.md and docs/BOAT_PHYSICS_PLAN.md. Implement only task [ID]. Preserve existing unrelated
 > changes. Follow its scope, acceptance checks, and the working contract. Do not start later tasks.
@@ -147,11 +152,12 @@ Verification on 2026-10-19, macOS Apple Silicon, Debug:
 
 User acceptance, 2026-10-19: "Feels great!" accepts this handling/speed-view pass.
 The feedback does not specify individual scenarios, platforms, or fixed-FOV comparisons.
-Next task: retain this baseline and collect longer-term feedback before further tuning.
+At that handoff, the next task was to retain this baseline and collect longer-term feedback.
+The 2026-10-20 [turn-banking plan](BOAT_TURN_BANKING_PLAN.md) now owns the requested follow-up.
 Repeatable play checklist for future evaluation: accelerate, tap small corrections, hold a sweeping turn, countersteer into an S,
 coast through a turn, then reverse alongside a quay. Compare speed view with `--fixed-fov` in
 the basin and river. Judge recoverability, boat readability at 320x200, speed sensation, and
-camera comfort. Trim controls and extra handling systems remain optional future work.
+camera comfort. Trim controls remain optional future work.
 
 Known limitations: the lens follows instantaneous forward velocity; impacts or a large sideways
 slide can close it rapidly. It has no camera occlusion solution. The river's 32/6 view already
@@ -332,8 +338,8 @@ The player-wake demo accelerates into a loop starting at 3.5 s, then returns to 
 at 12 s; screenshot mode uses the same script. Manual driving uses normal controls.
 R clears history while preserving the launch option. Free boating now defaults to player
 wakes; `--no-player-wake` restores the earlier calm baseline when other water flags are absent.
-Next task: preserve the provisionally accepted wake/handling baseline and collect
-longer-term feedback on recrossing comfort.
+Continue preserving the provisionally accepted wake/handling baseline and collecting
+feedback on recrossing comfort during the next [turn-banking task](BOAT_TURN_BANKING_PLAN.md).
 
 Play gate D: currents reward anticipation and wakes reward choosing speed/angle; neither feels like
 an invisible punishment. Keep a calm-water option and do not make exposure mandatory for exploration.
