@@ -5,19 +5,23 @@ Status, 2026-10-20: A1–D3 implemented; the user-requested
 player-wake motion are provisionally accepted by the user, with continued evaluation
 over time. Current/scripted-wake options now work in all locations; player-path wakes are
 enabled by default in free boating, with `--no-player-wake` available for calm practice.
-Current physics gate: hands-on T5 review in the [turn-banking plan](BOAT_TURN_BANKING_PLAN.md). T1 supplies
+The earlier T5 banking pass is recorded in the [turn-banking plan](BOAT_TURN_BANKING_PLAN.md). T1 supplies
 baseline/load fixtures; T2 adds filtered lateral-load roll, planing dependence, and passive
-large-angle recovery through the shared physical hull. Handling revision is now 3;
-revision-2 best files remain preserved. T3 adds broader dynamics coverage and stronger passive
+large-angle recovery through the shared physical hull. H3 below now advances handling revision to 4;
+revision-3 and earlier best files remain preserved. T3 adds broader dynamics coverage and stronger passive
 recovery beyond 25°. T4 adds shared deterministic capture/measurement inputs, attachment and
 spray checks, and a physically driven banked course recording/seek fixture. T5 reduces
 lingering turn-exit bank using lower planing gain and a shorter load filter; the ordinary
 fast-turn fixture settles below 2° in 1.075 s (previously 1.517 s). Automated/scripted
-verification is recorded there; the full hands-on checklist and banking acceptance remain pending.
-Preserve the accepted horizontal handling baseline. Windows CI follow-up remains tracked
-in the [Windows build guide](WINDOWS_BUILD.md).
+verification is recorded there. The user reports somewhat better recovery but requests a
+firmer, stern-led carving turn. [H3](#h3--stern-led-carving-feel-2026-10-20) implements that
+named follow-up; the user accepted its current feel on 2026-10-20 ("This is way better.
+I think we're good here."). The exhaustive hands-on checklist remains unverified. H3 deliberately
+changes planing lateral grip while retaining the accepted command/thrust/drag/camera settings.
+Windows CI follow-up remains tracked in the [Windows build guide](WINDOWS_BUILD.md).
 Closer camera comparisons remain an optional design experiment; E1/E2 have not started.
-Thrust, passive resistance, uncommanded wheel return, and the accepted C3 wave model are preserved;
+Thrust, longitudinal drag, uncommanded wheel return and the C3 wave model are preserved;
+H3 changes passive lateral grip as described below;
 commanded wheel reversal is deliberately faster under the 2026-10-19 request.
 The separate [04h harbor pass](HARBOR_BOATS.md) adds fixed berth collision envelopes and
 kinematic moored-boat wave poses. [Travelling harbor vessels](HARBOR_TRAFFIC.md) add
@@ -101,6 +105,34 @@ Otherwise use this reusable prompt for a smaller coding model:
 > Read AGENTS.md and docs/BOAT_PHYSICS_PLAN.md. Implement only task [ID]. Preserve existing unrelated
 > changes. Follow its scope, acceptance checks, and the working contract. Do not start later tasks.
 > Update the task status and handoff notes, and report verification and limitations. Do not commit.
+
+## H3 — Stern-led carving feel, 2026-10-20
+
+Status: implemented and user-accepted; automated/scripted verification is recorded
+in the [H3 handoff](#h3-handoff--2026-10-20). The user accepted the current carving feel
+on 2026-10-20; exhaustive controls/platform checks remain separate. This named handling experiment precedes optional Phase E.
+The user reports slightly better banking recovery but wants the sense of cutting through
+water, with the engine initiating the action; they selected “More bow grip and a clearer
+stern-led turn.” That initial T5 feedback preceded the H3 acceptance recorded below.
+
+Scope: keep the existing outboard steering/slew and stern-applied thrust as the cause of
+the turn. Increase lateral hull-station resistance smoothly with existing planing state,
+using one named multiplier, so the forward hull holds an arc and the stern moves around it.
+Keep displacement/reverse gain at its existing value when planing is zero. Balance the two
+stations: exploratory bow-only emphasis increases yaw feedback and makes recovery linger.
+No prescribed yaw/velocity/roll, extra delay, grip driven by wheel position, bank-to-grip
+coupling, camera change, new controls, or audio/renderer redesign. Banking constants stay
+at T5 values; measured forces continue driving the same physical roll.
+
+Acceptance/verification: preserve first-tick engine-force causality, mirrored response,
+rest/reset/straight travel, passive coasting energy and uniform-flow invariance. Measure
+engine/yaw/bank onset, bow/stern lateral motion, slip, speed and turn-exit recovery at
+120 Hz. Keep T5 recovery and sustained-bank bounds. Reconcile changed turning trajectory
+references explicitly, bump handling compatibility to 4, preserve revision-3 files, record
+and replay a current banked course, and rerun dynamics/environment/contacts plus CPU/GPU
+attachment/capture and desktop playback checks. Capture early entry phases from shared
+measurement inputs. Keep human feel acceptance separate from automated verification and
+exhaustive wake/camera/focus checks.
 
 ## Handling feel pass — 2026-10-19
 
@@ -643,3 +675,141 @@ notice and Release stb_vorbis warning remain dependency warnings.
 Next: verify the Windows workflow after this correction is pushed. Known limitations:
 Windows/MSVC execution is not available locally; the precise failing trajectory is not
 in the supplied CI log. Human Windows GPU/audio/control review remains outstanding.
+
+### H3 handoff — 2026-10-20
+
+Starting revision: `24aaa27`, clean worktree, Apple Silicon/macOS. The user reported that
+T5 was a little better, but wanted the sense of cutting through water with the engine
+initiating the action. They clarified the intended direction as “More bow grip and a
+clearer stern-led turn.” This authorizes a named handling follow-up, distinct from T1–T5's
+banking-only scope; no foundations, trim/loading or harbor work was advanced. The standing
+instruction to commit each step remains in effect. The user subsequently accepted the
+current feel: "This is way better. I think we're good here." This accepts the current
+banking/carving response; it does not establish that every location/focus/platform checklist
+item was performed.
+
+One production handling coefficient was added: **`PLANING_LATERAL_GRIP_MULTIPLIER = 3`**.
+Each existing lateral hull-station grip is multiplied by `lerp(1, 3, planing)` after the
+normal planing update. Both stations use equal scaling, with their existing ±1.2 arms.
+A higher bow-only weighting was explored locally: it moved the force centre forward,
+increased yaw feedback and prolonged banking recovery. Balanced stronger grip reduces
+bow cross-flow while retaining an outward-moving stern, without that extra yaw coupling.
+These are game handling measurements, not calibrated hydrodynamics.
+
+The outboard still follows the same wheel/slew and applies thrust at the same stern arm;
+its skeg still resists local flow. There is no imposed heading/velocity, artificial engine-
+first delay, visual roll, or bank-to-grip feedback. All T5 roll gains/filter, buoyancy/guard,
+engine/throttle, longitudinal drag, command response, camera and audio settings are unchanged.
+Displacement/reverse grip is unchanged when planing is zero; stale planing can briefly retain
+extra lateral resistance while the existing state decays. The six unilateral vertical
+supports and wave-normal resistance remain unchanged. Each horizontal station still obeys
+`force * local_cross_flow <= 0`, so the added resistance is passive relative to local water.
+
+A new fast CTest, `boat_turn_entry`, independently verifies first-tick stern thrust/skeg
+force and yaw torque, mirrored trajectories, continuous roll, phase ordering and passive
+coasting from mixed lateral/yaw motion at three initial planing states. Its shared fixture
+starts at forward speed 12, full response/throttle/plane, holds progressive steering for
+one second, then releases for three. It never approaches a basin wall. Results:
+
+| Measurement | T5 baseline | H3 |
+| --- | --- | --- |
+| Engine angle at 1 s | 31.512657° | 31.512657° |
+| Heading change at 1 s | 36.430260° | 27.916134° |
+| Yaw rate at 1 s | 74.305023°/s | 56.806902°/s |
+| Sideslip at 1 s | -19.850861° | -8.670749° |
+| Forward-station cross-flow at 1 s | -3.745516 | -1.129083 |
+| Stern cross-flow at 1 s | -7.376744 | -3.905192 |
+| Speed at 1 s | 15.613008 | 15.381422 |
+| Bank at 1 s | 9.494347° | 10.078505° |
+
+Forward-station sideways motion drops **69.9%** while stern cross-flow remains 3.46 times
+larger. The motor crosses 1° at .033333 s, heading at .241667 s, and inward bank at .500000 s.
+This is a measured response sequence, not a simulated waiting period. Peak slip is 8.764486°
+through the four-second fixture. Engine movement is identical to T5; firmer water resistance
+reduces spin/skid and changes the hull's response. The new validator requires <9.5° slip at
+one second, bow cross-flow <35% of stern cross-flow, engine-before-heading-before-inward-bank
+ordering, physical momentum and passive energy loss rather than only snapshot equality.
+
+T5's sustained-bank and below-2° recovery bounds are retained unchanged. The .25/.55/1
+steering-release fixtures now sustain 9.779864°/11.653434°/11.677377° and return below 2°
+at 1.091667/1.316667/1.458333 s. This is a two-tick increase in the first two cases and no
+change in the hard case; angular settling also remains within the T5 bounds. Yaw decays
+more gradually under the still-turned outboard (.733/.975/1.158 s below .05 rad/s), with
+less hull sideslip. Existing coasting, forward/neutral/reverse, countersteer, flow invariance,
+planing, energy and contact checks pass without weaker physical bounds. The stale-planing
+reverse tow peaks at 2.019243° (still below its unchanged 3° bound).
+
+The old countersteer capture fixture from `(0,40)` reached the basin margin under the new
+arc. Its shared initial position is now `(0,0)` for measurement and capture, keeping the
+same inputs/duration and all contact-free assertions. There is no in-drive recenter/reset.
+The ordinary calm-reference straight sample is unchanged; all ten fields of its turn and
+later coast/brake samples are checked against explicitly measured H3 trajectories. Its
+turn attitude is height .0500000007, pitch .053120777, roll .211947575, load 4.68448925.
+The earlier special-case skip of turning attitude is removed. The trajectory changes are
+intentional here; the old accepted handling records above remain dated history.
+
+The banked S-course test driver's prior heading controller orbited a missed gate after the
+grip change. Its input-only controller now uses heading gain 3, yaw braking .7, full wheel
+limits and throttle .25/.45 across an error threshold .4 rad. This is test-driver routing,
+not a change to runtime player input or the course. All four real swept gates are crossed,
+with 8.184977° peak bank, and the normal recording/save/reload/seek/ghost checks pass.
+Handling compatibility advances **3 → 4** because horizontal trajectories changed. Current
+best paths use `physics4`; revision-3 files are rejected without alteration. Replay text
+layout/version remains unchanged. No actual personal-best directory was used in this review.
+
+The 138,120-row banking/environment report and the 480-row entry report each reproduce
+byte for byte. Standard beam/head/following wave circles peak at 20.423410°/19.613256°/
+16.575899° (head drive 360 s, others 120 s). The scripted-wake circle now peaks at
+27.380024°/77.843719°/s, up from T5's 11.217952°/9.446991°/s: its changed path produces a
+stronger encounter. The own-wake circle peaks at 28.954529°/119.465973°/s, versus T5's
+28.775251°/107.906357°/s. Its late peak is 8.525308°, so the early encounter does not grow
+into sustained oscillation. The repeated-transition fixture peaks at 28.331104° and
+139.676697°/s; the 300-second drive peaks at 28.331104°. All unchanged 30°/footprint/height/
+pitch/recovery checks pass. Firmer grip changes wave/wake encounter history and turn radius;
+strong wake transients, camera comfort and subjective carving feel remain review limits.
+No claim of identical turning paths, universal stability or six-axis energy conservation is made.
+
+Reproduction commands, from the repository root:
+
+```sh
+mkdir -p build/turn-entry-review
+./build/validate_boat_turn_entry --report build/turn-entry-review/h3-entry.csv
+./build/validate_boat_banking --straightening
+./build/validate_boat_banking --report build/turn-entry-review/h3-banking.csv \
+  > build/turn-entry-review/h3-banking.txt
+./build/boat_banking_review --output build/turn-entry-review/h3-cpu
+./build/boat_banking_review --gpu --output build/turn-entry-review/h3-gpu
+./build/validate_boat_replay build/turn-entry-review/replays
+./build/boat_study --demo --location basin --no-player-wake --gpu-aa --waves --frames 900
+./build/boat_study --demo --location eriksberg --gpu-aa --waves --frames 900
+./build/boat_study --demo --location river --no-player-wake --gpu-aa --waves --frames 900
+./build/boat_study --replay build/turn-entry-review/replays/banked.run --gpu-aa --frames 240
+```
+
+Each capture directory contains 57 native 320x200 images: the existing 43 banking/release
+views and seven new entry phases (0/.1/.3/.5/1/1.5/2 s) in default and close side/rear views.
+Measurement and capture share `boat_turn_entry_reset/step` in the existing fixture header.
+Native CPU/GPU .1/.3/.5/1-second side pairs, one-second default, wave-peak rear and
+full-wheel 1.5-second exit pairs were inspected. Motor attachment/steering precedes the
+hull arc/lean coherently; waterline, spray and GPU shadow/reflection presentation remain
+coherent with the shared pose and upright camera. All four desktop commands above exited
+successfully, including default player wakes in Eriksberg and the current banked replay.
+This is scripted desktop motion/rendering/asset-loading evidence, not human input/focus,
+subjective audio/camera comfort or carving acceptance. No Instruments run was warranted
+by an observed performance problem; no performance improvement is claimed.
+
+Verification, 2026-10-20: Debug configure and full build passed without project compiler
+warnings; raylib retains the macOS OpenGL deprecation configure notice.
+`PROTEUS_GPU_TESTS=ON` was preserved. Full desktop CTest passed **74/74**, including
+**19 GPU-labelled tests**, in **172.69 s** (`build/turn-entry-review/ctest-h3-desktop.log`).
+The new fast entry test, full dynamics/environment checks, current replay/old-revision
+preservation checks and refreshed CPU/GPU capture fixture all pass. Report pairs match
+byte for byte, formatting and `git diff --check` pass, and changed Markdown local file and
+heading-anchor links were checked. Logs, reports, exploratory comparisons, temporary
+replay/best storage and captures remain ignored under `build/`.
+
+User acceptance, 2026-10-20: "This is way better. I think we're good here." The current
+banking/carving feel is accepted and no further handling tuning is queued. The exhaustive
+hands-on location/reset/replay/focus/camera checklist and Windows/browser execution remain
+unverified; acceptance is not evidence that those checks occurred. Optional Phase E remains
+unstarted and is not automatically authorized by closing this feel pass.

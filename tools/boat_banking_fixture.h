@@ -8,7 +8,7 @@
 static inline void banking_fixture_reset(Boat *boat, int scenario)
 {
     boat_reset(boat);
-    boat->position.y = scenario == 5 ? -40 : 40;
+    boat->position.y = scenario == 5 ? -40 : scenario == 3 ? 0 : 40;
     if (scenario == 4 || scenario == 6)
         boat->velocity.y = -12;
 }
@@ -54,5 +54,21 @@ static inline void banking_exit_step(Boat *boat, float wheel, int tick)
     float input
         = tick < BANKING_EXIT_HOLD_TICKS ? Clamp((wheel - boat->wheel) / BOAT_STEP, -1, 1) : 0;
     boat_step(boat, input, 0);
+}
+// Common powered entry: steer progressively for one second, then let the wheel return.
+#define BOAT_TURN_ENTRY_TICKS 480
+static inline void boat_turn_entry_reset(Boat *boat)
+{
+    boat_reset(boat);
+    boat->position = (Vector2) { 0 };
+    boat->velocity.y = -12;
+    boat->throttle = boat->engine_response = boat->planing = 1;
+    boat->height = .05f;
+    boat->pitch = 3 * DEG2RAD;
+}
+
+static inline void boat_turn_entry_step(Boat *boat, int tick, int direction)
+{
+    boat_step(boat, tick < 120 ? direction : 0, 0);
 }
 #endif

@@ -1,8 +1,16 @@
 # Turn banking for the playable boat
 
-Status, 2026-10-20: **T1–T5 implemented: load-driven roll, dynamics/presentation/replay fixtures and quicker turn-exit recovery; handling revision 3**.
-Next gate: hands-on T5 controls/replay/focus/camera review and user acceptance of the quicker recovery.
-T5 tuning and automated/scripted verification are implemented; hands-on review remains pending.
+Status, 2026-10-20: **T1–T5 implemented: load-driven roll, dynamics/presentation/replay fixtures and quicker turn-exit recovery; banking baseline revision 3**.
+T5 tuning and automated/scripted verification are implemented. The subsequent H3 carving
+pass and combined banking/carving feel were accepted by the user on 2026-10-20: "This is
+way better. I think we're good here." No further tuning is queued. The exhaustive hands-on
+controls/replay/focus/camera checklist remains unverified.
+The subsequent [H3 carving pass](BOAT_PHYSICS_PLAN.md#h3--stern-led-carving-feel-2026-10-20)
+responds to the user's request for more bow grip and a clearer stern-led turn. It changes
+planing hull grip and advances current handling compatibility to revision 4; T1–T5's dated
+revision-3 evidence below remains historical. H3 acceptance and remaining verification
+limits belong to the physics plan.
+
 The [physics plan](BOAT_PHYSICS_PLAN.md) owns the overall handling track; this document
 owns the banking specification and task evidence. Optional trim/loading remains separate.
 
@@ -43,7 +51,7 @@ Source audit at `7d5fd48`, with a clean starting worktree:
 | `tools/validate_boat_environment.c`, `tools/validate_boat_replay.c`, `tools/validate_boat_profile.c` | Environment bounds, playback/storage, and instrumentation independence also consume the changed state. |
 | `tools/boat_study.c`, `tools/boat_water_review.c`, `CMakeLists.txt` | Existing preview, route-review and test registration patterns. Prefer a small dedicated banking validator/review fixture over expanding runtime UI. |
 
-Use C17/raylib and the existing tick rate. Preserve steering response, propulsion, drag,
+Within T1–T5, use C17/raylib and the existing tick rate. Preserve steering response, propulsion, drag,
 grip, yaw inertia, camera settings, course rules, controls and audio. Do not introduce
 render-time physics or a second cosmetic roll angle. The foundations migration is an
 independent track, not a prerequisite. If it lands first, follow its moved owners/APIs and
@@ -183,7 +191,7 @@ requested. Never advance the foundations, trim/loading, or harbor tracks as part
 | T2 | Load-driven roll moment, filter, recovery term and compatibility revision | T1 | Complete (2026-10-20; evidence below) |
 | T3 | Full dynamics/environment regression coverage | T2 | Complete (2026-10-20; evidence below) |
 | T4 | Presentation/replay review fixtures and documentation | T3 | Complete (2026-10-20; evidence below) |
-| T5 | Measured tuning, playback and user feel review | T4 | Tuning/automated and scripted verification implemented (2026-10-20); hands-on checklist and user acceptance pending |
+| T5 | Measured tuning, playback and user feel review | T4 | Tuning/automated and scripted verification implemented; combined H3 feel accepted (2026-10-20); exhaustive hands-on checklist unverified |
 
 ### T1 — Make the behavior measurable
 
@@ -330,10 +338,10 @@ or review exposes a runtime problem; no performance improvement is claimed here.
 For each T task record: starting revision/dirty files; completed change; changed coefficients;
 commands/platform/results; report/capture paths; manual/user review; known limits; next task.
 
-Current next gate: review the T5 handoff and collect hands-on feedback on turn exit,
-wake crossings, reset/replay, focus/pause and camera comfort across basin, Eriksberg and
-river. Do not infer user acceptance from automated checks or advance optional trim/loading,
-foundations or harbor work. Further tuning should follow concrete player feedback.
+Current gate closed: the user accepted the combined banking/H3 carving feel on 2026-10-20.
+No further coefficient tuning is queued. Preserve the dated evidence below; the physics
+plan owns H3 acceptance and remaining hands-on/platform verification limits. Optional
+trim/loading, foundations and harbor work remain separate tracks.
 
 ### Planning evidence — 2026-10-20
 

@@ -26,12 +26,18 @@ the feature tracks below remain separate.
 
 Turn banking update, 2026-10-20: T2 adds lateral-load-driven roll with inertia and
 planing dependence; speed and turn tightness both affect the bank. Waves share the same
-physical hull and the camera remains upright. Handling revision 3 preserves earlier best
-files separately. The [banking plan](BOAT_TURN_BANKING_PLAN.md) records T3 dynamics coverage
+physical hull and the camera remains upright. Banking introduced handling revision 3; the
+subsequent H3 carving pass now uses revision 4 and preserves earlier best files separately.
+The [banking plan](BOAT_TURN_BANKING_PLAN.md) records T3 dynamics coverage
 and large-angle recovery tuning, followed by T4 presentation/replay fixtures and the spray
 attachment correction. T5 now tunes quicker turn-exit recovery while retaining roughly
-12° in hard turns. Automated/scripted verification is recorded there; the hands-on location,
-controls/replay/focus checklist and user acceptance remain pending.
+12° in hard turns. Automated/scripted verification is recorded there. The user's subsequent
+feedback requested more bow grip and a clearer stern-led turn; the
+[H3 carving pass](BOAT_PHYSICS_PLAN.md#h3--stern-led-carving-feel-2026-10-20) increases planing
+hull grip while keeping the outboard as the force source. The user accepted the combined
+banking/carving feel on 2026-10-20: "This is way better. I think we're good here." No further
+tuning is queued. The exhaustive hands-on location/controls/replay/focus checklist remains
+unverified; acceptance does not establish that each check occurred.
 
 ## Window presentation — 2026-10-19
 

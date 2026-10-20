@@ -102,16 +102,23 @@ The hull banks into established forward turns according to lateral load: speed a
 tightness both matter. Roll inertia carries the lean through steering changes and coasting;
 waves continue moving the same hull, while the chase camera keeps a level horizon.
 T5 tuning lets the bank ease out sooner as turning load fades. Deterministic presentation/
-replay fixtures cover banked poses, straightening and paused seeking; full hands-on review
-and feel acceptance remain pending in the
-[turn-banking plan](docs/BOAT_TURN_BANKING_PLAN.md).
+replay fixtures cover banked poses, straightening and paused seeking. The
+[turn-banking plan](docs/BOAT_TURN_BANKING_PLAN.md) records the implementation and checks.
+
+The [H3 carving pass](docs/BOAT_PHYSICS_PLAN.md#h3--stern-led-carving-feel-2026-10-20)
+adds firmer hull grip as the boat planes: the outboard pushes the stern around while the
+bow holds its arc with less sideways drift. The engine and hull retain physical response
+time, and the bank follows the measured water forces. The user accepted the combined
+banking/carving feel on 2026-10-20.
 
 Capture the shared banking measurement fixtures at native 320x200 with
 `./build/boat_banking_review --output build/banking-review/cpu`; add `--gpu` for GPU+AA
 captures with desktop graphics access. The original six fixtures include default, close rear and side
 views; three steering-release fixtures add default/rear views at 0, 0.5, 1 and 1.5 seconds.
+Seven turn-entry phases (0–2 s) also have default and close side/rear views.
 Running without options performs the headless attachment/spray/horizon checks.
-`./build/validate_boat_banking --straightening` prints the focused recovery measurements.
+`./build/validate_boat_banking --straightening` prints the focused recovery measurements;
+`./build/validate_boat_turn_entry --report build/entry.csv` records the engine-led entry.
 The replay validator also writes a physically driven banked S-course under its test directory;
 `./build/boat_study --replay build/replay-tests/banked.run` plays it after CTest
 (use the configured replay test directory if different).
@@ -146,8 +153,8 @@ Personal bests persist between launches, with separate files for calm water and 
 The browser version stores these in IndexedDB for the current site; clearing site data removes them.
 On macOS they live in `~/Library/Application Support/Proteus/`; Windows uses `%LOCALAPPDATA%/Proteus/`,
 and Linux uses `$XDG_DATA_HOME/proteus/` (or `~/.local/share/proteus/`). The files are
-`course-calm-physics3.run` and `course-waves-physics3.run`. Use `--data-dir DIR` to select another
-directory. Handling revision 3 starts a separate set of bests; older revision-2 and original best
+`course-calm-physics4.run` and `course-waves-physics4.run`. Use `--data-dir DIR` to select another
+directory. Handling revision 4 starts a separate set of bests; revision-3, revision-2 and original best
 files remain on disk and are not loaded or overwritten automatically.
 Old handling recordings are rejected as replays/ghosts by this version.
 Incompatible or damaged saved bests are ignored with a message. Failed saves preserve the best in

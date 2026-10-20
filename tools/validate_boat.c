@@ -839,12 +839,13 @@ static int validate_gentle_encounters(void)
 
 static int validate_calm_reference(void)
 {
-    // Recorded from the accepted C2 handling before introducing any C3 resistance.
+    // Straight sample retains the accepted C2 baseline. Turning/coasting samples are
+    // measured H3 trajectories, backed by the separate force/energy/entry checks.
     const float expected[3][10] = { { 0, 3.60687423f, 0, -8.85409927f, 0, 0, .00596522959f,
                                         .0537321381f, 0, .276249886f },
-        { 23.1199741f, -48.9055214f, 15.0746412f, 3.26405692f, 2.1820364f, 1.30358398f,
-            .0500000007f, .0523598082f, 0, 1 },
-        { 37.4894028f, -30.8295155f, 15.9639769f, -4.24746752f, -1.83083773f, 0, 0, 0, 0, 0 } };
+        { 23.757431f, -49.1584587f, 15.6087561f, 1.88263535f, 1.85332334f, 1.05519712f,
+            .0500000007f, .053120777f, .211947575f, 1 },
+        { 39.5839539f, -33.2139511f, 9.77335072f, -13.291688f, -2.50756741f, 0, 0, 0, 0, 0 } };
     Boat boat;
     boat_reset(&boat);
     int sample = 0;
@@ -858,18 +859,15 @@ static int validate_calm_reference(void)
                 boat.velocity.y, boat.heading, boat.yaw_velocity, boat.height, boat.pitch,
                 boat.roll, boat.planing };
             for (int i = 0; i < 10; ++i) {
-                // Banking changes turning attitude only; accepted horizontal handling stays fixed.
-                if (sample == 1 && i >= 6 && i <= 8)
-                    continue;
                 CHECK(fabsf(actual[i] - expected[sample][i]) < (i < 4 ? .002f : .00001f));
             }
             if (sample == 1) {
                 printf("banked_calm_reference height=%.9g pitch=%.9g roll=%.9g load=%.9g\n",
                     boat.height, boat.pitch, boat.roll, boat.turn_roll_load);
-                // Measured T5 attitude, backed by independent force/filter/tow/exit checks.
+                // Measured H3 attitude, backed by independent force/filter/tow/entry checks.
                 CHECK(fabsf(boat.height - .0500000007f) < .00001f);
-                CHECK(fabsf(boat.pitch - .0531335883f) < .00001f);
-                CHECK(fabsf(boat.roll - .213792399f) < .00001f);
+                CHECK(fabsf(boat.pitch - .053120777f) < .00001f);
+                CHECK(fabsf(boat.roll - .211947575f) < .00001f);
                 CHECK(boat.roll > 5 * DEG2RAD && boat.roll < 25 * DEG2RAD);
                 CHECK(fabsf(boat.height) < .2f && fabsf(boat.pitch) < .15f);
                 CHECK(boat.turn_roll_load > 0);

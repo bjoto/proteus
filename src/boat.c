@@ -29,6 +29,9 @@ static const float PLANING_EXIT_SPEED = 5.0f;
 static const float PLANING_RISE_RATE = 0.85f;
 static const float PLANING_FALL_RATE = 3.0f;
 static const float PLANING_DRAG_MULTIPLIER = 0.62f;
+// Let the bow hold a water-relative arc while stern thrust initiates the turn.
+// Equal station scaling avoids adding a forward force-centre/yaw feedback term.
+static const float PLANING_LATERAL_GRIP_MULTIPLIER = 3.0f;
 // Planing redistributes the support reference; it does not add a second cosmetic rotation.
 static const float TRIM_TRANSITION_PITCH = 8 * DEG2RAD;
 static const float TRIM_CRUISE_PITCH = 3 * DEG2RAD;
@@ -530,6 +533,7 @@ void boat_step(Boat *boat, float wheel_change, float throttle_change)
         float lateral_speed = Vector2DotProduct(Vector2Subtract(boat->velocity, flow), right)
             + boat->yaw_velocity * arm;
         float grip = 0.7f + 0.055f * fabsf(along) + 0.10f * fabsf(lateral_speed);
+        grip *= Lerp(1, PLANING_LATERAL_GRIP_MULTIPLIER, boat->planing);
         float lateral_force = -grip * lateral_speed;
         force = Vector2Add(force, Vector2Scale(right, lateral_force));
         torque += arm * lateral_force;

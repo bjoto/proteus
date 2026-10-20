@@ -225,6 +225,30 @@ int main(int argc, char **argv)
             CHECK(pose_check(&b) == 0);
         }
     }
+    Boat entry;
+    boat_turn_entry_reset(&entry);
+    const int entry_ticks[] = { 0, 12, 36, 60, 120, 180, 240 };
+    for (int tick = 0; tick <= 240; ++tick) {
+        CHECK(pose_check(&entry) == 0);
+        bool selected = false;
+        for (int i = 0; i < 7; ++i)
+            selected |= tick == entry_ticks[i];
+        if (output && selected)
+            for (int view = 0; view < 2; ++view) {
+                Boat shown = entry;
+                if (view)
+                    shown.camera_heading = shown.heading + .65f;
+                BoatCamera camera
+                    = view ? (BoatCamera) { .distance = 8, .height = 4 } : BOAT_CAMERA_DEFAULT;
+                char path[2048];
+                CHECK(snprintf(path, sizeof(path), "%s/entry-%04dms-%s.png", output,
+                          tick * 1000 / 120, view ? "side" : "default")
+                    < (int)sizeof(path));
+                CHECK(capture(&gpu, &cpu, &shown, gpu_enabled, camera, path, false) == 0);
+            }
+        if (tick < 240)
+            boat_turn_entry_step(&entry, tick, 1);
+    }
     const float exit_wheels[] = { .25f, .55f, 1 };
     const char *exit_names[] = { "quarter", "half", "full" };
     for (int trial = 0; trial < 3; ++trial) {

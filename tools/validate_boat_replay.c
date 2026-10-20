@@ -188,8 +188,10 @@ static int banked_course(const char *directory)
         target.y -= 2;
         Vector2 delta = Vector2Subtract(target, b.position);
         float error = remainderf(atan2f(delta.x, -delta.y) - b.heading, 2 * PI);
-        float wheel = Clamp(1.8f * error - 1.2f * b.yaw_velocity, -.8f, .8f);
-        float throttle = fabsf(error) > .5f ? .25f : .45f;
+        // H3's firmer hull needs less anticipatory yaw braking and full steering
+        // authority through the offset gates. This is a test driver, not live input.
+        float wheel = Clamp(3.0f * error - .7f * b.yaw_velocity, -1, 1);
+        float throttle = fabsf(error) > .4f ? .25f : .45f;
         BoatReplaySample before = boat_replay_pose(&b);
         boat_step(&b, Clamp((wheel - b.wheel) / BOAT_STEP, -1, 1),
             Clamp((throttle - b.throttle) / (.5f * BOAT_STEP), -1, 1));
@@ -328,13 +330,15 @@ int main(int argc, char **argv)
     // An otherwise valid previous-handling run cannot become an opponent or personal best.
     CHECK(boat_replay_save(&run, invalid));
     FILE *old = fopen(invalid, "r+");
-    CHECK(old && fseek(old, 16, SEEK_SET) == 0 && fputc('2', old) != EOF && fclose(old) == 0);
+    CHECK(old && fseek(old, 16, SEEK_SET) == 0 && fputc('0' + BOAT_PHYSICS_REVISION - 1, old) != EOF
+        && fclose(old) == 0);
     BoatReplaySample *retained_samples = loaded.samples;
     CHECK(!boat_replay_load(&loaded, invalid) && loaded.samples == retained_samples);
     old = fopen(invalid, "r");
     int old_version, old_course, old_physics;
     CHECK(old && fscanf(old, "PROTEUS_RUN %d %d %d", &old_version, &old_course, &old_physics) == 3);
-    CHECK(old_physics == 2 && fclose(old) == 0); // Rejection leaves the old file intact.
+    CHECK(old_physics == BOAT_PHYSICS_REVISION - 1
+        && fclose(old) == 0); // Rejection leaves the old file intact.
 
     CHECK(boat_replay_save(&run, invalid));
     FILE *trailer = fopen(invalid, "a");
