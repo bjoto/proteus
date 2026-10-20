@@ -73,6 +73,8 @@ static int check_drive(void)
     CHECK(profile.count == BOAT_PROFILE_HISTORY);
     CHECK(plain.position.x == measured.position.x && plain.position.y == measured.position.y);
     CHECK(plain.velocity.x == measured.velocity.x && plain.velocity.y == measured.velocity.y);
+    CHECK(plain.turn_roll_load == measured.turn_roll_load && plain.roll == measured.roll
+        && plain.roll_velocity == measured.roll_velocity);
     CHECK(plain.heading == measured.heading && plain.time == measured.time);
     CHECK(plain.water_settings.player_wake_count == measured.water_settings.player_wake_count);
     Color *left = calloc(320 * 200, sizeof(Color));

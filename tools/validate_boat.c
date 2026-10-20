@@ -36,7 +36,8 @@ static int validate_wake_independence(void)
         boat_step(&a, tick > 360 ? .4f : 0, 0);
         boat_step(&b, tick > 360 ? .4f : 0, 0);
         CHECK(a.position.x == b.position.x && a.position.y == b.position.y);
-        CHECK(a.heading == b.heading && a.emission == b.emission);
+        CHECK(a.heading == b.heading && a.emission == b.emission
+            && a.turn_roll_load == b.turn_roll_load);
         CHECK(particles(&a, true) == particles(&b, true));
         for (int i = 0; i < BOAT_WATER_PARTICLES; ++i) {
             const BoatWaterParticle *p = &a.water[i];
@@ -671,12 +672,25 @@ static int validate_buoyancy(void)
     // Longer powered/reversing run, then remove the forcing and recover in calm water.
     boat_reset(&boat);
     boat.water_settings = boat_water_gentle();
+    float combined_peak_roll = 0;
+    int peak_tick = 0;
+    Boat peak_state = { 0 };
     for (int tick = 0; tick < 36000; ++tick) {
         boat_step(&boat, sinf(tick * .005f), sinf(tick * .001f));
         CHECK(isfinite(boat.height) && fabsf(boat.height) < .5f);
         CHECK(isfinite(boat.pitch) && fabsf(boat.pitch) < .4f);
-        CHECK(isfinite(boat.roll) && fabsf(boat.roll) < .4f);
+        CHECK(isfinite(boat.roll));
+        // The new moment can unload supports; the guard is passive, not an angle clamp.
+        CHECK(fabsf(boat.roll) < 35 * DEG2RAD);
+        if (fabsf(boat.roll) > combined_peak_roll) {
+            combined_peak_roll = fabsf(boat.roll);
+            peak_tick = tick;
+            peak_state = boat;
+        }
     }
+    printf("combined_300s_peak_roll_deg=%.9g time=%.6f load=%.9g rate=%.9g speed=%.9g\n",
+        combined_peak_roll * RAD2DEG, (peak_tick + 1) * BOAT_STEP, peak_state.turn_roll_load,
+        peak_state.roll_velocity, Vector2Length(peak_state.velocity));
     boat.water_settings = (BoatWater) { 0 };
     boat.throttle = boat.engine_response = 0;
     for (int tick = 0; tick < 2400; ++tick)
@@ -685,7 +699,8 @@ static int validate_buoyancy(void)
     CHECK(fabsf(boat.roll) < .0001f);
     boat_reset(&boat);
     CHECK(boat.height == 0 && boat.vertical_velocity == 0);
-    CHECK(boat.pitch == 0 && boat.pitch_velocity == 0 && boat.roll == 0 && boat.roll_velocity == 0);
+    CHECK(boat.pitch == 0 && boat.pitch_velocity == 0 && boat.roll == 0 && boat.roll_velocity == 0
+        && boat.turn_roll_load == 0);
     return 0;
 }
 
@@ -842,8 +857,23 @@ static int validate_calm_reference(void)
             const float actual[] = { boat.position.x, boat.position.y, boat.velocity.x,
                 boat.velocity.y, boat.heading, boat.yaw_velocity, boat.height, boat.pitch,
                 boat.roll, boat.planing };
-            for (int i = 0; i < 10; ++i)
+            for (int i = 0; i < 10; ++i) {
+                // T2 changes turning attitude only; accepted horizontal handling stays fixed.
+                if (sample == 1 && i >= 6 && i <= 8)
+                    continue;
                 CHECK(fabsf(actual[i] - expected[sample][i]) < (i < 4 ? .002f : .00001f));
+            }
+            if (sample == 1) {
+                printf("banked_calm_reference height=%.9g pitch=%.9g roll=%.9g load=%.9g\n",
+                    boat.height, boat.pitch, boat.roll, boat.turn_roll_load);
+                // Measured T2 baseline, backed by the independent force/filter/tow checks.
+                CHECK(fabsf(boat.height - .0500000007f) < .00001f);
+                CHECK(fabsf(boat.pitch - .0531556047f) < .00001f);
+                CHECK(fabsf(boat.roll - .216758370f) < .00001f);
+                CHECK(boat.roll > 5 * DEG2RAD && boat.roll < 25 * DEG2RAD);
+                CHECK(fabsf(boat.height) < .2f && fabsf(boat.pitch) < .15f);
+                CHECK(boat.turn_roll_load > 0);
+            }
             ++sample;
         }
     }

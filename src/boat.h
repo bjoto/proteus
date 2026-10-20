@@ -44,6 +44,7 @@ typedef struct {
     // Physical heave relative to the rest waterline, plus bow-up pitch and local Z roll.
     float height, vertical_velocity;
     float pitch, pitch_velocity, roll, roll_velocity;
+    float turn_roll_load; // Filtered gain-weighted lateral acceleration, not a pose angle.
     float wave_spray; // Smoothed 0..1 bow-entry load, used only for wave encounter particles.
     float wheel; // Spring-centred steering setting, -1 (full port) to 1 (full starboard).
     float engine_angle; // Radians of thrust deflection; positive pushes stern to port.

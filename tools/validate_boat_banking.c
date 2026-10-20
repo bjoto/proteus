@@ -32,14 +32,14 @@ static bool open_water(const Boat *boat)
 
 static bool same_state(const Boat *a, const Boat *b)
 {
-    // Explicit physical/control state, never padding or a struct-byte hash. Extend when
-    // live state gains turn_roll_load in T2. Presentation particles do not feed physics.
+    // Explicit physical/control state, never padding or a struct-byte hash.
+    // Presentation particles do not feed physics.
 #define SAME(member) (a->member == b->member)
     return SAME(position.x) && SAME(position.y) && SAME(velocity.x) && SAME(velocity.y)
         && SAME(time) && SAME(heading) && SAME(yaw_velocity) && SAME(planing) && SAME(height)
         && SAME(vertical_velocity) && SAME(pitch) && SAME(pitch_velocity) && SAME(roll)
-        && SAME(roll_velocity) && SAME(throttle) && SAME(engine_response) && SAME(wheel)
-        && SAME(engine_angle) && SAME(wave_spray) && SAME(camera_heading);
+        && SAME(roll_velocity) && SAME(turn_roll_load) && SAME(throttle) && SAME(engine_response)
+        && SAME(wheel) && SAME(engine_angle) && SAME(wave_spray) && SAME(camera_heading);
 #undef SAME
 }
 
@@ -55,11 +55,92 @@ static void row(FILE *report, const char *name, int tick, const Boat *before, fl
                                     boat_water_current(before->water_settings, before->position)),
         forward(before->heading));
     fprintf(report,
-        "%s,%d,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g\n", name,
-        tick, tick * (double)BOAT_STEP, u, before->wheel, before->engine_angle, before->planing,
-        before->yaw_velocity, before->roll, before->roll_velocity, before->height, before->pitch,
-        energy(before), acceleration, radius, residual,
-        Vector2DotProduct(before->velocity, right(before->heading)));
+        "%s,%d,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g\n",
+        name, tick, tick * (double)BOAT_STEP, u, before->wheel, before->engine_angle,
+        before->planing, before->yaw_velocity, before->roll, before->roll_velocity, before->height,
+        before->pitch, energy(before), acceleration, radius, residual,
+        Vector2DotProduct(before->velocity, right(before->heading)), before->turn_roll_load);
+}
+
+// Independent finite-difference force measurement: production never reads this diagnostic.
+static int check_filter(const Boat *before, const Boat *after, float measured_load)
+{
+    float u = Vector2DotProduct(before->velocity, forward(before->heading));
+    float blend = Clamp((u - 1) / 5, 0, 1);
+    blend = blend * blend * (3 - 2 * blend);
+    float gain = .12f + (.85f - .12f) * after->planing * blend;
+    float expected = before->turn_roll_load
+        + (gain * measured_load - before->turn_roll_load) * (1 - expf(-BOAT_STEP / .12f));
+    CHECK(fabsf(after->turn_roll_load - expected) < .00002f);
+    return 0;
+}
+
+static int validate_core(void)
+{
+    Boat boat;
+    boat_reset(&boat);
+    for (int tick = 0; tick < 240; ++tick) {
+        boat_step(&boat, 1, 0);
+        CHECK(boat.turn_roll_load == 0 && fabsf(boat.roll) < .000001f
+            && fabsf(boat.roll_velocity) < .000001f);
+    }
+    // A no-force residual decays exactly; the filter is still active in neutral.
+    boat.turn_roll_load = 2;
+    float previous = boat.turn_roll_load;
+    boat_step(&boat, 0, 0);
+    CHECK(fabsf(boat.turn_roll_load - previous * expf(-BOAT_STEP / .12f)) < .000001f);
+    CHECK(boat.roll > 0 && boat.roll_velocity > 0);
+    boat_reset(&boat);
+    CHECK(boat.turn_roll_load == 0 && boat.roll == 0 && boat.roll_velocity == 0);
+    boat.turn_roll_load = 3;
+    boat_reset_location(&boat, true);
+    CHECK(boat.turn_roll_load == 0);
+    boat.turn_roll_load = 3;
+    boat_reset_course(&boat);
+    CHECK(boat.turn_roll_load == 0);
+    // Saturated demand is a bounded torque, integrated through angular velocity.
+    for (int sign = -1; sign <= 1; sign += 2) {
+        boat_reset(&boat);
+        boat.turn_roll_load = sign * 10000;
+        boat_step(&boat, 0, 0);
+        float moment = .45f * boat.roll_velocity / BOAT_STEP;
+        CHECK(fabsf(moment - sign * 27.04f * 12 * DEG2RAD) < .00001f);
+        CHECK(fabsf(boat.roll - boat.roll_velocity * BOAT_STEP) < .000001f);
+    }
+    // Reverse keeps the low gain, even with stale planing state.
+    boat_reset(&boat);
+    boat.velocity = (Vector2) { .8f, 3 };
+    boat.yaw_velocity = .4f;
+    boat.planing = 1;
+    Boat before = boat;
+    boat_step(&boat, 0, 0);
+    CHECK(check_filter(&before, &boat, (boat.velocity.x - before.velocity.x) / BOAT_STEP) == 0);
+    CHECK(fabsf(boat.turn_roll_load) < .1f);
+    float reverse_peak = 0;
+    for (int tick = 0; tick < 960; ++tick) {
+        // External tow at fixed reverse water-relative motion; vertical state evolves.
+        boat.position = (Vector2) { 0 };
+        boat.velocity = Vector2Add(
+            Vector2Scale(forward(boat.heading), -3), Vector2Scale(right(boat.heading), .8f));
+        boat.yaw_velocity = .4f;
+        boat_step(&boat, 0, 0);
+        reverse_peak = fmaxf(reverse_peak, fabsf(boat.roll));
+        CHECK(reverse_peak < 3 * DEG2RAD);
+    }
+    printf(
+        "reverse_external_work u=-3 yaw=.4 slip=.8 peak_roll_deg=%.6f\n", reverse_peak * RAD2DEG);
+    // Guard recovery does not clamp angle/rate or discard the disturbed state.
+    for (int sign = -1; sign <= 1; sign += 2) {
+        boat_reset(&boat);
+        boat.roll = sign * 32 * DEG2RAD;
+        boat_step(&boat, 0, 0);
+        CHECK(sign * boat.roll > 30 * DEG2RAD && sign * boat.roll_velocity < 0);
+        for (int tick = 0; tick < 360; ++tick)
+            boat_step(&boat, 0, 0);
+        CHECK(fabsf(boat.roll) < .5f * DEG2RAD && fabsf(boat.roll_velocity) < .5f * DEG2RAD);
+    }
+    puts("core=ok rest_lock,neutral_filter,reset,moment_limit,reverse_gain,guard_recovery");
+    return 0;
 }
 
 static int validate_sides(void)
@@ -146,6 +227,9 @@ static int validate_free(FILE *report)
             float load = Vector2DotProduct(
                              Vector2Subtract(boat.velocity, before.velocity), right(before.heading))
                 / BOAT_STEP;
+            CHECK(check_filter(&before, &boat, load) == 0);
+            if (scenario == 4)
+                CHECK(energy(&boat) <= energy(&before) + .00001f);
             row(report, names[scenario], tick, &before, load, 0, 0);
             CHECK(isfinite(load) && isfinite(boat.roll) && isfinite(energy(&boat)));
             if (scenario == 0 || scenario == 5 || scenario == 6)
@@ -155,6 +239,10 @@ static int validate_free(FILE *report)
             peak_load = fmaxf(peak_load, fabsf(load));
             sum_roll += boat.roll;
         }
+        if (scenario == 1 || scenario == 2)
+            CHECK((scenario == 1 ? -1 : 1) * boat.roll > .01f);
+        if (scenario == 4)
+            CHECK(peak_roll > DEG2RAD); // Neutral coasting still produces a bank.
         printf(
             "free=%s mean_roll_deg=%.6f peak_roll_deg=%.6f peak_rate_deg_s=%.6f peak_load=%.6f\n",
             names[scenario], sum_roll / ticks * RAD2DEG, peak_roll * RAD2DEG, peak_rate * RAD2DEG,
@@ -223,6 +311,7 @@ static int validate_tow(FILE *report)
                 float load = Vector2DotProduct(Vector2Subtract(boat.velocity, before.velocity),
                                  right(before.heading))
                     / BOAT_STEP;
+                CHECK(check_filter(&before, &boat, load) == 0);
                 float residual = load - target;
                 CHECK(fabsf(residual) < .0003f);
                 peak_residual = fmaxf(peak_residual, fabsf(residual));
@@ -231,6 +320,8 @@ static int validate_tow(FILE *report)
                     mean_roll += boat.roll / 240;
                 row(report, name, tick, &before, load, sign * radius, residual);
             }
+            CHECK(sign * mean_roll > .001f);
+            CHECK(peak_roll < 25 * DEG2RAD);
             printf("tow_external_work u=%.0f nominal_radius=%g slip=%.6f load=%.6f "
                    "peak_residual=%.8f mean_roll_deg=%.6f peak_roll_deg=%.6f\n",
                 speed, sign * radius, slip, target, peak_residual, mean_roll * RAD2DEG,
@@ -252,13 +343,13 @@ int main(int argc, char **argv)
         fprintf(report,
             "fixture,tick,time,u,wheel,engine_angle,planing,yaw_rate,roll,roll_rate,"
             "height,pitch,horizontal_energy,lateral_acceleration,nominal_radius,"
-            "load_residual,side_slip\n");
+            "load_residual,side_slip,turn_roll_load\n");
     } else if (argc != 1) {
         fprintf(stderr, "Usage: %s [--report <path>]\n", argv[0]);
         return 1;
     }
-    int result = validate_sides() || validate_restoring(report) || validate_free(report)
-        || validate_tow(report);
+    int result = validate_core() || validate_sides() || validate_restoring(report)
+        || validate_free(report) || validate_tow(report);
     if (report) {
         bool failed = ferror(report) != 0;
         if (fclose(report) != 0)
@@ -269,6 +360,6 @@ int main(int argc, char **argv)
         }
     }
     if (!result)
-        puts("boat_banking_baseline=ok (T1; no load-driven roll model yet)");
+        puts("boat_banking=ok (T2 load-driven physical roll)");
     return result;
 }

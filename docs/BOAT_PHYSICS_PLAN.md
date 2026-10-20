@@ -5,10 +5,11 @@ Status, 2026-10-20: A1–D3 implemented; the user-requested
 player-wake motion are provisionally accepted by the user, with continued evaluation
 over time. Current/scripted-wake options now work in all locations; player-path wakes are
 enabled by default in free boating, with `--no-player-wake` available for calm practice.
-Next physics task: T2 in the [turn-banking plan](BOAT_TURN_BANKING_PLAN.md). T1 now supplies
-deterministic baseline traces, transformed-side checks, restoring/decay measurements, and
-solved-slip controlled-tow load fixtures. Banking physics is not implemented yet;
-T2–T5 specify load-driven roll, planing dependence, settling, verification and feel review.
+Next physics task: T3 in the [turn-banking plan](BOAT_TURN_BANKING_PLAN.md). T1 supplies
+baseline/load fixtures; T2 adds filtered lateral-load roll, planing dependence, and passive
+large-angle recovery through the shared physical hull. Handling revision is now 3;
+revision-2 best files remain preserved. Broader dynamics coverage, presentation/replay
+review and feel tuning remain T3–T5, with user banking acceptance pending.
 Preserve the accepted horizontal handling baseline. Windows CI follow-up remains tracked
 in the [Windows build guide](WINDOWS_BUILD.md).
 Closer camera comparisons remain an optional design experiment; E1/E2 have not started.
@@ -116,8 +117,8 @@ Implemented, automatically verified, and accepted by the user on 2026-10-19 ("Fe
   55°. Height, distance, level horizon and heading lag keep their existing settings. `--fixed-fov`
   restores the constant lens and survives C/reset. The camera derives the lens from pose and
   velocity, including replay, with no state that needs to catch up after seeking.
-- Handling revision is now 2. New personal-best filenames include `physics2`; old files are
-  preserved. Old exported recordings are rejected by the existing compatibility contract.
+- At this 2026-10-19 baseline, handling revision became 2 (superseded by banking revision 3).
+  Its personal-best filenames included `physics2`; older files were preserved. Old exported recordings are rejected by the existing compatibility contract.
 
 Deterministic comparison at 120 Hz: start at 12 units/s, establish one second of full steering,
 then hold opposite steering. Powered yaw reversal improved from 0.992 s to 0.383 s; heading

@@ -45,6 +45,17 @@ static const float WAVE_CRUISE_SPEED = 12.0f;
 static const float WAVE_SPRAY_ENTRY_SPEED = 1.2f;
 static const float WAVE_SPRAY_RESPONSE = 8.0f;
 static const float SKEG_RESISTANCE = 0.10f;
+// One-way lateral-load coupling into the existing physical roll integration.
+static const float TURN_ROLL_LOW_GAIN = .12f;
+static const float TURN_ROLL_PLANING_GAIN = .85f;
+static const float TURN_ROLL_SPEED_START = 1;
+static const float TURN_ROLL_SPEED_FULL = 6;
+static const float TURN_ROLL_RESPONSE_SECONDS = .12f;
+static const float TURN_ROLL_SCALE = 12 * DEG2RAD;
+static const float ROLL_GUARD_START = 25 * DEG2RAD;
+static const float ROLL_GUARD_BLEND = 5 * DEG2RAD;
+static const float ROLL_GUARD_STIFFNESS = 60;
+static const float ROLL_GUARD_DAMPING = 4;
 // Contact samples form an intentionally simple, forgiving hull footprint.
 static const float HULL_BOW = 2.0f;
 static const float HULL_STERN = 1.6f;
@@ -231,11 +242,16 @@ void boat_player_pose(const Boat *boat, WaterfrontPlayerState *player)
         .scale = { .55f, .65f, .9f } };
 }
 
-static void buoyancy_step(Boat *boat)
+static void buoyancy_step(Boat *boat, float turn_moment)
 {
     float trim = 4 * boat->planing * (1 - boat->planing) * TRIM_TRANSITION_PITCH
         + boat->planing * TRIM_CRUISE_PITCH;
-    float acceleration = -GRAVITY, pitch_torque = 0, roll_torque = 0;
+    float excess = fmaxf(fabsf(boat->roll) - ROLL_GUARD_START, 0);
+    float guard_mix = Clamp(excess / ROLL_GUARD_BLEND, 0, 1);
+    guard_mix = guard_mix * guard_mix * (3 - 2 * guard_mix);
+    float guard = -ROLL_GUARD_STIFFNESS * excess * copysignf(1, boat->roll)
+        - ROLL_GUARD_DAMPING * guard_mix * boat->roll_velocity;
+    float acceleration = -GRAVITY, pitch_torque = 0, roll_torque = turn_moment + guard;
     float sp = sinf(boat->pitch), cp = cosf(boat->pitch);
     float sr = sinf(boat->roll), cr = cosf(boat->roll);
     Vector3 wave_force = { 0 };
@@ -498,6 +514,7 @@ void boat_step(Boat *boat, float wheel_change, float throttle_change)
                 planing_rate * BOAT_STEP),
         0, 1);
     Vector2 force = Vector2Scale(thrust_direction(boat), ENGINE_THRUST * boat->engine_response);
+    float side_load = Vector2DotProduct(force, right);
     // Torque = lever arm x force: a portward stern force produces starboard yaw.
     float torque = -ENGINE_ARM * Vector2DotProduct(force, right);
     float drag_multiplier = Lerp(1, PLANING_DRAG_MULTIPLIER, boat->planing);
@@ -515,6 +532,7 @@ void boat_step(Boat *boat, float wheel_change, float throttle_change)
         float lateral_force = -grip * lateral_speed;
         force = Vector2Add(force, Vector2Scale(right, lateral_force));
         torque += arm * lateral_force;
+        side_load += lateral_force;
     }
     // Outboard point velocity is relative to its local flow, including stern rotation.
     // The submerged outboard resists flow across its angled plane. Apply both components of
@@ -531,6 +549,17 @@ void boat_step(Boat *boat, float wheel_change, float throttle_change)
         = Vector2Scale(skeg_normal, -SKEG_RESISTANCE * Vector2Length(stern_velocity) * cross_flow);
     force = Vector2Add(force, skeg_force);
     torque -= ENGINE_ARM * Vector2DotProduct(skeg_force, right);
+    side_load += Vector2DotProduct(skeg_force, right);
+    // Snapshot water-relative forces before contacts; exclude drag and water-normal resistance.
+    float forward_mix = Clamp(
+        (along - TURN_ROLL_SPEED_START) / (TURN_ROLL_SPEED_FULL - TURN_ROLL_SPEED_START), 0, 1);
+    forward_mix = forward_mix * forward_mix * (3 - 2 * forward_mix);
+    float gain = Lerp(TURN_ROLL_LOW_GAIN, TURN_ROLL_PLANING_GAIN, boat->planing * forward_mix);
+    boat->turn_roll_load += (gain * side_load - boat->turn_roll_load)
+        * (1 - expf(-BOAT_STEP / TURN_ROLL_RESPONSE_SECONDS));
+    float equivalent = TURN_ROLL_SCALE * tanhf((boat->turn_roll_load / GRAVITY) / TURN_ROLL_SCALE);
+    // Sum of the six support stiffnesses times their squared across lever arms.
+    float turn_moment = BUOYANCY_STIFFNESS * .65f * .65f * equivalent;
     torque -= 0.45f * boat->yaw_velocity;
     boat->velocity = Vector2Add(boat->velocity, Vector2Scale(force, BOAT_STEP));
     boat->yaw_velocity += torque / YAW_INERTIA * BOAT_STEP;
@@ -551,7 +580,7 @@ void boat_step(Boat *boat, float wheel_change, float throttle_change)
     float camera_delta = remainderf(boat->heading - boat->camera_heading, 2 * PI);
     boat->camera_heading
         = remainderf(boat->camera_heading + camera_delta * (1 - expf(-6 * BOAT_STEP)), 2 * PI);
-    buoyancy_step(boat);
+    buoyancy_step(boat, turn_moment);
     if (boat->water_settings.player_wake_enabled) {
         if (boat->physical_wake_time == 0)
             boat->physical_wake_start = previous;

@@ -24,6 +24,12 @@ separation. P2 benchmark/report tooling and renderer counters are next; later ph
 Verification evidence and limits belong to those documents; existing gameplay acceptance and
 the feature tracks below remain separate.
 
+Turn banking update, 2026-10-20: T2 adds lateral-load-driven roll with inertia and
+planing dependence; speed and turn tightness both affect the bank. Waves share the same
+physical hull and the camera remains upright. Handling revision 3 preserves earlier best
+files separately. The [banking plan](BOAT_TURN_BANKING_PLAN.md) owns T3 dynamics coverage,
+T4 presentation/replay review, and T5 tuning/playback/user acceptance, all still pending.
+
 ## Window presentation — 2026-10-19
 
 Implemented: the 320x200 scene uses the entire window's integer-scaled presentation area,

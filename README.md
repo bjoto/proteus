@@ -98,6 +98,12 @@ It captures a driven dock/river/quay circuit in both water presets and camera he
 GPU captures need a desktop graphics context. Findings, artifact names, optional movie
 encoding, and the implemented surface pass are in [the water review](docs/WATER_REVIEW.md).
 
+The hull banks into established forward turns according to lateral load: speed and turn
+tightness both matter. Roll inertia carries the lean through steering changes and coasting;
+waves continue moving the same hull, while the chase camera keeps a level horizon.
+Broader banking review and feel tuning remain pending in the
+[turn-banking plan](docs/BOAT_TURN_BANKING_PLAN.md).
+
 Run `./build/boat_study --course` for the first timed S course in the basin. Cross the
 start line northbound to start the clock, pass the two offset buoy gates in order, then cross
 the chequered finish line to freeze the time. Yellow marks the next gate; the small route map
@@ -128,9 +134,9 @@ Personal bests persist between launches, with separate files for calm water and 
 The browser version stores these in IndexedDB for the current site; clearing site data removes them.
 On macOS they live in `~/Library/Application Support/Proteus/`; Windows uses `%LOCALAPPDATA%/Proteus/`,
 and Linux uses `$XDG_DATA_HOME/proteus/` (or `~/.local/share/proteus/`). The files are
-`course-calm-physics2.run` and `course-waves-physics2.run`. Use `--data-dir DIR` to select another
-directory. Handling revision 2 starts a separate set of bests; older `course-calm.run` and
-`course-waves.run` files remain on disk and are not loaded or overwritten automatically.
+`course-calm-physics3.run` and `course-waves-physics3.run`. Use `--data-dir DIR` to select another
+directory. Handling revision 3 starts a separate set of bests; older revision-2 and original best
+files remain on disk and are not loaded or overwritten automatically.
 Old handling recordings are rejected as replays/ghosts by this version.
 Incompatible or damaged saved bests are ignored with a message. Failed saves preserve the best in
 memory. Recording is limited to ten minutes per attempt; longer attempts can still finish, but

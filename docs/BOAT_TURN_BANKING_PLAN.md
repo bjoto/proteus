@@ -1,7 +1,7 @@
 # Turn banking for the playable boat
 
-Status, 2026-10-20: **T1 baseline/sign/load fixtures implemented; no banking physics yet**.
-Next task: T2, the specified load-driven roll moment and compatibility revision. T1–T4 deliver the requested feature; T5 is its playback/tuning gate.
+Status, 2026-10-20: **T1/T2 implemented: load-driven physical roll and handling revision 3**.
+Next task: T3, broader dynamics/environment coverage. T1–T4 deliver the requested feature; T5 is its playback/tuning gate.
 The [physics plan](BOAT_PHYSICS_PLAN.md) owns the overall handling track; this document
 owns the banking specification and task evidence. Optional trim/loading remains separate.
 
@@ -177,7 +177,7 @@ requested. Never advance the foundations, trim/loading, or harbor tracks as part
 | Task | Deliverable | Depends on | Status |
 | --- | --- | --- | --- |
 | T1 | Baseline traces and coordinate/load fixtures | — | Complete (2026-10-20; evidence below) |
-| T2 | Load-driven roll moment, filter, recovery term and compatibility revision | T1 | Pending |
+| T2 | Load-driven roll moment, filter, recovery term and compatibility revision | T1 | Complete (2026-10-20; evidence below) |
 | T3 | Full dynamics/environment regression coverage | T2 | Pending |
 | T4 | Presentation/replay review fixtures and documentation | T3 | Pending |
 | T5 | Measured tuning, playback and user feel review | T4 | Pending |
@@ -330,10 +330,10 @@ commands/platform/results; report/capture paths; manual/user review; known limit
 Current next-task prompt for the implementation model:
 
 > Read AGENTS.md, docs/BOAT_TURN_BANKING_PLAN.md and the working contract in
-> docs/BOAT_PHYSICS_PLAN.md. Implement only T2 from the banking plan; read the T1 handoff
+> docs/BOAT_PHYSICS_PLAN.md. Implement only T3 from the banking plan; read the T1/T2 handoffs
 > and baseline artifacts. Preserve unrelated edits and accepted horizontal handling.
-> Complete its physics, core checks and
-> documentation handoff, then stop before T3. Do not commit or push.
+> Complete its broader dynamics checks and
+> documentation handoff, then stop before T4. Commit only if requested; do not push.
 
 For later tasks, replace T2 with the requested task or explicit range. Read prerequisite
 handoffs and current source before assuming names or physics revision numbers are unchanged.
@@ -442,3 +442,91 @@ user acceptance, other-platform execution or Instruments measurement is claimed.
 Full verification result, 2026-10-20: the desktop Debug run passed **71/71 CTests**,
 including 18 GPU-labelled tests, in 144.92 seconds with `PROTEUS_GPU_TESTS=ON`.
 Changed documentation file targets exist and `git diff --check` passed.
+
+### T2 handoff — 2026-10-20
+
+Starting revision: `39c3786` (T1 committed at the user's request), clean worktree.
+T2 implements the specified pre-contact propulsion/station/skeg side-load snapshot,
+smoothed gain-weighted `Boat.turn_roll_load`, bounded applied moment, and passive
+large-angle guard. The buoyancy helper takes the moment explicitly and retains physical
+roll inertia, support forces and damping. All initial coefficients are exactly those in
+this plan; none were tuned. Horizontal force accumulation order is preserved. Handling
+revision is 3; replay layout/version remain unchanged, sampled playback does not integrate
+the new filter, and revision-derived best paths preserve older files.
+
+Core checks cover still full lock without power, straight running, signed established
+turns, exact neutral filter decay, reset/location/course reset, saturated moment integration,
+reverse low gain, recovery from ±32°, and repeatable live state including the new field.
+The filter is independently checked against finite-difference lateral acceleration on every
+free-drive/tow tick. Neutral coasting dissipates horizontal energy while banking. Existing
+profile/environment/wake named-state comparisons now include the new field. Reset and replay
+reconstruction sites were audited with `rg`; aggregate initialization zeros the new field.
+
+Measured results (macOS Apple Silicon, Debug):
+
+- All 18,000 T1 report rows match T2 exactly for the recorded horizontal/control/load
+  fields, including speed, yaw, energy, lateral acceleration and solved-slip residual.
+  Two T2 reports also match byte for byte; the CSV adds pre-tick `turn_roll_load`.
+- Radius-30 tow mean bank at speeds 4/8/12 is 1.806°/8.647°/11.931°. At speed 8,
+  radii 20/40/80 give 10.688°/7.046°/3.855°. Mirrored signs agree to report precision.
+  These are externally driven nominal-radius fixtures, not free trajectories.
+- Free left/right peak bank is 15.077°; countersteer peaks at 25.857° and 70.441°/s.
+  Neutral coast peaks at 7.488°. A reverse tow at `u=-3`, yaw `.4`, slip `.8` peaks
+  at 1.124°. Still/straight turn load is zero (attitude has sub-microradian float noise).
+- The moment saturates at 5.663244 normalized torque units. Small-angle restoring
+  stiffness remains 27.040218 and 10° unforced recovery remains 0.625 s at the T1 thresholds.
+- The accepted calm-reference horizontal/planing and straight/rest expectations remain
+  unchanged. Only the turning attitude sample changes: height `.0500000007`, pitch
+  `.0531556047`, roll `.216758370` radians (12.419°), filtered load `15.8966875`.
+  Tight measured attitude checks supplement the independent force/filter/sign checks.
+- The existing 300 s powered/reversing gentle-wave stress drive exceeds its old `.4` rad
+  roll bound: peak 33.757816° at 185.358 s (speed 16.660, filtered load -8.5804, roll rate -0.12634 rad/s).
+  This combined forced transient can unload supports;
+  the 25° guard is a passive spring/damper, not an angle cap. Its new explicit 35° bound
+  admits this measured behavior while retaining all height/pitch and post-forcing recovery
+  checks. No other environment/replay bounds were relaxed. This peak exceeds the proposed
+  T3 standard-drive 30° target and needs explicit follow-up in T3/T5; no stronger guard or
+  lower moment was silently tuned to hide it.
+
+Reproduce reports using the T1 commands with report names `t2.csv` and `t2-rerun.csv`.
+Additional review commands actually run:
+
+```sh
+./build/boat_study --renderer cpu --no-player-wake \
+  --screenshot build/banking-review/t2-straight-cpu.png --time 2
+./build/boat_study --renderer cpu --no-player-wake --camera-distance 8 --camera-height 4 \
+  --screenshot build/banking-review/t2-turn-cpu.png --time 5
+./build/boat_study --renderer cpu --waves \
+  --screenshot build/banking-review/t2-waves-cpu.png --time 8
+```
+
+The native 320x200 CPU frames were inspected: straight attitude, close turning hull/outboard,
+and combined own-wake/wave turn are readable with an upright horizon. Detailed attachment,
+spray, replay/ghost and seek review remains T4. No user banking acceptance or other-platform
+execution is claimed. T3 is next; T4/T5 and optional trim/loading remain unstarted.
+
+Verification, 2026-10-20: Debug configure and full build passed without project compiler
+warnings (raylib retains the macOS OpenGL deprecation configure notice).
+`PROTEUS_GPU_TESTS=ON` was preserved. Full desktop CTest passed **71/71**, including
+18 GPU-labelled checks, in 148.10 s (`build/banking-review/ctest-t2-desktop.log`). The final
+reverse-tow assertion was then built and the focused CTest rerun passed; all runtime code
+and the other fixtures were already included in the full suite. The earlier T1 recheck
+passed through CPU test 52 before the first sandboxed GPU launch stalled and was interrupted;
+T1's original 71/71 desktop evidence remains recorded above.
+
+Additional desktop commands completed successfully:
+
+```sh
+./build/boat_study --renderer gpu --gpu-aa --no-player-wake \
+  --camera-distance 8 --camera-height 4 \
+  --screenshot build/banking-review/t2-turn-gpu.png --time 5
+./build/boat_study --demo --location eriksberg --gpu-aa --frames 600
+```
+
+The native GPU frame was inspected alongside the CPU turn frame: rolled hull/cabin/outboard,
+shadow and level horizon are coherent in this view. Scripted desktop playback is a smoke
+check of motion/rendering/asset loading, not hands-on controls, subjective listening, or
+user feel acceptance. No personal-best/course recording was written by these commands.
+The report pair, handling measurements, build logs, captures and smoke log are ignored local
+outputs under `build/banking-review/`. Changed Markdown file targets and `git diff --check`
+passed. No performance issue requiring Instruments was observed; no profiling claim is made.

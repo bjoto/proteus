@@ -142,6 +142,7 @@ static int wake_checks(void)
             for (int tick = 0; tick < 3600; tick++) {
                 boat_step(&a, 0, 0);
                 boat_step(&b, 0, 0);
+                CHECK(a.turn_roll_load == b.turn_roll_load);
                 CHECK(a.height == b.height && a.position.x == b.position.x && a.pitch == b.pitch);
                 CHECK(isfinite(a.height) && fabsf(a.height) < 1);
                 CHECK(fabsf(a.roll) < .65f && fabsf(a.pitch) < .65f);
@@ -226,6 +227,7 @@ static int player_wake_checks(void)
             Clamp((throttle - a.throttle) / (.5f * BOAT_STEP), -1, 1));
         boat_step(&b, Clamp((wheel - b.wheel) / BOAT_STEP, -1, 1),
             Clamp((throttle - b.throttle) / (.5f * BOAT_STEP), -1, 1));
+        CHECK(a.turn_roll_load == b.turn_roll_load);
         CHECK(a.height == b.height && a.position.x == b.position.x && a.roll == b.roll);
         CHECK(fabsf(a.roll) < .7f && fabsf(a.pitch) < .7f && fabsf(a.height) < 1.5f);
         CHECK(Vector2Length(a.velocity) < 23);
