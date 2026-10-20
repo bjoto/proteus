@@ -680,8 +680,8 @@ static int validate_buoyancy(void)
         CHECK(isfinite(boat.height) && fabsf(boat.height) < .5f);
         CHECK(isfinite(boat.pitch) && fabsf(boat.pitch) < .4f);
         CHECK(isfinite(boat.roll));
-        // The new moment can unload supports; the guard is passive, not an angle clamp.
-        CHECK(fabsf(boat.roll) < 35 * DEG2RAD);
+        // T3 tuned the passive guard against this coupled stress drive; no angle clamp.
+        CHECK(fabsf(boat.roll) < 30 * DEG2RAD);
         if (fabsf(boat.roll) > combined_peak_roll) {
             combined_peak_roll = fabsf(boat.roll);
             peak_tick = tick;

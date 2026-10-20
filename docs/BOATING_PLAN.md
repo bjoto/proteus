@@ -27,8 +27,9 @@ the feature tracks below remain separate.
 Turn banking update, 2026-10-20: T2 adds lateral-load-driven roll with inertia and
 planing dependence; speed and turn tightness both affect the bank. Waves share the same
 physical hull and the camera remains upright. Handling revision 3 preserves earlier best
-files separately. The [banking plan](BOAT_TURN_BANKING_PLAN.md) owns T3 dynamics coverage,
-T4 presentation/replay review, and T5 tuning/playback/user acceptance, all still pending.
+files separately. The [banking plan](BOAT_TURN_BANKING_PLAN.md) records T3 dynamics coverage
+and large-angle recovery tuning. T4 presentation/replay review and T5 tuning/playback/user
+acceptance remain pending.
 
 ## Window presentation — 2026-10-19
 

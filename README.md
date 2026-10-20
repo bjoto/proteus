@@ -101,7 +101,7 @@ encoding, and the implemented surface pass are in [the water review](docs/WATER_
 The hull banks into established forward turns according to lateral load: speed and turn
 tightness both matter. Roll inertia carries the lean through steering changes and coasting;
 waves continue moving the same hull, while the chase camera keeps a level horizon.
-Broader banking review and feel tuning remain pending in the
+Presentation/replay review and feel tuning remain pending in the
 [turn-banking plan](docs/BOAT_TURN_BANKING_PLAN.md).
 
 Run `./build/boat_study --course` for the first timed S course in the basin. Cross the

@@ -1,7 +1,7 @@
 # Turn banking for the playable boat
 
-Status, 2026-10-20: **T1/T2 implemented: load-driven physical roll and handling revision 3**.
-Next task: T3, broader dynamics/environment coverage. T1–T4 deliver the requested feature; T5 is its playback/tuning gate.
+Status, 2026-10-20: **T1–T3 implemented: load-driven physical roll, broader dynamics coverage, handling revision 3**.
+Next task: T4, presentation/replay review fixtures. T1–T4 deliver the requested feature; T5 is its playback/tuning gate.
 The [physics plan](BOAT_PHYSICS_PLAN.md) owns the overall handling track; this document
 owns the banking specification and task evidence. Optional trim/loading remains separate.
 
@@ -133,12 +133,14 @@ Waves retain their existing forces. Use a passive large-angle recovery term only
 ```text
 excess = max(abs(roll) - radians(25), 0)
 q      = clamp(excess / radians(5), 0, 1)
-M_guard = -60 * excess * sign(roll)
-          -4 * q*q*(3 - 2*q) * roll_velocity
+M_guard = -180 * excess * sign(roll)
+          -12 * q*q*(3 - 2*q) * roll_velocity
 ```
 
 Add it to the same torque sum. The spring is continuous at engagement; damping always
-opposes angular velocity. Its potential is `0.5 * 60 * excess²` for energy tests.
+opposes angular velocity. Its potential is `0.5 * 180 * excess²` for energy tests.
+T3 increased spring/damping from the initial 60/4 to 180/12 after measured
+wave/own-wake overshoot; engagement and blend angles remain 25°/5°.
 This is a deliberate game stability aid, not calibrated hull stability. It is not a
 hard cap: stress tests must measure overshoot and recoverability. Never silently clamp
 roll velocity, erase roll at contacts, or reset the boat to pass a test.
@@ -178,7 +180,7 @@ requested. Never advance the foundations, trim/loading, or harbor tracks as part
 | --- | --- | --- | --- |
 | T1 | Baseline traces and coordinate/load fixtures | — | Complete (2026-10-20; evidence below) |
 | T2 | Load-driven roll moment, filter, recovery term and compatibility revision | T1 | Complete (2026-10-20; evidence below) |
-| T3 | Full dynamics/environment regression coverage | T2 | Pending |
+| T3 | Full dynamics/environment regression coverage | T2 | Complete (2026-10-20; evidence below) |
 | T4 | Presentation/replay review fixtures and documentation | T3 | Pending |
 | T5 | Measured tuning, playback and user feel review | T4 | Pending |
 
@@ -330,12 +332,12 @@ commands/platform/results; report/capture paths; manual/user review; known limit
 Current next-task prompt for the implementation model:
 
 > Read AGENTS.md, docs/BOAT_TURN_BANKING_PLAN.md and the working contract in
-> docs/BOAT_PHYSICS_PLAN.md. Implement only T3 from the banking plan; read the T1/T2 handoffs
+> docs/BOAT_PHYSICS_PLAN.md. Implement only T4 from the banking plan; read the T1–T3 handoffs
 > and baseline artifacts. Preserve unrelated edits and accepted horizontal handling.
-> Complete its broader dynamics checks and
-> documentation handoff, then stop before T4. Commit only if requested; do not push.
+> Complete its presentation/replay checks and documentation handoff, then stop before T5.
+> Commit only if requested; do not push.
 
-For later tasks, replace T2 with the requested task or explicit range. Read prerequisite
+For later tasks, replace T4 with the requested task or explicit range. Read prerequisite
 handoffs and current source before assuming names or physics revision numbers are unchanged.
 
 ### Planning evidence — 2026-10-20
@@ -530,3 +532,136 @@ user feel acceptance. No personal-best/course recording was written by these com
 The report pair, handling measurements, build logs, captures and smoke log are ignored local
 outputs under `build/banking-review/`. Changed Markdown file targets and `git diff --check`
 passed. No performance issue requiring Instruments was observed; no profiling claim is made.
+
+
+### T3 handoff — 2026-10-20
+
+Starting revision: `4ff2473`, clean worktree, macOS Apple Silicon. The user authorized
+continuing the plan and committing each step. T3 extends the existing headless banking
+validator, strengthens only the new large-angle recovery coefficients, and tightens the
+existing 300-second stress roll bound from 35° to 30°. T4 is next; no presentation/replay
+fixture work or T5 feel acceptance is claimed here.
+
+The controlled-tow matrix now asserts speed/load and radius/load monotonicity and mirrored
+steady means (0.00001 rad tolerance). The equal-load planing fixture solves side slip
+independently for each imposed pre-tick planing value 0/0.5/1; at speed 8, nominal radius
+30 and lateral acceleration 2.133333, mean bank is 1.551674°/5.829083°/8.646818°.
+As in T1, pre-tick planing is imposed and the normal speed-dependent update runs in each
+tick; these fixtures supply external horizontal work. A neighboring-planing demand check
+covers continuity. Uniform synthetic flow `(1.7, -0.8)` with the same hull-relative motion
+matches roll/rate within 0.00001 and filtered load within 0.00002. No production preset or
+force diagnostic API was added. Straight prescribed speeds 0/4/12/18 have no turn load or
+sustained roll. A 1-unit/s docking tow, yaw .4 and slip .2, peaks at 0.206514°; the existing
+reverse tow remains 1.123860°.
+
+A freely driven mirrored countersteer pair checks roll/rate, height, pitch and speed on
+every tick, at tolerances 0.00002 rad, 0.00005 rad/s, 0.00001 height/pitch and 0.00005 speed.
+Roll changes continuously through integrated angular velocity; it crosses zero 1.05 s after
+the opposite command and finishes inward on the new turn. Its subsequent neutral release
+keeps the filter and momentum, dissipates horizontal kinetic energy each tick, and settles
+within the checked 20-second window. Independent unforced floating-energy checks include
+unilateral spring, gravity, angular/vertical kinetic energy and guard potential. Maximum
+per-tick numerical energy increase is below 0.0000001 (tolerance 0.000002); ±10° releases
+settle below 0.5° and 0.5°/s at 0.625 s, and ±32° releases at 1.016667 s. Residual-load driven
+release is deliberately separate from this passive-energy check.
+
+Six reproducible 120-second free circles start at speed 8, throttle .55 and held wheel .55:
+initial beam/head/following headings relative to the gentle-wave preset, scripted wake
+starting at `(0, 1.6)`, own wake, and calm water. Turning changes the encounter direction;
+the first three names describe the initial orientation. No spatial-field teleporting or
+contacts are accepted in these measurements. Initial alternating S routes reached basin
+boundaries and were replaced by contained circles. A separate 120-second repeated-transition
+fixture uses the existing stress inputs `sin(tick*.005)` wheel and `sin(tick*.001)` throttle
+adjustment, checks valid footprints and exactly repeatable named physical state, and peaks
+at 29.204840° and 177.445450°/s. The high transient rate is measured evidence for T5 review,
+not a claim of comfortable motion.
+
+The first circle matrix exposed 30.832241° ambient-wave and 34.048386° own-wake roll with
+the T2 constants. The forcing/attachment/filter tests pass; unilateral support unloading
+and angular momentum carry roll past the weak passive guard. T3 increases only
+`ROLL_GUARD_STIFFNESS` **60 → 180** and `ROLL_GUARD_DAMPING` **4 → 12**. Gain, filter,
+12° moment scale, 25° engagement, 5° damping blend, buoyancy, propulsion and grip are unchanged.
+No angle/rate clamp, contact reset, or increased acceptance bound was introduced. This
+remains a game stability aid, not calibrated hull stability. Revision stays 3 for this
+banking implementation sequence; replay layout is unchanged.
+
+Final circle measurements:
+
+| Initial environment | Peak total roll | Peak roll rate | Peak absolute height | Peak pitch |
+| --- | --- | --- | --- | --- |
+| Beam waves | 28.039995° | 63.621998°/s | 0.371059 | 11.408874° |
+| Head waves | 28.061476° | 64.219955°/s | 0.406635 | 10.711516° |
+| Following waves | 27.991322° | 64.639542°/s | 0.410857 | 11.711240° |
+| Scripted wake | 20.132694° | 20.462963°/s | 0.130115 | 9.047836° |
+| Own wake | 29.665262° | 109.920059°/s | 0.614577 | 13.364295° |
+| Calm | 12.460248° | 20.113857°/s | 0.053814 | 9.659960° |
+
+Each late-half peak stays within 1° of its first-half peak; all total roll stays below 30°.
+The own-wake fixture uses explicit height/pitch bounds 1/.65 rad, consistent with existing
+wake-environment coverage; ambient stress retains its existing .5/.4 bounds. Removing
+forcing preserves momentum/filter and recovers on calm water; after 120 s coast, a further
+120 s rest has zero measured positional drift. Every driven tick is reproduced independently.
+The older 300-second powered/reversing gentle-wave drive now peaks at **29.457630°**
+(previously 33.757816°), with existing height/pitch/recovery checks preserved.
+
+The guard can change wave-coupled horizontal motion through existing water-normal forces.
+Against the preserved pre-tuning executable on the identical circle inputs, maximum forward
+speed changes are 0.033263 for ambient waves and 0.085691 for own wake; maximum yaw-rate
+changes are 0.010102 and 0.027089 rad/s. Integrating the per-tick yaw-rate differences gives
+at most 0.566° heading evolution difference over 120 s in the ambient cases. This is a yaw
+integral diagnostic, not a measured positional path error. Calm and scripted-wake circle
+horizontal/control reports remain identical. All 18,000 T2 horizontal/control/load rows match T3 exactly, and
+the accepted calm-reference sample remains covered; no six-axis energy conservation claim
+is made.
+
+Eight contact fixtures cover basin shore/corner, the moored workboat and pontoon, and all
+four travelling vessels. Each tick compares against an identical pre-contact hydrodynamic
+probe in flat, safe basin water: filtered load, roll and rate match within 0.000001, with
+measured filter difference exactly zero. Each fixture observes 1–2 impulse ticks, keeps
+shore/harbor/traffic footprint clearance, stays below 30° (maximum 7.868683°), and settles
+below 0.5° in 10 s. No post-impact velocity difference is used as a banking load.
+
+Reproduce from the repository root:
+
+```sh
+./build/validate_boat_banking --report build/banking-review/t3.csv \
+  > build/banking-review/t3-measurements.txt
+./build/validate_boat_banking --report build/banking-review/t3-rerun.csv \
+  > build/banking-review/t3-rerun.txt
+cmp build/banking-review/t3.csv build/banking-review/t3-rerun.csv
+./build/boat_study --renderer cpu --waves --camera-distance 8 --camera-height 4 \
+  --screenshot build/banking-review/t3-waves-cpu.png --time 8
+```
+
+Reports contain 105,360 per-tick rows and match byte for byte. Spatial-wave rows use `nan`
+for unavailable lateral acceleration/load residual; actual filtered load, attitude, velocity
+components and energy columns retain their stated meaning (no velocity-difference claim of
+pre-contact force in waves). Detailed new energy/blend/contact/long-transition summaries
+are printed to stdout rather than mixed into the CSV. Baseline executable/report,
+measurements, logs and captures are ignored local outputs under `build/banking-review/`.
+
+Verification, 2026-10-20: Debug configure and full build passed without project compiler
+warnings; raylib retains its existing macOS OpenGL deprecation configure notice.
+`PROTEUS_GPU_TESTS=ON` was preserved. Full desktop CTest passed **71/71**, including
+18 GPU-labelled checks, in 161.27 s (`build/banking-review/ctest-t3-desktop.log`).
+The expanded banking check took 13.38 s in that run. Formatting, changed Markdown file
+targets and `git diff --check` passed. No performance problem requiring Instruments was
+observed; no runtime performance improvement is claimed.
+
+The CPU frame above and the GPU+AA frame below were inspected at native 320x200. Both
+show coherent rolled hull/cabin/outboard and a level horizon. Detailed emitter, attachment,
+reflection, ghost/replay and seek acceptance remains T4. Additional commands actually run:
+
+```sh
+./build/boat_study --renderer gpu --gpu-aa --waves --camera-distance 8 --camera-height 4 \
+  --screenshot build/banking-review/t3-waves-gpu.png --time 8
+./build/boat_study --demo --location eriksberg --gpu-aa --waves --frames 600
+```
+
+Both desktop commands exited successfully with desktop graphics access. The latter is a
+scripted motion/rendering/asset-loading smoke check, not hands-on control, subjective audio
+review or user feel acceptance. No personal-best files were written. Windows/browser
+execution, human banking acceptance, exhaustive wave/contact coverage and general stability
+outside these fixtures remain unverified. High measured roll rates and the narrow own-wake
+margin below 30° remain explicit T5 tuning/review concerns. T3 is complete; implement only
+T4 next, preserving this evidence and the accepted horizontal handling baseline.

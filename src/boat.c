@@ -54,8 +54,8 @@ static const float TURN_ROLL_RESPONSE_SECONDS = .12f;
 static const float TURN_ROLL_SCALE = 12 * DEG2RAD;
 static const float ROLL_GUARD_START = 25 * DEG2RAD;
 static const float ROLL_GUARD_BLEND = 5 * DEG2RAD;
-static const float ROLL_GUARD_STIFFNESS = 60;
-static const float ROLL_GUARD_DAMPING = 4;
+static const float ROLL_GUARD_STIFFNESS = 180;
+static const float ROLL_GUARD_DAMPING = 12;
 // Contact samples form an intentionally simple, forgiving hull footprint.
 static const float HULL_BOW = 2.0f;
 static const float HULL_STERN = 1.6f;
