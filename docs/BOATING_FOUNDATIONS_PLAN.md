@@ -619,3 +619,14 @@ and a 120-second per-test timeout. Evidence: `build/web-tags-ctest.log`; the
 native scripted playback smoke. This resolves the earlier run's graphics-access limitation;
 it does not establish a P3 performance baseline or human acceptance of the F3 overlay.
 P1 is implemented; P2 remains next. Integer world-time migration (C1/C2) is still pending.
+
+## Windows CI follow-up — 2026-10-20
+
+After commit `84ca2bf` was pushed, Windows run
+[39309664424](https://github.com/doomdavve/proteus/actions/runs/39309664424/job/118255664525)
+failed compiling `src/profiler.c`: the new `_WIN32` `windows.h` include exposed Win32
+`Rectangle`, `CloseWindow`, `ShowCursor`, and `DrawText` declarations that conflict with
+raylib. Applied the repository's existing `WIN32_LEAN_AND_MEAN`/`NOGDI`/`NOUSER` header
+defines in both profiling translation units. This changes no timing logic. The local host
+has no MSVC/Windows SDK; the fix awaits the next Windows Actions run before claiming Windows
+support passes. P2 remains next.

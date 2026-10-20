@@ -57,6 +57,15 @@ See [GitHub's artifact download instructions](https://docs.github.com/en/actions
 
 ## Current status and verification
 
+2026-10-20: the [Windows boat study run](https://github.com/doomdavve/proteus/actions/runs/39309664424/job/118255664525)
+failed while compiling the newly added Windows monotonic-clock code in `profiler.c`. Including
+`windows.h` after raylib exposed the Windows SDK's `Rectangle`, `CloseWindow`, `ShowCursor`, and
+`DrawText` declarations. Both timing sources now define `WIN32_LEAN_AND_MEAN`, `NOGDI`, and
+`NOUSER` before including `windows.h`, following the existing `boat_replay.c` pattern. This
+preserves `QueryPerformanceCounter` while excluding the conflicting UI/GDI declarations.
+MSVC is not installed in this macOS environment, so the fix is not locally compiled; rerun the
+Windows workflow after pushing and confirm the build, CPU checks, package, and relocation step.
+
 2026-10-19: [run 39273971121](https://github.com/doomdavve/proteus/actions/runs/39273971121/job/118133350281)
 failed the basin stress test's `abs(yaw_velocity) < 4` assertion; both CPU capture tests
 passed. Local heading perturbations reproduced wall-impact peaks of 5.07 and 5.66 rad/s.
