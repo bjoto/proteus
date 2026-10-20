@@ -3,7 +3,11 @@
 Status, 2026-10-20: A1–D3 implemented; the user-requested
 [handling feel pass](#handling-feel-pass--2026-10-19) adds quicker countersteering and a speed view, accepted by the user on 2026-10-19. Phase C is accepted; Phase D handling and
 player-wake motion are provisionally accepted by the user, with continued evaluation
-over time. Current/scripted-wake options now work in all locations; player-path wakes are
+over time. On 2026-10-20 the user requested longer-lived, coherent wakes for jumping and
+expressed enthusiasm for crossing wakes. The [wake rewrite review and plan](WAKE_REWRITE_PLAN.md)
+owns that proposed follow-up: source review complete, implementation pending, next W1 baseline
+and connected-front prototype. The 2026-10-18 acceptance remains a historical baseline.
+Current/scripted-wake options now work in all locations; player-path wakes are
 enabled by default in free boating, with `--no-player-wake` available for calm practice.
 The earlier T5 banking pass is recorded in the [turn-banking plan](BOAT_TURN_BANKING_PLAN.md). T1 supplies
 baseline/load fixtures; T2 adds filtered lateral-load roll, planing dependence, and passive
@@ -375,8 +379,11 @@ The player-wake demo accelerates into a loop starting at 3.5 s, then returns to 
 at 12 s; screenshot mode uses the same script. Manual driving uses normal controls.
 R clears history while preserving the launch option. Free boating now defaults to player
 wakes; `--no-player-wake` restores the earlier calm baseline when other water flags are absent.
-Continue preserving the provisionally accepted wake/handling baseline and collecting
-feedback on recrossing comfort during the next [turn-banking task](BOAT_TURN_BANKING_PLAN.md).
+The earlier wake acceptance is the baseline for the proposed
+[coherent-wake rewrite](WAKE_REWRITE_PLAN.md), requested on 2026-10-20 after feedback about
+early disappearance and fragmented fronts. Its next task is W1; the runtime described above
+is still the current implementation. Turn-banking work is recorded separately in the
+[turn-banking plan](BOAT_TURN_BANKING_PLAN.md).
 
 Play gate D: currents reward anticipation and wakes reward choosing speed/angle; neither feels like
 an invisible punishment. Keep a calm-water option and do not make exposure mandatory for exploration.

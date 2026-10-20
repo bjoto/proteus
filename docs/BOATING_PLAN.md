@@ -515,7 +515,9 @@ These are tunable gameplay models, not calibrated hydrodynamics.
   depend on speed and heading. Visual shelter/exposure varies independently of the wave physics.
 - **Crossable wakes (D2/D3, implemented; provisionally accepted):** an opt-in scripted source in all locations
   plus a default player-path history (`--no-player-wake` opts out) for crossing your own trail, with matching
-  rendering and forces. Fleet foam remains visual only.
+  rendering and forces. Fleet foam remains visual only. The 2026-10-20
+  [wake rewrite proposal](WAKE_REWRITE_PLAN.md) targets longer-lived coherent ramps and
+  reinforcing/cancelling wake crossings; source review is complete and implementation is pending.
 
 Judge each experiment through driving before combining it with the others. Wake and spray should
 help reveal movement through water as these models evolve.
