@@ -10,6 +10,12 @@ feels much better, and proposed improving the water/ocean appearance as a separa
 The window identifies this build with `WAKE FIELD / REVIEW 3`. This is positive play feedback,
 not a request to switch the default or acceptance of every scenario/platform.
 
+Subsequent performance follow-up: the user likes the basin results as a foundation but
+requires much faster wakes over arbitrarily large water spaces. Real DFT/cache optimization
+reduces measured full-basin physics from 8.91 to 6.31 ms/frame; the 2 ms target still fails.
+[Scaling results](WAKE_SCALING_RESULTS.md) supersede the integration-checkpoint timings and
+storage below and define the next large-water experiment. No simulation distance is implemented.
+
 ## Scope and play recipe
 
 ```sh
@@ -211,7 +217,10 @@ figures above do not promise 1% geometric accuracy between triangle vertices, pa
 for a manufactured 3 m wave. Tessellation and surface appearance can be reviewed separately
 while retaining the physical field and query contract.
 
-## Complete runtime and storage
+## Complete runtime and storage — integration checkpoint 8eec6cc
+
+The following measurements describe the initial integrated candidate. The subsequent
+[performance follow-up](WAKE_SCALING_RESULTS.md#measured-cost) owns current timings and storage.
 
 The full-basin field exceeds the provisional **2 ms/frame target**. Do not substitute an
 isolated 144 m operator timing for the complete candidate cost. `wake_play_review --gpu` measures

@@ -16,8 +16,10 @@
 
 static void equivalence(void)
 {
-    const size_t widths[] = { 24, 192, 384 };
-    for (unsigned size = 0; size < 3; ++size) {
+    /* Exercise portable radix-3, native complex fallback and native real DFT lengths,
+     * including transpose tiles smaller than sixteen cells. */
+    const size_t widths[] = { 18, 24, 48, 192, 384 };
+    for (unsigned size = 0; size < sizeof(widths) / sizeof(widths[0]); ++size) {
         size_t w = widths[size], h = w * 2 / 3, n = w * h;
         double *v = calloc(n, sizeof(double)), *rates = calloc(n, sizeof(double));
         CHECK(v && rates);
@@ -330,12 +332,99 @@ static void basin_domain(void)
     }
 }
 
+static int compare_time(const void *a, const void *b)
+{
+    double x = *(const double *)a, y = *(const double *)b;
+    return (x > y) - (x < y);
+}
+
+/* A size sweep, not a gameplay or smaller-domain acceptance. Every sample includes
+ * two 120Hz ticks, a compact moving source, six shared queries/tick, the independent
+ * ledger and one float height copy. GPU upload/rendering and the hull are excluded. */
+static void costs(void)
+{
+    const size_t widths[] = { 96, 192, 384, 768 };
+    puts("synthetic CPU size sweep: 120Hz, .75m, spatial8/order256; two ticks/frame; "
+         "source + field + 12 queries + audit + height copy; excludes hull/GPU");
+    for (unsigned size = 0; size < sizeof(widths) / sizeof(widths[0]); ++size) {
+        size_t w = widths[size], h = w * 2 / 3, n = w * h;
+        double *impulse = calloc(n, sizeof(double)), *rates = calloc(n, sizeof(double));
+        float *heights = calloc(n, sizeof(float));
+        CHECK(impulse && rates && heights);
+        for (size_t z = 0; z < h; ++z)
+            for (size_t x = 0; x < w; ++x) {
+                double edge = fmin(fmin(x, w - 1 - x), fmin(z, h - 1 - z)) * .75;
+                double t = fmax(0, (10.5 - edge) / 10.5);
+                rates[z * w + x] = 2 * t * t;
+            }
+        BoatWakeConfig c = { w, h, .75, 1.0 / 120, 1000, 256, NULL, rates, 8, false };
+        BoatWake *f = boat_wake_create(&c);
+        CHECK(f && boat_wake_use_cosine(f));
+        double times[120], checksum = 0, total = 0;
+        for (unsigned frame = 0; frame < 132; ++frame) {
+            clock_t start = clock();
+            for (unsigned substep = 0; substep < 2; ++substep) {
+                double t = (2 * frame + substep + .5) * c.dt;
+                double px = 5 * sin(t), pz = 3 * cos(t);
+                int cx = (int)floor(px / .75 + w * .5), cz = (int)floor(pz / .75 + h * .5);
+                memset(impulse, 0, n * sizeof(double));
+                double sum = 0, weight = 0;
+                for (int z = cz - 10; z <= cz + 10; ++z)
+                    for (int x = cx - 10; x <= cx + 10; ++x) {
+                        double dx = (x + .5 - w * .5) * .75 - px;
+                        double dz = (z + .5 - h * .5) * .75 - pz;
+                        double envelope = exp(-(dx * dx + dz * dz) / 4.5);
+                        double v = dx / 1.5 * envelope;
+                        impulse[(size_t)z * w + (size_t)x] = v;
+                        sum += v;
+                        weight += envelope;
+                    }
+                for (int z = cz - 10; z <= cz + 10; ++z)
+                    for (int x = cx - 10; x <= cx + 10; ++x) {
+                        double dx = (x + .5 - w * .5) * .75 - px;
+                        double dz = (z + .5 - h * .5) * .75 - pz;
+                        double envelope = exp(-(dx * dx + dz * dz) / 4.5);
+                        size_t i = (size_t)z * w + (size_t)x;
+                        impulse[i] = c.dt * (impulse[i] - sum / weight * envelope);
+                    }
+                CHECK(boat_wake_step_with_impulse(f, impulse));
+                boat_wake_prepare(f);
+                for (unsigned q = 0; q < 6; ++q) {
+                    BoatWakeSample sample;
+                    CHECK(boat_wake_query(f, px + q * .17, pz + .39, &sample));
+                    checksum += sample.height + sample.vertical_velocity + sample.gradient_x
+                        + sample.gradient_z + sample.velocity_x + sample.velocity_z;
+                }
+                CHECK(isfinite(boat_wake_ledger(f).retained));
+            }
+            boat_wake_copy_heights(f, heights);
+            checksum += heights[n / 2 + w / 2];
+            if (frame >= 12) {
+                double ms = 1000.0 * (clock() - start) / CLOCKS_PER_SEC;
+                times[frame - 12] = ms;
+                total += ms;
+            }
+        }
+        qsort(times, 120, sizeof(*times), compare_time);
+        printf("%zux%zu cells (%.0fx%.0fm): mean %.6f p50 %.6f p95 %.6f max %.6f ms/frame; "
+               "field %zu bytes; source+copy %zu bytes; checksum %.9g\n",
+            w, h, w * .75, h * .75, total / 120, .5 * (times[59] + times[60]), times[113],
+            times[119], boat_wake_storage_bytes(f), n * (sizeof(double) + sizeof(float)), checksum);
+        boat_wake_destroy(f);
+        free(heights);
+        free(rates);
+        free(impulse);
+    }
+}
+
 int main(int argc, char **argv)
 {
     if (argc > 1 && strcmp(argv[1], "--source") == 0)
         moving_sources();
     else if (argc > 1 && strcmp(argv[1], "--basin-domain") == 0)
         basin_domain();
+    else if (argc > 1 && strcmp(argv[1], "--costs") == 0)
+        costs();
     else {
         equivalence();
         queries();

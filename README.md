@@ -350,7 +350,9 @@ wake exceeds its provisional 2 ms/frame target; [candidate results](docs/WAKE_CA
 record measured cost, storage and limitations. This flag is rejected for mapped locations,
 current/scripted-source options, courses/replays and the browser. The full-speed source was
 strengthened after initial user feedback; the window identifies `REVIEW 3`. The user reports
-improved feel; further water-appearance work and the default-switch decision remain separate.
+improved feel. [Performance and large-water scaling](docs/WAKE_SCALING_RESULTS.md) are now
+the priority before appearance work; this candidate still simulates only the bounded basin.
+The default-switch decision remains separate.
 
 Currents and the separate scripted crossing wake remain opt-in in **all three locations**:
 

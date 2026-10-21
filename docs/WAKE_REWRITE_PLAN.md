@@ -2,9 +2,12 @@
 
 Status, 2026-10-21: **native basin review candidate implemented behind `--wake-field`.**
 D3 remains the default. Initial user feedback prompted stronger full-speed forcing and an
-optimized-build launch recipe. The user reports revision 3 looks and feels much better;
-water appearance is a separate follow-up, and no default switch has been requested.
+optimized-build launch recipe. The user likes revision 3's basin results as a foundation
+and now prioritizes much faster wakes on arbitrarily large water spaces. A measured
+transform optimization is implemented; large-world support remains open. Water appearance
+is a separate later follow-up, and no default switch has been requested.
 [Candidate evidence, limits, commands and play recipe](WAKE_CANDIDATE_RESULTS.md).
+[Performance and large-water follow-up](WAKE_SCALING_RESULTS.md).
 
 Completed for this bounded candidate: exact cosine evaluation of the existing order-256
 operator on an entirely wet rectangle; matched-accuracy open/island/barrier rerun; full-basin
@@ -22,10 +25,14 @@ to meet a budget. Mapped locations, currents, courses/replays and browser candid
 are explicitly rejected. The desktop default renderer consumes the CPU field; a second GPU
 wave solver is not selected. Full costs and storage belong to the candidate results.
 
-Next task: continue **W4 user play review** and the separate water-appearance track. Review ramp
-readability, persistence, loop crossings, cancellation/reinforcement, reverse/stopping and
-landings. W3 remains open for a fast land-aware backend, mapped locations and supported-device
-performance. Uniform/spatial-current transport, a common scripted second vessel, reciprocal
+Next task: **W3.S scalable representation and travel/return proof**, before the water-appearance
+pass. Prototype sparse phase-carrying state with bounded detailed queries/rendering against
+the existing field; do not enlarge the dense basin grid or add an unproved scrolling cutoff.
+The acceptance gates and current size/cost measurements are in
+[scaling results](WAKE_SCALING_RESULTS.md#required-next-representation).
+W4's broader crossing/landing review remains open alongside W3's land-aware backend,
+mapped locations and supported-device performance. Uniform/spatial-current transport,
+a common scripted second vessel, reciprocal
 hull/wave work and nonlinear breaking remain out of scope for this still-water candidate.
 W5's default switch requires the user's explicit play acceptance and remains blocked on it.
 
@@ -421,13 +428,42 @@ The user reports it looks and feels much better. Effective mass is explicitly re
 to 2000 kg with a revised speed curve; source work remains within measured drag work in all
 twelve source scenarios. The useful band, grid, cadence and boundary gates are unchanged.
 Steep-wave breaking/nonlinear physics remain outside this linear field's validation.
-Next is continued W4 review and the separate appearance work below; W5 is not authorized.
+The subsequent large-water/performance request below takes priority over appearance;
+continued W4 review remains useful and W5 is not authorized.
+
+## W3.S performance and large water — 2026-10-21
+
+The user likes the basin results as a foundation but requires much faster wakes that can
+work across arbitrarily large water spaces, potentially using simulation distance. This
+adds a world-scaling requirement; it does not authorize deleting off-screen waves or
+weakening the existing physical checks.
+
+Completed: double-precision real DFTs on supported macOS lengths, contiguous transforms
+with blocked transposes using existing scratch, additional backend/fallback coverage,
+a CPU size sweep and integrated frame-time percentiles. The source and physical operator
+are unchanged. Measured full-basin physics falls from 8.91 to 6.31 ms/frame on M1 Max;
+the 2 ms whole-wake target still fails. Numerical/runtime evidence and limitations belong
+to [scaling results](WAKE_SCALING_RESULTS.md). Debug configure/build and all 91 CTests pass,
+including 22 GPU checks; both native and portable sanitizer checks pass. Inspected CPU/GPU
+captures match the previous revision byte for byte, and a scripted desktop run completes.
+The browser baseline builds; large-world and other-device performance remain unverified.
+
+Next: isolated sparse dispersive representation, shared near-query/render reconstruction,
+and comparison against a large reference while leaving and returning to wakes. This is
+an experiment, not selection of the rejected W1 strips or a validated packet algorithm.
+Require stable interference, transfer/retirement energy accounting, island blocking,
+bounded long-travel storage and complete measured cost before gameplay integration.
+Map size must not dictate full-resolution field area. No detail radius, distant-wave
+cutoff or default switch has been selected; a necessary physical compromise requires
+measured evidence and user judgment. The present basin candidate remains usable as the
+behavior reference while this work proceeds.
 
 ## Water appearance follow-up — 2026-10-21
 
 After driving revision 3, the user reported improved feel and proposed making the waves
 look more like water/ocean as a separate track. This is recorded follow-up work, not an
-implemented rendering revision or authorization to change the default.
+implemented rendering revision or authorization to change the default. The subsequent
+W3.S performance/large-water request takes priority.
 
 Hold the source, propagation and hull response fixed while reviewing water palette,
 reflection/roughness, crest/trough lighting, subtle surface detail and restrained foam.

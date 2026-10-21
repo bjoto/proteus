@@ -16,6 +16,12 @@
     } while (0)
 static BoatWakeStern recorded[1600][2];
 
+static int compare_time(const void *a, const void *b)
+{
+    double x = *(const double *)a, y = *(const double *)b;
+    return (x > y) - (x < y);
+}
+
 static void crossing(void)
 {
     BoatWakePlayer *world = boat_wake_player_create(1.0 / 120);
@@ -212,6 +218,7 @@ int main(int argc, char **argv)
         glFinish();
     }
     double physics = 0, render = 0, peak = 0;
+    double physics_times[120], total_times[120];
     BoatWakePlayerReport before = boat_wake_player_report(world);
     unsigned frames = graphics ? 120 : 60;
     for (unsigned frame = 0; frame < frames; ++frame) {
@@ -220,11 +227,15 @@ int main(int argc, char **argv)
         step(&boat, world, tick++);
         double stepped = graphics ? GetTime() : (double)clock() / CLOCKS_PER_SEC;
         physics += stepped - start;
+        double rendered = stepped;
         if (graphics) {
             boat_gpu_draw(&gpu, &boat, BOAT_CAMERA_DEFAULT);
             glFinish();
-            render += GetTime() - stepped;
+            rendered = GetTime();
+            render += rendered - stepped;
         }
+        physics_times[frame] = 1000 * (stepped - start);
+        total_times[frame] = 1000 * (rendered - start);
         BoatWakeSample q;
         CHECK(boat_wake_query(boat.wake_surface, boat.position.x, boat.position.y, &q));
         peak = fmax(peak, fabs(q.height));
@@ -234,6 +245,14 @@ int main(int argc, char **argv)
            "render+upload+sync %.6f; total %.6f; owned %zu bytes\n",
         frames, physics * 1000 / frames, render * 1000 / frames, (physics + render) * 1000 / frames,
         boat_wake_player_storage(world));
+    qsort(physics_times, frames, sizeof(*physics_times), compare_time);
+    qsort(total_times, frames, sizeof(*total_times), compare_time);
+    unsigned p95 = (95 * frames + 99) / 100 - 1;
+    printf("frame distribution: physics p50 %.6f p95 %.6f max %.6f; "
+           "total p50 %.6f p95 %.6f max %.6f ms (%s)\n",
+        .5 * (physics_times[frames / 2 - 1] + physics_times[frames / 2]), physics_times[p95],
+        physics_times[frames - 1], .5 * (total_times[frames / 2 - 1] + total_times[frames / 2]),
+        total_times[p95], total_times[frames - 1], graphics ? "wall time" : "process CPU time");
     printf(
         "field source %.6f update+endpoint %.6f audit %.6f ms/frame; retained %.6g J, signed %.6g "
         "(+%.6g / %.6g), absorbed %.6g, residual %.6g, existing drag %.6g; hull height peak %.6g\n",

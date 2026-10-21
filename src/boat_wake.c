@@ -25,6 +25,7 @@ typedef struct {
 #if WAKE_ACCELERATE
     vDSP_DFT_SetupD forward, inverse;
     double *split;
+    bool real_transform;
 #endif
 } WakeTransform;
 
@@ -86,6 +87,48 @@ static void cosine_line(WakeTransform *p, double *values, size_t stride, bool in
 {
     size_t n = p->n;
 #if WAKE_ACCELERATE
+    if (p->split && p->real_transform) {
+        /* The reordered DCT input is real. Pack only its independent half spectrum,
+         * retaining double precision and the same cosine normalization. vDSP's
+         * real forward DFT has an extra factor of two; its inverse scales by N. */
+        double *real = p->split, *imag = real + n, *out_real = imag + n, *out_imag = out_real + n;
+        if (!inverse) {
+            for (size_t i = 0; i < n / 4; ++i) {
+                real[i] = values[4 * i * stride];
+                imag[i] = values[(4 * i + 2) * stride];
+                real[n / 2 - 1 - i] = values[(4 * i + 3) * stride];
+                imag[n / 2 - 1 - i] = values[(4 * i + 1) * stride];
+            }
+            vDSP_DFT_ExecuteD(p->forward, real, imag, out_real, out_imag);
+            values[0] = .5 * out_real[0];
+            values[n / 2 * stride] = .5 * out_imag[0] * p->phase[n / 2].r;
+            for (size_t k = 1; k < n / 2; ++k) {
+                values[k * stride]
+                    = .5 * (out_real[k] * p->phase[k].r - out_imag[k] * p->phase[k].i);
+                values[(n - k) * stride]
+                    = .5 * (out_real[k] * p->phase[n - k].r + out_imag[k] * p->phase[n - k].i);
+            }
+        } else {
+            real[0] = values[0];
+            imag[0] = values[n / 2 * stride] / p->phase[n / 2].r;
+            for (size_t k = 1; k < n / 2; ++k) {
+                WakeComplex phase = p->phase[k];
+                phase.i = -phase.i;
+                WakeComplex v = multiply(
+                    (WakeComplex) { values[k * stride], -values[(n - k) * stride] }, phase);
+                real[k] = v.r;
+                imag[k] = v.i;
+            }
+            vDSP_DFT_ExecuteD(p->inverse, real, imag, out_real, out_imag);
+            for (size_t i = 0; i < n / 4; ++i) {
+                values[4 * i * stride] = out_real[i] / n;
+                values[(4 * i + 2) * stride] = out_imag[i] / n;
+                values[(4 * i + 3) * stride] = out_real[n / 2 - 1 - i] / n;
+                values[(4 * i + 1) * stride] = out_imag[n / 2 - 1 - i] / n;
+            }
+        }
+        return;
+    }
     if (p->split) {
         /* Use the native split buffers directly. Instruments identified the
          * redundant interleaved input/output copies as a substantial cost. */
@@ -148,18 +191,42 @@ static void cosine_line(WakeTransform *p, double *values, size_t stride, bool in
     }
 }
 
+static void transpose(const double *input, double *output, size_t width, size_t height)
+{
+    /* Small blocks keep both sides in cache, including power-of-two row strides. */
+    for (size_t z0 = 0; z0 < height; z0 += 16)
+        for (size_t x0 = 0; x0 < width; x0 += 16) {
+            size_t end_z = z0 + 16 < height ? z0 + 16 : height;
+            size_t end_x = x0 + 16 < width ? x0 + 16 : width;
+            for (size_t z = z0; z < end_z; ++z)
+                for (size_t x = x0; x < end_x; ++x)
+                    output[x * height + z] = input[z * width + x];
+        }
+}
+
+/* Leave the spectrum transposed in existing graph scratch. Contiguous transforms
+ * avoid repeatedly gathering/scattering whole columns through a large row stride. */
+static void cosine_forward(BoatWake *f, const double *input, double *work)
+{
+    size_t w = f->config.width, h = f->config.height;
+    memcpy(work, input, f->count * sizeof(double));
+    for (size_t z = 0; z < h; ++z)
+        cosine_line(&f->transform[0], work + z * w, 1, false);
+    transpose(work, f->b, w, h);
+    for (size_t x = 0; x < w; ++x)
+        cosine_line(&f->transform[1], f->b + x * h, 1, false);
+}
+
 static void apply_cosine(BoatWake *f, const double *input, double *output)
 {
     size_t w = f->config.width, h = f->config.height;
-    memcpy(output, input, f->count * sizeof(double));
-    for (size_t z = 0; z < h; ++z)
-        cosine_line(&f->transform[0], output + z * w, 1, false);
+    cosine_forward(f, input, output);
     for (size_t x = 0; x < w; ++x)
-        cosine_line(&f->transform[1], output + x, w, false);
-    for (size_t i = 0; i < f->count; ++i)
-        output[i] *= f->symbol[i];
+        for (size_t z = 0; z < h; ++z)
+            f->b[x * h + z] *= f->symbol[z * w + x];
     for (size_t x = 0; x < w; ++x)
-        cosine_line(&f->transform[1], output + x, w, true);
+        cosine_line(&f->transform[1], f->b + x * h, 1, true);
+    transpose(f->b, output, h, w);
     for (size_t z = 0; z < h; ++z)
         cosine_line(&f->transform[0], output + z * w, 1, true);
 }
@@ -169,17 +236,13 @@ static void apply_cosine(BoatWake *f, const double *input, double *output)
 static double cosine_quadratic(BoatWake *f, const double *input)
 {
     size_t w = f->config.width, h = f->config.height;
-    double *out = f->source_op;
-    memcpy(out, input, f->count * sizeof(double));
-    for (size_t z = 0; z < h; ++z)
-        cosine_line(&f->transform[0], out + z * w, 1, false);
-    for (size_t x = 0; x < w; ++x)
-        cosine_line(&f->transform[1], out + x, w, false);
+    cosine_forward(f, input, f->source_op);
     double result = 0;
     for (size_t z = 0; z < h; ++z)
         for (size_t x = 0; x < w; ++x) {
             size_t i = z * w + x;
-            result += (x ? 2 : 1) * (z ? 2 : 1) * out[i] * out[i] * f->symbol[i] / f->count;
+            double v = f->b[x * h + z];
+            result += (x ? 2 : 1) * (z ? 2 : 1) * v * v * f->symbol[i] / f->count;
         }
     return result;
 }
@@ -223,8 +286,19 @@ bool boat_wake_use_cosine(BoatWake *f)
         };
 #if WAKE_ACCELERATE
         WakeTransform *p = &f->transform[axis];
-        p->forward = vDSP_DFT_zop_CreateSetupD(NULL, n, vDSP_DFT_FORWARD);
-        p->inverse = vDSP_DFT_zop_CreateSetupD(NULL, n, vDSP_DFT_INVERSE);
+        if (n % 16 == 0) {
+            p->forward = vDSP_DFT_zrop_CreateSetupD(NULL, n, vDSP_DFT_FORWARD);
+            p->inverse = vDSP_DFT_zrop_CreateSetupD(NULL, n, vDSP_DFT_INVERSE);
+        }
+        p->real_transform = p->forward && p->inverse;
+        if (!p->real_transform) {
+            if (p->forward)
+                vDSP_DFT_DestroySetupD(p->forward);
+            if (p->inverse)
+                vDSP_DFT_DestroySetupD(p->inverse);
+            p->forward = vDSP_DFT_zop_CreateSetupD(NULL, n, vDSP_DFT_FORWARD);
+            p->inverse = vDSP_DFT_zop_CreateSetupD(NULL, n, vDSP_DFT_INVERSE);
+        }
         if (p->forward && p->inverse)
             p->split = calloc(4 * n, sizeof(double));
 #endif

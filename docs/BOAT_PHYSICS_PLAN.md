@@ -11,8 +11,9 @@ free-propagation gates. W2.1 now completes the isolated owned C field, ledger, d
 boundary/island proof. A native basin candidate now uses exact cosine evaluation, fixed-tick wetted stern forcing
 and common queries/rendering behind `--wake-field`. D3 remains default; the provisional
 2 ms budget is not met. [Candidate evidence](WAKE_CANDIDATE_RESULTS.md) owns costs, limits
-and continued play review. The user reports the larger revision-3 wake feels much better;
-water appearance is a separate follow-up and D3 remains default.
+and continued play review. The user likes the revision-3 basin results as a foundation;
+[performance and large-water scaling](WAKE_SCALING_RESULTS.md) now take priority over the
+separate appearance pass. D3 remains default.
 The 2026-10-18 acceptance remains a historical baseline.
 Current/scripted-wake options now work in all locations; player-path wakes are
 enabled by default in free boating, with `--no-player-wake` available for calm practice.
