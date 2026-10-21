@@ -480,4 +480,6 @@ if(Python3_Interpreter_FOUND)
   add_test(NAME wake_front_prototype COMMAND ${Python3_EXECUTABLE}
     ${CMAKE_CURRENT_SOURCE_DIR}/tools/wake_front_review.py --check
     --baseline $<TARGET_FILE:wake_baseline>)
+  add_test(NAME wake_heightfield_prototype COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/tools/wake_heightfield_review.py --check)
 endif()

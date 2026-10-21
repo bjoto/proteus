@@ -1,11 +1,12 @@
-# W1: measured baseline and connected-front experiment
+# W1: baseline, strip rejection and heightfield fallback
 
 2026-10-21, macOS / Apple Silicon, Debug. Owner: [wake rewrite plan](WAKE_REWRITE_PLAN.md).
 W1 is implemented as an isolated diagnostic. **The connected-strip prototype is rejected
 for player integration.** Tight inner fronts fold, and the measured reconstructed energy
-has not converged with mesh/grid refinement. The plan's W1 fallback applies: next investigate
-a linear dispersive heightfield solver before proceeding with W2. This rejects this strip
-reconstruction, not every possible connected-front method. Gameplay still uses D3.
+has not converged with mesh/grid refinement. The subsequent
+[linear heightfield fallback](#heightfield-fallback--2026-10-21) passes its isolated periodic
+free-propagation gates. W2 is revised around an owned field, boundary/island proof and
+calibrated source work; runtime implementation is next. Gameplay still uses D3.
 
 ## Reproduce
 
@@ -141,7 +142,7 @@ Later samples show the two outgoing trains continuing independently. These are u
 interference diagnostics; coarse energy resolution and the prescribed potential preclude
 a claim of physically audited crossing conservation.
 
-## Rejection and next task
+## Initial strip rejection and historical next task
 
 The tight loop produces 999 invalid cells at t=16 and 1440 at t=32 on the coarse material
 mesh; the S turn produces 175 and 790 respectively. Counts depend on sampling density;
@@ -153,9 +154,10 @@ hole, not acceptable transport or absorption. Near focusing, heights can grow su
 The model works for a straight train and the outer spreading example, but the single-valued
 strip inverse fails at inward focusing/folds. Cell subdivision preserves that singular
 geometry and cannot fix it. W1 therefore stops the connected-strip approach before player
-integration, as the owning plan requires. Next: prototype a linear dispersive heightfield
-solver against these same four paths and declared energy/volume gates, then revise W2's
-representation/source work around the result. Do not advance W2 by shipping this diagnostic.
+integration, as the owning plan requires. At that checkpoint, the next task was to prototype
+a linear dispersive heightfield solver against these same four paths and declared energy/volume
+gates, then revise W2's representation/source work around the result. The continuation below
+completes that isolated fallback and records the new next task. Do not advance W2 by shipping this diagnostic.
 
 ## Verification and limits
 
@@ -180,5 +182,142 @@ CPU/GPU integration, performance and browser/Windows verification remain future 
 Continuation checkpoint, 2026-10-21, macOS / Apple Silicon: Debug configure/build and
 all 58 display-free CTests passed with `PROTEUS_GPU_TESTS=OFF` before committing the
 W1 diagnostic baseline. GPU checks were omitted in this continuation; the earlier
-78-test desktop run above remains historical evidence. The next implementation step
-is the isolated heightfield fallback, followed by its measured decision and W2 revision.
+78-test desktop run above remains historical evidence. At this checkpoint the next step
+was the heightfield fallback, completed in the continuation below.
+
+## Heightfield fallback — 2026-10-21
+
+The continuation implements [a separate linear heightfield diagnostic](../tools/wake_heightfield_review.py).
+The connected-strip rejection above remains in force. Both experiments stay outside the
+player, hull queries, CPU/GPU water rendering and defaults.
+
+Reproduce with Python 3 and its standard library after building `wake_baseline`:
+
+```sh
+python3 tools/wake_heightfield_review.py --check
+python3 tools/wake_heightfield_review.py --baseline build/wake_baseline --output build/wake-heightfield-final
+```
+
+The full run writes `measurements.json` and the same four named PNG/SVG sequences.
+The labelled SVG identifies the linear heightfield; the layout, display color scales and
+16/24/32 s times match the strip review. These plots sample X/Z from −96 to 94.5 m at
+1.5 m spacing, including X=0 in the side section. They crop a larger simulation domain;
+the energy audits integrate the entire domain. Plot colors can saturate; simulated height
+is neither clamped nor age-faded.
+
+### Equations, source and declared gates
+
+The deep-water linear surface equations are `η_t = |D| ψ`, `ψ_t = −g η`.
+For each nonzero Fourier wavenumber magnitude k, evolve the pair exactly:
+
+```text
+η(t+Δt) = cos(ωΔt) η(t) + (k/ω) sin(ωΔt) ψ(t)
+ψ(t+Δt) = cos(ωΔt) ψ(t) − (g/ω) sin(ωΔt) η(t)
+ω = sqrt(g k)
+```
+
+The zero mode evolves separately and stays exactly zero for these sources. Energy uses
+the same full Hamiltonian as the strip audit, with density 1000 kg/m³. The source-off
+propagator has no time integration truncation error; halving its interval is checked via
+composition. Source sampling still needs a separate time-refinement study.
+
+Use the continuous W1 stern paths, for 12 s. At midpoint sample times, add a prescribed
+surface-potential impulse with temporal weight `−(Ȧ g/ω₀) sin²(πs/12) Δs`, where
+`Ȧ = 0.3 m/s` is a prescribed height-rate scale. The potential forcing has units m²/s²
+and its integrated impulse has units m²/s; the mean-level gate retains its 0.3 m reference.
+Its spatial profile is `−∂²/∂n² / k₀²` applied to a Gaussian times `cos(k₀ n)`;
+tangent/normal Gaussian standard deviations are 2.5/5 m and the carrier wavelength is
+6 m. Analytic Fourier deposition balances each impulse exactly at k=0 and avoids
+spatial splat interpolation. Nyquist lines are omitted symmetrically. This is a finite-band,
+bidirectional wave source with smoothly switched forcing, **not** the old strip emission
+recipe, a resistance-work-calibrated source, or a validated moving-hull wake pattern.
+Source strength and opening pattern remain W2 work.
+
+The field is a 384×384 m **periodic** deep-water domain, with no land, absorption,
+retirement, currents or camera. Energy remaining inside a periodic box is conserved even
+when waves wrap. Edge-height measurements are diagnostic only; this experiment does not
+establish an open-boundary or shoreline solution. The nonlinear steepness/breaking and
+reciprocal hull-work limitations of the owning plan still apply.
+
+Declare the same <1% energy-drift/refinement and relative mean-level <0.001 gates before
+adoption. Compare source steps 0.4, 0.2 and 0.1 s at 1.5 m grid spacing, then halve the grid
+to 0.75 m at fixed 0.1 s source spacing. Also require <1% relative L2 error between
+co-located coarse/fine height samples at t=16, so matching scalar energy cannot conceal
+field disagreement. At t=16, 31, 46, 61 and 76, inverse-transform height and potential and
+independently reconstruct energy using the W1 FFT audit. There is no strip inverse or
+front-cell omission at a focus: all grid samples evolve by the same linear equations.
+
+Source work is the actual Hamiltonian change at each potential impulse, including its
+cross term with the existing field. Kicks are processed in chronological order across
+both crossing sources. Negative work is allowed and reported; the prescribed forcing can
+remove energy. This closes the diagnostic source ledger, not an engine/hull energy budget.
+Two independent trains add signed height **and** potential; their combined Hamiltonian
+includes the interference cross term. Coincident opposite phases cancel.
+
+A separate one-direction finite-band packet checks group travel from its envelope-intensity
+centroid and measures its RMS widening over 60 s. A traveling Fourier mode checks carrier
+phase/sign against its analytic field; uniform translation preserves the Hamiltonian.
+Numerical tests also cover inverse reconstruction, forward/backward and composed propagation,
+time derivatives, work closure, exact zero mean and two-source signed addition.
+
+### Measured decision and next task
+
+All declared heightfield diagnostic gates pass. Fine-grid source-off energies below use
+0.75 m spacing and 0.1 s source steps. Errors are **fractions**, not percentages; source
+refinement compares 0.2/0.1 s, grid refinement compares 1.5/0.75 m at fixed 0.1 s.
+
+| Path | Energy at t=12 (J) | Grid energy error | Height L2 grid error at t=16 | Source energy error |
+| --- | --- | --- | --- | --- |
+| Straight | 18676.07297 | 1.02e−12 | 1.27e−6 | 4.32e−9 |
+| Tight loop | 22044.18588 | 4.48e−10 | 1.97e−5 | 1.84e−8 |
+| S turn | 21130.37409 | 5.50e−12 | 2.51e−6 | 2.90e−9 |
+| Crossing | 37352.14596 | 1.02e−12 | 1.27e−6 | 4.32e−9 |
+
+Across all paths/resolutions, reconstructed source-off energy differs from its t=12
+Hamiltonian by at most 3.78e−14 relative over the sampled interval through t=76.
+This roundoff-scale drift is expected for an exact modal propagator; it is supported by
+the independently inverse-transformed/FFT-reconstructed energy and spatial field study.
+The largest absolute full-domain mean height is 8.94e−21 m. Fine-grid source-work closure
+is within 6.78e−15 relative. Straight forcing removes 0.08497 J in its negative-work kicks;
+the crossing removes 0.16993 J. These are included in net injected work, not hidden sinks.
+The largest fine-grid sampled edge height is 1.52e−6 m; this small value is not a proof
+of an open-domain limit or island occlusion. No domain-doubling study was performed.
+
+The packet probe's intensity RMS width grows from 3.92837 to 7.00338 m over 60 s while
+its envelope peak decreases. Its centroid moves at 1.53911808676 m/s, versus the
+band-weighted group reference 1.53911808678 m/s (error 1.22e−11 m/s). The carrier reference
+remains 3.060696 m/s, with group speed 1.530348 m/s at the central wavelength; a finite
+band's centroid need not travel at that single central value. Envelope-intensity width
+is this probe's measure, not a claim of full two-dimensional energy spreading.
+
+For the crossing, independent train energies sum to 37352.1459357 J and the combined
+field has 37352.1459563 J, including a +2.06e−5 J interference term. Reversing one source
+phase gives 37352.1459151 J. At t=16 the combined peak is 0.13622 m versus 0.07687 m for
+one straight train. The subsequent fields retain both outgoing trains. The near-zero
+*global* cross term in this orthogonal-source example does not imply weak local interference;
+coincident opposite-phase cancellation and signed field addition are separate numerical
+checks. Peak readings and cross terms depend on the uncalibrated source and periodic box.
+
+**Decision:** retain the linear height/potential field as the W2 propagation direction.
+The next task is **W2.1: an owned C field with safe snapshots, explicit energy accounting,
+and boundary/island proof**, followed by tick-source calibration and consistent queries.
+The [revised W2 steps](WAKE_REWRITE_PLAN.md#heightfield-direction-after-w1) own that work.
+The strip remains rejected. No replacement is enabled for play.
+
+### Continuation verification and limits
+
+2026-10-21, macOS / Apple Silicon: Debug configure/build and all **59 CTests** passed with
+`PROTEUS_GPU_TESTS=OFF` (`ctest --test-dir build --output-on-failure -j 4`). This includes
+both wake diagnostics. The final full heightfield review above completed, wrote an empty
+`failed_gates` list, and generated `build/wake-heightfield-final/measurements.json` plus
+four PNG/SVG sequences; the log is `build/wake-heightfield-final.log`. All four final PNG
+height/slope/side-section sequences were inspected. Changed-document local file links and
+`git diff --check` passed. The plots are model diagnostics, not new runtime captures.
+
+GPU checks were omitted. No runtime motion, input, audio, asset loading or defaults changed,
+so no new manual boating/playback or user acceptance is claimed. Source-time **energy**
+convergence was measured; source-time field convergence, source pattern/work calibration,
+finite-depth/steep-wave validity, nonperiodic/domain convergence, absorption/islands, resource
+stress, reciprocal coupling, native CPU/GPU performance, renderer integration and other
+platforms remain unverified. The uniform-current numerical probe checks a common Fourier
+translation phase and energy; full advected-emitter/current integration remains W2.

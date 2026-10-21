@@ -6,7 +6,8 @@ player-wake motion are provisionally accepted by the user, with continued evalua
 over time. On 2026-10-20 the user requested longer-lived, coherent wakes for jumping and
 expressed enthusiasm for crossing wakes. The [wake rewrite review and plan](WAKE_REWRITE_PLAN.md)
 owns that follow-up: W1 measurements/prototype complete on 2026-10-21; the strip
-prototype failed its physical gates. Next is the W1 heightfield fallback before revising W2.
+prototype failed its physical gates; the isolated periodic heightfield fallback passes its
+free-propagation gates. Next is revised W2.1: owned field and boundary/island proof.
 The 2026-10-18 acceptance remains a historical baseline.
 Current/scripted-wake options now work in all locations; player-path wakes are
 enabled by default in free boating, with `--no-player-wake` available for calm practice.
@@ -383,7 +384,8 @@ wakes; `--no-player-wake` restores the earlier calm baseline when other water fl
 The earlier wake acceptance is the baseline for the proposed
 [coherent-wake rewrite](WAKE_REWRITE_PLAN.md), requested on 2026-10-20 after feedback about
 early disappearance and fragmented fronts. W1 measured gaps/expiry and rejected its isolated
-strip prototype; next is the heightfield fallback. The runtime described above remains current.
+strip prototype; its periodic heightfield fallback passes the isolated propagation gates.
+Revised W2 starts with an owned field and boundary/island proof. The runtime above remains current.
 Turn-banking work is recorded separately in the
 [turn-banking plan](BOAT_TURN_BANKING_PLAN.md).
 
