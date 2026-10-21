@@ -29,7 +29,14 @@ void boat_wake_destroy(BoatWake *field);
 /* Retires all remaining energy explicitly; preserves cumulative ledger, restarts tick. */
 void boat_wake_reset(BoatWake *field);
 bool boat_wake_step(BoatWake *field);
-/* Add prescribed potential impulse (m^2/s). Signed Hamiltonian change is source work. */
+/* One fixed step with a prescribed interval impulse split symmetrically around it.
+ * Reuses A impulse for both half kicks; callers supply midpoint quadrature of the
+ * interval's total source. Each half's signed work is accounted separately.
+ * Invalid impulses are rejected before mutation, as with boat_wake_kick(). */
+bool boat_wake_step_with_impulse(BoatWake *field, const double *potential_impulse);
+/* Add prescribed potential impulse (m^2/s). Signed Hamiltonian change is source work.
+ * Sum simultaneous emitters into one array to pay for one operator. The ledger then
+ * classifies the net event's signed work, including interference, not each emitter. */
 bool boat_wake_kick(BoatWake *field, const double *potential_impulse);
 bool boat_wake_sample(const BoatWake *field, size_t x, size_t z, double *eta, double *psi);
 /* Audits the reconstructed Hamiltonian; residual is measured from independent work/sinks. */

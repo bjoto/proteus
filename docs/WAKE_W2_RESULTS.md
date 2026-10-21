@@ -2,7 +2,7 @@
 
 2026-10-21, macOS / Apple Silicon. Owner: [wake rewrite plan](WAKE_REWRITE_PLAN.md).
 Historical baseline: commit `78ad300`, before the polynomial-tail/higher-order refinement.
-Current evidence and next task: [optimized field and matched-accuracy proof](WAKE_W2_FIELD_RESULTS.md).
+Current evidence and next task: [runtime feasibility checkpoint](WAKE_RUNTIME_RESULTS.md).
 The equations and measurements below describe that initial baseline; the commands show
 the workflow and reproduce those exact numbers only at that commit.
 
@@ -15,8 +15,9 @@ part of W2.1 remained open:** this land-aware candidate is slower and less spati
 than W1's periodic Fourier diagnostic. Do not advance to a player switch or describe these
 fixtures as validated harbor propagation. The initial next step was W2.1b domain/order/grid refinement. Its
 [first continuation](WAKE_W2_REFINEMENT_RESULTS.md) recorded passing modal/coarse-domain checks
-and a remaining cost/domain gate. The [current proof](WAKE_W2_FIELD_RESULTS.md) selects an
-optimized backend for isolated W2.2 calibration, while runtime acceptance stays open.
+and a remaining cost/domain gate. The [matched-accuracy proof](WAKE_W2_FIELD_RESULTS.md)
+subsequently passed; the [runtime checkpoint](WAKE_RUNTIME_RESULTS.md) now requires a cheaper
+operator before source/player integration. No runtime backend is accepted.
 
 ## Representation and ownership
 

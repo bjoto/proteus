@@ -2,19 +2,25 @@
 
 Status, 2026-10-21: W1 complete (connected strip rejected; periodic heightfield diagnostic
 passes). **W2.1 isolated C implementation and numerical proof complete:** owned height/
-potential field, signed energy accounting, deep snapshots, optimized evaluation and an
-80 s boundary/island study at matching grid/order/timestep. The selected 144x96 m /.75 m /
-order-256 / 120 Hz graph-polynomial backend is for isolated source calibration.
-[Current W2.1 results and runtime limits](WAKE_W2_FIELD_RESULTS.md).
+potential field, signed energy accounting, deep snapshots and matched-accuracy 80 s
+boundary/island proof. The 144x96 m /.75 m / order-256 / 120 Hz C field remains the
+numerical reference. [W2.1 proof](WAKE_W2_FIELD_RESULTS.md).
+
+**Runtime feasibility checkpoint complete; budget failed.** Source work now takes one
+operator per kick, and a symmetric forced step reuses that work across both half injections.
+60 Hz passes the limited temporal experiment; 30 Hz misses its 1% velocity threshold.
+A native CPU source/step/audit workload costs about 28 ms/update; a direct GPU prototype
+with queries, ledger readback and simple rendering costs about 32 ms/update. Neither meets
+the provisional 2 ms per rendered 60 Hz frame target.
+[Current measurements, verification and limits](WAKE_RUNTIME_RESULTS.md).
+
+Next task: **W2.R cheaper operator investigation**, preserving energy/mean/island guarantees
+and repeating accuracy plus runtime measurements before backend selection or player integration.
+W2.2 effective mass/density, actual wetted stern history and moving-source calibration remain
+pending; W2.3 shared queries follows. W3 retains integrated history/query/upload/render,
+platform and storage acceptance. No player/default switch or human play acceptance is claimed.
 The existing D3 runtime remains current. Parent: [boat physics](BOAT_PHYSICS_PLAN.md).
 W1's measured evidence remains in [W1 results](WAKE_W1_RESULTS.md).
-
-Next task: **W2.2 tick-source calibration**, starting with effective mass/density units and
-measured source-work cost/cadence, then actual wetted stern history and moving-source
-convergence. A field step still costs about 9.3 ms and a prescribed kick 18.8 ms in the
-optimized native tool. Runtime acceptance remains open; W3 owns full history/query/upload/
-render budgets and gameplay storage. W2.3 shared queries follows source calibration.
-No replacement tuning, player/default switch or human play acceptance is claimed.
 
 ## Recommendation
 
@@ -127,13 +133,17 @@ W2 should proceed in separately reviewable steps:
 
 1. **Owned field and boundary proof.** Prototype a bounded C field behind `boat_wake.[ch]`
    with explicit initialization, destruction, reset and deep snapshot/copy semantics.
-   Select an FFT implementation and physical domain from measured costs; the Python
+   Select the field operator and physical domain from measured accuracy and costs; the Python
    diagnostic's 384 m periodic box is not a gameplay choice. Demonstrate open-boundary
    absorption and island occlusion before any player switch. A damping mask alone is not
    evidence of island blocking: the nonlocal deep-water operator may communicate across
    land. Test a source on one side of a solid island and probes on the other, including
    leave/return and long propagation. Track signed injected work, retained energy and
    explicit absorbed/retired energy; separate numerical splitting residuals from sinks.
+   **Runtime checkpoint before source integration:** source-work optimization, 30/60/120 Hz
+   temporal checks and a direct GPU prototype are complete, but the order-256 operator
+   fails the provisional native budget. W2.R must investigate a cheaper operator against
+   the existing numerical oracle. See [checkpoint results](WAKE_RUNTIME_RESULTS.md).
 2. **Tick source and convergence.** Record actual wetted stern history at fixed simulation
    ticks, use double/integer time with bounded presentation phase, and define effective
    mass/density units before assigning resistance work. Replace the diagnostic's prescribed

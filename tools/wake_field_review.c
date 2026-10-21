@@ -160,9 +160,87 @@ static void compare_states(BoatWake *a, BoatWake *b, size_t w, size_t h)
     REQUIRE(la.tick == lb.tick);
     REQUIRE(fabs(la.retained - lb.retained) < 2e-9 * scale);
     REQUIRE(fabs(la.injected - lb.injected) < 2e-9 * scale);
+    REQUIRE(fabs(la.positive_work - lb.positive_work) < 2e-9 * scale);
+    REQUIRE(fabs(la.negative_work - lb.negative_work) < 2e-9 * scale);
     REQUIRE(fabs(la.absorbed - lb.absorbed) < 2e-9 * scale);
     REQUIRE(fabs(la.retired - lb.retired) < 2e-9 * scale);
     REQUIRE(fabs(la.numerical_residual - lb.numerical_residual) < 2e-9 * scale);
+}
+
+static void source_work(void)
+{
+    enum { W = 24, H = 16, N = W * H };
+    double impulse[N], rates[N];
+    unsigned char land[N];
+    for (size_t i = 0; i < N; ++i) {
+        land[i] = i % W == 12 && i / W != 7;
+        rates[i] = i % W < 3 ? .7 : 0;
+    }
+    BoatWakeConfig c = { W, H, .75, 1.0 / 60, 1000, 256, land, rates, 8, false };
+    BoatWake *f = boat_wake_create(&c);
+    REQUIRE(f);
+    for (unsigned event = 0; event < 8; ++event) {
+        for (size_t i = 0; i < N; ++i)
+            impulse[i] = land[i] ? 0 : .03 * cos(.13 * i + event) * (event % 2 ? -1 : 1);
+        BoatWakeLedger before = boat_wake_ledger(f);
+        REQUIRE(boat_wake_kick(f, impulse));
+        BoatWakeLedger after = boat_wake_ledger(f);
+        /* Independent full-H subtraction, with nonzero height, shores, and cross terms. */
+        double measured = after.retained - before.retained;
+        double booked = after.injected - before.injected;
+        REQUIRE(fabs(measured - booked) < 2e-9 * fmax(1, fabs(measured)));
+        REQUIRE(boat_wake_step(f));
+    }
+    BoatWake *split = boat_wake_clone(f);
+    REQUIRE(split);
+    double half[N];
+    for (unsigned tick = 0; tick < 20; ++tick) {
+        for (unsigned i = 0; i < N; ++i) {
+            impulse[i] = land[i] ? 0 : .001 * sin(.17 * i + .3 * tick);
+            half[i] = .5 * impulse[i];
+        }
+        REQUIRE(boat_wake_step_with_impulse(f, impulse));
+        REQUIRE(
+            boat_wake_kick(split, half) && boat_wake_step(split) && boat_wake_kick(split, half));
+        compare_states(f, split, W, H);
+        if (tick == 5) {
+            BoatWake *snapshot = boat_wake_clone(f);
+            REQUIRE(snapshot);
+            boat_wake_destroy(f);
+            f = snapshot;
+        }
+    }
+    BoatWakeLedger before_invalid = boat_wake_ledger(f);
+    impulse[N - 1] = NAN;
+    REQUIRE(!boat_wake_step_with_impulse(f, impulse));
+    REQUIRE(boat_wake_ledger(f).tick == before_invalid.tick);
+    compare_states(f, split, W, H);
+    memset(impulse, 0, sizeof(impulse));
+    REQUIRE(boat_wake_step_with_impulse(f, impulse) && boat_wake_step(split));
+    compare_states(f, split, W, H);
+    boat_wake_destroy(split);
+    boat_wake_destroy(f);
+    /* An arbitrarily large constant potential is a zero-energy gauge. The small
+     * modal source's work must not disappear through full-H cancellation. */
+    c.land = NULL;
+    f = boat_wake_create(&c);
+    REQUIRE(f);
+    for (size_t i = 0; i < N; ++i)
+        impulse[i] = 1024;
+    REQUIRE(boat_wake_kick(f, impulse));
+    double sum = 0, mean = 0;
+    for (size_t z = 0; z < H; ++z)
+        for (size_t x = 0; x < W; ++x) {
+            size_t i = z * W + x;
+            impulse[i] = 1e-4 * cos(PI * 6 * (x + .5) / W);
+            sum += impulse[i] * impulse[i];
+            mean += impulse[i];
+        }
+    double a = boat_wake_operator_symbol(256, 8, .75, PI * 6 / (W * .75), 0);
+    double expected = c.density * c.spacing * c.spacing * a * (.5 * sum + 1024 * mean);
+    REQUIRE(boat_wake_kick(f, impulse));
+    REQUIRE(fabs(boat_wake_ledger(f).injected - expected) < 1e-9);
+    boat_wake_destroy(f);
 }
 
 static void operator_equivalence(void)
@@ -266,6 +344,17 @@ static void operator_equivalence(void)
     REQUIRE(boat_wake_ledger(bounded).retained == 0);
     REQUIRE(boat_wake_kick(bounded, tiny) && boat_wake_step(bounded));
     REQUIRE(isfinite(boat_wake_ledger(bounded).retained));
+    boat_wake_destroy(bounded);
+    /* A valid half-energy scale need not have a representable doubled scale. */
+    BoatWakeConfig large_density = { 2, 2, 1.5, .01, 1e308, 8, NULL, NULL, 8, false };
+    bounded = boat_wake_create(&large_density);
+    REQUIRE(bounded);
+    double small_source[4] = { 1e-8, -1e-8, -1e-8, 1e-8 };
+    REQUIRE(boat_wake_kick(bounded, small_source));
+    REQUIRE(boat_wake_step_with_impulse(bounded, small_source));
+    BoatWakeLedger large_ledger = boat_wake_ledger(bounded);
+    REQUIRE(isfinite(large_ledger.injected) && large_ledger.injected > 0);
+    REQUIRE(isfinite(large_ledger.retained) && large_ledger.absorbed == 0);
     boat_wake_destroy(bounded);
     /* Check the sink independently against an otherwise identical undamped first step. */
     for (size_t i = 0; i < N; ++i) {
@@ -717,6 +806,7 @@ int main(int argc, char **argv)
     }
     manufactured();
     irregular_geometry();
+    source_work();
     operator_equivalence();
     if (argc > 1 && strcmp(argv[1], "--check") == 0) {
         modal_review();

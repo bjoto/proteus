@@ -2,7 +2,8 @@
 
 2026-10-21, macOS / Apple Silicon. Owner: [wake rewrite plan](WAKE_REWRITE_PLAN.md).
 Historical baseline: commit `801970a`, after [initial W2.1 at 78ad300](WAKE_W2_RESULTS.md).
-Current status and next task: [optimized owned field and matched-accuracy proof](WAKE_W2_FIELD_RESULTS.md).
+Current status and next task: [runtime feasibility checkpoint](WAKE_RUNTIME_RESULTS.md).
+The intervening [matched-accuracy proof](WAKE_W2_FIELD_RESULTS.md) completed W2.1's numerical gates.
 The decisions/measurements below describe this earlier checkpoint; exact baseline reproduction
 requires that commit.
 Implementation: [boat_wake.c](../src/boat_wake.c),
@@ -15,7 +16,7 @@ modal packet passes <1% continuum height error and coarse/fine height agreement 
 A separate **coarse-grid** 144x96 m domain passes the declared sampled central-region gate
 against a doubled reference; the 72x48 m domain fails and is rejected.
 
-**Baseline decision (superseded for isolated source calibration by the continuation above):**
+**Baseline decision (numerical gates subsequently completed at 5e8a5ba):**
 retain this as a numerical reference, not a runtime solver selection. The accurate
 144x96 m configuration costs about **109 ms per 1/120 s step** in the optimized standalone
 build. Domain comparison has not yet been repeated at that accurate configuration. W2.1

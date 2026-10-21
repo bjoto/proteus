@@ -16,7 +16,7 @@ struct BoatWake {
     BoatWakeConfig config;
     size_t count;
     unsigned char *land;
-    double *storage, *eta, *psi, *rate, *op, *a, *b, *c, *damping;
+    double *storage, *eta, *psi, *rate, *op, *a, *b, *c, *damping, *source_op;
     double maximum;
     double *root_coefficients;
     double bound, weights[4];
@@ -418,7 +418,7 @@ BoatWake *boat_wake_create(const BoatWakeConfig *c)
         - 0.5 * log((double)f->count);
     f->maximum = 0.001 * exp(fmin(energy_limit, recurrence_limit));
     f->land = calloc(f->count, 1);
-    f->storage = calloc(8 * f->count, sizeof(double));
+    f->storage = calloc(9 * f->count, sizeof(double));
     if (!f->land || !f->storage) {
         boat_wake_destroy(f);
         return NULL;
@@ -431,6 +431,7 @@ BoatWake *boat_wake_create(const BoatWakeConfig *c)
     f->b = f->a + f->count;
     f->c = f->b + f->count;
     f->damping = f->c + f->count;
+    f->source_op = f->damping + f->count;
     if (c->land)
         memcpy(f->land, c->land, f->count);
     if (radius > 1) {
@@ -493,23 +494,67 @@ void boat_wake_reset(BoatWake *f)
     f->ledger.tick = 0;
 }
 
-bool boat_wake_kick(BoatWake *f, const double *impulse)
+static bool valid_impulse(const BoatWake *f, const double *impulse, bool *nonzero)
 {
     if (!f || !impulse)
         return false;
-    for (size_t i = 0; i < f->count; ++i)
+    *nonzero = false;
+    for (size_t i = 0; i < f->count; ++i) {
         if (!isfinite(impulse[i]) || fabs(impulse[i]) > f->maximum
             || fabs(f->psi[i] + impulse[i]) > f->maximum || (f->land[i] && impulse[i] != 0))
             return false;
-    double before = energy(f);
-    for (size_t i = 0; i < f->count; ++i)
-        f->psi[i] += impulse[i];
-    double work = energy(f) - before;
+        *nonzero |= impulse[i] != 0;
+    }
+    return true;
+}
+
+static void add_impulse(BoatWake *f, const double *impulse, const double *op, double fraction)
+{
+    /* Symmetry of A gives delta H = rho dx^2 (psi + delta/2)^T A delta.
+     * One operator instead of subtracting two full Hamiltonians; eta is unchanged.
+     * This also avoids cancellation against unrelated, large retained energy. */
+    double work = 0;
+    for (size_t i = 0; i < f->count; ++i) {
+        double delta = fraction * impulse[i];
+        work += (f->psi[i] + 0.5 * delta) * (fraction * op[i]);
+        f->psi[i] += delta;
+    }
+    /* Creation validates this half-energy scale; the doubled scale itself can
+     * overflow for valid extreme units even when the resulting work is finite. */
+    work *= 0.5 * f->config.density * f->config.spacing * f->config.spacing;
+    work *= 2;
     f->ledger.injected += work;
     if (work >= 0)
         f->ledger.positive_work += work;
     else
         f->ledger.negative_work += work;
+}
+
+bool boat_wake_kick(BoatWake *f, const double *impulse)
+{
+    bool nonzero;
+    if (!valid_impulse(f, impulse, &nonzero))
+        return false;
+    if (nonzero) {
+        apply(f, impulse, f->op);
+        add_impulse(f, impulse, f->op, 1);
+    }
+    return true;
+}
+
+bool boat_wake_step_with_impulse(BoatWake *f, const double *impulse)
+{
+    bool nonzero;
+    if (!valid_impulse(f, impulse, &nonzero) || f->ledger.tick == UINT64_MAX)
+        return false;
+    if (!nonzero)
+        return boat_wake_step(f);
+    /* Cache A delta across the field step. Two symmetric half sources need one
+     * source operator, with each half's actual signed work booked separately. */
+    apply(f, impulse, f->source_op);
+    add_impulse(f, impulse, f->source_op, .5);
+    boat_wake_step(f);
+    add_impulse(f, impulse, f->source_op, .5);
     return true;
 }
 
@@ -538,7 +583,7 @@ bool boat_wake_step(BoatWake *f)
         lost += old * old * (-delta) * (2 + delta);
     }
     f->ledger.absorbed
-        += 0.5 * f->config.density * WAKE_G * f->config.spacing * f->config.spacing * lost;
+        += (0.5 * f->config.density * f->config.spacing * f->config.spacing) * (WAKE_G * lost);
     ++f->ledger.tick;
     return true;
 }
@@ -569,7 +614,7 @@ size_t boat_wake_storage_bytes(const BoatWake *f)
 {
     if (!f)
         return 0;
-    size_t bytes = sizeof(*f) + f->count * (8 * sizeof(double) + 1);
+    size_t bytes = sizeof(*f) + f->count * (9 * sizeof(double) + 1);
     if (f->root_coefficients)
         bytes += f->config.order * sizeof(double);
     if (f->neighbors) {

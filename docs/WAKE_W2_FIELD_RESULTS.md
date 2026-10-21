@@ -5,18 +5,19 @@ Previous baseline: [W2.1b at 801970a](WAKE_W2_REFINEMENT_RESULTS.md).
 Implementation: [boat_wake.c](../src/boat_wake.c), [API](../src/boat_wake.h),
 [C review](../tools/wake_field_review.c), [domain runner/collector](../tools/wake_domain_review.py).
 
-**Decision:** the isolated W2.1 implementation and numerical proof are complete. Select the
-optimized graph-polynomial C field at **144x96 m, dx .75 m, spatial order 8, polynomial order
-256, dt 1/120 s** as the backend for **isolated W2.2 source calibration**. The matching-accuracy
-80 s domain study now passes against a doubled reference; ownership, snapshots, signed
-work/sinks and independent propagation checks remain covered. No FFT dependency is used.
+**Current status:** the isolated W2.1 numerical proof remains complete. The subsequent
+[runtime feasibility checkpoint](WAKE_RUNTIME_RESULTS.md) optimizes source work and tests
+lower cadence plus a GPU port, but both backends fail the provisional runtime budget.
+W2.R cheaper operator investigation now precedes source/player integration. The C field
+remains the numerical oracle; no runtime backend is accepted.
 
-This is a numerical prototype selection, **not real-time runtime acceptance**. A step costs
-about 9.3 ms before rendering/hull work; an audit costs another 9.4 ms and a prescribed kick
-18.8 ms. These still exceed a practical 120 Hz budget, especially with a tick emitter. W2.2
-must measure source-work cost and source cadence while calibrating; W3 retains the integrated
-performance/storage/query/render gates. No player/default switch is authorized by this result.
-The existing D3 runtime, `BoatWater` ownership and renderer remain unchanged.
+**Historical decision at 5e8a5ba:** select the optimized graph-polynomial C field at
+**144x96 m, dx .75 m, spatial order 8, polynomial order 256, dt 1/120 s** for isolated W2.2
+source calibration. The matching-accuracy 80 s domain study passed against a doubled
+reference; ownership, snapshots, signed work/sinks and propagation checks remained covered.
+The following implementation/storage/cost record describes that revision. Its two-operator
+kick, eight-array storage and next-task recommendation are superseded by the checkpoint;
+the field/domain measurements remain evidence for the original numerical settings.
 
 ## Evaluation and accounting changes
 
@@ -35,8 +36,8 @@ Optimization changes their evaluation, not their selected dispersion:
   cutoff is introduced. The scalar forward evaluator remains selectable with
   `BoatWakeConfig.reference_operator` as an independent implementation oracle.
 - Compute the Hamiltonian when the ledger is requested. Normal stepping uses one operator
-  evaluation, rather than three with two hidden energy audits. Source kicks still measure
-  actual before/after Hamiltonians, and reset explicitly measures and retires the remaining
+  evaluation, rather than three with two hidden energy audits. At this revision, source kicks
+  measured actual before/after Hamiltonians, and reset explicitly measures and retires the remaining
   field. Independently accumulate signed work and nonnegative absorption every time they
   occur. At an audit, measure retained energy from the actual fields and report the signed
   balance residual `H + absorbed + retired - injected`.
@@ -52,7 +53,7 @@ Independent Hamiltonian drift/time-refinement checks, explicit source-removal ch
 independently sampled absorption comparison and reference-operator agreement provide the
 verification. Auditing cannot suppress a residual or change the physical trajectory.
 
-The owner now reports actual requested allocation bytes with `boat_wake_storage_bytes()`.
+At this revision the owner reports actual requested allocation bytes with `boat_wake_storage_bytes()`.
 This includes the owner, eight double fields (one new cached damping field), land, polynomial
 coefficients, run descriptors and compact neighbor maps. It excludes allocator overhead,
 transient construction allocations, RSS and a second owner for a snapshot. Peak construction
@@ -160,9 +161,9 @@ roughly 9.7/10.2/11.3 CPU ms per tick for small open/island/wall cases, includin
 occasional images while other cases ran concurrently.
 
 This is still above the 8.33 ms tick interval even before adding a hull/render. An emitter
-that calls the current kick API each tick adds two more full-field evaluations. No real-time
-source budget or browser/Windows performance is established. W2.2 should calibrate from
-actual fixed-tick stern histories while exposing and measuring that source-work cost. Before
+that called that revision's kick API each tick added two more full-field evaluations. No real-time
+source budget or browser/Windows performance was established. The recommendation at that time
+was to calibrate from actual fixed-tick stern histories while measuring source-work cost. Before
 runtime integration, choose a measured update/source/audit schedule or a faster backend and
 repeat numerical/source convergence at the actual schedule. W3 retains whole-frame/history,
 query/upload/render and scene-specific storage acceptance. The selected 144x96 m box is an
