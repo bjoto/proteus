@@ -1,14 +1,23 @@
 # Coherent, crossable wakes
 
-Status, 2026-10-20: source review complete against `221cd1d`; proposed rewrite, not
-implemented or user-accepted. The user reports that jumping wakes is the most fun part
-of boating, but wakes disperse too early and break into strange pieces. The user also
-expressed enthusiasm for crossing wakes. Parent: [boat physics](BOAT_PHYSICS_PLAN.md).
-Next task: W1, measure the current surface and prototype one connected wave train.
+Status, 2026-10-21: W1 baseline measurements and standalone connected-strip prototype
+implemented; **prototype rejected for player integration**. The tight loop/S turn fold,
+and reconstructed energy changes 12.565% under refinement despite small temporal drift.
+The existing D3 runtime remains current. Parent: [boat physics](BOAT_PHYSICS_PLAN.md).
+Measured evidence, declared tolerances, commands and limits: [W1 results](WAKE_W1_RESULTS.md).
+Next task: apply W1's fallback, prototype a linear dispersive heightfield solver against
+the same paths/gates, and revise the W2 representation before player integration.
+No replacement tuning or human play acceptance is claimed.
 
 ## Recommendation
 
-Use a staged replacement of the physical player wake with **connected, dispersive wave
+The connected-front design below is the original 2026-10-20 proposal. W1 tested a
+connected Hermite-strip reconstruction on 2026-10-21 and rejected that implementation
+at folds and spatial energy convergence. The physical contract and W3–W5 integration/play
+gates remain applicable; the representation and W2 deliverable need revision after the
+heightfield experiment. This is not authorization to integrate the rejected strip model.
+
+Original proposal: use a staged replacement of the physical player wake with **connected, dispersive wave
 fronts carrying an explicit energy budget**. Keep a small number of wavelength bands,
 continuous crest/trough profiles, and the existing water-query boundary. This is a surface
 wave approximation suitable for this C17 playground, not a volume-fluid engine.
@@ -24,7 +33,8 @@ invalidate the present fixed history and per-fragment evaluation budget.
 
 ## Code findings
 
-These are source-based findings; visual causality has not been isolated by new captures.
+Historical source-review baseline, 2026-10-20; see [W1 results](WAKE_W1_RESULTS.md)
+for subsequent runtime measurements. These are source-based findings; visual causality has not been isolated by new captures.
 
 | Finding | Evidence and consequence |
 | --- | --- |
@@ -137,7 +147,7 @@ would break the current by-value ownership guarantees.
 
 | Step | Deliverable | Acceptance gate |
 | --- | --- | --- |
-| W1 — Baseline and isolated prototype | Top-down height/slope plots and side-view sequences for a straight run, a tight loop, an S turn and two crossing trains; a standalone connected-front prototype alongside the current model. | Measure present seams and lifetime. Prototype a spreading front, conservative resampling, phase/group travel and crossing interference before integrating the player. |
+| W1 — Baseline and isolated prototype (complete; strip rejected) | Top-down height/slope plots and side-view sequences for a straight run, a tight loop, an S turn and two crossing trains; a standalone connected-front prototype alongside the current model. | Measure present seams and lifetime. Prototype a spreading front, conservative resampling, phase/group travel and crossing interference before integrating the player. |
 | W2 — Source and propagation | Actual stern history, coherent emission, wavelength bands, energy/volume accounting, spatial indexing, explicit retirement and shoreline absorption. Use integer tick/double time with bounded shader phases, coordinated with foundations P3. | Equivalent paths at different emitter sample densities give convergent fields/energy. No holes at bends, no young-wave overwrite, no waves passing through an island and reappearing. Uniform-current translation works. Spatial-current limitations are documented until implemented. |
 | W3 — One visible, physical surface | CPU query and CPU/GPU surface reconstruction share the new field; normals, foam placement and wave velocity agree. Measure finer near geometry, starting around 0.75–1 m spacing for a 6 m minimum gameplay wavelength. | Crossings show the same crest/trough and slope used by the hull; no camera-distance seam or missed ramp. Profile full wake history in basin, Eriksberg and river on desktop and browser. Choose pool/grid sizes from these measurements. |
 | W4 — Jumping and crossing play pass | Replace the scripted-source recipe with the common emitter. Tune straight crossings, oblique crossings, wake surfing, loop recrossings and two-source intersections with the existing six-support response. | A useful wake survives a measured circuit. Reinforcement yields a readable larger ramp; cancellation and the continuation of both trains are visible. Dry flight does not emit a full hull wake. Landings and neutral recovery stay controlled. Obtain human play feedback before accepting tuning. |
@@ -198,3 +208,39 @@ manual gameplay or before/after implementation comparison was performed. Patch d
 short-envelope turnover and render undersampling are diagnoses to isolate in W1, not measured
 percentages of the observed artifact. Performance, conservation tolerances, source tuning,
 variable-current transport and player acceptance remain unverified.
+
+## W1 handoff — 2026-10-21
+
+Implemented `wake_baseline`, which samples production water queries on controlled paths,
+and `tools/wake_front_review.py`, a standard-library-only connected-front experiment with
+reproducible height/slope/side-section plots and JSON measurements. It remains entirely
+outside player water and shaders. [W1 results](WAKE_W1_RESULTS.md) owns the measurements,
+method, numerical tolerances, failed physical gates and remaining limitations.
+
+Completed: baseline lifetime and station/join probes; straight, loop, S-turn and crossing
+sequences; spreading/area transport; conservative Hermite subdivision with field checks;
+phase/group travel; signed crossing fields; potential-energy quadrature and reconstructed
+kinetic-plus-potential audits including crossing terms and a resolution study.
+
+Decision: reject this connected-strip reconstruction. Inner fronts fold and omitted invalid
+cells would make holes; spatial energy differs by 12.565% under refinement. A 0.00587%
+maximum temporal energy deviation over the sampled 60 s interval is not a conservation
+pass. Next task is the W1 fallback heightfield experiment, then a revised W2. No source,
+hull, renderer or default switch was made.
+
+Verification, macOS / Apple Silicon, 2026-10-21: Debug configure/build succeeded with
+`PROTEUS_GPU_TESTS=ON`; all 78 CTests passed, including 20 GPU checks, in a desktop-access
+run (`ctest --test-dir build --output-on-failure --timeout 180`). A sandboxed attempt had
+passed its first 56 checks before stalling at the first GPU window; that attempt was
+interrupted and the complete desktop rerun passed. The final sampler capacity guard was
+rebuilt and the W1 CTest repeated afterwards. Numerical checks include an analytic
+Fourier-mode energy reference, subdivision/reconstructed density, raster coverage, volume,
+phase/group travel and signed crossing fields. All four top-down height/slope sequences
+and their side sections were inspected. Commands and parameters are in the W1 results;
+artifacts/logs are in `build/wake-w1/` and `build/wake-w1*.log`. Changed local file links
+and `git diff --check` passed. No new manual gameplay, motion/audio playback,
+other-platform checks or user acceptance.
+
+Continuation checkpoint, 2026-10-21: Debug configure/build and all 58 CTests passed
+with `PROTEUS_GPU_TESTS=OFF`. This verifies the baseline before the heightfield
+fallback; it adds no GPU, manual playback or user-acceptance evidence.

@@ -135,6 +135,7 @@ add_executable(validate_boat_profile tools/validate_boat_profile.c src/boat_prof
   src/renderer3d.c)
 add_executable(validate_boat_environment tools/validate_boat_environment.c src/boat.c src/renderer3d.c)
 add_executable(validate_boat_replay tools/validate_boat_replay.c src/boat.c src/renderer3d.c)
+add_executable(wake_baseline tools/wake_baseline.c src/boat.c src/renderer3d.c)
 add_executable(boat_water_review tools/boat_water_review.c src/boat.c src/renderer3d.c
   src/boat_gpu.c src/renderer_gpu.c)
 add_dependencies(boat_water_review proteus_assets)
@@ -145,7 +146,8 @@ add_executable(boat_flag_review tools/boat_flag_review.c src/boat.c src/renderer
   src/boat_gpu.c src/renderer_gpu.c)
 add_dependencies(boat_flag_review proteus_assets)
 foreach(target validate_boat validate_boat_banking validate_boat_turn_entry validate_boat_profile
-    validate_boat_environment validate_boat_replay boat_water_review boat_banking_review boat_flag_review)
+    validate_boat_environment validate_boat_replay wake_baseline boat_water_review
+    boat_banking_review boat_flag_review)
   target_sources(${target} PRIVATE ${PROTEUS_BOAT_WORLD_SOURCES})
   target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
   target_link_libraries(${target} PRIVATE raylib)
@@ -328,8 +330,8 @@ target_compile_options(harbor_review PRIVATE
 # Shared generated boats and berth evaluation feed all waterfront consumers.
 foreach(target proteus gpu_fixture validate_boat validate_boat_banking validate_boat_turn_entry
     validate_boat_profile validate_boat_environment validate_boat_replay
-    boat_water_review boat_banking_review boat_flag_review waterfront_storyboard validate_waterfront_actors
-    validate_city_dressing harbor_review)
+    wake_baseline boat_water_review boat_banking_review boat_flag_review waterfront_storyboard
+    validate_waterfront_actors validate_city_dressing harbor_review)
   target_sources(${target} PRIVATE ${PROTEUS_HARBOR_SOURCES})
 endforeach()
 foreach(target proteus gpu_fixture waterfront_storyboard validate_waterfront_actors
@@ -471,3 +473,11 @@ endif()
 
 add_test(NAME boating_xm_is_valid
   COMMAND validate_xm ${CMAKE_CURRENT_SOURCE_DIR}/assets/music/a-little-boat.xm --background)
+
+# W1 stays isolated from player water and shaders; Python uses only the standard library.
+find_package(Python3 COMPONENTS Interpreter)
+if(Python3_Interpreter_FOUND)
+  add_test(NAME wake_front_prototype COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/tools/wake_front_review.py --check
+    --baseline $<TARGET_FILE:wake_baseline>)
+endif()

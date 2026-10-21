@@ -326,6 +326,8 @@ and front spray remain. `--no-player-wake` restores the visual-only player trail
 restores the earlier flat, still-water practice mode.
 The default demo accelerates, turns into a loop after 3.5 seconds, crosses its older trail,
 and returns to neutral after 12 seconds. R clears the history and restarts the demo.
+The isolated [W1 wake experiment](docs/WAKE_W1_RESULTS.md) measures this baseline and
+compares a connected-front prototype; its failed physical gates keep it out of gameplay.
 Courses, saved replays, and ghosts retain their original water settings automatically;
 explicit `--player-wake` is rejected in those modes to preserve existing comparisons.
 

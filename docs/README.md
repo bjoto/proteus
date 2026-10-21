@@ -1,6 +1,6 @@
 # Documentation and current plans
 
-Current status reconciled on 2026-10-20. The main demo is a four-minute Eriksberg
+Current status reconciled on 2026-10-21. The main demo is a four-minute Eriksberg
 journey following five gulls to “Below the surface” at 120 BPM. The separate
 `boat_study`, with quiet engine/water audio and a gentle XM background loop, provides free boating and a basin time trial.
 Both default to GPU rendering; the CPU reference supports display-free captures.
@@ -12,7 +12,7 @@ Both default to GPU rendering; the CPU reference supports display-free captures.
 | [Boating foundations](BOATING_FOUNDATIONS_PLAN.md) | P1 frame/tick instrumentation implemented; later phases pending | P2: repeatable benchmark/report tool and renderer counters; then baseline, clock correction, explicit world ownership, and simulation/presentation separation |
 | [Boating design](BOATING_PLAN.md) | Basin, Eriksberg, and river locations; timed S course, recordings, persistent bests, ghosts, replays, full-window presentation with modal `?` help, quiet engine/water audio with a joyful repeating XM, and a user-accepted wind-driven Swedish ensign | [Boat visual improvement](BOATING_PLAN.md#boat-visual-improvement--saved-2026-10-20) saved for later: cabin/hull shapes and palette; optional closer-camera comparison, score-loop, and archipelago remain proposals |
 | [Boat physics](BOAT_PHYSICS_PLAN.md) | A–D3 plus accepted H1/H2 countersteering and speed view; T1–T5 load-driven banking and quicker recovery; user-accepted H3 firmer planing hull grip for stern-led turns, revision 4 | [H3 carving pass](BOAT_PHYSICS_PLAN.md#h3--stern-led-carving-feel-2026-10-20): feel accepted on 2026-10-20; exhaustive hands-on/platform checks unverified; optional trim/loading not started |
-| [Wake rewrite](WAKE_REWRITE_PLAN.md) | Source review complete; current D3 runtime unchanged | Proposed connected dispersive fronts with explicit energy accounting and crossing interference; next W1 baseline and isolated prototype; implementation and play acceptance pending |
+| [Wake rewrite](WAKE_REWRITE_PLAN.md) | W1 baseline and isolated connected-strip prototype complete; prototype rejected at folds and energy refinement; D3 runtime unchanged | W1 fallback: prototype a linear dispersive heightfield solver, then revise W2; [measurements and limits](WAKE_W1_RESULTS.md); player integration/play acceptance pending |
 | [Living city](LIVING_CITY_PLAN.md) | 01–05: city dressing, materials, berths, shared actors; travelling boats and a compact ferry brought forward; demo flock and 32 reactive boating gulls | 06 people/cyclists; varied road traffic, building activity, ferry polish, perched gulls, and final review remain |
 | [River / Älvsborgsbron](eriksberg/bridge/README.md) | Separate source/crop, navigable bridge blockout, blocking tower legs, and grounded road approaches | Bridge/shoreline/building refinement; human handling and camera review |
 | [GPU migration](GPU_WATERFRONT_PLAN.md) | Steps 01–12 implemented; GPU default, lighting, shadows, atmosphere, reflections, and regression checks | Migration is implemented; other-platform and human visual acceptance remain separate from automated checks |
