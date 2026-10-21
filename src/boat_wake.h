@@ -14,6 +14,7 @@ typedef struct {
     unsigned order; /* Chebyshev square-root order; controls long-wave approximation. */
     const unsigned char *land; /* Optional row-major mask, copied at creation. */
     const double *absorption; /* Optional eta damping rates in 1/s, copied. */
+    unsigned spatial_order; /* 0/2: cardinal graph; 4/8: powers of water-only axis graphs. */
 } BoatWakeConfig;
 typedef struct {
     double injected, positive_work, negative_work;
@@ -33,5 +34,7 @@ bool boat_wake_sample(const BoatWake *field, size_t x, size_t z, double *eta, do
 BoatWakeLedger boat_wake_ledger(BoatWake *field);
 /* Discrete |D| symbol on unobstructed water, useful for independent dispersion checks. */
 double boat_wake_symbol(unsigned order, double spacing, double kx, double kz);
+double boat_wake_operator_symbol(
+    unsigned order, unsigned spatial_order, double spacing, double kx, double kz);
 
 #endif

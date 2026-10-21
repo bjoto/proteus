@@ -1,6 +1,11 @@
 # W2.1 owned-field and boundary prototype
 
 2026-10-21, macOS / Apple Silicon. Owner: [wake rewrite plan](WAKE_REWRITE_PLAN.md).
+Historical baseline: commit `78ad300`, before the polynomial-tail/higher-order refinement.
+Current evidence and next task: [W2.1b refinement](WAKE_W2_REFINEMENT_RESULTS.md).
+The equations and measurements below describe that initial baseline; the commands show
+the workflow and reproduce those exact numbers only at that commit.
+
 Implementation: [boat_wake.h](../src/boat_wake.h), [boat_wake.c](../src/boat_wake.c),
 [validation tool](../tools/validate_boat_wake.c).
 
@@ -8,8 +13,9 @@ The isolated C owner, signed energy ledger, snapshots and boundary/island fixtur
 implemented. The existing D3 player/runtime is unchanged. **The solver/domain selection
 part of W2.1 remains open:** this land-aware candidate is slower and less spatially accurate
 than W1's periodic Fourier diagnostic. Do not advance to a player switch or describe these
-fixtures as validated harbor propagation. Next: W2.1b domain/order/grid refinement and
-solver selection, then W2.2 tick-source calibration and W2.3 shared queries.
+fixtures as validated harbor propagation. The initial next step was W2.1b domain/order/grid refinement. Its
+[continuation](WAKE_W2_REFINEMENT_RESULTS.md) now records passing modal/coarse-domain checks
+and the measured cost that still prevents solver selection, before W2.2/W2.3.
 
 ## Representation and ownership
 

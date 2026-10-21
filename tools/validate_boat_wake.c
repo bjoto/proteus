@@ -37,7 +37,7 @@ static BoatWake *make(unsigned mode, double dt, unsigned order)
                 = land[i] || dx * dx + dz * dz >= 36 ? 0 : dx * exp(-(dx * dx + dz * dz) / 8);
         }
     }
-    BoatWakeConfig c = { W, H, 1.5, dt, 1000, order, land, rates };
+    BoatWakeConfig c = { W, H, 1.5, dt, 1000, order, land, rates, 2 };
     BoatWake *f = boat_wake_create(&c);
     REQUIRE(f);
     REQUIRE(boat_wake_kick(f, impulse));
@@ -180,7 +180,7 @@ int main(int argc, char **argv)
     boat_wake_destroy(f);
     /* Costs for candidate physical domains; no graphics context or FFT dependency. */
     for (unsigned size = 48; size <= 96; size *= 2) {
-        BoatWakeConfig config = { size, size, 0.75, 0.025, 1000, 128, NULL, NULL };
+        BoatWakeConfig config = { size, size, 0.75, 0.025, 1000, 128, NULL, NULL, 2 };
         BoatWake *bench = boat_wake_create(&config);
         REQUIRE(bench);
         clock_t begin = clock();
