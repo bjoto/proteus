@@ -114,6 +114,14 @@ target_compile_options(validate_audio_spectrum PRIVATE
 )
 
 enable_testing()
+add_executable(validate_boat_wake tools/validate_boat_wake.c src/boat_wake.c)
+target_include_directories(validate_boat_wake PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_options(validate_boat_wake PRIVATE
+  $<$<C_COMPILER_ID:AppleClang,Clang,GNU>:-Wall;-Wextra;-Wpedantic>)
+if(NOT MSVC)
+  target_link_libraries(validate_boat_wake PRIVATE m)
+endif()
+add_test(NAME boat_wake_owned_field COMMAND validate_boat_wake)
 add_executable(validate_boat_flag tools/validate_boat_flag.c src/boat_flag.c)
 target_include_directories(validate_boat_flag PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(validate_boat_flag PRIVATE raylib)

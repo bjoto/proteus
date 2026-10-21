@@ -6,7 +6,8 @@ for player integration.** Tight inner fronts fold, and the measured reconstructe
 has not converged with mesh/grid refinement. The subsequent
 [linear heightfield fallback](#heightfield-fallback--2026-10-21) passes its isolated periodic
 free-propagation gates. W2 is revised around an owned field, boundary/island proof and
-calibrated source work; runtime implementation is next. Gameplay still uses D3.
+calibrated source work. The [W2.1 C prototype and remaining solver/domain gate](WAKE_W2_RESULTS.md)
+now own the next implementation status. Gameplay still uses D3.
 
 ## Reproduce
 

@@ -1,0 +1,37 @@
+#ifndef PROTEUS_BOAT_WAKE_H
+#define PROTEUS_BOAT_WAKE_H
+
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+/* Isolated W2 field. Never copy an owner by value; clone creates an independent snapshot.
+ * Units: metres, seconds, density kg/m^3, energy joules. No BoatWater integration yet. */
+typedef struct BoatWake BoatWake;
+typedef struct {
+    size_t width, height;
+    double spacing, dt, density;
+    unsigned order; /* Chebyshev square-root order; controls long-wave approximation. */
+    const unsigned char *land; /* Optional row-major mask, copied at creation. */
+    const double *absorption; /* Optional eta damping rates in 1/s, copied. */
+} BoatWakeConfig;
+typedef struct {
+    double injected, positive_work, negative_work;
+    double absorbed, retired, numerical_residual, retained;
+    uint64_t tick;
+} BoatWakeLedger;
+
+BoatWake *boat_wake_create(const BoatWakeConfig *config);
+BoatWake *boat_wake_clone(const BoatWake *field);
+void boat_wake_destroy(BoatWake *field);
+/* Retires all remaining energy explicitly; preserves cumulative ledger, restarts tick. */
+void boat_wake_reset(BoatWake *field);
+bool boat_wake_step(BoatWake *field);
+/* Add prescribed potential impulse (m^2/s). Signed Hamiltonian change is source work. */
+bool boat_wake_kick(BoatWake *field, const double *potential_impulse);
+bool boat_wake_sample(const BoatWake *field, size_t x, size_t z, double *eta, double *psi);
+BoatWakeLedger boat_wake_ledger(BoatWake *field);
+/* Discrete |D| symbol on unobstructed water, useful for independent dispersion checks. */
+double boat_wake_symbol(unsigned order, double spacing, double kx, double kz);
+
+#endif

@@ -2,11 +2,13 @@
 
 Status, 2026-10-21: W1 baseline and connected-strip experiment complete; **strip rejected
 for player integration** at folds and energy refinement. The isolated linear heightfield
-fallback passes the measured periodic free-propagation gates. W2 is revised below.
+fallback passes the measured periodic free-propagation gates. W2.1 now has an isolated
+owned C field, energy ledger, deep snapshots and passing boundary fixtures; solver/domain
+selection remains open. [W2 evidence and limits](WAKE_W2_RESULTS.md). W2 is revised below.
 The existing D3 runtime remains current. Parent: [boat physics](BOAT_PHYSICS_PLAN.md).
 Measured evidence, declared tolerances, commands and limits: [W1 results](WAKE_W1_RESULTS.md).
-Next task: W2.1, owned C height/potential field and boundary/island proof with explicit energy
-accounting and safe snapshots; then source calibration and shared queries. No runtime field,
+Next task: W2.1b, solver/domain selection with order/grid/domain refinement of the new
+land-aware C candidate; then W2.2 source calibration and W2.3 shared queries. No player field,
 replacement tuning or human play acceptance is claimed.
 
 ## Recommendation
@@ -308,3 +310,20 @@ The final full review completed with no failed diagnostic gates; all four final 
 were inspected. Artifacts: `build/wake-heightfield-final/`; log:
 `build/wake-heightfield-final.log`. Changed local file links and `git diff --check` passed.
 GPU checks, new manual boating/playback, other platforms and user acceptance were not performed.
+
+## W2.1 implementation — 2026-10-21
+
+Completed the isolated owner, deep snapshots/reset, signed source work, explicit absorption/
+retirement and separately measured propagation residual in `boat_wake.[ch]`. The new CTest
+checks ownership and deterministic continuation, manufactured-mode phase, source-off energy/
+mean level, timestep refinement, invalid forcing, and 80 s open/finite-island/full-barrier
+controls. [W2 results](WAKE_W2_RESULTS.md) owns equations, thresholds, costs, commands and
+verification. Diagnostic boundary images were inspected; the D3 runtime is unchanged.
+
+The candidate uses a positive polynomial of a water-only graph Laplacian instead of masking
+a global FFT. It blocks communication across disconnected water exactly, and the finite
+island passes the declared shadow/return tests. This changes the spatial approximation:
+continuum dispersion/order/grid convergence and production domain choice are still open.
+W2.1 is therefore partially complete, with **W2.1b solver/domain refinement next**, before
+W2.2 source calibration. No moving-hull source, current/query integration, renderer switch,
+manual playback or user acceptance is claimed.
