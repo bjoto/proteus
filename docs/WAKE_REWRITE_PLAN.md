@@ -1,17 +1,20 @@
 # Coherent, crossable wakes
 
-Status, 2026-10-21: W1 baseline and connected-strip experiment complete; **strip rejected
-for player integration** at folds and energy refinement. The isolated linear heightfield
-fallback passes the measured periodic free-propagation gates. W2.1 now has an isolated
-owned C field, energy ledger, deep snapshots and passing boundary fixtures. W2.1b improves
-operator accuracy and passes modal/coarse-domain refinement checks, but measured cost and
-accurate-grid domain proof still prevent runtime solver/domain selection.
-[Current W2 evidence and limits](WAKE_W2_REFINEMENT_RESULTS.md). W2 is revised below.
+Status, 2026-10-21: W1 complete (connected strip rejected; periodic heightfield diagnostic
+passes). **W2.1 isolated C implementation and numerical proof complete:** owned height/
+potential field, signed energy accounting, deep snapshots, optimized evaluation and an
+80 s boundary/island study at matching grid/order/timestep. The selected 144x96 m /.75 m /
+order-256 / 120 Hz graph-polynomial backend is for isolated source calibration.
+[Current W2.1 results and runtime limits](WAKE_W2_FIELD_RESULTS.md).
 The existing D3 runtime remains current. Parent: [boat physics](BOAT_PHYSICS_PLAN.md).
-Measured evidence, declared tolerances, commands and limits: [W1 results](WAKE_W1_RESULTS.md).
-Next task: remaining W2.1, a faster boundary-aware square-root evaluation and a domain
-study at the selected accurate grid/order; then W2.2 source calibration and W2.3 shared queries. No player field,
-replacement tuning or human play acceptance is claimed.
+W1's measured evidence remains in [W1 results](WAKE_W1_RESULTS.md).
+
+Next task: **W2.2 tick-source calibration**, starting with effective mass/density units and
+measured source-work cost/cadence, then actual wetted stern history and moving-source
+convergence. A field step still costs about 9.3 ms and a prescribed kick 18.8 ms in the
+optimized native tool. Runtime acceptance remains open; W3 owns full history/query/upload/
+render budgets and gameplay storage. W2.3 shared queries follows source calibration.
+No replacement tuning, player/default switch or human play acceptance is claimed.
 
 ## Recommendation
 
@@ -330,7 +333,7 @@ At this checkpoint W2.1 was partially complete, with W2.1b solver/domain refinem
 before W2.2 source calibration. No moving-hull source, current/query integration, renderer switch,
 manual playback or user acceptance is claimed.
 
-## W2.1b accuracy and domain experiments — 2026-10-21
+## W2.1b accuracy and domain experiments — 2026-10-21 (baseline at 801970a)
 
 Added a positive constant-preserving polynomial-tail closure and optional fourth/eighth
 order water-only axis operators. Tests verify actual stepped modes, symmetry/positive
@@ -343,7 +346,31 @@ own equations, gates, costs, artifacts, verification and limits; initial results
 
 The accurate 144x96 m configuration takes about 109 optimized ms per step. It has not had
 the same full domain study at that accuracy. Keep the operator as a numerical reference;
-**W2.1 remains open on faster evaluation and a domain proof at matching accuracy**. No
+At that checkpoint, W2.1 remained open on faster evaluation and a domain proof at matching
+accuracy; the continuation below closes the isolated numerical proof. No
 runtime solver/FFT selection, source calibration, player integration or user acceptance is
 claimed. Next work must preserve the independent modal, topology and energy gates rather
 than accepting the current cost or carrying a coarse-grid domain result into gameplay.
+
+## W2.1 owned-field proof complete — 2026-10-21
+
+Optimized evaluation of the same graph polynomial with water-run kernels, compact mirrored
+coast maps and a constant-preserving factored Clenshaw recurrence. Retained the scalar
+forward evaluator as an independent oracle. Hamiltonian audits are explicit on ledger reads;
+source work remains measured before/after each kick and sinks/retirement remain explicit.
+New checks compare implementations, audit cadence, extreme/minimum orders, cached absorption
+and snapshot/reset/destruction behavior. [Current field results](WAKE_W2_FIELD_RESULTS.md)
+own equations, costs, reproduction, verification and remaining limits.
+
+Completed six actual 80 s C runs at dx .75 / spatial 8 / polynomial 256 / dt 1/120. The
+144x96 m domain passes against 288x192 m with <=0.6893% sampled normalized central difference
+and exactly zero disconnected-side transmission. Both finite-island cases pass the declared
+shadow-intensity gates. The region samples and configuration metadata are independently
+collected by `tools/wake_domain_review.py`; no render culling or retirement enters the proof.
+
+Select this owned C backend and domain for isolated W2.2 source calibration. This completes
+W2.1's prototype implementation/numerical deliverable; it does **not** accept a real-time
+backend or gameplay extent. A 144x96 m step is about 9.3 ms, an audit adds 9.4 ms and a kick
+18.8 ms. W2.2 must expose source-work/cadence costs while calibrating; W3 still gates integrated
+performance/storage. No player switch is made. Physical shore accuracy, arbitrary long waves,
+sustained engine/resource stress, current/query integration and human play remain separate.

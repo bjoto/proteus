@@ -52,7 +52,7 @@ static void manufactured(void)
                     land[i] = mode == 2 && x != 1;
                     kick[i] = land[i] ? 0 : cos(kx * (x + .5) * .75) * cos(kz * (z + .5) * .75);
                 }
-            BoatWakeConfig c = { w, h, .75, 1.0 / 120, 1000, 128, land, NULL, spatial };
+            BoatWakeConfig c = { w, h, .75, 1.0 / 120, 1000, 128, land, NULL, spatial, false };
             BoatWake *f = boat_wake_create(&c);
             REQUIRE(f && boat_wake_kick(f, kick));
             double symbol = boat_wake_operator_symbol(128, spatial, .75, kx, kz);
@@ -102,7 +102,7 @@ static void irregular_geometry(void)
             p[i] = land[i] ? 0 : sin(.31 * i) + cos(.73 * i);
             q[i] = land[i] ? 0 : cos(.41 * i) - sin(.57 * i);
         }
-    BoatWakeConfig c = { W, H, .75, .025, 1000, 32, land, NULL, 8 };
+    BoatWakeConfig c = { W, H, .75, .025, 1000, 32, land, NULL, 8, false };
     BoatWake *a = boat_wake_create(&c), *b = boat_wake_create(&c);
     REQUIRE(a && b && boat_wake_kick(a, p) && boat_wake_kick(b, q));
     REQUIRE(boat_wake_step(a) && boat_wake_step(b));
@@ -145,6 +145,155 @@ static void irregular_geometry(void)
         boat_wake_destroy(a);
     }
     REQUIRE(errors[0] < .01 && errors[1] < .3 * errors[0]);
+}
+
+static void compare_states(BoatWake *a, BoatWake *b, size_t w, size_t h)
+{
+    for (size_t z = 0; z < h; ++z)
+        for (size_t x = 0; x < w; ++x) {
+            double ae, ap, be, bp;
+            REQUIRE(boat_wake_sample(a, x, z, &ae, &ap) && boat_wake_sample(b, x, z, &be, &bp));
+            REQUIRE(fabs(ae - be) < 2e-9 && fabs(ap - bp) < 2e-9);
+        }
+    BoatWakeLedger la = boat_wake_ledger(a), lb = boat_wake_ledger(b);
+    double scale = fmax(1, fabs(lb.injected));
+    REQUIRE(la.tick == lb.tick);
+    REQUIRE(fabs(la.retained - lb.retained) < 2e-9 * scale);
+    REQUIRE(fabs(la.injected - lb.injected) < 2e-9 * scale);
+    REQUIRE(fabs(la.absorbed - lb.absorbed) < 2e-9 * scale);
+    REQUIRE(fabs(la.retired - lb.retired) < 2e-9 * scale);
+    REQUIRE(fabs(la.numerical_residual - lb.numerical_residual) < 2e-9 * scale);
+}
+
+static void operator_equivalence(void)
+{
+    enum { W = 37, H = 29, N = W * H };
+    double impulse[N], rates[N];
+    unsigned char land[N];
+    for (unsigned spatial = 2; spatial <= 8; spatial *= 2)
+        for (unsigned kind = 0; kind < 5; ++kind) {
+            for (size_t z = 0; z < H; ++z)
+                for (size_t x = 0; x < W; ++x) {
+                    size_t i = z * W + x;
+                    land[i] = kind == 1
+                        ? ((x == 18 && z != 13) || (x >= 12 && x <= 16 && z >= 12 && z <= 17))
+                        : kind == 2 ? !(x == 5 || x == 6 || z == 14)
+                        : kind == 3 ? !(x == 4 && z == 4)
+                        : kind == 4 ? x == 18
+                                    : 0;
+                    impulse[i] = land[i] || (kind == 4 && x > 18)
+                        ? 0
+                        : 1 + .2 * sin(.17 * i) + .3 * cos(.31 * i);
+                    rates[i] = (x < 3 || z < 3 || x + 3 >= W || z + 3 >= H) ? 1 + .1 * (i % 5) : 0;
+                }
+            BoatWakeConfig c = { W, H, .75, .025, 1000, 48, land, rates, spatial, false };
+            BoatWake *fast = boat_wake_create(&c);
+            c.reference_operator = true;
+            BoatWake *reference = boat_wake_create(&c);
+            REQUIRE(fast && reference && boat_wake_kick(fast, impulse)
+                && boat_wake_kick(reference, impulse));
+            BoatWake *cadence = boat_wake_clone(fast);
+            REQUIRE(cadence);
+            for (unsigned t = 0; t < 80; ++t) {
+                if (t == 11 || t == 37) {
+                    for (size_t i = 0; i < N; ++i)
+                        impulse[i] *= -.125;
+                    REQUIRE(boat_wake_kick(fast, impulse) && boat_wake_kick(reference, impulse)
+                        && boat_wake_kick(cadence, impulse));
+                }
+                REQUIRE(
+                    boat_wake_step(fast) && boat_wake_step(reference) && boat_wake_step(cadence));
+                REQUIRE(isfinite(boat_wake_ledger(cadence).retained));
+                for (size_t z = 0; z < H; ++z)
+                    for (size_t x = 0; x < W; ++x) {
+                        double ae, ap, ce, cp;
+                        REQUIRE(boat_wake_sample(fast, x, z, &ae, &ap)
+                            && boat_wake_sample(cadence, x, z, &ce, &cp));
+                        REQUIRE(ae == ce && ap == cp);
+                    }
+                /* Audit only the reference each tick; the fast owner's query cadence differs. */
+                REQUIRE(isfinite(boat_wake_ledger(reference).retained));
+                if (kind == 4)
+                    for (size_t z = 0; z < H; ++z)
+                        for (size_t x = 19; x < W; ++x) {
+                            double eta, psi;
+                            REQUIRE(boat_wake_sample(fast, x, z, &eta, &psi));
+                            REQUIRE(eta == 0 && psi == 0);
+                        }
+                if (t == 0 || t == 79)
+                    compare_states(fast, reference, W, H);
+            }
+            BoatWake *a = boat_wake_clone(fast), *b = boat_wake_clone(reference);
+            REQUIRE(a && b && boat_wake_storage_bytes(a) == boat_wake_storage_bytes(fast));
+            double retained = boat_wake_ledger(fast).retained;
+            boat_wake_reset(fast);
+            REQUIRE(fabs(boat_wake_ledger(fast).retired - retained) < 1e-10 * fmax(1, retained));
+            boat_wake_destroy(fast);
+            boat_wake_destroy(reference);
+            boat_wake_destroy(cadence);
+            REQUIRE(boat_wake_step(a) && boat_wake_step(b));
+            compare_states(a, b, W, H);
+            boat_wake_destroy(a);
+            boat_wake_destroy(b);
+        }
+    const unsigned orders[] = { 1, 2, 3, 256, 1024 };
+    for (size_t oi = 0; oi < sizeof(orders) / sizeof(*orders); ++oi) {
+        for (size_t z = 0; z < H; ++z)
+            for (size_t x = 0; x < W; ++x) {
+                size_t i = z * W + x;
+                land[i] = (x == 18 && z != 13);
+                impulse[i] = land[i] ? 0 : 1 + .2 * sin(.17 * i);
+                rates[i] = 0;
+            }
+        BoatWakeConfig c = { W, H, .75, .025, 1000, orders[oi], land, rates, 8, false };
+        BoatWake *a = boat_wake_create(&c);
+        c.reference_operator = true;
+        BoatWake *b = boat_wake_create(&c);
+        REQUIRE(a && b && boat_wake_kick(a, impulse) && boat_wake_kick(b, impulse));
+        for (unsigned t = 0; t < 2; ++t)
+            REQUIRE(boat_wake_step(a) && boat_wake_step(b));
+        compare_states(a, b, W, H);
+        boat_wake_destroy(a);
+        boat_wake_destroy(b);
+    }
+    /* Guard the extra Clenshaw intermediates even for extreme finite unit scales. */
+    BoatWakeConfig extreme = { 2, 2, 1e-200, 1e-102, 1e200, 1024, NULL, NULL, 8, false };
+    BoatWake *bounded = boat_wake_create(&extreme);
+    REQUIRE(bounded);
+    double excessive[4] = { 1e140, 1e140, 1e140, 1e140 },
+           tiny[4] = { 1e-120, -1e-120, -1e-120, 1e-120 };
+    REQUIRE(!boat_wake_kick(bounded, excessive));
+    REQUIRE(boat_wake_ledger(bounded).retained == 0);
+    REQUIRE(boat_wake_kick(bounded, tiny) && boat_wake_step(bounded));
+    REQUIRE(isfinite(boat_wake_ledger(bounded).retained));
+    boat_wake_destroy(bounded);
+    /* Check the sink independently against an otherwise identical undamped first step. */
+    for (size_t i = 0; i < N; ++i) {
+        land[i] = 0;
+        impulse[i] = sin(.17 * i);
+        rates[i] = .1 * (i % 7);
+    }
+    BoatWakeConfig c = { W, H, .75, .025, 1000, 48, land, rates, 8, false };
+    BoatWake *damped = boat_wake_create(&c);
+    c.absorption = NULL;
+    BoatWake *free_field = boat_wake_create(&c);
+    REQUIRE(damped && free_field && boat_wake_kick(damped, impulse)
+        && boat_wake_kick(free_field, impulse));
+    REQUIRE(boat_wake_step(damped) && boat_wake_step(free_field));
+    double loss = 0;
+    for (size_t z = 0; z < H; ++z)
+        for (size_t x = 0; x < W; ++x) {
+            size_t i = z * W + x;
+            double de, dp, fe, fp;
+            REQUIRE(boat_wake_sample(damped, x, z, &de, &dp)
+                && boat_wake_sample(free_field, x, z, &fe, &fp));
+            REQUIRE(dp == fp && fabs(de - fe * exp(-rates[i] * c.dt)) < 1e-14);
+            loss += fe * fe * -expm1(-2 * rates[i] * c.dt);
+        }
+    loss *= .5 * c.density * G * c.spacing * c.spacing;
+    REQUIRE(fabs(boat_wake_ledger(damped).absorbed - loss) < 1e-11 * fmax(1, loss));
+    boat_wake_destroy(damped);
+    boat_wake_destroy(free_field);
 }
 
 typedef struct {
@@ -231,24 +380,57 @@ static void modal_review(void)
     puts("\n  ],");
 }
 
-static void costs(void)
+static void costs(bool include_reference)
 {
     puts("  \"candidate_costs\": [");
-    for (unsigned size = 96; size <= 192; size *= 2) {
-        BoatWakeConfig c = { size, size * 2 / 3, .75, 1.0 / 120, 1000, 256, NULL, NULL, 8 };
-        BoatWake *f = boat_wake_create(&c);
-        REQUIRE(f);
-        clock_t begin = clock();
-        for (unsigned t = 0; t < 20; ++t)
-            REQUIRE(boat_wake_step(f));
-        printf("    {\"width_m\": %.0f, \"height_m\": %.0f, \"ms_per_step\": %.6f, "
-               "\"owned_payload_bytes\": %zu}%s\n",
-            c.width * c.spacing, c.height * c.spacing,
-            1000.0 * (clock() - begin) / CLOCKS_PER_SEC / 20, c.width * c.height * 121,
-            size == 192 ? "" : ",");
-        boat_wake_destroy(f);
-    }
-    puts("  ]");
+    bool first = true;
+    for (unsigned size = 96; size <= 192; size *= 2)
+        for (unsigned ref = 0; ref < (include_reference ? 2u : 1u); ++ref) {
+            BoatWakeConfig c
+                = { size, size * 2 / 3, .75, 1.0 / 120, 1000, 256, NULL, NULL, 8, ref != 0 };
+            BoatWake *f = boat_wake_create(&c);
+            REQUIRE(f);
+            double *kick = calloc(c.width * c.height, sizeof(double));
+            REQUIRE(kick);
+            for (size_t z = 0; z < c.height; ++z)
+                for (size_t x = 0; x < c.width; ++x)
+                    kick[z * c.width + x] = .01 * cos((x + .5) * c.spacing * 2 * PI / 6)
+                        * cos((z + .5) * c.spacing * 2 * PI / 24);
+            REQUIRE(boat_wake_kick(f, kick));
+            for (unsigned t = 0; t < 4; ++t)
+                REQUIRE(boat_wake_step(f));
+            clock_t begin = clock();
+            for (unsigned t = 0; t < 20; ++t)
+                REQUIRE(boat_wake_step(f));
+            double step = 1000.0 * (clock() - begin) / CLOCKS_PER_SEC / 20;
+            begin = clock();
+            for (unsigned t = 0; t < 10; ++t) {
+                REQUIRE(boat_wake_step(f));
+                REQUIRE(isfinite(boat_wake_ledger(f).retained));
+            }
+            double audited = 1000.0 * (clock() - begin) / CLOCKS_PER_SEC / 10;
+            begin = clock();
+            for (unsigned t = 0; t < 10; ++t)
+                REQUIRE(isfinite(boat_wake_ledger(f).retained));
+            double audit = 1000.0 * (clock() - begin) / CLOCKS_PER_SEC / 10;
+            for (size_t i = 0; i < c.width * c.height; ++i)
+                kick[i] *= .001;
+            begin = clock();
+            for (unsigned t = 0; t < 10; ++t)
+                REQUIRE(boat_wake_kick(f, kick));
+            double injection = 1000.0 * (clock() - begin) / CLOCKS_PER_SEC / 10;
+            printf("%s    {\"width_m\": %.0f, \"height_m\": %.0f, \"reference\": %s, \"step_ms\": "
+                   "%.6f, "
+                   "\"audited_step_ms\": %.6f, \"audit_ms\": %.6f, \"kick_ms\": %.6f, "
+                   "\"owned_bytes\": %zu}",
+                first ? "" : ",\n", c.width * c.spacing, c.height * c.spacing,
+                ref ? "true" : "false", step, audited, audit, injection,
+                boat_wake_storage_bytes(f));
+            first = false;
+            free(kick);
+            boat_wake_destroy(f);
+        }
+    puts("\n  ]");
 }
 
 typedef struct {
@@ -256,15 +438,22 @@ typedef struct {
     size_t w, h, shift_x, shift_z;
     unsigned kind;
     double initial, normalization, early, late, returning;
+    double spacing, dt;
+    size_t crop_w, crop_h;
 } Domain;
 
-static Domain domain(unsigned scale, unsigned kind, unsigned spatial, unsigned order)
+static Domain domain_at(
+    unsigned scale, unsigned kind, unsigned spatial, unsigned order, double spacing, double dt)
 {
     Domain d = { 0 };
-    d.w = MW * scale;
-    d.h = MH * scale;
-    d.shift_x = (d.w - MW) / 2;
-    d.shift_z = (d.h - MH) / 2;
+    d.spacing = spacing;
+    d.dt = dt;
+    d.crop_w = (size_t)llround(MW * 1.5 / spacing);
+    d.crop_h = (size_t)llround(MH * 1.5 / spacing);
+    d.w = d.crop_w * scale;
+    d.h = d.crop_h * scale;
+    d.shift_x = (d.w - d.crop_w) / 2;
+    d.shift_z = (d.h - d.crop_h) / 2;
     d.kind = kind;
     size_t n = d.w * d.h;
     double *rates = calloc(n, sizeof(double)), *kick = calloc(n, sizeof(double));
@@ -273,12 +462,13 @@ static Domain domain(unsigned scale, unsigned kind, unsigned spatial, unsigned o
     for (size_t z = 0; z < d.h; ++z)
         for (size_t x = 0; x < d.w; ++x) {
             size_t i = z * d.w + x;
-            double wx = ((double)x + .5) * 1.5 - d.w * .75, wz = ((double)z + .5) * 1.5 - d.h * .75;
+            double wx = ((double)x + .5) * spacing - d.w * spacing / 2;
+            double wz = ((double)z + .5) * spacing - d.h * spacing / 2;
             /* Finite irregular island, narrow waist, and a full one-cell barrier control. */
             double half_width = fabs(wz) < 4.5 ? .8 : 2.3;
-            land[i] = kind == 2 ? fabs(wx - .75) < .1
+            land[i] = kind == 2 ? (wx >= 0 && wx < spacing)
                                 : kind == 1 && fabs(wx) < half_width && fabs(wz) < 13.5;
-            double edge = fmin(fmin(x, d.w - 1 - x), fmin(z, d.h - 1 - z)) * 1.5;
+            double edge = fmin(fmin(x, d.w - 1 - x), fmin(z, d.h - 1 - z)) * spacing;
             rates[i] = edge < 10.5 ? 2 * pow((10.5 - edge) / 10.5, 2) : 0;
             double sx = wx + 18, radius = hypot(sx, wz);
             double envelope = 1;
@@ -289,19 +479,20 @@ static Domain domain(unsigned scale, unsigned kind, unsigned spatial, unsigned o
             kick[i] = land[i] ? 0 : sx * exp(-(sx * sx + wz * wz) / 18) * envelope;
             d.normalization += kick[i] * kick[i] * (2 * PI / 6) / G;
         }
-    for (size_t z = 0; z < d.h; ++z)
+    int fringe = (int)llround(3 / spacing);
+    for (size_t z = 0; kind && z < d.h; ++z)
         for (size_t x = 0; x < d.w; ++x) {
             if (land[z * d.w + x])
                 continue;
-            for (int dz = -2; dz <= 2; ++dz)
-                for (int dx = -2; dx <= 2; ++dx) {
+            for (int dz = -fringe; dz <= fringe; ++dz)
+                for (int dx = -fringe; dx <= fringe; ++dx) {
                     int nx = (int)x + dx, nz = (int)z + dz;
                     if (nx >= 0 && nz >= 0 && nx < (int)d.w && nz < (int)d.h
                         && land[(size_t)nz * d.w + (size_t)nx])
                         rates[z * d.w + x] = fmax(rates[z * d.w + x], 1);
                 }
         }
-    BoatWakeConfig c = { d.w, d.h, 1.5, .05, 1000, order, land, rates, spatial };
+    BoatWakeConfig c = { d.w, d.h, spacing, dt, 1000, order, land, rates, spatial, false };
     d.field = boat_wake_create(&c);
     REQUIRE(d.field && boat_wake_kick(d.field, kick));
     d.initial = boat_wake_ledger(d.field).retained;
@@ -309,6 +500,11 @@ static Domain domain(unsigned scale, unsigned kind, unsigned spatial, unsigned o
     free(kick);
     free(land);
     return d;
+}
+
+static Domain domain(unsigned scale, unsigned kind, unsigned spatial, unsigned order)
+{
+    return domain_at(scale, kind, spatial, order, 1.5, .05);
 }
 
 static double sample(Domain *d, size_t x, size_t z)
@@ -340,7 +536,7 @@ static void image_row(FILE *out, Domain *domains)
                 double v = fmax(-1, fmin(1, eta / .03));
                 unsigned char rgb[3] = { (unsigned char)(128 + 127 * v),
                     (unsigned char)(128 - 100 * fabs(v)), (unsigned char)(128 - 127 * v) };
-                bool land = domains[d].kind == 2 ? fabs(wx - .75) < .1
+                bool land = domains[d].kind == 2 ? (wx >= 0 && wx < domains[d].spacing)
                                                  : domains[d].kind == 1
                         && fabs(wx) < (fabs(wz) < 4.5 ? .8 : 2.3) && fabs(wz) < 13.5;
                 if (land)
@@ -424,10 +620,104 @@ static bool domain_review(const char *path, unsigned base_scale)
     return passed;
 }
 
+/* Independent cases can run in parallel as separate processes. Their only shared
+ * input is immutable geometry/source parameters; each owns all simulation buffers. */
+static void accurate_case(unsigned id, const char *image_path)
+{
+    unsigned kind = id % 3;
+    Domain d = domain_at(id < 3 ? 2 : 4, kind, 8, 256, .75, 1.0 / 120);
+    double roi[3][32 * 32];
+    FILE *out = image_path ? fopen(image_path, "wb") : NULL;
+    if (image_path)
+        REQUIRE(out);
+    if (out)
+        fprintf(out, "P6\n%zu %zu\n255\n", d.crop_w, 5 * d.crop_h);
+    clock_t begin = clock();
+    for (unsigned tick = 1; tick <= 9600; ++tick) {
+        REQUIRE(boat_wake_step(d.field));
+        double intensity = 0;
+        for (size_t z = 24; z < 42; ++z)
+            for (size_t x = 60; x < 74; ++x)
+                intensity += pow(sample(&d, x, z), 2) * d.spacing * d.spacing;
+        if (kind == 2) {
+            double e, p;
+            REQUIRE(boat_wake_sample(d.field, d.w / 2 + 1, d.h / 2, &e, &p));
+            REQUIRE(intensity == 0 && e == 0 && p == 0);
+        }
+        double *peak = tick <= 1440 ? &d.early : &d.late;
+        *peak = fmax(*peak, intensity);
+        if (tick >= 4800)
+            d.returning = fmax(d.returning, intensity);
+        if (tick == 1440 || tick == 4800 || tick == 9600) {
+            unsigned row = tick == 1440 ? 0 : tick == 4800 ? 1 : 2;
+            for (size_t z = 16; z < 48; ++z)
+                for (size_t x = 32; x < 64; ++x)
+                    roi[row][(z - 16) * 32 + x - 32] = sample(&d, x, z);
+        }
+        if (out && (tick == 480 || tick == 960 || tick == 1440 || tick == 4800 || tick == 9600)) {
+            for (size_t z = 0; z < d.crop_h; ++z)
+                for (size_t x = 0; x < d.crop_w; ++x) {
+                    double wx = ((double)x + .5) * d.spacing - 36,
+                           wz = ((double)z + .5) * d.spacing - 24;
+                    bool land = kind == 2
+                        ? (wx >= 0 && wx < d.spacing)
+                        : kind == 1 && fabs(wx) < (fabs(wz) < 4.5 ? .8 : 2.3) && fabs(wz) < 13.5;
+                    double v = fmax(-1, fmin(1, sample(&d, x, z) / .03));
+                    unsigned char rgb[3] = { (unsigned char)(128 + 127 * v),
+                        (unsigned char)(128 - 100 * fabs(v)), (unsigned char)(128 - 127 * v) };
+                    if (land)
+                        rgb[0] = rgb[1] = rgb[2] = 20;
+                    fwrite(rgb, 1, 3, out);
+                }
+        }
+        if (!(tick % 1200))
+            fprintf(stderr, "domain case %u: %u/9600 ticks\n", id, tick);
+    }
+    double seconds = (double)(clock() - begin) / CLOCKS_PER_SEC;
+    if (out)
+        fclose(out);
+    BoatWakeLedger l = boat_wake_ledger(d.field);
+    printf("{\n  \"case\": %u, \"width_m\": %.0f, \"height_m\": %.0f, \"kind\": %u,\n"
+           "  \"spacing\": %.2f, \"dt\": %.17g, \"order\": 256, \"spatial_order\": 8, \"ticks\": "
+           "9600,\n"
+           "  \"initial_energy\": %.17g, \"normalization\": %.17g, \"cpu_seconds\": %.6f, "
+           "\"owned_bytes\": %zu,\n"
+           "  \"early_shadow\": %.17g, \"late_shadow\": %.17g, \"return_shadow\": %.17g,\n"
+           "  \"retained_fraction\": %.17g, \"absorbed_fraction\": %.17g, \"residual_fraction\": "
+           "%.17g,\n",
+        id, d.w * d.spacing, d.h * d.spacing, kind, d.spacing, d.dt, d.initial, d.normalization,
+        seconds, boat_wake_storage_bytes(d.field), d.early, d.late, d.returning,
+        l.retained / d.initial, l.absorbed / d.initial, l.numerical_residual / d.initial);
+    puts("  \"roi\": [");
+    for (unsigned t = 0; t < 3; ++t) {
+        printf("    [");
+        for (size_t i = 0; i < 32 * 32; ++i)
+            printf("%s%.17g", i ? "," : "", roi[t][i]);
+        printf("]%s\n", t == 2 ? "" : ",");
+    }
+    puts("  ]\n}");
+    boat_wake_destroy(d.field);
+}
+
 int main(int argc, char **argv)
 {
+    if (argc >= 3 && strcmp(argv[1], "--domain-case") == 0) {
+        char *end = NULL;
+        unsigned long id = strtoul(argv[2], &end, 10);
+        if (!*argv[2] || *end || id > 5)
+            return 2;
+        accurate_case((unsigned)id, argc > 3 ? argv[3] : NULL);
+        return 0;
+    }
+    if (argc > 1 && (strcmp(argv[1], "--costs") == 0 || strcmp(argv[1], "--costs-fast") == 0)) {
+        puts("{");
+        costs(strcmp(argv[1], "--costs") == 0);
+        puts("}");
+        return 0;
+    }
     manufactured();
     irregular_geometry();
+    operator_equivalence();
     if (argc > 1 && strcmp(argv[1], "--check") == 0) {
         modal_review();
         /* Thin full barrier must remain exact even with radius-four stencils. */
@@ -443,7 +733,7 @@ int main(int argc, char **argv)
     }
     puts("{");
     modal_review();
-    costs();
+    costs(true);
     if (argc > 1 && strcmp(argv[1], "--accuracy") == 0) {
         puts("}");
         return 0;

@@ -7,9 +7,9 @@ over time. On 2026-10-20 the user requested longer-lived, coherent wakes for jum
 expressed enthusiasm for crossing wakes. The [wake rewrite review and plan](WAKE_REWRITE_PLAN.md)
 owns that follow-up: W1 measurements/prototype complete on 2026-10-21; the strip
 prototype failed its physical gates; the isolated periodic heightfield fallback passes its
-free-propagation gates. W2.1 now has an isolated owned C field, ledger, deep snapshots and passing boundary fixtures.
-W2.1b modal/coarse-domain checks pass, but cost and accurate-grid domain proof remain open;
-[current W2 evidence](WAKE_W2_REFINEMENT_RESULTS.md) records the next task and limits.
+free-propagation gates. W2.1 now completes the isolated owned C field, ledger, deep snapshots and matched-accuracy
+boundary/island proof. Next is W2.2 fixed-tick source calibration, with source-work cost/cadence
+measured explicitly; [current W2 evidence](WAKE_W2_FIELD_RESULTS.md) records runtime limits.
 The 2026-10-18 acceptance remains a historical baseline.
 Current/scripted-wake options now work in all locations; player-path wakes are
 enabled by default in free boating, with `--no-player-wake` available for calm practice.
@@ -387,9 +387,9 @@ The earlier wake acceptance is the baseline for the proposed
 [coherent-wake rewrite](WAKE_REWRITE_PLAN.md), requested on 2026-10-20 after feedback about
 early disappearance and fragmented fronts. W1 measured gaps/expiry and rejected its isolated
 strip prototype; its periodic heightfield fallback passes the isolated propagation gates.
-W2.1 implements the isolated owner and boundary fixtures; W2.1b modal/coarse-domain checks
-pass, but faster evaluation and a domain proof at matching accuracy remain before source
-calibration. See [W2 evidence](WAKE_W2_REFINEMENT_RESULTS.md). The runtime above remains current.
+W2.1 completes the isolated owner and matched-accuracy domain/island proof; W2.2 source
+calibration follows, with measured source-work cost/cadence. Real-time backend/storage and
+shared queries remain unaccepted. See [W2 evidence](WAKE_W2_FIELD_RESULTS.md). The runtime above remains current.
 Turn-banking work is recorded separately in the
 [turn-banking plan](BOAT_TURN_BANKING_PLAN.md).
 

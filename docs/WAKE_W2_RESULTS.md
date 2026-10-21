@@ -2,7 +2,7 @@
 
 2026-10-21, macOS / Apple Silicon. Owner: [wake rewrite plan](WAKE_REWRITE_PLAN.md).
 Historical baseline: commit `78ad300`, before the polynomial-tail/higher-order refinement.
-Current evidence and next task: [W2.1b refinement](WAKE_W2_REFINEMENT_RESULTS.md).
+Current evidence and next task: [optimized field and matched-accuracy proof](WAKE_W2_FIELD_RESULTS.md).
 The equations and measurements below describe that initial baseline; the commands show
 the workflow and reproduce those exact numbers only at that commit.
 
@@ -10,12 +10,13 @@ Implementation: [boat_wake.h](../src/boat_wake.h), [boat_wake.c](../src/boat_wak
 [validation tool](../tools/validate_boat_wake.c).
 
 The isolated C owner, signed energy ledger, snapshots and boundary/island fixtures are
-implemented. The existing D3 player/runtime is unchanged. **The solver/domain selection
-part of W2.1 remains open:** this land-aware candidate is slower and less spatially accurate
+implemented. The existing D3 player/runtime is unchanged. **At this initial checkpoint, the solver/domain selection
+part of W2.1 remained open:** this land-aware candidate is slower and less spatially accurate
 than W1's periodic Fourier diagnostic. Do not advance to a player switch or describe these
 fixtures as validated harbor propagation. The initial next step was W2.1b domain/order/grid refinement. Its
-[continuation](WAKE_W2_REFINEMENT_RESULTS.md) now records passing modal/coarse-domain checks
-and the measured cost that still prevents solver selection, before W2.2/W2.3.
+[first continuation](WAKE_W2_REFINEMENT_RESULTS.md) recorded passing modal/coarse-domain checks
+and a remaining cost/domain gate. The [current proof](WAKE_W2_FIELD_RESULTS.md) selects an
+optimized backend for isolated W2.2 calibration, while runtime acceptance stays open.
 
 ## Representation and ownership
 

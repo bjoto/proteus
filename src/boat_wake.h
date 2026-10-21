@@ -15,6 +15,7 @@ typedef struct {
     const unsigned char *land; /* Optional row-major mask, copied at creation. */
     const double *absorption; /* Optional eta damping rates in 1/s, copied. */
     unsigned spatial_order; /* 0/2: cardinal graph; 4/8: powers of water-only axis graphs. */
+    bool reference_operator; /* Diagnostic scalar oracle; copied with snapshots. */
 } BoatWakeConfig;
 typedef struct {
     double injected, positive_work, negative_work;
@@ -31,7 +32,10 @@ bool boat_wake_step(BoatWake *field);
 /* Add prescribed potential impulse (m^2/s). Signed Hamiltonian change is source work. */
 bool boat_wake_kick(BoatWake *field, const double *potential_impulse);
 bool boat_wake_sample(const BoatWake *field, size_t x, size_t z, double *eta, double *psi);
+/* Audits the reconstructed Hamiltonian; residual is measured from independent work/sinks. */
 BoatWakeLedger boat_wake_ledger(BoatWake *field);
+/* Exact requested allocation bytes, including owner; allocator overhead is excluded. */
+size_t boat_wake_storage_bytes(const BoatWake *field);
 /* Discrete |D| symbol on unobstructed water, useful for independent dispersion checks. */
 double boat_wake_symbol(unsigned order, double spacing, double kx, double kz);
 double boat_wake_operator_symbol(

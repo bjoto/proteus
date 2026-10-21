@@ -37,7 +37,7 @@ static BoatWake *make(unsigned mode, double dt, unsigned order)
                 = land[i] || dx * dx + dz * dz >= 36 ? 0 : dx * exp(-(dx * dx + dz * dz) / 8);
         }
     }
-    BoatWakeConfig c = { W, H, 1.5, dt, 1000, order, land, rates, 2 };
+    BoatWakeConfig c = { W, H, 1.5, dt, 1000, order, land, rates, 2, false };
     BoatWake *f = boat_wake_create(&c);
     REQUIRE(f);
     REQUIRE(boat_wake_kick(f, impulse));
@@ -180,14 +180,14 @@ int main(int argc, char **argv)
     boat_wake_destroy(f);
     /* Costs for candidate physical domains; no graphics context or FFT dependency. */
     for (unsigned size = 48; size <= 96; size *= 2) {
-        BoatWakeConfig config = { size, size, 0.75, 0.025, 1000, 128, NULL, NULL, 2 };
+        BoatWakeConfig config = { size, size, 0.75, 0.025, 1000, 128, NULL, NULL, 2, false };
         BoatWake *bench = boat_wake_create(&config);
         REQUIRE(bench);
         clock_t begin = clock();
         for (unsigned t = 0; t < 20; ++t)
             REQUIRE(boat_wake_step(bench));
         printf("cost %ux%u order128: %.6f ms/step, owned payload %zu bytes\n", size, size,
-            1000.0 * (clock() - begin) / CLOCKS_PER_SEC / 20, (size_t)size * size * 57);
+            1000.0 * (clock() - begin) / CLOCKS_PER_SEC / 20, boat_wake_storage_bytes(bench));
         boat_wake_destroy(bench);
     }
     for (unsigned r = 0; r < 3; ++r) {
