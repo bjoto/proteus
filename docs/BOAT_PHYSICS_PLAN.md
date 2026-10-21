@@ -8,9 +8,11 @@ expressed enthusiasm for crossing wakes. The [wake rewrite review and plan](WAKE
 owns that follow-up: W1 measurements/prototype complete on 2026-10-21; the strip
 prototype failed its physical gates; the isolated periodic heightfield fallback passes its
 free-propagation gates. W2.1 now completes the isolated owned C field, ledger, deep snapshots and matched-accuracy
-boundary/island proof. The subsequent CPU/direct GPU runtime checkpoint fails the provisional
-budget despite cheaper source accounting. Next is W2.R cheaper operator investigation before
-source/player integration; [current evidence](WAKE_RUNTIME_RESULTS.md) records measurements and limits.
+boundary/island proof. A native basin candidate now uses exact cosine evaluation, fixed-tick wetted stern forcing
+and common queries/rendering behind `--wake-field`. D3 remains default; the provisional
+2 ms budget is not met. [Candidate evidence](WAKE_CANDIDATE_RESULTS.md) owns costs, limits
+and continued play review. The user reports the larger revision-3 wake feels much better;
+water appearance is a separate follow-up and D3 remains default.
 The 2026-10-18 acceptance remains a historical baseline.
 Current/scripted-wake options now work in all locations; player-path wakes are
 enabled by default in free boating, with `--no-player-wake` available for calm practice.
@@ -389,10 +391,9 @@ The earlier wake acceptance is the baseline for the proposed
 early disappearance and fragmented fronts. W1 measured gaps/expiry and rejected its isolated
 strip prototype; its periodic heightfield fallback passes the isolated propagation gates.
 W2.1 completes the isolated owner and matched-accuracy domain/island proof. The subsequent
-runtime checkpoint improves source accounting but fails the CPU/direct GPU budget; W2.R
-cheaper operator investigation now precedes W2.2 source calibration. Backend/storage and
-shared queries remain unaccepted. See [current evidence](WAKE_RUNTIME_RESULTS.md).
-The runtime above remains current.
+[basin candidate](WAKE_CANDIDATE_RESULTS.md) integrates an exact cosine backend and shared
+queries/rendering behind `--wake-field`. It remains opt-in, misses the 2 ms target, and
+awaits human play review. The D3 runtime above remains the default.
 Turn-banking work is recorded separately in the
 [turn-banking plan](BOAT_TURN_BANKING_PLAN.md).
 

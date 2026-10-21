@@ -10,11 +10,11 @@ import subprocess
 import zlib
 
 
-def run_case(executable, output, case):
+def run_case(executable, output, case, cosine):
     with (output / f'case-{case}.json').open('w') as report, \
          (output / f'case-{case}.log').open('w') as log:
         subprocess.run([str(executable), '--domain-case', str(case),
-                        str(output / f'case-{case}.ppm')],
+                        str(output / f'case-{case}.ppm')] + (['--cosine'] if cosine else []),
                        stdout=report, stderr=log, check=True)
 
 
@@ -130,12 +130,13 @@ def main():
     parser.add_argument('--output', type=Path, default=Path('build/wake-w21-accurate'))
     parser.add_argument('--jobs', type=int, choices=range(1, 7), default=2)
     parser.add_argument('--collect-only', action='store_true')
+    parser.add_argument('--cosine', action='store_true', help='Exact cosine evaluation on open rectangles')
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     if not args.collect_only:
         executable = args.executable.resolve(strict=True)
         with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as workers:
-            futures = [workers.submit(run_case, executable, args.output, i) for i in range(6)]
+            futures = [workers.submit(run_case, executable, args.output, i, args.cosine) for i in range(6)]
             for future in concurrent.futures.as_completed(futures):
                 future.result()
     result = collect(args.output)

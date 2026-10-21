@@ -47,6 +47,12 @@ A local raylib checkout can be reused with CMake's `FETCHCONTENT_SOURCE_DIR_RAYL
 The web build requires GNU extensions only in raylib for its `EM_ASM` macros; application
 sources remain C17. Its POSIX clock calls are enabled through `_POSIX_C_SOURCE=200809L`.
 
+The native `--wake-field` review candidate is explicitly unavailable in Web builds.
+[Web.cmake](../cmake/Web.cmake) removes its wide field sampler from generated WebGL shaders;
+D3 and the existing launcher remain the browser behavior. The portable cosine backend is
+numerically tested on the development Mac, but no browser candidate performance or query
+latency is accepted. See [candidate limits](WAKE_CANDIDATE_RESULTS.md).
+
 ## Runtime decisions
 
 - **Loop:** raylib's documented Asyncify approach preserves the existing synchronous loop,
@@ -57,7 +63,7 @@ sources remain C17. Its POSIX clock calls are enabled through `_POSIX_C_SOURCE=2
   a 1 MiB C stack, 64 KiB Asyncify stack, and growable memory are configured.
 - **Graphics:** existing GLSL 330 sources are converted at build time to GLSL ES 300 with
   precision declarations. The sky/downsample fragments match raylib's default vertex
-  shader precision. Shader bodies are shared; source assets are never overwritten.
+  shader precision. Shader bodies are shared except the disabled native wake sampler; source assets are never overwritten.
   WebGL 2 supports the renderer's depth textures, derivatives, integer operations, and
   texel fetches. Antialiasing is optional because it shades sixteen times as many pixels.
 - **Window:** the browser keeps a fixed 960x600 drawing buffer, containing the 320x200 scene,

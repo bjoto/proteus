@@ -1,26 +1,38 @@
 # Coherent, crossable wakes
 
-Status, 2026-10-21: W1 complete (connected strip rejected; periodic heightfield diagnostic
-passes). **W2.1 isolated C implementation and numerical proof complete:** owned height/
-potential field, signed energy accounting, deep snapshots and matched-accuracy 80 s
-boundary/island proof. The 144x96 m /.75 m / order-256 / 120 Hz C field remains the
-numerical reference. [W2.1 proof](WAKE_W2_FIELD_RESULTS.md).
+Status, 2026-10-21: **native basin review candidate implemented behind `--wake-field`.**
+D3 remains the default. Initial user feedback prompted stronger full-speed forcing and an
+optimized-build launch recipe. The user reports revision 3 looks and feels much better;
+water appearance is a separate follow-up, and no default switch has been requested.
+[Candidate evidence, limits, commands and play recipe](WAKE_CANDIDATE_RESULTS.md).
 
-**Runtime feasibility checkpoint complete; budget failed.** Source work now takes one
-operator per kick, and a symmetric forced step reuses that work across both half injections.
-60 Hz passes the limited temporal experiment; 30 Hz misses its 1% velocity threshold.
-A native CPU source/step/audit workload costs about 28 ms/update; a direct GPU prototype
-with queries, ledger readback and simple rendering costs about 32 ms/update. Neither meets
-the provisional 2 ms per rendered 60 Hz frame target.
-[Current measurements, verification and limits](WAKE_RUNTIME_RESULTS.md).
+Completed for this bounded candidate: exact cosine evaluation of the existing order-256
+operator on an entirely wet rectangle; matched-accuracy open/island/barrier rerun; full-basin
+leave/return proof; actual fixed-tick wetted stern forcing with explicit mass/density;
+signed work and independent sinks/residual; shared height/gradient/vertical/horizontal velocity;
+CPU and GPU surface access; explicit application ownership and reset retirement; desktop
+integration, source/query convergence tools and integrated profiling. The operator, .75 m
+spacing and 120 Hz cadence retain the numerical reference. The graph evaluator remains the
+land-aware fallback and comparison oracle; it is not a fast mapped gameplay backend.
 
-Next task: **W2.R cheaper operator investigation**, preserving energy/mean/island guarantees
-and repeating accuracy plus runtime measurements before backend selection or player integration.
-W2.2 effective mass/density, actual wetted stern history and moving-source calibration remain
-pending; W2.3 shared queries follows. W3 retains integrated history/query/upload/render,
-platform and storage acceptance. No player/default switch or human play acceptance is claimed.
-The existing D3 runtime remains current. Parent: [boat physics](BOAT_PHYSICS_PLAN.md).
-W1's measured evidence remains in [W1 results](WAKE_W1_RESULTS.md).
+The provisional **2 ms per rendered 60 Hz frame target is not met**. Select the measured
+CPU cosine path for this opt-in review, with a fixed 288x192 m field covering the full basin.
+No camera culling, scrolling, artificial ageing, lower cadence or weaker wave band is used
+to meet a budget. Mapped locations, currents, courses/replays and browser candidate launches
+are explicitly rejected. The desktop default renderer consumes the CPU field; a second GPU
+wave solver is not selected. Full costs and storage belong to the candidate results.
+
+Next task: continue **W4 user play review** and the separate water-appearance track. Review ramp
+readability, persistence, loop crossings, cancellation/reinforcement, reverse/stopping and
+landings. W3 remains open for a fast land-aware backend, mapped locations and supported-device
+performance. Uniform/spatial-current transport, a common scripted second vessel, reciprocal
+hull/wave work and nonlinear breaking remain out of scope for this still-water candidate.
+W5's default switch requires the user's explicit play acceptance and remains blocked on it.
+
+Historical numerical and feasibility checkpoints: [W1](WAKE_W1_RESULTS.md),
+[W2.1 field/domain proof](WAKE_W2_FIELD_RESULTS.md), and
+[original CPU/direct GPU limit](WAKE_RUNTIME_RESULTS.md).
+Parent: [boat physics](BOAT_PHYSICS_PLAN.md).
 
 ## Recommendation
 
@@ -142,8 +154,8 @@ W2 should proceed in separately reviewable steps:
    explicit absorbed/retired energy; separate numerical splitting residuals from sinks.
    **Runtime checkpoint before source integration:** source-work optimization, 30/60/120 Hz
    temporal checks and a direct GPU prototype are complete, but the order-256 operator
-   fails the provisional native budget. W2.R must investigate a cheaper operator against
-   the existing numerical oracle. See [checkpoint results](WAKE_RUNTIME_RESULTS.md).
+   fails the provisional native budget. W2.R subsequently selected exact rectangular cosine evaluation for the native basin
+   candidate. Land-aware real-time evaluation remains open. See [candidate results](WAKE_CANDIDATE_RESULTS.md).
 2. **Tick source and convergence.** Record actual wetted stern history at fixed simulation
    ticks, use double/integer time with bounded presentation phase, and define effective
    mass/density units before assigning resistance work. Replace the diagnostic's prescribed
@@ -384,3 +396,44 @@ backend or gameplay extent. A 144x96 m step is about 9.3 ms, an audit adds 9.4 m
 18.8 ms. W2.2 must expose source-work/cadence costs while calibrating; W3 still gates integrated
 performance/storage. No player switch is made. Physical shore accuracy, arbitrary long waves,
 sustained engine/resource stress, current/query integration and human play remain separate.
+
+## Native basin candidate — 2026-10-21
+
+W2.R/W2.2, the still-water portion of W2.3, and the bounded desktop portion of W3
+are implemented for review. Current transport and fast land-aware gameplay remain open.
+The original 144x96 / doubled-domain 80 s checks pass with the unchanged spatial operator;
+the larger gameplay basin additionally passes a 160 s comparison against a doubled domain.
+The first 80 s basin run retained outgoing energy and was not called an absorption pass.
+The source and query tests, implementation tradeoffs, costs, storage and verification limits
+are owned by [the candidate results](WAKE_CANDIDATE_RESULTS.md).
+Final Debug configure/build and all 91 CTests passed, including 22 GPU checks. CPU/GPU
+captures, scripted desktop motion, portable sanitizers and the browser baseline were checked;
+the candidate results distinguish those checks from user driving and platform limits.
+
+The application owns the field separately from `BoatWater`; `Boat` borrows its published
+endpoint for the duration of a tick/draw. Existing by-value water settings, course files and
+D3 behavior retain their original ownership. Reset explicitly retires retained energy.
+No off-screen field state is removed. Initial user driving found the Debug+AA launch slow
+and the source too weak; the optimized launch helped. The intermediate 32.4 cm peak also
+felt too small. Revision 3 raises the full-speed straight-run peak to 86.3 cm with a 1.23 m
+hull-height response and stable neutral recovery in the physical free-trail comparison.
+The user reports it looks and feels much better. Effective mass is explicitly recalibrated
+to 2000 kg with a revised speed curve; source work remains within measured drag work in all
+twelve source scenarios. The useful band, grid, cadence and boundary gates are unchanged.
+Steep-wave breaking/nonlinear physics remain outside this linear field's validation.
+Next is continued W4 review and the separate appearance work below; W5 is not authorized.
+
+## Water appearance follow-up — 2026-10-21
+
+After driving revision 3, the user reported improved feel and proposed making the waves
+look more like water/ocean as a separate track. This is recorded follow-up work, not an
+implemented rendering revision or authorization to change the default.
+
+Hold the source, propagation and hull response fixed while reviewing water palette,
+reflection/roughness, crest/trough lighting, subtle surface detail and restrained foam.
+Keep height, slope and wave motion tied to the same physical field; do not enlarge only
+the rendered displacement or replace signed interference with a cosmetic wake ribbon.
+Preserve the low-resolution, nearest-neighbour presentation. The renderer guide is
+[3D.md](3D.md); compare CPU/GPU frames and motion, and measure the added GPU cost before
+accepting that visual pass. Broader crossing/landing review and the explicit default-switch
+decision remain separate gates.

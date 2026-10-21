@@ -269,6 +269,34 @@ void boat_player_pose(const Boat *boat, WaterfrontPlayerState *player)
         .scale = { .55f, .65f, .9f } };
 }
 
+BoatWakeStern boat_wake_stern(const Boat *boat)
+{
+    Vector3 p = hull_attachment(boat, (Vector3) { 0, 0, ENGINE_ARM });
+    HullMotion motion = hull_motion(boat, (Vector3) { 0, 0, ENGINE_ARM });
+    BoatWaterSample water = boat_water_query_field(
+        boat->water_settings, boat->wake_surface, (Vector2) { -p.x, p.z }, boat->time);
+    double wet = 0;
+    float trim = 4 * boat->planing * (1 - boat->planing) * TRIM_TRANSITION_PITCH
+        + boat->planing * TRIM_CRUISE_PITCH;
+    for (int side = -1; side <= 1; side += 2) {
+        Vector3 q = hull_attachment(boat, (Vector3) { side * .65f, 0, 1.4f });
+        BoatWaterSample s = boat_water_query_field(
+            boat->water_settings, boat->wake_surface, (Vector2) { -q.x, q.z }, boat->time);
+        float support = GRAVITY / 6
+            + BUOYANCY_STIFFNESS / 6
+                * (s.height + PLANING_HEIGHT * boat->planing - 1.4f * sinf(trim) - q.y);
+        wet += .5 * Clamp(support / (GRAVITY / 6), 0, 1);
+    }
+    Vector2 forward = { sinf(boat->heading), -cosf(boat->heading) };
+    Vector2 relative
+        = Vector2Subtract(boat->velocity, boat_water_current(boat->water_settings, boat->position));
+    float along = Vector2DotProduct(relative, forward);
+    double drag = Lerp(1, PLANING_DRAG_MULTIPLIER, boat->planing)
+        * (HULL_DRAG_LINEAR + HULL_DRAG_QUADRATIC * fabsf(along)) * fabsf(along);
+    return (BoatWakeStern) { -p.x, p.z, -motion.velocity.x - water.velocity.x,
+        motion.velocity.z - water.velocity.z, wet, drag, drag * fabsf(along) };
+}
+
 static void buoyancy_step(Boat *boat, float turn_moment)
 {
     float trim = 4 * boat->planing * (1 - boat->planing) * TRIM_TRANSITION_PITCH
@@ -283,13 +311,13 @@ static void buoyancy_step(Boat *boat, float turn_moment)
     float sr = sinf(boat->roll), cr = cosf(boat->roll);
     Vector3 wave_force = { 0 };
     float wave_yaw = 0, bow_entry = 0;
-    bool waves = boat_water_displaced(boat->water_settings);
+    bool waves = (boat->wake_surface || boat_water_displaced(boat->water_settings));
     for (int end = -1; end <= 1; ++end) {
         for (int side = -1; side <= 1; side += 2) {
             float fore = end * 1.4f, across = side * .65f;
             Vector3 point = hull_attachment(boat, (Vector3) { across, 0, -fore });
-            BoatWaterSample water = boat_water_query(
-                boat->water_settings, (Vector2) { -point.x, point.z }, boat->time);
+            BoatWaterSample water = boat_water_query_field(boat->water_settings, boat->wake_surface,
+                (Vector2) { -point.x, point.z }, boat->time);
             // Exact vertical Jacobians of local roll, then pitch; heading leaves Y unchanged.
             float jp = fore * cp - across * sr * sp;
             float jr = across * cr * cp;
@@ -353,8 +381,10 @@ static float wake_variation(Boat *boat)
 static void water_emit(Boat *boat, BoatWaterParticle particle)
 {
     if (!particle.spray)
-        particle.height
-            = boat_water_query(boat->water_settings, particle.position, boat->time).height + .015f;
+        particle.height = boat_water_query_field(boat->water_settings, boat->wake_surface,
+                              particle.position, boat->time)
+                              .height
+            + .015f;
     // Prefer expired slots. Foam may replace foam, but never shorten airborne spray.
     for (unsigned int offset = 0; offset < BOAT_WATER_PARTICLES; ++offset) {
         unsigned int slot = (boat->next_particle + offset) % BOAT_WATER_PARTICLES;
@@ -389,7 +419,9 @@ static void water_step(Boat *boat)
             p->lift -= 12 * BOAT_STEP;
             p->height += p->lift * BOAT_STEP;
         }
-        float surface = boat_water_query(boat->water_settings, p->position, boat->time).height;
+        float surface = boat_water_query_field(
+            boat->water_settings, boat->wake_surface, p->position, boat->time)
+                            .height;
         if (!p->spray)
             p->height = surface + .015f;
         if (p->age >= p->lifetime || (p->spray && p->height < surface)
@@ -477,14 +509,17 @@ static void water_step(Boat *boat)
                         .velocity = Vector2Add(Vector2Scale(boat->velocity, 0.25f),
                             Vector2Scale(out,
                                 1.5f + fabsf(slip) * (0.45f + variation * 0.4f) + boat->planing)),
-                        .height = fmaxf(boat_water_query(boat->water_settings,
-                                            (Vector2) { -origin.x, origin.z }, boat->time)
-                                            .height
+                        .height
+                        = fmaxf(boat_water_query_field(boat->water_settings, boat->wake_surface,
+                                    (Vector2) { -origin.x, origin.z }, boat->time)
+                                    .height
                                 + .03f,
                             origin.y),
                         .lift = (2.0f + variation * 2 + fminf(fabsf(slip) * 0.25f, 1.5f)) * strength
                             + motion.velocity.y
-                            + (boat_water_displaced(boat->water_settings) ? boat->wave_spray : 0),
+                            + ((boat->wake_surface || boat_water_displaced(boat->water_settings))
+                                    ? boat->wave_spray
+                                    : 0),
                         .lifetime = 1.1f,
                         .size = (.22f + variation * .18f) * Lerp(1, 1.3f, boat->planing) * strength,
                         .spray = true });
@@ -682,8 +717,10 @@ static Transform3D water_particle_pose(const Boat *boat, const BoatWaterParticle
 {
     Transform3D pose = { .position = { -water->position.x, water->height, water->position.y },
         .scale = { size, water->spray ? size : .015f, size } };
-    if (!water->spray && boat_water_displaced(boat->water_settings)) {
-        Vector3 normal = boat_water_query(boat->water_settings, water->position, boat->time).normal;
+    if (!water->spray && (boat->wake_surface || boat_water_displaced(boat->water_settings))) {
+        Vector3 normal = boat_water_query_field(
+            boat->water_settings, boat->wake_surface, water->position, boat->time)
+                             .normal;
         normal.x = -normal.x;
         pose.rotation = pose_rotation(
             QuaternionToMatrix(QuaternionFromVector3ToVector3((Vector3) { 0, 1, 0 }, normal)));
@@ -707,7 +744,9 @@ static void environment_visit(const Boat *boat, BoatCourseBoxDraw draw, void *co
                 p = Vector2Add(p, Vector2Scale(flow, phase));
                 if (boat->eriksberg && !boat_map_water(p, .2f))
                     continue;
-                float height = boat_water_query(boat->water_settings, p, boat->time).height;
+                float height = boat_water_query_field(
+                    boat->water_settings, boat->wake_surface, p, boat->time)
+                                   .height;
                 draw(context,
                     (Transform3D) { .position = { -p.x, height + .025f, p.y },
                         .rotation = { 0, atan2f(-flow.x, flow.y), 0 },
@@ -717,7 +756,9 @@ static void environment_visit(const Boat *boat, BoatCourseBoxDraw draw, void *co
     }
     Vector2 source;
     if (boat_water_wake_source(boat->water_settings, boat->time, &source)) {
-        float height = boat_water_query(boat->water_settings, source, boat->time).height;
+        float height
+            = boat_water_query_field(boat->water_settings, boat->wake_surface, source, boat->time)
+                  .height;
         draw(context,
             (Transform3D) {
                 .position = { -source.x, height + .25f, source.y }, .scale = { 4.2f, .5f, 1.5f } },
@@ -766,7 +807,7 @@ static void basin_scenery(const Boat *boat, WaterfrontSceneFrame *frame)
                 (Color) { 248, 225, 175, 255 });
         }
     }
-    if (!boat_water_displaced(boat->water_settings))
+    if (!(boat->wake_surface || boat_water_displaced(boat->water_settings)))
         for (int z = -(int)BOAT_BASIN_HALF_Z + 4; z < BOAT_BASIN_HALF_Z; z += 8)
             for (int x = -(int)BOAT_BASIN_HALF_X + 4; x < BOAT_BASIN_HALF_X; x += 8)
                 basin_box(frame,
@@ -820,13 +861,13 @@ bool boat_draw_with_ghost(Renderer3D *renderer, Color *pixels, int width, int he
     View3D camera = boat_camera(boat, camera_settings);
     if (boat->eriksberg) {
         if (!waterfront_draw_boating(renderer, pixels, width, height, camera,
-                boat_water_displaced(boat->water_settings)))
+                (boat->wake_surface || boat_water_displaced(boat->water_settings))))
             return false;
     } else {
         if (!renderer3d_begin(renderer, pixels, width, height, camera, (Vector3) { -1, 3, 2 }))
             return false;
 
-        if (!boat_water_displaced(boat->water_settings)) {
+        if (!(boat->wake_surface || boat_water_displaced(boat->water_settings))) {
             box(renderer, (Vector3) { 0, -0.6f, 0 },
                 (Vector3) { 2 * BOAT_BASIN_HALF_X, 1, 2 * BOAT_BASIN_HALF_Z },
                 (Color) { 36, 107, 125, 255 });
@@ -837,9 +878,10 @@ bool boat_draw_with_ghost(Renderer3D *renderer, Color *pixels, int width, int he
                         (Vector3) { 1.3f, 0.04f, 0.12f }, (Color) { 62, 132, 142, 255 });
         }
     }
-    if (boat_water_displaced(boat->water_settings)) {
-        const Mesh3D *surface
-            = boat_water_surface(boat->water_settings, boat->time, boat->eriksberg);
+    if ((boat->wake_surface || boat_water_displaced(boat->water_settings))) {
+        const Mesh3D *surface = boat->wake_surface
+            ? boat_water_surface_field(boat->water_settings, boat->wake_surface, boat->time)
+            : boat_water_surface(boat->water_settings, boat->time, boat->eriksberg);
         if (!surface)
             return false;
         renderer3d_draw_emissive_mesh(renderer, surface, (Transform3D) { .scale = { 1, 1, 1 } });

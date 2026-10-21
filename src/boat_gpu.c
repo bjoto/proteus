@@ -6,13 +6,19 @@
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 void boat_gpu_destroy(BoatGpu *gpu)
 {
+    if (gpu->wake_texture.id)
+        UnloadTexture(gpu->wake_texture);
+    MemFree(gpu->wake_upload);
     if (gpu->basin_water.vaoId)
         UnloadMesh(gpu->basin_water);
     if (gpu->wave_mesh.vaoId)
         UnloadMesh(gpu->wave_mesh);
+    if (gpu->wave_mesh_extra.vaoId)
+        UnloadMesh(gpu->wave_mesh_extra);
     waterfront_gpu_scene_destroy(&gpu->scene);
     if (gpu->downsample.id)
         UnloadShader(gpu->downsample);
@@ -57,9 +63,44 @@ void boat_gpu_draw(BoatGpu *gpu, const Boat *boat, BoatCamera camera)
     boat_gpu_draw_with_ghost(gpu, boat, camera, NULL, 0);
 }
 
+static bool candidate_strip(Mesh *m, int first, int rows)
+{
+    m->vertexCount = 322 * (rows + 1);
+    m->triangleCount = 321 * rows * 2;
+    m->vertices = MemAlloc((unsigned int)m->vertexCount * 3 * sizeof(float));
+    m->indices = MemAlloc((unsigned int)m->triangleCount * 3 * sizeof(unsigned short));
+    if (!m->vertices || !m->indices) {
+        UnloadMesh(*m);
+        *m = (Mesh) { 0 };
+        return false;
+    }
+    for (int z = 0; z <= rows; ++z)
+        for (int x = 0; x < 322; ++x) {
+            int row = first + z;
+            Vector3 v = { x == 0 ? -120
+                    : x == 321   ? 120
+                                 : -119.625f + (x - 1) * .75f,
+                0,
+                row == 0         ? -80
+                    : row == 215 ? 80
+                                 : -79.875f + (row - 1) * .75f };
+            memcpy(m->vertices + 3 * (z * 322 + x), &v, sizeof(v));
+        }
+    for (int z = 0; z < rows; ++z)
+        for (int x = 0; x < 321; ++x) {
+            unsigned short a = (unsigned short)(z * 322 + x), b = (unsigned short)(a + 322);
+            unsigned short indices[] = { a, b, (unsigned short)(b + 1), a, (unsigned short)(b + 1),
+                (unsigned short)(a + 1) };
+            memcpy(m->indices + 6 * (z * 321 + x), indices, sizeof(indices));
+        }
+    UploadMesh(m, false);
+    return m->vaoId != 0;
+}
+
 void boat_gpu_draw_with_ghost(
     BoatGpu *gpu, const Boat *boat, BoatCamera camera, const Boat *ghost, float opacity)
 {
+    gpu->failed = false;
     WaterfrontSceneFrame frame;
     boat_scene_frame(boat, camera, &frame);
     if (ghost && opacity > 0) {
@@ -78,7 +119,40 @@ void boat_gpu_draw_with_ghost(
             gpu->basin_water = GenMeshPlane(2 * BOAT_BASIN_HALF_X, 2 * BOAT_BASIN_HALF_Z, 1, 1);
         gpu->scene.water = gpu->basin_water;
     }
-    if (boat_water_displaced(boat->water_settings)) {
+    gpu->scene.wake_field = (Texture2D) { 0 };
+    if (boat->wake_surface) {
+        clock_t begin = clock();
+        BoatWakeConfig c = boat_wake_config(boat->wake_surface);
+        if (!gpu->wake_upload) {
+            gpu->wake_upload = MemAlloc((unsigned int)(c.width * c.height * sizeof(float)));
+            if (!gpu->wake_upload)
+                goto restore_water;
+            boat_wake_copy_heights(boat->wake_surface, gpu->wake_upload);
+            Image image = { gpu->wake_upload, (int)c.width, (int)c.height, 1,
+                PIXELFORMAT_UNCOMPRESSED_R32 };
+            gpu->wake_texture = LoadTextureFromImage(image);
+            SetTextureFilter(gpu->wake_texture, TEXTURE_FILTER_POINT);
+            SetTextureWrap(gpu->wake_texture, TEXTURE_WRAP_CLAMP);
+        } else {
+            boat_wake_copy_heights(boat->wake_surface, gpu->wake_upload);
+            UpdateTexture(gpu->wake_texture, gpu->wake_upload);
+        }
+        if (!gpu->wake_texture.id)
+            goto restore_water;
+        gpu->scene.wake_field = gpu->wake_texture;
+        gpu->scene.wake_spacing = (float)c.spacing;
+        if (!gpu->wave_mesh.vaoId || !gpu->wave_mesh_extra.vaoId) {
+            if ((!gpu->wave_mesh.vaoId && !candidate_strip(&gpu->wave_mesh, 0, 128))
+                || (!gpu->wave_mesh_extra.vaoId
+                    && !candidate_strip(&gpu->wave_mesh_extra, 128, 87)))
+                goto restore_water;
+            gpu->wave_capacity = gpu->wave_mesh.vertexCount + gpu->wave_mesh_extra.vertexCount;
+        }
+        gpu->scene.near_water = gpu->wave_mesh;
+        gpu->scene.near_water_extra = gpu->wave_mesh_extra;
+        gpu->wake_upload_seconds += (double)(clock() - begin) / CLOCKS_PER_SEC;
+        ++gpu->wake_uploads;
+    } else if (boat_water_displaced(boat->water_settings)) {
         Vector2 center
             = { roundf(-boat->position.x / 12) * 12, roundf(boat->position.y / 12) * 12 };
         Mesh *mesh = &gpu->wave_mesh;
@@ -126,8 +200,12 @@ void boat_gpu_draw_with_ghost(
     waterfront_gpu_scene_draw(&gpu->scene, &frame, target.texture.width, target.texture.height);
     EndTextureMode();
 restore_water:
+    if (boat->wake_surface
+        && (!gpu->wake_texture.id || !gpu->wave_mesh.vaoId || !gpu->wave_mesh_extra.vaoId))
+        gpu->failed = true;
     gpu->scene.water = original_water;
     gpu->scene.near_water = (Mesh) { 0 };
+    gpu->scene.near_water_extra = (Mesh) { 0 };
     if (gpu->supersampled.id) {
         BeginTextureMode(gpu->target);
         ClearBackground(BLACK);

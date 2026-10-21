@@ -22,6 +22,7 @@ static void usage(void)
         "Wheel springs to centre when released; thrust holds. R: reset and centre wheel | Esc: "
         "close\n"
         "+/-: closer/farther | PageUp/PageDown: raise/lower camera | C: reset view\n"
+        "--wake-field: opt-in coherent CPU field, native basin only (D3 remains default)\n"
         "--player-wake / --no-player-wake: physical player trail (default on in free boating)\n"
         "--current / --crossing-wake: opt-in authored tests in all locations; R restarts passage\n"
         "--camera-distance UNITS: 8..48 (default 20; river 32)\n"
@@ -54,10 +55,16 @@ static BoatWater study_water(bool waves, bool current, bool crossing, bool playe
     return water;
 }
 
-static void timed_boat_step(Boat *boat, float steering, float throttle, BoatFrameMetrics *metrics)
+static void timed_boat_step(
+    Boat *boat, float steering, float throttle, BoatFrameMetrics *metrics, BoatWakePlayer *wake)
 {
     double started = boat_profile_time(IsWindowReady());
+    BoatWakeStern before = wake ? boat_wake_stern(boat) : (BoatWakeStern) { 0 };
     boat_step(boat, steering, throttle);
+    if (wake && !boat_wake_player_step(wake, before, boat_wake_stern(boat))) {
+        fprintf(stderr, "Wake field update failed.\n");
+        exit(1);
+    }
     float elapsed = (float)((boat_profile_time(IsWindowReady()) - started) * 1000.0);
     if (metrics) {
         metrics->physics_ms += elapsed;
@@ -66,13 +73,13 @@ static void timed_boat_step(Boat *boat, float steering, float throttle, BoatFram
     }
 }
 
-static void demo_step(Boat *boat, int tick, BoatFrameMetrics *metrics)
+static void demo_step(Boat *boat, int tick, BoatFrameMetrics *metrics, BoatWakePlayer *wake)
 {
-    if (boat->water_settings.player_wake_enabled) {
+    if (wake || boat->water_settings.player_wake_enabled) {
         float throttle = tick < 1440 ? 1 : 0;
         float wheel = tick >= 420 && tick < 1440 ? 1 : 0;
         timed_boat_step(boat, Clamp((wheel - boat->wheel) / BOAT_STEP, -1, 1),
-            Clamp((throttle - boat->throttle) / (.5f * BOAT_STEP), -1, 1), metrics);
+            Clamp((throttle - boat->throttle) / (.5f * BOAT_STEP), -1, 1), metrics, wake);
         return;
     }
     if (boat->water_settings.wake_amplitude != 0
@@ -80,14 +87,14 @@ static void demo_step(Boat *boat, int tick, BoatFrameMetrics *metrics)
         // Let the source become visible, approach its spreading wake, then recover in neutral.
         float target = tick < 720 ? 0 : tick < 1200 ? .65f : 0;
         timed_boat_step(
-            boat, 0, Clamp((target - boat->throttle) / (.5f * BOAT_STEP), -1, 1), metrics);
+            boat, 0, Clamp((target - boat->throttle) / (.5f * BOAT_STEP), -1, 1), metrics, wake);
         return;
     }
     // Ease through neutral into reverse with the same held steering.
     float target_wheel = tick >= 360 ? 0.65f : 0;
     float wheel_change = fmaxf(-1, fminf(1, (target_wheel - boat->wheel) / BOAT_STEP));
     float throttle_change = tick < 240 ? 1 : tick < 480 ? 0 : tick < 960 ? -1 : 0;
-    timed_boat_step(boat, wheel_change, throttle_change, metrics);
+    timed_boat_step(boat, wheel_change, throttle_change, metrics, wake);
 }
 
 static void draw_help(bool course, bool eriksberg)
@@ -205,7 +212,7 @@ int main(int argc, char **argv)
     bool time_set = false, demo = false;
     bool eriksberg = false, course = false, waves = false;
     bool river = false, current = false, crossing_wake = false, player_wake = true;
-    bool player_wake_set = false;
+    bool player_wake_set = false, wake_field = false;
     bool gpu_enabled = true, gpu_aa = false;
     bool profiler_visible = false;
     int frame_limit = 0;
@@ -236,6 +243,8 @@ int main(int argc, char **argv)
             gpu_aa = true;
         } else if (strcmp(argv[i], "--profiler") == 0) {
             profiler_visible = true;
+        } else if (strcmp(argv[i], "--wake-field") == 0) {
+            wake_field = true;
         } else if (strcmp(argv[i], "--player-wake") == 0) {
             player_wake = true;
             player_wake_set = true;
@@ -321,6 +330,32 @@ int main(int argc, char **argv)
             stderr, "--player-wake requires free boating, without course/replay/ghost modes.\n");
         goto invalid;
     }
+    if (wake_field
+        && (eriksberg || course || ghost_path || current || crossing_wake
+            || (player_wake_set && !player_wake))) {
+        fprintf(stderr,
+            "--wake-field requires still-water free boating in the basin; no current, crossing "
+            "source, course or replay.\n");
+        goto invalid;
+    }
+#if defined(__EMSCRIPTEN__)
+    if (wake_field) {
+        fprintf(stderr, "--wake-field is a native desktop review candidate.\n");
+        goto invalid;
+    }
+#endif
+    if (wake_field) {
+        player_wake = false;
+#ifndef NDEBUG
+        fprintf(stderr,
+            "Wake field: this is a slow Debug build. For play review, build RelWithDebInfo "
+            "in build/review and run ./build/review/boat_study --wake-field --profiler.\n");
+#endif
+        if (gpu_aa)
+            fprintf(stderr,
+                "Wake field: --gpu-aa renders 16 times as many pixels; start review without "
+                "AA to check frame pacing.\n");
+    }
     if (course || ghost_path)
         player_wake = false; // Existing course/replay comparisons retain their original water.
     BoatCamera camera_default
@@ -350,9 +385,18 @@ int main(int argc, char **argv)
     else
         boat_reset_location(&boat, eriksberg);
     boat.water_settings = study_water(waves, current, crossing_wake, player_wake, eriksberg);
+    BoatWakePlayer *wake = NULL;
     int result = 1;
     BoatReplayRuns runs = { .ghost_visible = true, .export_path = export_path };
     BoatReplayFlag playback_flag = { 0 }, ghost_flag = { 0 };
+    if (wake_field) {
+        wake = boat_wake_player_create(1.0 / 120);
+        if (!wake) {
+            fprintf(stderr, "Cannot allocate wake review world.\n");
+            goto cleanup;
+        }
+        boat.wake_surface = boat_wake_player_field(wake);
+    }
     if (replay_path) {
         if (!boat_replay_load(&runs.last, replay_path) || (waves && !runs.last.waves)) {
             fprintf(stderr, "Invalid or incompatible course replay: %s\n", replay_path);
@@ -393,7 +437,7 @@ int main(int argc, char **argv)
         boat_replay_animate_flag(runs.playing, &boat, &playback_flag);
     } else if (screenshot) {
         for (int tick = 0; tick < (int)roundf(time / BOAT_STEP); ++tick)
-            demo_step(&boat, tick, NULL);
+            demo_step(&boat, tick, NULL, wake);
     }
     Boat ghost;
     const Boat *ghost_view = NULL;
@@ -434,6 +478,10 @@ int main(int argc, char **argv)
         texture = gpu.target.texture;
         if (screenshot) {
             boat_gpu_draw_with_ghost(&gpu, &boat, camera_settings, ghost_view, ghost_opacity);
+            if (gpu.failed) {
+                fprintf(stderr, "Wake render allocation failed.\n");
+                goto cleanup;
+            }
             Image capture = LoadImageFromTexture(texture);
             // CPU camera basis is horizontally mirrored relative to native OpenGL.
             // Normalize X here (and in presentation) to preserve steering and map alignment.
@@ -585,6 +633,10 @@ int main(int argc, char **argv)
                 boat_reset_location(&boat, eriksberg);
             boat.water_settings
                 = study_water(waves, current, crossing_wake, player_wake, eriksberg);
+            if (wake) {
+                boat_wake_player_reset(wake);
+                boat.wake_surface = boat_wake_player_field(wake);
+            }
             if (course)
                 boat_replay_runs_reset(&runs);
             accumulator = 0;
@@ -607,13 +659,13 @@ int main(int argc, char **argv)
             accumulator += fmin(raw_active_delta, 0.1);
             while (accumulator >= BOAT_STEP) {
                 if (demo)
-                    demo_step(&boat, demo_tick++, &metrics);
+                    demo_step(&boat, demo_tick++, &metrics, wake);
                 else {
                     double course_started_at = boat_profile_time(true);
                     BoatReplaySample before = boat_replay_pose(&boat);
                     metrics.course_replay_ms
                         += (float)((boat_profile_time(true) - course_started_at) * 1000.0);
-                    timed_boat_step(&boat, steering, throttle_change, &metrics);
+                    timed_boat_step(&boat, steering, throttle_change, &metrics, wake);
                     course_started_at = boat_profile_time(true);
                     if (course)
                         boat_replay_runs_step(&runs, before, &boat);
@@ -665,6 +717,10 @@ int main(int argc, char **argv)
         double scene_started_at = boat_profile_time(true);
         if (gpu_enabled) {
             boat_gpu_draw_with_ghost(&gpu, view, camera_settings, ghost_view, ghost_opacity);
+            if (gpu.failed) {
+                result = 1;
+                break;
+            }
         } else if (!boat_draw_with_ghost(&renderer, pixels, WIDTH, HEIGHT, view, camera_settings,
                        ghost_view, ghost_opacity)) {
             result = 1;
@@ -686,7 +742,7 @@ int main(int argc, char **argv)
             boat_snapshot = boat_profile_snapshot(&boat_profile);
             snapshot.scene_label = river ? "river" : eriksberg ? "eriksberg" : "basin";
             snapshot.renderer_label = gpu_enabled ? (gpu_aa ? "GPU 4x SSAA" : "GPU") : "CPU";
-            snapshot.texture_upload_kib = gpu_enabled ? 0 : snapshot.framebuffer_kib;
+            snapshot.texture_upload_kib = gpu_enabled ? (wake ? 384 : 0) : snapshot.framebuffer_kib;
             next_snapshot_time = current_frame_started_at + 0.25;
         }
         double present_started_at = boat_profile_time(true);
@@ -696,6 +752,9 @@ int main(int argc, char **argv)
             (Rectangle) { 0, 0, gpu_enabled ? -WIDTH : WIDTH, gpu_enabled ? -HEIGHT : HEIGHT },
             destination, (Vector2) { 0 }, 0, WHITE);
         boat_course_hud(&view->course, view->position, GetScreenWidth());
+        if (wake)
+            DrawText(TextFormat("WAKE FIELD / REVIEW %d", BOAT_WAKE_SOURCE_REVISION), 12,
+                GetScreenHeight() - 24, 12, SKYBLUE);
         if (course)
             course_runs_hud(&runs, view, ghost_view, GetScreenWidth());
         if (!IsWindowFocused())
@@ -717,6 +776,25 @@ cleanup:
     if (music_ready)
         UnloadMusicStream(music);
     boat_audio_destroy(&audio);
+    if (wake) {
+        BoatWakePlayerReport r = boat_wake_player_report(wake);
+        fprintf(stdout,
+            "Wake candidate r%d (%.0f kg): %zu ticks, %zu owned bytes; source %.3f, update %.3f, "
+            "query/audit "
+            "%.3f ms/tick; upload %.3f ms/frame\n",
+            BOAT_WAKE_SOURCE_REVISION, BOAT_WAKE_MASS, r.steps, boat_wake_player_storage(wake),
+            r.source_seconds * 1000 / fmax(1, r.steps), r.update_seconds * 1000 / fmax(1, r.steps),
+            r.query_audit_seconds * 1000 / fmax(1, r.steps),
+            gpu.wake_upload_seconds * 1000 / fmax(1, gpu.wake_uploads));
+        fprintf(stdout,
+            "Wake joules: signed %.6g (+%.6g / %.6g), retained %.6g, absorbed %.6g, retired %.6g, "
+            "residual %.6g; available drag %.6g\n",
+            r.energy.injected, r.energy.positive_work, r.energy.negative_work, r.energy.retained,
+            r.energy.absorbed, r.energy.retired, r.energy.numerical_residual, r.resistance_work);
+        fprintf(
+            stdout, "Wake nodal peaks: height %.6g m, slope %.6g\n", r.peak_height, r.peak_slope);
+    }
+    boat_wake_player_destroy(wake);
     boat_replay_runs_destroy(&runs);
     if (window_ready) {
         if (gpu_enabled)

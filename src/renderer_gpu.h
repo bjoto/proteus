@@ -50,6 +50,9 @@ typedef struct {
     Mesh quay; // All ground materials, including authored pavement tops.
     Mesh water;
     Mesh near_water; // Borrowed boat wave patch; owned by BoatGpu, never unloaded here.
+    Mesh near_water_extra; // Optional second indexed candidate strip, same lifetime.
+    Texture2D wake_field; // Borrowed, immutable for the complete draw; owned by BoatGpu.
+    float wake_spacing;
     Mesh windows;
     Mesh corner;
     Mesh corner_emissive;

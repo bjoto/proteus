@@ -390,6 +390,7 @@ typedef struct {
 } Mode;
 static Mode modes[49 * 33];
 static size_t mode_count;
+static bool cosine_backend;
 
 static void packet_modes(void)
 {
@@ -583,7 +584,10 @@ static Domain domain_at(
         }
     BoatWakeConfig c = { d.w, d.h, spacing, dt, 1000, order, land, rates, spatial, false };
     d.field = boat_wake_create(&c);
-    REQUIRE(d.field && boat_wake_kick(d.field, kick));
+    REQUIRE(d.field);
+    if (cosine_backend && kind == 0)
+        REQUIRE(boat_wake_use_cosine(d.field));
+    REQUIRE(boat_wake_kick(d.field, kick));
     d.initial = boat_wake_ledger(d.field).retained;
     free(rates);
     free(kick);
@@ -790,6 +794,10 @@ static void accurate_case(unsigned id, const char *image_path)
 
 int main(int argc, char **argv)
 {
+    if (argc > 1 && strcmp(argv[argc - 1], "--cosine") == 0) {
+        cosine_backend = true;
+        --argc;
+    }
     if (argc >= 3 && strcmp(argv[1], "--domain-case") == 0) {
         char *end = NULL;
         unsigned long id = strtoul(argv[2], &end, 10);

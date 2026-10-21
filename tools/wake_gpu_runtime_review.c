@@ -388,7 +388,7 @@ int main(int argc, char **argv)
     if (!check_only)
         for (unsigned hz = 30; hz <= 120; hz *= 2) {
             double dt = 1.0 / hz;
-            prepare(1, dt);
+            prepare(0, dt); /* Same open rectangle as the cosine CPU comparison below. */
             float values[48], ledger[4];
             for (unsigned step = 0; step < 4; ++step) {
                 make_source(step, dt);
@@ -407,6 +407,43 @@ int main(int argc, char **argv)
                 hz == 30 ? "" : ",\n", hz, ms, ms * hz / 60,
                 isfinite(ledger[0]) ? "true" : "false");
             passed &= isfinite(ledger[0]);
+            BoatWakeConfig c = { W, H, .75, dt, 1000, ORDER, NULL, rates, 8, false };
+            BoatWake *cpu = boat_wake_create(&c);
+            REQUIRE(cpu && boat_wake_use_cosine(cpu));
+            boat_wake_prepare(cpu);
+            double cpu_start = 0, checksum = 0;
+            for (unsigned step = 0; step < 16; ++step) {
+                if (step == 4)
+                    cpu_start = GetTime();
+                make_source(step, dt); /* Includes the same upload; conservative for CPU. */
+                REQUIRE(boat_wake_step_with_impulse(cpu, impulse));
+                boat_wake_prepare(cpu);
+                for (unsigned i = 0; i < 6; ++i) {
+                    BoatWakeSample q;
+                    REQUIRE(
+                        boat_wake_query(cpu, (16 + i + .5) * .75 - 72, (60 + .5) * .75 - 48, &q));
+                    checksum += q.height + q.vertical_velocity + q.velocity_x + q.velocity_z;
+                }
+                BoatWakeLedger audit = boat_wake_ledger(cpu);
+                REQUIRE(isfinite(audit.retained));
+                for (unsigned i = 0; i < N; ++i) {
+                    double eta, psi;
+                    REQUIRE(boat_wake_sample(cpu, i % W, i / W, &eta, &psi));
+                    upload[4 * i] = (float)eta;
+                    upload[4 * i + 1] = (float)psi;
+                }
+                glBindTexture(GL_TEXTURE_2D, state[0].texture);
+                glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, W, H, GL_RGBA, GL_FLOAT, upload);
+                pass(9, visual, state[0], state[0], state[0], state[0]);
+                glFinish();
+            }
+            double cpu_ms = 1000 * (GetTime() - cpu_start) / 12;
+            printf(",\n{\"hz\": %u, \"backend\": \"cosine_cpu\", "
+                   "\"source_step_queries_ledger_upload_render_ms\": %.6f, \"ms_per_60hz_frame\": "
+                   "%.6f}",
+                hz, cpu_ms, cpu_ms * hz / 60);
+            REQUIRE(isfinite(checksum));
+            boat_wake_destroy(cpu);
         }
     printf("\n],\n\"passed\": %s\n}\n", passed ? "true" : "false");
     REQUIRE(glGetError() == GL_NO_ERROR);

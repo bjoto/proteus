@@ -327,10 +327,30 @@ restores the earlier flat, still-water practice mode.
 The default demo accelerates, turns into a loop after 3.5 seconds, crosses its older trail,
 and returns to neutral after 12 seconds. R clears the history and restarts the demo.
 The isolated [W1 wake experiment](docs/WAKE_W1_RESULTS.md) measures this baseline and
-rejects its connected-strip prototype. The isolated periodic heightfield fallback passes
-its propagation gates; runtime field/boundary/source work remains before player integration.
+rejects its connected-strip prototype. Its periodic heightfield experiment led to the
+bounded native candidate below; neither changes the default wake.
 Courses, saved replays, and ghosts retain their original water settings automatically;
 explicit `--player-wake` is rejected in those modes to preserve existing comparisons.
+
+A native, still-water basin candidate is available with `--wake-field`; D3 remains the
+normal default. Use an optimized build for play review (the Debug field is substantially
+slower):
+
+```sh
+cmake -S . -B build/review -DCMAKE_BUILD_TYPE=RelWithDebInfo
+cmake --build build/review --target boat_study -j
+./build/review/boat_study --wake-field --profiler
+```
+
+Drive a straight run, turn back across the trail after 10–30 seconds, then try tight loops,
+oblique crossings, reverse, neutral recovery and landings. `R` resets the boat and explicitly
+clears the field; `--demo` provides a scripted loop. Start without `--gpu-aa`: that option
+renders 1280x800 rather than 320x200 (16 times as many pixels). The complete
+wake exceeds its provisional 2 ms/frame target; [candidate results](docs/WAKE_CANDIDATE_RESULTS.md)
+record measured cost, storage and limitations. This flag is rejected for mapped locations,
+current/scripted-source options, courses/replays and the browser. The full-speed source was
+strengthened after initial user feedback; the window identifies `REVIEW 3`. The user reports
+improved feel; further water-appearance work and the default-switch decision remain separate.
 
 Currents and the separate scripted crossing wake remain opt-in in **all three locations**:
 

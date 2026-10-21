@@ -24,8 +24,12 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(raylib)
 
+if(APPLE)
+  link_libraries("-framework Accelerate") # Double cosine backend; portable FFT elsewhere.
+endif()
+
 set(PROTEUS_BOAT_WORLD_SOURCES
-  src/boat_water.c src/boat_course.c src/boat_replay.c src/boat_map.c
+  src/boat_water.c src/boat_wake.c src/boat_wake_player.c src/boat_course.c src/boat_replay.c src/boat_map.c
   src/waterfront.c src/waterfront_scene.c src/waterfront_corner.c)
 set(PROTEUS_HARBOR_SOURCES
   src/boat_flag.c src/boat_model.c src/waterfront_harbor.c src/waterfront_traffic.c)
@@ -138,6 +142,17 @@ if(NOT MSVC)
   target_link_libraries(wake_runtime_review PRIVATE m)
 endif()
 add_test(NAME wake_runtime_cadence COMMAND wake_runtime_review --check)
+
+add_executable(wake_candidate_review tools/wake_candidate_review.c src/boat_wake.c src/boat_wake_player.c)
+target_include_directories(wake_candidate_review PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_options(wake_candidate_review PRIVATE
+  $<$<C_COMPILER_ID:AppleClang,Clang,GNU>:-Wall;-Wextra;-Wpedantic>)
+if(NOT MSVC)
+  target_link_libraries(wake_candidate_review PRIVATE m)
+endif()
+add_test(NAME wake_candidate_backend_queries COMMAND wake_candidate_review)
+add_test(NAME wake_candidate_moving_source COMMAND wake_candidate_review --source)
+set_tests_properties(wake_candidate_moving_source PROPERTIES TIMEOUT 600)
 # Isolated desktop GL 3.3 experiment. It is deliberately not linked into boat_study.
 add_executable(wake_gpu_runtime_review tools/wake_gpu_runtime_review.c src/boat_wake.c)
 target_include_directories(wake_gpu_runtime_review PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -162,6 +177,27 @@ target_compile_options(validate_boat_audio PRIVATE
 add_test(NAME boat_audio_is_valid COMMAND validate_boat_audio)
 
 add_dependencies(boat_study proteus_assets)
+add_executable(wake_play_review tools/wake_play_review.c src/boat.c src/renderer3d.c
+  src/boat_gpu.c src/renderer_gpu.c ${PROTEUS_BOAT_WORLD_SOURCES} ${PROTEUS_HARBOR_SOURCES})
+target_include_directories(wake_play_review PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${raylib_SOURCE_DIR}/src)
+target_link_libraries(wake_play_review PRIVATE raylib)
+target_compile_options(wake_play_review PRIVATE
+  $<$<C_COMPILER_ID:AppleClang,Clang,GNU>:-Wall;-Wextra;-Wpedantic>)
+add_dependencies(wake_play_review proteus_assets)
+add_test(NAME wake_candidate_boat COMMAND wake_play_review)
+add_test(NAME wake_candidate_crossing COMMAND wake_play_review --crossing)
+set_tests_properties(wake_candidate_boat PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} TIMEOUT 180)
+set_tests_properties(wake_candidate_crossing PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} TIMEOUT 180)
+if(PROTEUS_GPU_TESTS)
+  add_test(NAME wake_candidate_gpu COMMAND wake_play_review --gpu)
+  set_tests_properties(wake_candidate_gpu PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    LABELS "gpu" RUN_SERIAL TRUE TIMEOUT 180)
+endif()
+add_test(NAME wake_candidate_course_rejected COMMAND boat_study --wake-field --course)
+add_test(NAME wake_candidate_map_rejected COMMAND boat_study --wake-field --location river)
+add_test(NAME wake_candidate_current_rejected COMMAND boat_study --wake-field --current)
+set_tests_properties(wake_candidate_course_rejected wake_candidate_map_rejected
+  wake_candidate_current_rejected PROPERTIES WILL_FAIL TRUE)
 add_executable(validate_boat tools/validate_boat.c src/boat.c src/renderer3d.c)
 add_executable(validate_boat_banking tools/validate_boat_banking.c src/boat.c src/renderer3d.c)
 add_executable(validate_boat_turn_entry tools/validate_boat_turn_entry.c src/boat.c src/renderer3d.c)
@@ -331,7 +367,7 @@ target_compile_options(waterfront_storyboard PRIVATE
 add_test(NAME waterfront_storyboard_is_valid COMMAND waterfront_storyboard --check)
 add_executable(validate_harbor tools/validate_harbor.c src/boat.c src/renderer3d.c
   src/boat_flag.c src/boat_model.c src/waterfront_harbor.c src/waterfront_traffic.c
-  src/boat_water.c src/boat_map.c
+  src/boat_water.c src/boat_wake.c src/boat_map.c
   src/boat_course.c src/boat_replay.c src/waterfront.c src/waterfront_scene.c src/waterfront_corner.c)
 target_include_directories(validate_harbor PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(validate_harbor PRIVATE raylib)
@@ -341,7 +377,7 @@ add_test(NAME harbor_geometry COMMAND validate_harbor)
 
 add_executable(validate_traffic tools/validate_traffic.c src/boat.c src/renderer3d.c
   src/boat_flag.c src/boat_model.c src/waterfront_harbor.c src/waterfront_traffic.c
-  src/boat_water.c src/boat_map.c
+  src/boat_water.c src/boat_wake.c src/boat_map.c
   src/boat_course.c src/boat_replay.c src/waterfront.c src/waterfront_scene.c src/waterfront_corner.c)
 target_include_directories(validate_traffic PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(validate_traffic PRIVATE raylib)
@@ -370,7 +406,7 @@ foreach(target proteus gpu_fixture validate_boat validate_boat_banking validate_
 endforeach()
 foreach(target proteus gpu_fixture waterfront_storyboard validate_waterfront_actors
     validate_city_dressing harbor_review)
-  target_sources(${target} PRIVATE src/boat_water.c)
+  target_sources(${target} PRIVATE src/boat_water.c src/boat_wake.c)
 endforeach()
 
 add_executable(validate_renderer3d tools/validate_renderer3d.c src/renderer3d.c)

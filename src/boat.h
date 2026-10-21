@@ -2,6 +2,7 @@
 #define PROTEUS_BOAT_H
 
 #include "boat_course.h"
+#include "boat_wake_player.h"
 #include "boat_water.h"
 #include "renderer3d.h"
 #include "waterfront_scene.h"
@@ -33,6 +34,7 @@ typedef struct {
     Vector2 position; // Water-plane X/Z coordinates.
     bool eriksberg;
     BoatWater water_settings;
+    const BoatWake *wake_surface; // Borrowed app-owned endpoint; never an owning BoatWater pointer.
     BoatCourse course;
     float time;
     Vector2 velocity;
@@ -67,6 +69,7 @@ void boat_scene_frame(const Boat *boat, BoatCamera camera, WaterfrontSceneFrame 
 // Advance one fixed tick. Inputs are adjustment rates in -1..1; zero centres the wheel and holds
 // throttle. Opposite steering unwinds the existing wheel angle three times faster than turn-in.
 void boat_step(Boat *boat, float wheel_change, float throttle_change);
+BoatWakeStern boat_wake_stern(const Boat *boat);
 bool boat_draw(Renderer3D *renderer, Color *pixels, int width, int height, const Boat *boat,
     BoatCamera camera_settings);
 

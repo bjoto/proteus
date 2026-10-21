@@ -264,6 +264,24 @@ Vector3 boat_water_resistance(
     return Vector3Scale(water.normal, force);
 }
 
+BoatWaterSample boat_water_query_field(
+    BoatWater water, const BoatWake *field, Vector2 position, float time)
+{
+    BoatWaterSample s = boat_water_query(water, position, time);
+    if (!field)
+        return s;
+    BoatWakeSample q;
+    if (!boat_wake_query(field, position.x, position.y, &q))
+        return s;
+    float gx = -s.normal.x / s.normal.y + (float)q.gradient_x;
+    float gz = -s.normal.z / s.normal.y + (float)q.gradient_z;
+    s.height += (float)q.height;
+    s.normal = Vector3Normalize((Vector3) { -gx, 1, -gz });
+    s.velocity = Vector3Add(s.velocity,
+        (Vector3) { (float)q.velocity_x, (float)q.vertical_velocity, (float)q.velocity_z });
+    return s;
+}
+
 typedef struct {
     Vector3 *vertices;
     Triangle3D *triangles;
@@ -271,6 +289,7 @@ typedef struct {
     Mesh3D mesh;
 } Surface;
 static Surface surfaces[2];
+static Surface candidate_surface;
 static Surface patches[2];
 static Vector2 patch_centers[2];
 
@@ -314,6 +333,9 @@ static bool subdivide(Surface *s, Vector3 a, Vector3 b, Vector3 c, int depth)
 
 void boat_water_destroy(void)
 {
+    free(candidate_surface.vertices);
+    free(candidate_surface.triangles);
+    candidate_surface = (Surface) { 0 };
     for (int i = 0; i < 2; ++i) {
         free(surfaces[i].vertices);
         free(surfaces[i].triangles);
@@ -482,6 +504,43 @@ const Mesh3D *boat_water_surface(BoatWater water, float time, bool eriksberg)
         s->triangles[i].color = (Color) { (unsigned char)Lerp(base.r * light, 166, crest),
             (unsigned char)Lerp(base.g * light, 199, crest),
             (unsigned char)Lerp(base.b * light, 204, crest), 255 };
+    }
+    s->mesh = (Mesh3D) { s->vertices, s->triangles, s->count };
+    return &s->mesh;
+}
+
+const Mesh3D *boat_water_surface_field(BoatWater water, const BoatWake *field, float time)
+{
+    Surface *s = &candidate_surface;
+    if (!s->count) {
+        for (int z = 0; z < 215; ++z)
+            for (int x = 0; x < 321; ++x) {
+                float left = x == 0 ? -120 : -119.625f + (x - 1) * .75f;
+                float right = x == 320 ? 120 : -119.625f + x * .75f;
+                float bottom = z == 0 ? -80 : -79.875f + (z - 1) * .75f;
+                float top = z == 214 ? 80 : -79.875f + z * .75f;
+                Vector3 a = { left, 0, bottom }, b = { left, 0, top }, c = { right, 0, top },
+                        d = { right, 0, bottom };
+                if (!surface_triangle(s, a, b, c) || !surface_triangle(s, a, c, d)) {
+                    s->count = 0; // Retry the complete basin after an allocation failure.
+                    return NULL;
+                }
+            }
+    }
+    for (size_t i = 0; i < s->count; ++i) {
+        Vector3 centre = { 0 };
+        for (int j = 0; j < 3; ++j) {
+            Vector3 *v = &s->vertices[3 * i + j];
+            v->y = boat_water_query_field(water, field, (Vector2) { -v->x, v->z }, time).height;
+            centre = Vector3Add(centre, Vector3Scale(*v, 1.0f / 3));
+        }
+        BoatWaterSample q
+            = boat_water_query_field(water, field, (Vector2) { -centre.x, centre.z }, time);
+        float light = Clamp(.95f + .55f * (-q.normal.x + q.normal.z), .85f, 1.05f);
+        float crest = .65f * Clamp(q.height / .38f, 0, 1);
+        s->triangles[i].color = (Color) { (unsigned char)Lerp(36 * light, 166, crest),
+            (unsigned char)Lerp(107 * light, 199, crest),
+            (unsigned char)Lerp(125 * light, 204, crest), 255 };
     }
     s->mesh = (Mesh3D) { s->vertices, s->triangles, s->count };
     return &s->mesh;

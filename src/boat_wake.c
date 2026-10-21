@@ -4,6 +4,10 @@
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+#if defined(__APPLE__) && !defined(BOAT_WAKE_PORTABLE)
+#include <Accelerate/Accelerate.h>
+#define WAKE_ACCELERATE 1
+#endif
 
 #define WAKE_G 9.81
 
@@ -11,6 +15,18 @@ typedef struct {
     uint32_t first, end;
     int32_t vertical[8];
 } WakeRun;
+
+typedef struct {
+    double r, i;
+} WakeComplex;
+typedef struct {
+    size_t n;
+    WakeComplex *roots, *phase, *input, *output;
+#if WAKE_ACCELERATE
+    vDSP_DFT_SetupD forward, inverse;
+    double *split;
+#endif
+} WakeTransform;
 
 struct BoatWake {
     BoatWakeConfig config;
@@ -25,7 +41,206 @@ struct BoatWake {
     WakeRun *runs;
     size_t edge_count, run_count;
     BoatWakeLedger ledger;
+    double *symbol;
+    WakeTransform transform[2];
+    bool prepared, has_land;
 };
+
+static WakeComplex multiply(WakeComplex a, WakeComplex b)
+{
+    return (WakeComplex) { a.r * b.r - a.i * b.i, a.r * b.i + a.i * b.r };
+}
+
+/* Out-of-place Cooley-Tukey. Every recursion reads disjoint input and writes
+ * disjoint output; the small butterflies use roots from the owner plan. */
+static void transform(const WakeTransform *p, const WakeComplex *in, WakeComplex *out, size_t n,
+    size_t stride, bool inverse)
+{
+    if (n == 1) {
+        *out = *in;
+        return;
+    }
+    size_t radix = n % 2 == 0 ? 2 : 3, m = n / radix;
+    for (size_t j = 0; j < radix; ++j)
+        transform(p, in + j * stride, out + j * m, m, stride * radix, inverse);
+    for (size_t k = 0; k < m; ++k) {
+        WakeComplex v[3];
+        for (size_t j = 0; j < radix; ++j)
+            v[j] = out[j * m + k];
+        for (size_t l = 0; l < radix; ++l) {
+            WakeComplex sum = v[0];
+            for (size_t j = 1; j < radix; ++j) {
+                WakeComplex root = p->roots[(j * (k + l * m) * stride) % p->n];
+                if (inverse)
+                    root.i = -root.i;
+                WakeComplex term = multiply(v[j], root);
+                sum.r += term.r;
+                sum.i += term.i;
+            }
+            out[l * m + k] = sum;
+        }
+    }
+}
+
+static void cosine_line(WakeTransform *p, double *values, size_t stride, bool inverse)
+{
+    size_t n = p->n;
+#if WAKE_ACCELERATE
+    if (p->split) {
+        /* Use the native split buffers directly. Instruments identified the
+         * redundant interleaved input/output copies as a substantial cost. */
+        double *real = p->split, *imag = real + n, *out_real = imag + n, *out_imag = out_real + n;
+        if (!inverse) {
+            for (size_t i = 0; i < n / 2; ++i) {
+                real[i] = values[2 * i * stride];
+                real[n - 1 - i] = values[(2 * i + 1) * stride];
+            }
+            memset(imag, 0, n * sizeof(double));
+        } else {
+            real[0] = values[0];
+            imag[0] = 0;
+            for (size_t k = 1; k < n; ++k) {
+                WakeComplex phase = p->phase[k];
+                phase.i = -phase.i;
+                WakeComplex v = multiply(
+                    (WakeComplex) { values[k * stride], -values[(n - k) * stride] }, phase);
+                real[k] = v.r;
+                imag[k] = v.i;
+            }
+        }
+        vDSP_DFT_ExecuteD(inverse ? p->inverse : p->forward, real, imag, out_real, out_imag);
+        if (!inverse) {
+            for (size_t k = 0; k < n; ++k)
+                values[k * stride] = out_real[k] * p->phase[k].r - out_imag[k] * p->phase[k].i;
+        } else {
+            for (size_t i = 0; i < n / 2; ++i) {
+                values[2 * i * stride] = out_real[i] / n;
+                values[(2 * i + 1) * stride] = out_real[n - 1 - i] / n;
+            }
+        }
+        return;
+    }
+#endif
+    if (!inverse) {
+        for (size_t i = 0; i < n / 2; ++i) {
+            p->input[i] = (WakeComplex) { values[2 * i * stride], 0 };
+            p->input[n - 1 - i] = (WakeComplex) { values[(2 * i + 1) * stride], 0 };
+        }
+        /* Real reordering reduces the DCT to a length-N complex FFT. */
+    } else {
+        p->input[0] = (WakeComplex) { values[0], 0 };
+        for (size_t k = 1; k < n; ++k) {
+            WakeComplex phase = p->phase[k];
+            phase.i = -phase.i;
+            p->input[k]
+                = multiply((WakeComplex) { values[k * stride], -values[(n - k) * stride] }, phase);
+        }
+    }
+    transform(p, p->input, p->output, n, 1, inverse);
+    if (!inverse) {
+        for (size_t k = 0; k < n; ++k)
+            values[k * stride] = multiply(p->output[k], p->phase[k]).r;
+    } else {
+        for (size_t i = 0; i < n / 2; ++i) {
+            values[2 * i * stride] = p->output[i].r / n;
+            values[(2 * i + 1) * stride] = p->output[n - 1 - i].r / n;
+        }
+    }
+}
+
+static void apply_cosine(BoatWake *f, const double *input, double *output)
+{
+    size_t w = f->config.width, h = f->config.height;
+    memcpy(output, input, f->count * sizeof(double));
+    for (size_t z = 0; z < h; ++z)
+        cosine_line(&f->transform[0], output + z * w, 1, false);
+    for (size_t x = 0; x < w; ++x)
+        cosine_line(&f->transform[1], output + x, w, false);
+    for (size_t i = 0; i < f->count; ++i)
+        output[i] *= f->symbol[i];
+    for (size_t x = 0; x < w; ++x)
+        cosine_line(&f->transform[1], output + x, w, true);
+    for (size_t z = 0; z < h; ++z)
+        cosine_line(&f->transform[0], output + z * w, 1, true);
+}
+
+/* Parseval for this unnormalized DCT: inverse norms are 1/N for mode zero,
+ * 2/N otherwise. Source self-energy needs only the forward transform. */
+static double cosine_quadratic(BoatWake *f, const double *input)
+{
+    size_t w = f->config.width, h = f->config.height;
+    double *out = f->source_op;
+    memcpy(out, input, f->count * sizeof(double));
+    for (size_t z = 0; z < h; ++z)
+        cosine_line(&f->transform[0], out + z * w, 1, false);
+    for (size_t x = 0; x < w; ++x)
+        cosine_line(&f->transform[1], out + x, w, false);
+    double result = 0;
+    for (size_t z = 0; z < h; ++z)
+        for (size_t x = 0; x < w; ++x) {
+            size_t i = z * w + x;
+            result += (x ? 2 : 1) * (z ? 2 : 1) * out[i] * out[i] * f->symbol[i] / f->count;
+        }
+    return result;
+}
+
+bool boat_wake_use_cosine(BoatWake *f)
+{
+    if (!f)
+        return false;
+    if (f->symbol)
+        return true;
+    for (size_t i = 0; i < f->count; ++i)
+        if (f->land[i])
+            return false;
+    for (size_t axis = 0; axis < 2; ++axis) {
+        size_t n = axis ? f->config.height : f->config.width;
+        if (n % 2)
+            return false;
+        while (n % 2 == 0)
+            n /= 2;
+        while (n % 3 == 0)
+            n /= 3;
+        if (n != 1)
+            return false;
+    }
+    double *symbol = malloc(f->count * sizeof(double));
+    WakeComplex *a = calloc(4 * f->config.width, sizeof(WakeComplex));
+    WakeComplex *b = calloc(4 * f->config.height, sizeof(WakeComplex));
+    if (!symbol || !a || !b) {
+        free(symbol);
+        free(a);
+        free(b);
+        return false;
+    }
+    f->symbol = symbol;
+    const double pi = 3.14159265358979323846;
+    for (size_t axis = 0; axis < 2; ++axis) {
+        size_t n = axis ? f->config.height : f->config.width;
+        WakeComplex *v = axis ? b : a;
+        f->transform[axis] = (WakeTransform) {
+            .n = n, .roots = v, .phase = v + n, .input = v + 2 * n, .output = v + 3 * n
+        };
+#if WAKE_ACCELERATE
+        WakeTransform *p = &f->transform[axis];
+        p->forward = vDSP_DFT_zop_CreateSetupD(NULL, n, vDSP_DFT_FORWARD);
+        p->inverse = vDSP_DFT_zop_CreateSetupD(NULL, n, vDSP_DFT_INVERSE);
+        if (p->forward && p->inverse)
+            p->split = calloc(4 * n, sizeof(double));
+#endif
+        for (size_t k = 0; k < n; ++k) {
+            v[k] = (WakeComplex) { cos(2 * pi * k / n), -sin(2 * pi * k / n) };
+            v[n + k] = (WakeComplex) { cos(pi * k / (2 * n)), -sin(pi * k / (2 * n)) };
+        }
+    }
+    for (size_t z = 0; z < f->config.height; ++z)
+        for (size_t x = 0; x < f->config.width; ++x)
+            symbol[z * f->config.width + x]
+                = boat_wake_operator_symbol(f->config.order, f->config.spatial_order,
+                    f->config.spacing, pi * x / (f->config.width * f->config.spacing),
+                    pi * z / (f->config.height * f->config.spacing));
+    return true;
+}
 
 /* Water-only graph Laplacian L, with no periodic edges. Approximate sqrt(L) by
  * sum_j 4 sqrt(a)/(pi(4j^2-1)) [I-T_j(I-2L/a)], a bounds the chosen stencil.
@@ -201,6 +416,10 @@ static void finish(BoatWake *f, const double *input, double *output)
 
 static void apply(BoatWake *f, const double *input, double *output)
 {
+    if (f->symbol) {
+        apply_cosine(f, input, output);
+        return;
+    }
     if (f->radius == 1 || f->config.reference_operator) {
         apply_reference(f, input, output);
         return;
@@ -359,7 +578,7 @@ static bool partition_water(BoatWake *f)
 
 static double energy(BoatWake *f)
 {
-    apply(f, f->psi, f->op);
+    boat_wake_prepare(f);
     double total = 0;
     for (size_t i = 0; i < f->count; ++i)
         total += WAKE_G * f->eta[i] * f->eta[i] + f->psi[i] * f->op[i];
@@ -368,7 +587,7 @@ static double energy(BoatWake *f)
 
 BoatWake *boat_wake_create(const BoatWakeConfig *c)
 {
-    if (!c || c->width < 2 || c->height < 2 || c->width > 512 || c->height > 512
+    if (!c || c->width < 2 || c->height < 2 || c->width > 1024 || c->height > 1024
         || !isfinite(c->spacing) || c->spacing <= 0 || !isfinite(c->density) || c->density <= 0
         || !isfinite(c->dt) || c->dt <= 0 || !c->order || c->order > 1024
         || (c->spatial_order && c->spatial_order != 2 && c->spatial_order != 4
@@ -434,6 +653,8 @@ BoatWake *boat_wake_create(const BoatWakeConfig *c)
     f->source_op = f->damping + f->count;
     if (c->land)
         memcpy(f->land, c->land, f->count);
+    for (size_t i = 0; i < f->count; ++i)
+        f->has_land |= f->land[i] != 0;
     if (radius > 1) {
         f->neighbors = calloc(f->count * radius * 4, sizeof(*f->neighbors));
         if (!f->neighbors) {
@@ -466,6 +687,10 @@ BoatWake *boat_wake_clone(const BoatWake *f)
         return NULL;
     BoatWake *copy = boat_wake_create(&f->config);
     if (copy) {
+        if (f->symbol && !boat_wake_use_cosine(copy)) {
+            boat_wake_destroy(copy);
+            return NULL;
+        }
         memcpy(copy->eta, f->eta, 2 * f->count * sizeof(double));
         copy->ledger = f->ledger;
     }
@@ -475,6 +700,18 @@ BoatWake *boat_wake_clone(const BoatWake *f)
 void boat_wake_destroy(BoatWake *f)
 {
     if (f) {
+        free(f->symbol);
+        free(f->transform[0].roots);
+        free(f->transform[1].roots);
+#if WAKE_ACCELERATE
+        for (size_t axis = 0; axis < 2; ++axis) {
+            if (f->transform[axis].forward)
+                vDSP_DFT_DestroySetupD(f->transform[axis].forward);
+            if (f->transform[axis].inverse)
+                vDSP_DFT_DestroySetupD(f->transform[axis].inverse);
+            free(f->transform[axis].split);
+        }
+#endif
         free(f->root_coefficients);
         free(f->storage);
         free(f->land);
@@ -492,6 +729,7 @@ void boat_wake_reset(BoatWake *f)
     f->ledger.retired += energy(f);
     memset(f->eta, 0, 2 * f->count * sizeof(double));
     f->ledger.tick = 0;
+    f->prepared = false;
 }
 
 static bool valid_impulse(const BoatWake *f, const double *impulse, bool *nonzero)
@@ -508,8 +746,20 @@ static bool valid_impulse(const BoatWake *f, const double *impulse, bool *nonzer
     return true;
 }
 
+static void book_work(BoatWake *f, double work)
+{
+    work *= 0.5 * f->config.density * f->config.spacing * f->config.spacing;
+    work *= 2;
+    f->ledger.injected += work;
+    if (work >= 0)
+        f->ledger.positive_work += work;
+    else
+        f->ledger.negative_work += work;
+}
+
 static void add_impulse(BoatWake *f, const double *impulse, const double *op, double fraction)
 {
+    f->prepared = false;
     /* Symmetry of A gives delta H = rho dx^2 (psi + delta/2)^T A delta.
      * One operator instead of subtracting two full Hamiltonians; eta is unchanged.
      * This also avoids cancellation against unrelated, large retained energy. */
@@ -521,13 +771,7 @@ static void add_impulse(BoatWake *f, const double *impulse, const double *op, do
     }
     /* Creation validates this half-energy scale; the doubled scale itself can
      * overflow for valid extreme units even when the resulting work is finite. */
-    work *= 0.5 * f->config.density * f->config.spacing * f->config.spacing;
-    work *= 2;
-    f->ledger.injected += work;
-    if (work >= 0)
-        f->ledger.positive_work += work;
-    else
-        f->ledger.negative_work += work;
+    book_work(f, work);
 }
 
 bool boat_wake_kick(BoatWake *f, const double *impulse)
@@ -549,6 +793,29 @@ bool boat_wake_step_with_impulse(BoatWake *f, const double *impulse)
         return false;
     if (!nonzero)
         return boat_wake_step(f);
+    if (f->symbol) {
+        /* Reuse the published A psi at both endpoints. The two half events are
+         * .5 delta^T A psi_before + .125 delta^T A delta, and
+         * .5 delta^T A psi_after  - .125 delta^T A delta. The latter endpoint
+         * already includes the second half source. This preserves each signed
+         * event while eliminating the inverse source transform. */
+        boat_wake_prepare(f);
+        double q = cosine_quadratic(f, impulse), cross = 0;
+        for (size_t i = 0; i < f->count; ++i) {
+            cross += impulse[i] * f->op[i];
+            f->psi[i] += .5 * impulse[i];
+        }
+        book_work(f, .5 * cross + .125 * q);
+        boat_wake_step(f);
+        for (size_t i = 0; i < f->count; ++i)
+            f->psi[i] += .5 * impulse[i];
+        boat_wake_prepare(f);
+        cross = 0;
+        for (size_t i = 0; i < f->count; ++i)
+            cross += impulse[i] * f->op[i];
+        book_work(f, .5 * cross - .125 * q);
+        return true;
+    }
     /* Cache A delta across the field step. Two symmetric half sources need one
      * source operator, with each half's actual signed work booked separately. */
     apply(f, impulse, f->source_op);
@@ -563,6 +830,7 @@ bool boat_wake_step(BoatWake *f)
     if (!f || f->ledger.tick == UINT64_MAX)
         return false;
     double dt = f->config.dt;
+    f->prepared = false;
     /* Kick-drift-kick: fixed integer tick, no absolute float phase. */
     for (size_t i = 0; i < f->count; ++i)
         f->psi[i] -= 0.5 * dt * WAKE_G * f->eta[i];
@@ -597,6 +865,118 @@ bool boat_wake_sample(const BoatWake *f, size_t x, size_t z, double *eta, double
     return true;
 }
 
+void boat_wake_prepare(BoatWake *f)
+{
+    if (f && !f->prepared) {
+        apply(f, f->psi, f->op);
+        f->prepared = true;
+    }
+}
+
+static void interpolation(double t, double *w, double *d)
+{
+    static const double inverse[12]
+        = { -2.505210838544172e-08, 2.7557319223985888e-07, -1.3778659611992946e-06,
+              4.1335978835978839e-06, -8.2671957671957678e-06, 1.1574074074074073e-05,
+              -1.1574074074074073e-05, 8.2671957671957678e-06, -4.1335978835978839e-06,
+              1.3778659611992946e-06, -2.7557319223985888e-07, 2.505210838544172e-08 };
+    double prefix[13], suffix[13], dp[13], ds[13];
+    prefix[0] = suffix[12] = 1;
+    dp[0] = ds[12] = 0;
+    for (int k = 0; k < 12; ++k) {
+        double v = t - (k - 5);
+        prefix[k + 1] = prefix[k] * v;
+        dp[k + 1] = dp[k] * v + prefix[k];
+        int j = 11 - k;
+        v = t - (j - 5);
+        suffix[j] = suffix[j + 1] * v;
+        ds[j] = ds[j + 1] * v + suffix[j + 1];
+    }
+    for (int k = 0; k < 12; ++k) {
+        w[k] = prefix[k] * suffix[k + 1] * inverse[k];
+        d[k] = (dp[k] * suffix[k + 1] + prefix[k] * ds[k + 1]) * inverse[k];
+    }
+}
+
+static size_t mirrored(int i, size_t n)
+{
+    int m = (int)n;
+    i = ((i % (2 * m)) + 2 * m) % (2 * m);
+    return (size_t)(i >= m ? 2 * m - 1 - i : i);
+}
+
+bool boat_wake_query(const BoatWake *f, double x, double z, BoatWakeSample *q)
+{
+    if (!f || !q || !f->prepared || !isfinite(x) || !isfinite(z))
+        return false;
+    *q = (BoatWakeSample) { 0 };
+    double dx = f->config.spacing;
+    x = x / dx + f->config.width * .5 - .5;
+    z = z / dx + f->config.height * .5 - .5;
+    if (x < -.5 || z < -.5 || x > f->config.width - .5 || z > f->config.height - .5)
+        return false;
+    int ix = (int)floor(x), iz = (int)floor(z);
+    /* Do not reconstruct through a thin island. A shoreline interpolation scheme
+     * needs separate validation; the playable rectangle never takes this branch. */
+    if (f->has_land)
+        for (int j = 0; j < 12; ++j)
+            for (int k = 0; k < 12; ++k)
+                if (f->land[mirrored(iz + j - 5, f->config.height) * f->config.width
+                        + mirrored(ix + k - 5, f->config.width)])
+                    return false;
+    double wx[12], wz[12], gx[12], gz[12];
+    interpolation(x - ix, wx, gx);
+    interpolation(z - iz, wz, gz);
+    for (int j = 0; j < 12; ++j) {
+        size_t row = mirrored(iz + j - 5, f->config.height) * f->config.width;
+        for (int k = 0; k < 12; ++k) {
+            size_t i = row + mirrored(ix + k - 5, f->config.width);
+            double w = wx[k] * wz[j], a = gx[k] * wz[j] / dx, b = wx[k] * gz[j] / dx;
+            q->height += w * f->eta[i];
+            q->gradient_x += a * f->eta[i];
+            q->gradient_z += b * f->eta[i];
+            q->velocity_x += a * f->psi[i];
+            q->velocity_z += b * f->psi[i];
+            q->vertical_velocity += w * (f->op[i] - f->rate[i] * f->eta[i]);
+        }
+    }
+    return true;
+}
+
+BoatWakeConfig boat_wake_config(const BoatWake *f)
+{
+    return f ? f->config : (BoatWakeConfig) { 0 };
+}
+
+void boat_wake_copy_heights(const BoatWake *f, float *out)
+{
+    if (f && out)
+        for (size_t i = 0; i < f->count; ++i)
+            out[i] = (float)f->eta[i];
+}
+
+void boat_wake_extrema(const BoatWake *f, double *height, double *slope)
+{
+    if (!f || !height || !slope)
+        return;
+    *height = *slope = 0;
+    double weights[12], derivative[12];
+    interpolation(0, weights, derivative);
+    for (size_t z = 0; z < f->config.height; ++z)
+        for (size_t x = 0; x < f->config.width; ++x) {
+            size_t i = z * f->config.width + x;
+            double gx = 0, gz = 0;
+            for (int k = 0; k < 12; ++k) {
+                gx += derivative[k]
+                    * f->eta[z * f->config.width + mirrored((int)x + k - 5, f->config.width)];
+                gz += derivative[k]
+                    * f->eta[mirrored((int)z + k - 5, f->config.height) * f->config.width + x];
+            }
+            *height = fmax(*height, fabs(f->eta[i]));
+            *slope = fmax(*slope, hypot(gx, gz) / f->config.spacing);
+        }
+}
+
 BoatWakeLedger boat_wake_ledger(BoatWake *f)
 {
     if (!f)
@@ -615,6 +995,14 @@ size_t boat_wake_storage_bytes(const BoatWake *f)
     if (!f)
         return 0;
     size_t bytes = sizeof(*f) + f->count * (9 * sizeof(double) + 1);
+    if (f->symbol)
+        bytes += f->count * sizeof(double)
+            + 4 * (f->config.width + f->config.height) * sizeof(WakeComplex);
+#if WAKE_ACCELERATE
+    for (size_t axis = 0; axis < 2; ++axis)
+        if (f->transform[axis].split)
+            bytes += 4 * f->transform[axis].n * sizeof(double);
+#endif
     if (f->root_coefficients)
         bytes += f->config.order * sizeof(double);
     if (f->neighbors) {

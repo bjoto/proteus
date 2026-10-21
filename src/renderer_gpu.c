@@ -984,7 +984,23 @@ static void set_atmosphere_uniforms(WaterfrontGpuScene *scene, Vector3 camera_po
 static void set_water_uniforms(WaterfrontGpuScene *scene, const WaterfrontSceneFrame *frame)
 {
     BoatWater water = frame->player_water;
-    int physical_waves = frame->player_active && boat_water_displaced(water);
+    int field_enabled = scene->wake_field.id != 0;
+    SetShaderValue(scene->water_shader, GetShaderLocation(scene->water_shader, "wakeFieldEnabled"),
+        &field_enabled, SHADER_UNIFORM_INT);
+    if (field_enabled) {
+        float grid[] = { (float)scene->wake_field.width, (float)scene->wake_field.height,
+            scene->wake_spacing };
+        SetShaderValue(scene->water_shader, GetShaderLocation(scene->water_shader, "wakeGrid"),
+            grid, SHADER_UNIFORM_VEC3);
+        int slot = 13;
+        rlEnableShader(scene->water_shader.id);
+        rlActiveTextureSlot(slot);
+        rlEnableTexture(scene->wake_field.id);
+        rlSetUniform(
+            GetShaderLocation(scene->water_shader, "wakeField"), &slot, SHADER_UNIFORM_INT, 1);
+        rlActiveTextureSlot(0);
+    }
+    int physical_waves = frame->player_active && (field_enabled || boat_water_displaced(water));
     SetShaderValue(scene->water_shader, GetShaderLocation(scene->water_shader, "physicalWaves"),
         &physical_waves, SHADER_UNIFORM_INT);
     float wake_amplitude = frame->player_active ? water.wake_amplitude : 0;
@@ -1447,6 +1463,8 @@ static void draw_water(WaterfrontGpuScene *scene, const WaterfrontSceneFrame *fr
         set_object_color(scene->water_shader, WHITE);
         SetShaderValue(scene->water_shader, location, &pass, SHADER_UNIFORM_INT);
         DrawMesh(scene->near_water, scene->water_material, MatrixIdentity());
+        if (scene->near_water_extra.vaoId)
+            DrawMesh(scene->near_water_extra, scene->water_material, MatrixIdentity());
     }
 }
 

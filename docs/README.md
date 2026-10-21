@@ -12,7 +12,7 @@ Both default to GPU rendering; the CPU reference supports display-free captures.
 | [Boating foundations](BOATING_FOUNDATIONS_PLAN.md) | P1 frame/tick instrumentation implemented; later phases pending | P2: repeatable benchmark/report tool and renderer counters; then baseline, clock correction, explicit world ownership, and simulation/presentation separation |
 | [Boating design](BOATING_PLAN.md) | Basin, Eriksberg, and river locations; timed S course, recordings, persistent bests, ghosts, replays, full-window presentation with modal `?` help, quiet engine/water audio with a joyful repeating XM, and a user-accepted wind-driven Swedish ensign | [Boat visual improvement](BOATING_PLAN.md#boat-visual-improvement--saved-2026-10-20) saved for later: cabin/hull shapes and palette; optional closer-camera comparison, score-loop, and archipelago remain proposals |
 | [Boat physics](BOAT_PHYSICS_PLAN.md) | A–D3 plus accepted H1/H2 countersteering and speed view; T1–T5 load-driven banking and quicker recovery; user-accepted H3 firmer planing hull grip for stern-led turns, revision 4 | [H3 carving pass](BOAT_PHYSICS_PLAN.md#h3--stern-led-carving-feel-2026-10-20): feel accepted on 2026-10-20; exhaustive hands-on/platform checks unverified; optional trim/loading not started |
-| [Wake rewrite](WAKE_REWRITE_PLAN.md) | W1/W2.1 numerical proof and runtime checkpoint complete; source accounting optimized; CPU/direct GPU budget failed; D3 runtime unchanged | W2.R cheaper operator investigation before source/player integration; [measurements and limits](WAKE_RUNTIME_RESULTS.md); backend, query/render and play acceptance pending |
+| [Wake rewrite](WAKE_REWRITE_PLAN.md) | Opt-in native basin candidate: exact cosine backend, wetted stern source, shared queries/rendering and explicit ledger; final automated checks pass; user reports revision 3 feels much better; D3 remains default | Continued W4 review and separate water-appearance work; 2 ms target failed; mapped/current/browser candidate support and W5 default switch remain pending; [candidate evidence](WAKE_CANDIDATE_RESULTS.md) |
 | [Living city](LIVING_CITY_PLAN.md) | 01–05: city dressing, materials, berths, shared actors; travelling boats and a compact ferry brought forward; demo flock and 32 reactive boating gulls | 06 people/cyclists; varied road traffic, building activity, ferry polish, perched gulls, and final review remain |
 | [River / Älvsborgsbron](eriksberg/bridge/README.md) | Separate source/crop, navigable bridge blockout, blocking tower legs, and grounded road approaches | Bridge/shoreline/building refinement; human handling and camera review |
 | [GPU migration](GPU_WATERFRONT_PLAN.md) | Steps 01–12 implemented; GPU default, lighting, shadows, atmosphere, reflections, and regression checks | Migration is implemented; other-platform and human visual acceptance remain separate from automated checks |
@@ -48,6 +48,14 @@ does not authorize advancing every plan. Use the requested track's scope and acc
   to the current owners above. Dated progress entries retain results for their original revisions.
 
 ## Verification baseline
+
+Wake candidate, 2026-10-21, macOS / M1 Max: Debug configure/build and all 91 CTests passed,
+including 22 GPU checks. Matched 80 s boundary/island and 160 s basin-domain proofs,
+source/query convergence, physical crossing/recovery, CPU/GPU captures, Instruments profiling,
+scripted desktop animation, portable sanitizers and browser-baseline smoke checks are recorded
+in [candidate results](WAKE_CANDIDATE_RESULTS.md). The user reports revision 3 looks and feels
+much better; water appearance is a separate follow-up. The 2 ms wake target fails, D3 remains
+default, and broader scenario/platform review is not inferred from these checks.
 
 Swedish flag, 2026-10-20, macOS: Debug build and all 77 CTests passed, including 20 GPU
 checks; seven affected checks passed again after shortening the staff. CPU/GPU captures

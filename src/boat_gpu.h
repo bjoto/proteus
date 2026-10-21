@@ -8,10 +8,16 @@ typedef struct {
     RenderTexture2D target, supersampled;
     Shader downsample;
     Mesh wave_mesh;
+    Mesh wave_mesh_extra; // Second indexed basin strip (16-bit vertex indices).
     Mesh basin_water;
     Vector2 wave_center;
     bool wave_eriksberg;
     int wave_capacity, wave_peak_triangles, wave_rebuilds;
+    Texture2D wake_texture;
+    float *wake_upload;
+    double wake_upload_seconds;
+    size_t wake_uploads;
+    bool failed;
 
 } BoatGpu;
 

@@ -1,6 +1,7 @@
 #ifndef PROTEUS_BOAT_WATER_H
 #define PROTEUS_BOAT_WATER_H
 
+#include "boat_wake.h"
 #include "renderer3d.h"
 
 typedef struct {
@@ -51,6 +52,8 @@ Vector2 boat_water_current(BoatWater water, Vector2 position);
 // One source travels X=-24..24 at Z=-8 plus wake_offset over the first 12 seconds.
 bool boat_water_wake_source(BoatWater water, float time, Vector2 *position);
 BoatWaterSample boat_water_query(BoatWater water, Vector2 position, float time);
+BoatWaterSample boat_water_query_field(
+    BoatWater water, const BoatWake *field, Vector2 position, float time);
 // Dissipative normal resistance in simulation coordinates. Positive support is the local upward
 // spring force; it caps exit damping so the combined support never pulls the hull underwater.
 Vector3 boat_water_resistance(
@@ -58,6 +61,7 @@ Vector3 boat_water_resistance(
 // Borrowed, tessellated surface; renderer X is reflected from simulation X. NULL on allocation
 // failure. CPU reference draws the colors and full displaced surface. Each call updates storage.
 const Mesh3D *boat_water_surface(BoatWater water, float time, bool eriksberg);
+const Mesh3D *boat_water_surface_field(BoatWater water, const BoatWake *field, float time);
 // GPU-only rest topology, clipped to the original shoreline. World X/Z, not simulation X.
 // Cached on a fixed 1.5 m grid; shifts by 12 m outside the visible displacement radius.
 #define BOAT_WATER_PATCH_FULL 48.0f
