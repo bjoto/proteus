@@ -4,6 +4,8 @@ A small C/raylib demo playground with deliberately low-resolution output
 and tracker music. The demo is now a single four-minute Eriksberg waterfront journey,
 following five gulls to the 120 BPM “Below the surface” soundtrack.
 
+[Play Proteus Boating in your browser](https://doomdavve.github.io/proteus/).
+
 The separate boating playground provides free exploration, a timed basin course, ghosts,
 and replays. See the [documentation and current plans](docs/README.md) for project status,
 next tasks, and the [Gothenburg boating design](docs/BOATING_PLAN.md).
@@ -632,7 +634,9 @@ clangd, formatting, compilation, navigation, and LLDB debugging.
 
 ## Browser build and GitHub Pages
 
-The web target is the playable `boat_study` distributed in the native ZIPs. It includes
+The [live browser game](https://doomdavve.github.io/proteus/) is the playable `boat_study`
+distributed in the native ZIPs. The landing page shows its build version (release tag or
+Git development description). It includes
 River, Eriksberg, Basin, and the basin time trial with ghosts/replays and saved bests.
 The separate four-minute `proteus` demo and development tools remain native targets.
 

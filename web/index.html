@@ -37,6 +37,7 @@
     #status, #storage { color: #a9bdbb; font-size: 11px; margin: 12px 0 0; }
     #status:empty, #storage:empty { display: none; }
     footer { padding-top: 24px; text-align: center; color: #8fa6a9; font-size: 10px; }
+    #version { display: block; margin-bottom: 6px; }
     a { color: inherit; text-underline-offset: 3px; }
     #stage { display: none; background: #000; position: fixed; inset: 0; align-items: center; justify-content: center; }
     body.playing { overflow: hidden; background: #000; }
@@ -83,7 +84,7 @@
       <p id="status" role="status">Loading…</p>
       <p id="storage" role="status"></p>
     </main>
-    <footer>Map data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a> · ODbL</footer>
+    <footer><span id="version">Version @WEB_VERSION@</span>Map data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a> · ODbL</footer>
   </div>
   <div id="stage">
     <canvas id="canvas" width="960" height="600" tabindex="0" aria-label="Boating game. Press question mark for controls. Reload the page to choose another location."></canvas>

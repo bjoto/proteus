@@ -92,7 +92,9 @@ its scripted jumping/landing run.
   `/tmp/proteus-arcade-ctest-last.log`. The initial sandboxed graphics run stalled during
   initialization, was stopped, and subsequent complete runs used desktop access.
 - Emscripten `cmake --build build-web --target web --parallel 4` passes. This checks the
-  build/package, not browser shader execution or browser gameplay.
+  build/package. A subsequent [local Chrome/SwiftShader smoke](WEB_BUILD.md#current-arcade-build-local-smoke--2026-10-22)
+  verifies current river/basin startup, rendering, help/reset and no runtime errors;
+  it does not establish browser arcade outcome coverage or hardware GPU performance.
 - Basin CPU/GPU, river GPU+AA and stationary-camera turn captures were inspected. GPU
   crests retain the launch silhouette with narrower foam; the CPU reference remains
   visibly faceted. The river time-9 camera looks across a quay and is useful for boundary
@@ -149,6 +151,6 @@ Known limits: extreme synthetic launches remain possible; the sweep is not a cal
 player difficulty curve. It samples combinations rather than exhaustively covering all
 speeds, headings, source histories or curved-front interference. The local four-boat
 check is an automated basin workload, not a rendered river/browser fleet benchmark.
-Hands-on driving, restart key handling, audio listening, browser shader/gameplay execution,
+Hands-on driving, restart key handling, audio listening, exhaustive browser gameplay,
 Windows behavior and new user acceptance require further review. No Instruments trace is
 claimed; routine measurements have not exposed an unexplained spike requiring attribution.

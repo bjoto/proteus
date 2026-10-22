@@ -16,7 +16,11 @@ during play. In-game `?` remains the sole controls guide; reload
 returns to location selection. A bundled game capture supplies the launch-page preview.
 The visible raylib license link is removed; its license file remains distributed. Map
 attribution stays on the launcher and in the mapped-location game help.
-Next: review the new launcher in the deployed build; Safari/Firefox, physical GPU
+The landing footer now shows the packaged build version: the exact `v*` release tag,
+or a Git development description/hash (with `-dirty` for tracked local changes). The
+packager accepts `--version` for source archives; without Git or an override it shows
+`unknown`. The [live page](https://doomdavve.github.io/proteus/) is linked from the README.
+Next: review the version footer in the deployed build; Safari/Firefox, physical GPU
 performance, and human audio review remain outstanding.
 
 ## Build and deployment
@@ -49,7 +53,8 @@ sources remain C17. Its POSIX clock calls are enabled through `_POSIX_C_SOURCE=2
 
 The native `--wake-field` review candidate is explicitly unavailable in Web builds.
 [Web.cmake](../cmake/Web.cmake) removes its wide field sampler from generated WebGL shaders;
-D3 and the existing launcher remain the browser behavior. The portable cosine backend is
+The native field sampler stays unavailable; the current arcade object default and D3
+selector share the existing browser launcher. The portable cosine backend is
 numerically tested on the development Mac, but no browser candidate performance or query
 latency is accepted. See [candidate limits](WAKE_CANDIDATE_RESULTS.md).
 
@@ -210,3 +215,33 @@ packaging passed. Chrome keyboard-focus check confirmed no canvas outline and re
 launcher focus indicators; `build-web/canvas-no-outline.png` was inspected. All 70 native
 CTests passed, including 18 GPU checks, with desktop access and a 120-second per-test
 timeout. Safari/Firefox and listening remain unchecked.
+
+## Current arcade build local smoke — 2026-10-22
+
+Revision `8e69b5b`, development M1 Max/macOS: the Emscripten build/package passes.
+Served `build-web/site` at `http://127.0.0.1:8001/` and launched the actual JS/Wasm/data
+in installed Chrome headless with SwiftShader using the existing temporary Playwright
+tooling. River and basin startup/rendering pass; inspected river, help and reset captures.
+Sent throttle input, opened/dismissed help and reset the basin. No JavaScript, shader or
+asset-load errors were logged. AudioContext reaches running state; listening was not tested.
+Expected ScriptProcessorNode deprecation and software-renderer readback warnings remain.
+
+Artifacts: `build-web/arcade-browser-*.png`, `build-web/arcade-browser-smoke.json`;
+log: `/tmp/proteus-arcade-browser.log`; temporary script:
+`/tmp/proteus-arcade-browser-smoke.py`. Next: hands-on browser driving/listening and
+hardware GPU performance; Safari/Firefox, prolonged play and arcade landing/capsize
+coverage in the browser remain unverified. This smoke is not a performance benchmark.
+
+## Landing build version — 2026-10-22
+
+Implemented a small version footer resolved by `tools/package_web.py` at packaging time,
+with HTML escaping and an explicit `--version` override. Exact release checkouts show the
+tag; development checkouts show Git's description/hash and tracked dirty state. No Git
+checkout displays `unknown` unless overridden. The current workflow's shallow main
+checkout can show a hash instead of a nearest-tag description. README links the live site,
+verified to return HTTP 200. Emscripten packaging, exact-tag/dirty/fallback/escaped-override
+checks and Chrome desktop/390px footer visibility/no-horizontal-overflow checks pass;
+`build-web/version-{desktop,narrow}.png` were inspected. Native Debug configure/build and all 83 active CTests (20 GPU) pass in 119.79 s;
+fifteen retired field cases stay disabled. Logs: `/tmp/proteus-web-version-*.log`.
+Changed documentation link targets and `git diff --check` pass.
+Next: confirm the version on the next deployed build; deployment is not performed here.
