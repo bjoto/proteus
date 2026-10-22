@@ -7,7 +7,8 @@ way better. I think we're good here." No further tuning is queued. The exhaustiv
 controls/replay/focus/camera checklist remains unverified.
 The subsequent [H3 carving pass](BOAT_PHYSICS_PLAN.md#h3--stern-led-carving-feel-2026-10-20)
 responds to the user's request for more bow grip and a clearer stern-led turn. It changes
-planing hull grip and advances current handling compatibility to revision 4; T1–T5's dated
+planing hull grip and introduced handling revision 4. The later
+[arcade gameplay pass](WAKE_ARCADE_IMPLEMENTATION.md) advances compatibility to revision 5; T1–T5's dated
 revision-3 evidence below remains historical. H3 acceptance and remaining verification
 limits belong to the physics plan.
 

@@ -12,6 +12,8 @@ huge-wave mode; the subsequent [continuity revision](WAKE_OBJECT_SMOOTHING.md) s
 pieces and smooths their transitions. The user subsequently reports it is very fun and
 requests the default switch. **Next: investigate occasional stuck-looking waves.**
 See [default promotion](WAKE_OBJECT_SMOOTHING.md#default-promotion) for scope and verification.
+The subsequent [arcade review](WAKE_ARCADE_REVIEW.md) assesses gameplay, accuracy and
+performance; the [wake plan](WAKE_REWRITE_PLAN.md) owns its recommended next steps.
 
 ## Play and controls
 
@@ -29,8 +31,9 @@ and the optional crossing craft. `--demo` uses the existing own-trail loop. The 
 identifies `WAKE OBJECTS`, live count, configured crest height and lifetime. The
 crossing option enables object mode and adds an opaque scripted craft following a
 four-waypoint loop in the basin. Both boats emit from their actual transformed stern
-and sample the same combined wake surface. The review craft shares water interaction,
-but does not add hard hull-to-hull collision with the player.
+and sample the same combined wake surface. The review craft shares water interaction.
+At this initial checkpoint it did not add hard hull-to-hull collision with the player;
+[the later arcade pass](WAKE_ARCADE_IMPLEMENTATION.md) adds mutual impacts and capsize recovery.
 
 - `--wake-height`: .1–3 m, default **1.8 m**, the full-speed single-piece crest scale.
   Speed, stern wetness, longitudinal blending and age modify actual local height.
@@ -169,8 +172,10 @@ The Emscripten target also builds successfully (`build/wake-objects-web-build.lo
 this is build verification, not new browser gameplay or shader execution evidence.
 Formatting, changed local documentation links and `git diff --check` pass.
 
-Known limits: no shoreline reflection/occlusion, hard collision with the scripted review
-craft, or per-boat user tuning. The player and optional review craft emit object wakes;
+Historical limits at this checkpoint: no shoreline reflection/occlusion, hard collision with
+the scripted review craft, or per-boat user tuning. The subsequent
+[arcade implementation](WAKE_ARCADE_IMPLEMENTATION.md) adds mutual contact with the basin craft
+and a finer GPU near patch; the remaining statements below describe this earlier checkpoint. The player and optional review craft emit object wakes;
 mapped scenery traffic does not yet emit into this pool. Four fully overlapping boats can
 create much larger waves; there is intentionally no combined-height clamp. The 1.5 m
 surface mesh can facet steep crests, especially in the CPU reference. New interactive

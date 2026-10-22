@@ -334,3 +334,19 @@ bool boat_model_generate(BoatModel *m, BoatModelSpec s)
         m->mesh.triangle_count = 0;
     return !m->overflow;
 }
+
+void boat_model_vertical_bounds(BoatModelSpec spec, Transform3D pose, float *bottom, float *top)
+{
+    *bottom = INFINITY;
+    *top = -INFINITY;
+    float high = fmaxf(spec.mast_height, spec.freeboard + spec.cabin_height + .8f);
+    for (int x = -1; x <= 1; x += 2)
+        for (int z = -1; z <= 1; z += 2)
+            for (int y = 0; y <= 1; ++y) {
+                Vector3 point = boat_model_point(pose,
+                    (Vector3) { x * (spec.beam * .5f + .3f), y ? high : -spec.draft - .2f,
+                        z * (spec.length * .5f + .8f) });
+                *bottom = fminf(*bottom, point.y);
+                *top = fmaxf(*top, point.y);
+            }
+}

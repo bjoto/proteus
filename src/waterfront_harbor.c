@@ -204,6 +204,13 @@ static bool obstacle(
 
 bool waterfront_harbor_contact(Vector2 position, float clearance, Vector2 *normal)
 {
+    return waterfront_harbor_contact_height(
+        position, clearance, -INFINITY, INFINITY, (BoatWater) { 0 }, 0, normal);
+}
+
+bool waterfront_harbor_contact_height(Vector2 position, float clearance, float bottom, float top,
+    BoatWater water, float time, Vector2 *normal)
+{
     Vector2 p = { -position.x, position.y }, world_normal;
     bool hit = false;
     for (int i = 0; i < WATERFRONT_HARBOR_BOATS && !hit; ++i) {
@@ -211,14 +218,31 @@ bool waterfront_harbor_contact(Vector2 position, float clearance, Vector2 *norma
         hit = obstacle(p, (Vector2) { berths[i].position.x, berths[i].position.z },
             (Vector2) { s.beam * .5f + .45f, s.length * .5f + .9f }, berths[i].heading, clearance,
             &world_normal);
+        if (hit && (isfinite(bottom) || isfinite(top))) {
+            Transform3D pose = boat_water_pose(
+                water, time, berths[i].position, berths[i].heading, s.length, s.beam);
+            float low, high;
+            boat_model_vertical_bounds(s, pose, &low, &high);
+            hit = bottom <= high && top >= low;
+        }
     }
-    if (!hit)
+    bool dock_overlap = fabsf(p.x - dock_center.x) < 12 + clearance
+        && fabsf(p.y - dock_center.z) < 21 + clearance;
+    if (dock_overlap && (isfinite(bottom) || isfinite(top))) {
+        Transform3D pose = boat_water_pose(water, time, dock_center, 0, 37, 2.1f);
+        float low, high;
+        boat_model_vertical_bounds(
+            (BoatModelSpec) { .length = 37, .beam = 2.35f, .draft = .4f, .freeboard = .2f }, pose,
+            &low, &high);
+        dock_overlap = bottom <= high && top >= low;
+    }
+    if (!hit && dock_overlap)
         hit = obstacle(p, (Vector2) { dock_center.x, dock_center.z }, (Vector2) { 1.6f, 19 }, 0,
             clearance, &world_normal);
-    for (int i = 0; i < 3 && !hit; ++i)
+    for (int i = 0; i < 3 && !hit && dock_overlap; ++i)
         hit = obstacle(p, (Vector2) { dock_center.x + 4.6f, dock_center.z - 12 + i * 12 },
             (Vector2) { 4.1f, 1 }, 0, clearance, &world_normal);
-    if (!hit)
+    if (!hit && bottom <= 4.5f && top >= -.5f)
         hit = obstacle(
             p, (Vector2) { -27.55f, 182 }, (Vector2) { 7.0f, 1.1f }, 0, clearance, &world_normal);
     if (hit && normal)

@@ -101,8 +101,23 @@ static Vector2 hull_point(Vector2 forward, Vector2 right, Vector2 position, Vect
         position, Vector2Add(Vector2Scale(forward, local.y), Vector2Scale(right, local.x)));
 }
 
+static Matrix hull_rotation(const Boat *boat);
+
+static void hull_vertical_bounds(const Boat *boat, float *bottom, float *top)
+{
+    // Physical hull plus cabin. Transform all corners so sideways/inverted jumps count.
+    BoatModelSpec spec
+        = { .length = 3.6f, .beam = 1.5f, .draft = .35f, .freeboard = .35f, .cabin_height = .8f };
+    Transform3D pose = { .position = { 0, boat->height, 0 },
+        .rotation = boat_model_rotation(hull_rotation(boat)),
+        .scale = { 1, 1, 1 } };
+    boat_model_vertical_bounds(spec, pose, bottom, top);
+}
+
 static bool hull_contact(const Boat *boat, HullContact *contact)
 {
+    float bottom, top;
+    hull_vertical_bounds(boat, &bottom, &top);
     const Vector2 samples[] = { { 0, HULL_BOW }, { -HULL_HALF_BEAM, HULL_BOW },
         { HULL_HALF_BEAM, HULL_BOW }, { 0, -HULL_STERN }, { -HULL_HALF_BEAM, -HULL_STERN },
         { HULL_HALF_BEAM, -HULL_STERN } };
@@ -114,7 +129,9 @@ static bool hull_contact(const Boat *boat, HullContact *contact)
         bool water;
         if (boat->eriksberg) {
             water = boat_map_water_contact(point, HULL_SHORE_CLEARANCE, &normal);
-            if (water && waterfront_harbor_contact(point, HULL_SHORE_CLEARANCE, &normal))
+            if (water
+                && waterfront_harbor_contact_height(point, HULL_SHORE_CLEARANCE, bottom, top,
+                    boat->water_settings, boat->time, &normal))
                 water = false;
         } else {
             water = fabsf(point.x) <= BOAT_BASIN_HALF_X - HULL_SHORE_CLEARANCE
@@ -166,12 +183,14 @@ static void resolve_traffic(Boat *boat)
 {
     if (!boat->eriksberg)
         return;
+    float bottom, top;
+    hull_vertical_bounds(boat, &bottom, &top);
     // Separate the full hull footprints, then match contact velocity against the moving hull.
     // Multiple passes cover a rare simultaneous contact without advancing traffic time.
     for (int pass = 0; pass < 4; ++pass) {
         WaterfrontTrafficContact traffic;
-        if (!waterfront_traffic_contact(boat->position, boat->heading, HULL_BOW, HULL_STERN,
-                HULL_HALF_BEAM, boat->time, &traffic))
+        if (!waterfront_traffic_contact_height(boat->position, boat->heading, HULL_BOW, HULL_STERN,
+                HULL_HALF_BEAM, bottom, top, boat->water_settings, boat->time, &traffic))
             break;
         Vector2 previous = boat->position;
         Vector2 shifted
@@ -183,6 +202,65 @@ static void resolve_traffic(Boat *boat)
         if (hull_contact(boat, &shore))
             resolve_hull_contact(boat, previous, shore);
     }
+}
+
+bool boat_collide_pair(Boat *a, float mass_a, Boat *b, float mass_b)
+{
+    assert(mass_a > 0 && mass_b > 0);
+    float low_a, high_a, low_b, high_b;
+    hull_vertical_bounds(a, &low_a, &high_a);
+    hull_vertical_bounds(b, &low_b, &high_b);
+    if (low_a > high_b || low_b > high_a)
+        return false;
+    Vector2 forward[2]
+        = { { sinf(a->heading), -cosf(a->heading) }, { sinf(b->heading), -cosf(b->heading) } };
+    Vector2 right[2]
+        = { { cosf(a->heading), sinf(a->heading) }, { cosf(b->heading), sinf(b->heading) } };
+    Vector2 center[2] = { Vector2Add(a->position, Vector2Scale(forward[0], .2f)),
+        Vector2Add(b->position, Vector2Scale(forward[1], .2f)) };
+    Vector2 delta = Vector2Subtract(center[0], center[1]);
+    Vector2 normal = { 0 };
+    float depth = INFINITY;
+    for (int axis = 0; axis < 4; ++axis) {
+        Vector2 n = axis % 2 ? right[axis / 2] : forward[axis / 2];
+        float radius = 0;
+        for (int hull = 0; hull < 2; ++hull)
+            radius += 1.8f * fabsf(Vector2DotProduct(n, forward[hull]))
+                + HULL_HALF_BEAM * fabsf(Vector2DotProduct(n, right[hull]));
+        float distance = Vector2DotProduct(delta, n);
+        float overlap = radius - fabsf(distance);
+        if (overlap <= 0)
+            return false;
+        if (overlap < depth) {
+            depth = overlap;
+            normal = Vector2Scale(n, distance < 0 ? -1 : 1);
+        }
+    }
+    float inverse_a = 1 / mass_a, inverse_b = 1 / mass_b;
+    float inverse_sum = inverse_a + inverse_b;
+    Vector2 point = Vector2Scale(Vector2Add(center[0], center[1]), .5f);
+    Vector2 arm_a = Vector2Subtract(point, a->position);
+    Vector2 arm_b = Vector2Subtract(point, b->position);
+    Vector2 va = Vector2Add(
+        a->velocity, (Vector2) { -a->yaw_velocity * arm_a.y, a->yaw_velocity * arm_a.x });
+    Vector2 vb = Vector2Add(
+        b->velocity, (Vector2) { -b->yaw_velocity * arm_b.y, b->yaw_velocity * arm_b.x });
+    float speed = Vector2DotProduct(Vector2Subtract(va, vb), normal);
+    if (speed < 0) {
+        float ca = arm_a.x * normal.y - arm_a.y * normal.x;
+        float cb = arm_b.x * normal.y - arm_b.y * normal.x;
+        float impulse = -(1 + CONTACT_RESTITUTION) * speed
+            / (inverse_sum + ca * ca * inverse_a / YAW_INERTIA + cb * cb * inverse_b / YAW_INERTIA);
+        a->velocity = Vector2Add(a->velocity, Vector2Scale(normal, impulse * inverse_a));
+        b->velocity = Vector2Subtract(b->velocity, Vector2Scale(normal, impulse * inverse_b));
+        a->yaw_velocity += ca * impulse * inverse_a / YAW_INERTIA;
+        b->yaw_velocity -= cb * impulse * inverse_b / YAW_INERTIA;
+    }
+    a->position
+        = Vector2Add(a->position, Vector2Scale(normal, (depth + .002f) * inverse_a / inverse_sum));
+    b->position = Vector2Subtract(
+        b->position, Vector2Scale(normal, (depth + .002f) * inverse_b / inverse_sum));
+    return true;
 }
 
 // Raymath's XYZ Euler order is not local pitch followed by heading. Compose the attachment
@@ -297,15 +375,75 @@ BoatWakeStern boat_wake_stern(const Boat *boat)
         motion.velocity.z - water.velocity.z, wet, drag, drag * fabsf(along) };
 }
 
+// Use the same six support locations and preload as buoyancy, rather than stern dryness.
+static float hull_wet(const Boat *boat)
+{
+    float trim = 4 * boat->planing * (1 - boat->planing) * TRIM_TRANSITION_PITCH
+        + boat->planing * TRIM_CRUISE_PITCH;
+    int wet = 0;
+    for (int end = -1; end <= 1; ++end) {
+        for (int side = -1; side <= 1; side += 2) {
+            float fore = end * 1.4f;
+            Vector3 point = hull_attachment(boat, (Vector3) { side * .65f, 0, -fore });
+            BoatWaterSample water = boat_water_query_field(boat->water_settings, boat->wake_surface,
+                (Vector2) { -point.x, point.z }, boat->time);
+            float depth = water.height + PLANING_HEIGHT * boat->planing + fore * sinf(trim)
+                + GRAVITY / BUOYANCY_STIFFNESS - point.y;
+            wet += depth > 0;
+        }
+    }
+    return wet / 6.0f;
+}
+
+static float hull_up(const Boat *boat)
+{
+    return Vector3Transform((Vector3) { 0, 1, 0 }, hull_rotation(boat)).y;
+}
+
+static void motion_step(Boat *boat, float wet)
+{
+    if (boat->motion_state == BOAT_CAPSIZED)
+        return; // Latched until an explicit reset; waves still move the hull.
+    if (wet == 0) {
+        boat->dry_time += BOAT_STEP;
+        boat->inverted_contact_time = 0;
+        boat->landing_time = 0;
+        if (boat->dry_time >= .05f)
+            boat->motion_state = BOAT_AIRBORNE;
+    } else {
+        if (boat->motion_state == BOAT_AIRBORNE) {
+            boat->motion_state = BOAT_LANDING;
+            boat->landing_time = .35f;
+            ++boat->landings;
+        }
+        boat->dry_time = 0;
+        boat->landing_time = fmaxf(0, boat->landing_time - BOAT_STEP);
+        if (boat->landing_time == 0)
+            boat->motion_state = BOAT_WATERBORNE;
+        // World-up dot product handles either flip axis and any number of rotations.
+        boat->inverted_contact_time
+            = hull_up(boat) < -.25f ? boat->inverted_contact_time + BOAT_STEP : 0;
+        if (boat->inverted_contact_time >= .6f) {
+            boat->motion_state = BOAT_CAPSIZED;
+            boat->throttle = boat->engine_response = 0;
+        }
+    }
+}
+
 static void buoyancy_step(Boat *boat, float turn_moment)
 {
     float trim = 4 * boat->planing * (1 - boat->planing) * TRIM_TRANSITION_PITCH
         + boat->planing * TRIM_CRUISE_PITCH;
-    float excess = fmaxf(fabsf(boat->roll) - ROLL_GUARD_START, 0);
+    float bank = remainderf(boat->roll, 2 * PI);
+    float excess = fmaxf(fabsf(bank) - ROLL_GUARD_START, 0);
     float guard_mix = Clamp(excess / ROLL_GUARD_BLEND, 0, 1);
     guard_mix = guard_mix * guard_mix * (3 - 2 * guard_mix);
-    float guard = -ROLL_GUARD_STIFFNESS * excess * copysignf(1, boat->roll)
+    float guard = -ROLL_GUARD_STIFFNESS * excess * copysignf(1, bank)
         - ROLL_GUARD_DAMPING * guard_mix * boat->roll_velocity;
+    // Assistance belongs to ordinary wet turns. Fade it out before sideways/inverted poses;
+    // never right an airborne hull or pull an unwrapped angle back toward zero.
+    float upright = Clamp((hull_up(boat) - .5f) / .25f, 0, 1);
+    guard *= (hull_wet(boat) > 0) * upright * (boat->motion_state != BOAT_CAPSIZED);
     float acceleration = -GRAVITY, pitch_torque = 0, roll_torque = turn_moment + guard;
     float sp = sinf(boat->pitch), cp = cosf(boat->pitch);
     float sr = sinf(boat->roll), cr = cosf(boat->roll);
@@ -533,6 +671,10 @@ static void water_step(Boat *boat)
 void boat_step(Boat *boat, float wheel_change, float throttle_change)
 {
     boat->time += BOAT_STEP;
+    float wet = hull_wet(boat) > 0 ? 1 : 0;
+    motion_step(boat, wet);
+    if (boat->motion_state == BOAT_CAPSIZED)
+        throttle_change = 0;
     // One second from centre to either lock. Countersteering spends only 1/3 second
     // unwinding full lock; any time left in this tick uses the normal turn-in rate.
     // Splitting at centre keeps the faster rate from overshooting into the new turn.
@@ -566,20 +708,26 @@ void boat_step(Boat *boat, float wheel_change, float throttle_change)
     float along = Vector2DotProduct(relative, forward);
     // Only forward water-relative motion can establish plane.
     float planing_target = 0;
-    if (along > (boat->planing > 0 ? PLANING_EXIT_SPEED : PLANING_ENTER_SPEED))
+    if (wet > 0 && along > (boat->planing > 0 ? PLANING_EXIT_SPEED : PLANING_ENTER_SPEED))
         planing_target = 1;
     float planing_rate = planing_target > boat->planing ? PLANING_RISE_RATE : PLANING_FALL_RATE;
     boat->planing = Clamp(boat->planing
             + Clamp(planing_target - boat->planing, -planing_rate * BOAT_STEP,
                 planing_rate * BOAT_STEP),
         0, 1);
-    Vector2 force = Vector2Scale(thrust_direction(boat), ENGINE_THRUST * boat->engine_response);
+    // Propeller contact is separate from whole-hull support: a dry stern cannot propel.
+    float propulsion
+        = boat_wake_stern(boat).wet > 0 && hull_up(boat) > 0 && boat->motion_state != BOAT_CAPSIZED
+        ? 1
+        : 0;
+    Vector2 force
+        = Vector2Scale(thrust_direction(boat), ENGINE_THRUST * boat->engine_response * propulsion);
     float side_load = Vector2DotProduct(force, right);
     // Torque = lever arm x force: a portward stern force produces starboard yaw.
     float torque = -ENGINE_ARM * Vector2DotProduct(force, right);
     float drag_multiplier = Lerp(1, PLANING_DRAG_MULTIPLIER, boat->planing);
     float drag = drag_multiplier * (HULL_DRAG_LINEAR + HULL_DRAG_QUADRATIC * fabsf(along)) * along;
-    force = Vector2Subtract(force, Vector2Scale(forward, drag));
+    force = Vector2Subtract(force, Vector2Scale(forward, drag * wet));
     // Two hull stations resist their own lateral water velocity, including rotation.
     // This produces both lateral grip and yaw damping rather than prescribing a turn rate.
     for (int end = -1; end <= 1; end += 2) {
@@ -590,7 +738,7 @@ void boat_step(Boat *boat, float wheel_change, float throttle_change)
             + boat->yaw_velocity * arm;
         float grip = 0.7f + 0.055f * fabsf(along) + 0.10f * fabsf(lateral_speed);
         grip *= Lerp(1, PLANING_LATERAL_GRIP_MULTIPLIER, boat->planing);
-        float lateral_force = -grip * lateral_speed;
+        float lateral_force = -grip * lateral_speed * wet;
         force = Vector2Add(force, Vector2Scale(right, lateral_force));
         torque += arm * lateral_force;
         side_load += lateral_force;
@@ -606,8 +754,8 @@ void boat_step(Boat *boat, float wheel_change, float throttle_change)
     Vector2 skeg_normal = Vector2Add(Vector2Scale(right, cosf(boat->engine_angle)),
         Vector2Scale(forward, sinf(boat->engine_angle)));
     float cross_flow = Vector2DotProduct(stern_velocity, skeg_normal);
-    Vector2 skeg_force
-        = Vector2Scale(skeg_normal, -SKEG_RESISTANCE * Vector2Length(stern_velocity) * cross_flow);
+    Vector2 skeg_force = Vector2Scale(
+        skeg_normal, -SKEG_RESISTANCE * Vector2Length(stern_velocity) * cross_flow * propulsion);
     force = Vector2Add(force, skeg_force);
     torque -= ENGINE_ARM * Vector2DotProduct(skeg_force, right);
     side_load += Vector2DotProduct(skeg_force, right);
@@ -620,8 +768,13 @@ void boat_step(Boat *boat, float wheel_change, float throttle_change)
         * (1 - expf(-BOAT_STEP / TURN_ROLL_RESPONSE_SECONDS));
     float equivalent = TURN_ROLL_SCALE * tanhf((boat->turn_roll_load / GRAVITY) / TURN_ROLL_SCALE);
     // Sum of the six support stiffnesses times their squared across lever arms.
-    float turn_moment = BUOYANCY_STIFFNESS * .65f * .65f * equivalent;
-    torque -= 0.45f * boat->yaw_velocity;
+    float turn_moment = BUOYANCY_STIFFNESS * .65f * .65f * equivalent * wet
+        * (boat->motion_state != BOAT_CAPSIZED) * Clamp((hull_up(boat) - .5f) / .25f, 0, 1);
+    torque -= 0.45f * boat->yaw_velocity * wet;
+    // Deliberate modest yaw-only air control, .3 rad/s² at full wheel. No air thrust,
+    // hydrodynamic grip, drag, skeg resistance or automatic banking/righting.
+    if (boat->motion_state != BOAT_CAPSIZED)
+        torque += YAW_INERTIA * .3f * boat->wheel * (1 - wet);
     boat->velocity = Vector2Add(boat->velocity, Vector2Scale(force, BOAT_STEP));
     boat->yaw_velocity += torque / YAW_INERTIA * BOAT_STEP;
     // Accept translation and rotation separately. A rejected rotation must not leave a hull

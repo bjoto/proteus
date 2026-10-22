@@ -28,7 +28,8 @@ the feature tracks below remain separate.
 Turn banking update, 2026-10-20: T2 adds lateral-load-driven roll with inertia and
 planing dependence; speed and turn tightness both affect the bank. Waves share the same
 physical hull and the camera remains upright. Banking introduced handling revision 3; the
-subsequent H3 carving pass now uses revision 4 and preserves earlier best files separately.
+H3 carving pass introduced revision 4. The subsequent [arcade gameplay pass](WAKE_ARCADE_IMPLEMENTATION.md)
+uses revision 5 and preserves earlier best files separately.
 The [banking plan](BOAT_TURN_BANKING_PLAN.md) records T3 dynamics coverage
 and large-angle recovery tuning, followed by T4 presentation/replay fixtures and the spray
 attachment correction. T5 now tunes quicker turn-exit recovery while retaining roughly

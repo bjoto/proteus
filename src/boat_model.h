@@ -41,6 +41,8 @@ typedef struct {
 Vector3 boat_model_rotation(Matrix rotation);
 Vector3 boat_model_point(Transform3D pose, Vector3 local);
 
+// Conservative transformed hull/cabin/mast bounds, shared by height-aware contacts.
+void boat_model_vertical_bounds(BoatModelSpec spec, Transform3D pose, float *bottom, float *top);
 BoatModelSpec boat_model_preset(BoatModelKind kind);
 bool boat_model_generate(BoatModel *model, BoatModelSpec spec);
 // Small shared geometry helpers, also used to build the pontoon and quay equipment.

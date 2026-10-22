@@ -158,8 +158,10 @@ void boat_gpu_draw_with_ghost(
         Mesh *mesh = &gpu->wave_mesh;
         if (!mesh->vaoId || !Vector2Equals(center, gpu->wave_center)
             || boat->eriksberg != gpu->wave_eriksberg) {
-            const Mesh3D *surface = boat_water_patch(
-                (Vector2) { -boat->position.x, boat->position.y }, boat->eriksberg);
+            Vector2 world_center = { -boat->position.x, boat->position.y };
+            const Mesh3D *surface = boat->water_settings.objects
+                ? boat_water_patch_arcade(world_center, boat->eriksberg)
+                : boat_water_patch(world_center, boat->eriksberg);
             if (!surface)
                 goto restore_water;
             int count = (int)surface->triangle_count * 3;

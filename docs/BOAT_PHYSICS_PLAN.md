@@ -20,14 +20,17 @@ own current commands, measured jumps/cost, automated verification and play feedb
 now shortens source pieces and smooths strength/growth/fading while retaining the default
 crest and lifetime. The user reports the revision is very fun and requests it as the
 free-boating default. Objects now launch by default; `--player-wake` selects legacy D3.
-Investigating occasional stuck-looking waves is next. This supersedes physical-packet
-refinement as the active task.
+The [arcade gameplay pass](WAKE_ARCADE_IMPLEMENTATION.md) now defines flight, landing and capsize,
+height-aware obstacle contact and an interactive basin rival. It advances compatibility to
+revision 5 while retaining the powered H3 steering references. Tight-turn crest tracking and
+appearance work are recorded there; the exact user-reported stuck-wave case remains unconfirmed.
+This supersedes physical-packet refinement as the active task.
 The 2026-10-18 acceptance remains a historical baseline.
 Current/scripted-wake options now work in all locations; player-path wakes are
 enabled by default in free boating, with `--no-player-wake` available for calm practice.
 The earlier T5 banking pass is recorded in the [turn-banking plan](BOAT_TURN_BANKING_PLAN.md). T1 supplies
 baseline/load fixtures; T2 adds filtered lateral-load roll, planing dependence, and passive
-large-angle recovery through the shared physical hull. H3 below now advances handling revision to 4;
+large-angle recovery through the shared physical hull. H3 below introduced handling revision 4;
 revision-3 and earlier best files remain preserved. T3 adds broader dynamics coverage and stronger passive
 recovery beyond 25°. T4 adds shared deterministic capture/measurement inputs, attachment and
 spray checks, and a physically driven banked course recording/seek fixture. T5 reduces
@@ -40,7 +43,8 @@ I think we're good here."). The exhaustive hands-on checklist remains unverified
 changes planing lateral grip while retaining the accepted command/thrust/drag/camera settings.
 Windows CI follow-up remains tracked in the [Windows build guide](WINDOWS_BUILD.md).
 Closer camera comparisons remain an optional design experiment; E1/E2 have not started.
-Thrust, longitudinal drag, uncommanded wheel return and the C3 wave model are preserved;
+Waterborne thrust/drag settings, uncommanded wheel return and the C3 wave recipe are preserved;
+revision 5 explicitly disables water handling in dry flight and limits assistance at large angles;
 H3 changes passive lateral grip as described below;
 commanded wheel reversal is deliberately faster under the 2026-10-19 request.
 The separate [04h harbor pass](HARBOR_BOATS.md) adds fixed berth collision envelopes and
@@ -65,7 +69,8 @@ Prefer a believable, tunable game model over an engineering simulator.
 - Visible waves and their physical effects agree; avoid unexplained random impulses.
 - Slowing down usually makes rough conditions easier to manage.
 - Keep the camera steadier than the hull, with a stable horizon.
-- Mistakes initially cost speed or another approach, not a capsize or reset.
+- Ordinary mistakes cost speed or another approach. The later arcade wake mode deliberately
+  adds capsize after sustained inverted water contact, with an immediate R restart.
 - Use posture, wake, spray, and eventually sound to explain changes in handling.
 - Add controls only when they offer useful choices. Automatic trim precedes manual trim.
 - Do not change the main demo, soundtrack timing, or integer-scaled presentation.
@@ -89,7 +94,9 @@ difficulty includes integration and tuning, not just initial code. These are not
 | Propeller ventilation, severe instability, capsizing | 5 | 2 | 5 |
 | Fully coupled fluid simulation | 5, if calibrated | 2 | 5+ |
 
-Wind, propulsion failures, capsizing, and full fluid simulation are deferred, not scheduled tasks.
+Wind, propulsion failures and full fluid simulation remain deferred. The later
+[arcade gameplay pass](WAKE_ARCADE_IMPLEMENTATION.md) implements a deliberately simple capsize
+outcome for the user-requested tall wakes.
 
 ## Working contract for implementation agents
 
@@ -572,7 +579,8 @@ notes are superseded by the C3 acceptance below. Test counts refer to those revi
   foam now aligns to the sampled surface normal through one shared CPU/GPU pose helper.
   Spray inherits the exact local attachment velocity. The wave preset, rendering, camera, controls,
   engine steering, and original horizontal drag/skeg terms are unchanged. Orbital flow/current,
-  hull-pressure simulation, ventilation, and capsize behavior remain out of scope.
+  hull-pressure simulation, ventilation, and capsize behavior were outside this phase.
+  The subsequent arcade pass adds capsize rules and water-contact handling gates.
   `tools/validate_boat.c` tests negative relative work and dry/exit limits separately from energy
   transfer by moving water; controlled 2/12-unit/s head-on, beam and following encounters;
   repeatability, lower slow-speed angular motion/vertical acceleration/spray load; particle

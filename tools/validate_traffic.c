@@ -1,5 +1,6 @@
 #include "boat.h"
 #include "boat_map.h"
+#include "waterfront_harbor.h"
 #include "waterfront_traffic.h"
 
 #include "raymath.h"
@@ -15,6 +16,31 @@
             return 1;                                                                              \
         }                                                                                          \
     } while (0)
+
+static int check_vertical_contacts(void)
+{
+    BoatWater water = { 0 };
+    for (int i = 0; i < WATERFRONT_TRAFFIC_VESSELS; ++i) {
+        WaterfrontVesselMotion ship = waterfront_traffic_motion(i, 40);
+        Vector2 p = { -ship.position.x, ship.position.z };
+        CHECK(waterfront_traffic_contact_height(p, 0, 2, 1.6f, .75f, -.4f, 2, water, 40, NULL));
+        CHECK(!waterfront_traffic_contact_height(p, 0, 2, 1.6f, .75f, 30, 32, water, 40, NULL));
+        CHECK(!waterfront_traffic_contact_height(p, 0, 2, 1.6f, .75f, -30, -28, water, 40, NULL));
+    }
+    const WaterfrontBerth *berths = waterfront_harbor_berths();
+    for (int i = 0; i < WATERFRONT_HARBOR_BOATS; ++i) {
+        Vector2 p = { -berths[i].position.x, berths[i].position.z };
+        CHECK(waterfront_harbor_contact_height(p, .35f, -.4f, 2, water, 0, NULL));
+        CHECK(!waterfront_harbor_contact_height(p, .35f, 30, 32, water, 0, NULL));
+        BoatModelSpec spec = waterfront_harbor_spec(i);
+        if (spec.mast_height > 5)
+            CHECK(waterfront_harbor_contact_height(p, .35f, 4, 5, water, 0, NULL));
+    }
+    // Quay remains solid above a low pontoon's clearance height.
+    CHECK(waterfront_harbor_contact_height((Vector2) { 27.55f, 182 }, .35f, 3, 4, water, 0, NULL));
+    CHECK(!waterfront_harbor_contact_height((Vector2) { 20, 182 }, .35f, 3, 4, water, 0, NULL));
+    return 0;
+}
 
 static bool near(Vector3 a, Vector3 b, float tolerance)
 {
@@ -131,6 +157,7 @@ static int check_gulls(void)
 
 int main(void)
 {
+    CHECK(check_vertical_contacts() == 0);
     if (check_gulls())
         return 1;
     for (int river = 0; river < 2; ++river) {

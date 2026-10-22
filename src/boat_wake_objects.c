@@ -137,6 +137,11 @@ BoatWakeObjectSample boat_wake_objects_query(const BoatWakeObjects *w, Vector2 p
             Vector2Scale(normal, v / radius), Vector2Scale(o->direction, 2.4f * o->inverse_speed));
         float a = o->amplitude;
         s.height += a * window * envelope * shape;
+        float narrow = fmaxf(0, 1 - q * q / (.45f * .45f));
+        float breakup
+            = .55f + .225f * sinf(2.3f * u + 3 * age) + .225f * sinf(5.1f * u - 4.2f * age);
+        s.crest_foam += fminf(1, fmaxf(0, a / 1.8f)) * window * envelope * narrow * narrow * narrow
+            * breakup;
         Vector2 geometry = Vector2Scale(
             Vector2Add(Vector2Scale(o->direction, window_u * shape), Vector2Scale(qg, window * ds)),
             envelope);

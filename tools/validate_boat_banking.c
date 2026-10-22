@@ -413,7 +413,19 @@ static int validate_blend_flow(void)
             float load = Vector2DotProduct(Vector2Subtract(still.velocity, before.velocity),
                              right(before.heading))
                 / BOAT_STEP;
-            CHECK(fabsf(load - target) < .0003f);
+            // The tow preserves evolving heave/pitch. A temporarily dry stern now loses
+            // skeg resistance; predict that missing force independently from local flow.
+            Boat contact = before;
+            contact.planing = still.planing; // Propeller check follows this tick's trim update.
+            Boat reference;
+            boat_reset(&reference);
+            reference.planing = still.planing;
+            float initial_wet = boat_wake_stern(&reference).wet > 0;
+            float current_wet = boat_wake_stern(&contact).wet > 0;
+            float stern_slip = slip - 1.6f * (8.0f / 30);
+            float skeg_load = -.1f * hypotf(8, stern_slip) * stern_slip;
+            float expected_load = target + skeg_load * (current_wet - initial_wet);
+            CHECK(fabsf(load - expected_load) < .0003f);
             CHECK(check_filter(&before, &still, load) == 0);
             CHECK(fabsf(still.roll - flow.roll) < .00001f);
             CHECK(fabsf(still.roll_velocity - flow.roll_velocity) < .00001f);

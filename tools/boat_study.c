@@ -63,6 +63,7 @@ typedef struct {
     Boat other;
     bool crossing;
     unsigned waypoint;
+    float recovery_time;
 } ObjectStudy;
 
 static void object_study_reset(
@@ -108,6 +109,23 @@ static void timed_boat_step(Boat *boat, float steering, float throttle, BoatFram
             float wheel = Clamp(2 * error - other->yaw_velocity, -1, 1);
             boat_step(other, Clamp((wheel - other->wheel) / BOAT_STEP, -1, 1),
                 Clamp((.75f - other->throttle) / (.5f * BOAT_STEP), -1, 1));
+            boat_collide_pair(boat, 1, other, 1.6f);
+            if (other->motion_state == BOAT_CAPSIZED) {
+                objects->recovery_time += BOAT_STEP;
+                Vector2 spawn = { -65, -12 };
+                if (objects->recovery_time >= 2 && Vector2Distance(boat->position, spawn) > 10) {
+                    float time = other->time;
+                    boat_reset(other);
+                    other->position = spawn;
+                    other->heading = PI / 2;
+                    other->time = time;
+                    other->water_settings.objects = &objects->world;
+                    objects->world.emitters[1]
+                        = (BoatWakeObjectEmitter) { .next = objects->world.emitters[1].next };
+                    objects->waypoint = 0;
+                    objects->recovery_time = 0;
+                }
+            }
             object_track(objects, other, 1);
         }
     }
@@ -858,6 +876,12 @@ int main(int argc, char **argv)
             (Rectangle) { 0, 0, gpu_enabled ? -WIDTH : WIDTH, gpu_enabled ? -HEIGHT : HEIGHT },
             destination, (Vector2) { 0 }, 0, WHITE);
         boat_course_hud(&view->course, view->position, GetScreenWidth());
+        if (view->motion_state == BOAT_CAPSIZED)
+            DrawText("CAPSIZED / R TO RESTART", 12, 36, 20, ORANGE);
+        else if (view->motion_state == BOAT_AIRBORNE)
+            DrawText("AIRBORNE", 12, 36, 16, SKYBLUE);
+        else if (view->motion_state == BOAT_LANDING)
+            DrawText("LANDING", 12, 36, 16, SKYBLUE);
         if (wake)
             DrawText(TextFormat("WAKE FIELD / REVIEW %d", BOAT_WAKE_SOURCE_REVISION), 12,
                 GetScreenHeight() - 24, 12, SKYBLUE);

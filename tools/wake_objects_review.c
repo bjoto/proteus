@@ -257,6 +257,169 @@ static float diagonal_jump(bool crossing)
     return peak;
 }
 
+static void local_fleet(void)
+{
+    BoatWakeObjects world;
+    CHECK(boat_wake_objects_init(&world, BOAT_OBJECT_LIFE_TICKS, 1.8f));
+    Boat fleet[4];
+    unsigned contacts = 0, flights = 0;
+    for (unsigned i = 0; i < 4; ++i) {
+        boat_reset(&fleet[i]);
+        fleet[i].position = (Vector2) { (i % 2 ? 1 : -1) * 12, (i / 2 ? 1 : -1) * 12 };
+        fleet[i].heading = i * PI / 2;
+        fleet[i].water_settings.objects = &world;
+    }
+    // Guarantee an attainable head-on encounter before the shared-wake loop opens out.
+    for (unsigned i = 0; i < 2; ++i) {
+        fleet[i].position = (Vector2) { i ? 8 : -8, 0 };
+        fleet[i].heading = i ? -PI / 2 : PI / 2;
+        fleet[i].velocity = (Vector2) { i ? -8 : 8, 0 };
+    }
+    for (unsigned tick = 0; tick < 4800; ++tick) {
+        boat_wake_objects_advance(&world);
+        for (unsigned i = 0; i < 4; ++i) {
+            Boat *boat = &fleet[i];
+            bool airborne = boat->motion_state == BOAT_AIRBORNE;
+            boat_step(boat, tick < 180 ? 0 : (i % 2 ? -1 : 1) * .7f, tick < 240 ? 1 : 0);
+            flights += !airborne && boat->motion_state == BOAT_AIRBORNE;
+            CHECK(isfinite(boat->height) && isfinite(boat->heading));
+            BoatWakeStern stern = boat_wake_stern(boat);
+            CHECK(boat_wake_objects_track(&world, i, (Vector2) { (float)stern.x, (float)stern.z },
+                (float)hypot(stern.vx, stern.vz), (float)stern.wet));
+        }
+        for (unsigned i = 0; i < 4; ++i)
+            for (unsigned j = i + 1; j < 4; ++j)
+                contacts += boat_collide_pair(&fleet[i], 1 + .2f * i, &fleet[j], 1 + .2f * j);
+        CHECK(world.live <= BOAT_OBJECT_CAPACITY);
+    }
+    CHECK(world.emitted > 4 && world.peak_live > 4 && contacts > 0);
+    printf("local four-boat play: emitted %llu, peak live %u, contacts %u, flights %u\n",
+        (unsigned long long)world.emitted, world.peak_live, contacts, flights);
+}
+
+static void gameplay_envelope(void)
+{
+    unsigned cases = 0, flights = 0, landings = 0, capsizes = 0;
+    float peak = 0, peak_lift = 0;
+    const float speeds[] = { 6, 12, 18 }, angles[] = { 0, PI / 4, PI / 2 };
+    const unsigned ages[] = { 120, 480, 960 };
+    for (unsigned sources = 1; sources <= 4; ++sources)
+        for (unsigned speed = 0; speed < 3; ++speed)
+            for (unsigned angle = 0; angle < 3; ++angle)
+                for (unsigned age = 0; age < 3; ++age) {
+                    BoatWakeObjects world = seed();
+                    world.tick = world.objects[0].born + ages[age];
+                    for (unsigned source = 1; source < sources; ++source) {
+                        world.objects[source * BOAT_OBJECT_PER_BOAT] = world.objects[0];
+                        if (source % 2)
+                            world.objects[source * BOAT_OBJECT_PER_BOAT].direction
+                                = (Vector2) { 0, 1 };
+                    }
+                    world.live = sources;
+                    Boat boat;
+                    boat_reset(&boat);
+                    float radius = .9f + 2.4f * ages[age] * BOAT_STEP + 8;
+                    boat.position
+                        = (Vector2) { sinf(angles[angle]) * radius, cosf(angles[angle]) * radius };
+                    boat.heading = -angles[angle];
+                    boat.velocity = (Vector2) { -speeds[speed] * sinf(angles[angle]),
+                        -speeds[speed] * cosf(angles[angle]) };
+                    boat.water_settings.objects = &world;
+                    bool airborne = false;
+                    for (unsigned tick = 0; tick < 4200; ++tick) {
+                        boat_wake_objects_advance(&world);
+                        boat_step(&boat, 0, 0);
+                        CHECK(isfinite(boat.height) && isfinite(boat.pitch) && isfinite(boat.roll));
+                        airborne |= boat.motion_state == BOAT_AIRBORNE;
+                        peak = fmaxf(peak, boat.height);
+                        peak_lift = fmaxf(peak_lift, boat.vertical_velocity);
+                    }
+                    float up = cosf(boat.pitch) * cosf(boat.roll);
+                    CHECK(world.live == 0);
+                    CHECK(boat.motion_state == BOAT_CAPSIZED
+                        || (boat.motion_state == BOAT_WATERBORNE && up > .5f));
+                    CHECK(fabsf(boat.vertical_velocity) < .2f);
+                    flights += airborne;
+                    landings += boat.landings > 0;
+                    capsizes += boat.motion_state == BOAT_CAPSIZED;
+                    ++cases;
+                }
+    CHECK(flights > 0 && landings > 0 && capsizes > 0);
+    printf("gameplay envelope: %u cases, %u flights, %u landed, %u capsized; peak %.4gm, lift "
+           "%.4gm/s\n",
+        cases, flights, landings, capsizes, peak, peak_lift);
+}
+
+static BoatWakeObjects curved_world(void)
+{
+    BoatWakeObjects world;
+    CHECK(boat_wake_objects_init(&world, BOAT_OBJECT_LIFE_TICKS, 1.8f));
+    for (unsigned tick = 0; tick <= 960; ++tick) {
+        if (tick)
+            boat_wake_objects_advance(&world);
+        float angle = tick * BOAT_STEP * 1.2f;
+        CHECK(boat_wake_objects_track(
+            &world, 0, (Vector2) { 10 * cosf(angle), 10 * sinf(angle) }, 12, 1));
+    }
+    unsigned measured = 0;
+    for (unsigned i = 0; i < BOAT_OBJECT_PER_BOAT; ++i) {
+        BoatWakeObject object = world.objects[i];
+        if (!object.amplitude || world.tick - object.born < 120)
+            continue;
+        BoatWakeObjects isolated = world;
+        memset(isolated.objects, 0, sizeof(isolated.objects));
+        isolated.objects[0] = object;
+        Vector2 normal = { -object.direction.y, object.direction.x };
+        float age = (world.tick - object.born) * BOAT_STEP;
+        float r0 = .9f + 2.4f * age, r1 = r0 + 2.4f;
+        float v0 = sqrtf(r0 * r0 - .25f), v1 = sqrtf(r1 * r1 - .25f);
+        Vector2 old = Vector2Add(object.position, Vector2Scale(normal, v0));
+        Vector2 next = Vector2Add(object.position, Vector2Scale(normal, v1));
+        CHECK(Vector2Distance(old, next) > 2.4f && Vector2Distance(old, next) < 2.44f);
+        isolated.tick += 120;
+        CHECK(boat_wake_objects_query(&isolated, next).height
+            > boat_wake_objects_query(&isolated, old).height * 2);
+        ++measured;
+    }
+    CHECK(measured >= 10);
+    printf("tight-turn stationary camera: %u individual crests travel 2.40..2.44m per second\n",
+        measured);
+    return world;
+}
+
+static void curved_captures(BoatGpu *gpu, bool visible)
+{
+    BoatWakeObjects world = curved_world();
+    Boat boat;
+    boat_reset(&boat);
+    boat.position = (Vector2) { 0 };
+    boat.water_settings.objects = &world;
+    BoatCamera camera = { .distance = 40, .height = 32, .fixed_fov = true };
+    for (unsigned frame = 0; frame <= 120; ++frame) {
+        if (frame) {
+            boat_wake_objects_advance(&world);
+            boat_wake_objects_advance(&world);
+        }
+        boat.time = world.tick * BOAT_STEP;
+        boat_gpu_draw(gpu, &boat, camera);
+        CHECK(!gpu->failed);
+        if (frame == 0 || frame == 60 || frame == 120) {
+            Image image = LoadImageFromTexture(gpu->target.texture);
+            ImageFlipVertical(&image);
+            CHECK(ExportImage(image, TextFormat("build/wake-curve-%u-gpu.png", frame)));
+            UnloadImage(image);
+        }
+        if (visible) {
+            BeginDrawing();
+            ClearBackground(BLACK);
+            DrawTexturePro(gpu->target.texture, (Rectangle) { 0, 0, 320, -200 },
+                (Rectangle) { 0, 0, 960, 600 }, (Vector2) { 0 }, 0, WHITE);
+            DrawText("TIGHT TURN / STATIONARY CAMERA", 12, 12, 20, WHITE);
+            EndDrawing();
+        }
+    }
+}
+
 static int compare_time(const void *a, const void *b)
 {
     double x = *(const double *)a, y = *(const double *)b;
@@ -305,8 +468,8 @@ static void shader_checks(const BoatWakeObjects *w, float probe_z)
         int written = snprintf(code, capacity,
             "#version 330\nout vec4 color; uniform vec2 probe; uniform int playerWakeCount;"
             "uniform vec4 playerWakeOrigins[64],playerWakeParameters[64];\n%.*s\n"
-            "void main(){color=vec4(playerWake(probe,0.0),1);}",
-            (int)(end - start), start);
+            "void main(){vec3 wake=playerWake(probe,0.0);color=vec4(wake,%s);}",
+            (int)(end - start), start, stage ? "objectCrestFoam" : "1.0");
         CHECK(written >= 0 && (size_t)written < capacity);
         Shader shader = LoadShaderFromMemory(vertex, code);
         CHECK(shader.id && shader.id != rlGetShaderIdDefault());
@@ -326,6 +489,8 @@ static void shader_checks(const BoatWakeObjects *w, float probe_z)
                 glDrawArrays(GL_TRIANGLES, 0, 3);
                 float result[4];
                 glReadPixels(0, 0, 1, 1, GL_RGBA, GL_FLOAT, result);
+                if (stage)
+                    CHECK(fabsf(result[3] - q.crest_foam) < .00003f);
                 float ref[] = { q.height, -q.gradient.x, q.gradient.y };
                 for (unsigned j = 0; j < 3; ++j) {
                     error += pow(result[j] - ref[j], 2);
@@ -420,8 +585,9 @@ static void runtime(bool graphics, bool visible)
     qsort(physics, 120, sizeof(double), compare_time);
     qsort(render, 120, sizeof(double), compare_time);
     qsort(frames, 120, sizeof(double), compare_time);
-    printf("actual self-wake loops: peak hull %.4gm, dry stern %u ticks, %u live, %zu bytes\n",
-        peak, dry, w.live, sizeof(w));
+    printf("actual self-wake loops: peak hull %.4gm, dry stern %u ticks, %u live, %zu bytes, "
+           "state %d, landings %u\n",
+        peak, dry, w.live, sizeof(w), boat.motion_state, boat.landings);
     if (graphics)
         printf("startup first draw (outside warmed sample): %.4f ms\n", cold_draw_ms);
     printf("120 complete frames: physics median %.4f/p95 %.4f ms, renderer median %.4f ms, "
@@ -463,6 +629,7 @@ static void runtime(bool graphics, bool visible)
         probe.objects[BOAT_OBJECT_CAPACITY - 2] = first;
         probe.objects[BOAT_OBJECT_CAPACITY - 1] = rotated;
         shader_checks(&probe, 0); // Full record table, with local pieces in its final slots.
+        curved_captures(&gpu, visible);
         boat_gpu_destroy(&gpu);
         CloseWindow();
     }
@@ -479,6 +646,9 @@ int main(int argc, char **argv)
     printf("same diagonal approach: one wake %.4gm, crossing wakes %.4gm above calm\n", single,
         crossed);
     CHECK(crossed > single * 1.2f);
+    gameplay_envelope();
+    local_fleet();
+    (void)curved_world();
     bool visible = argc == 2 && strcmp(argv[1], "--desktop") == 0;
     runtime(visible || (argc == 2 && strcmp(argv[1], "--gpu") == 0), visible);
     boat_water_destroy();

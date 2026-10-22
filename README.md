@@ -113,6 +113,15 @@ encoding, and the implemented surface pass are in [the water review](docs/WATER_
 The hull banks into established forward turns according to lateral load: speed and turn
 tightness both matter. Roll inertia carries the lean through steering changes and coasting;
 waves continue moving the same hull, while the chase camera keeps a level horizon.
+Dry flight preserves horizontal momentum. The wheel provides modest yaw control; the engine,
+hull grip, skeg and automatic banking need water contact. Brief inverted flight is allowed;
+0.6 seconds of inverted water contact capsizes the boat and stops propulsion. Press `R` to
+restart. The HUD reports flight, landing and capsize. Traffic and berth obstacles require
+vertical overlap, so jumps can clear low craft while tall masts/quays remain solid.
+The optional `--wake-objects-crossing` basin rival responds to waves and mutual hull impacts;
+after capsizing it restarts after two seconds when its spawn is clear. See the
+[arcade review implementation](docs/WAKE_ARCADE_IMPLEMENTATION.md) for rules and limits.
+
 T5 tuning lets the bank ease out sooner as turning load fades. Deterministic presentation/
 replay fixtures cover banked poses, straightening and paused seeking. The
 [turn-banking plan](docs/BOAT_TURN_BANKING_PLAN.md) records the implementation and checks.
@@ -165,8 +174,8 @@ Personal bests persist between launches, with separate files for calm water and 
 The browser version stores these in IndexedDB for the current site; clearing site data removes them.
 On macOS they live in `~/Library/Application Support/Proteus/`; Windows uses `%LOCALAPPDATA%/Proteus/`,
 and Linux uses `$XDG_DATA_HOME/proteus/` (or `~/.local/share/proteus/`). The files are
-`course-calm-physics4.run` and `course-waves-physics4.run`. Use `--data-dir DIR` to select another
-directory. Handling revision 4 starts a separate set of bests; revision-3, revision-2 and original best
+`course-calm-physics5.run` and `course-waves-physics5.run`. Use `--data-dir DIR` to select another
+directory. Handling revision 5 starts a separate set of bests; revision-4, revision-3, revision-2 and original best
 files remain on disk and are not loaded or overwritten automatically.
 Old handling recordings are rejected as replays/ghosts by this version.
 Incompatible or damaged saved bests are ignored with a message. Failed saves preserve the best in

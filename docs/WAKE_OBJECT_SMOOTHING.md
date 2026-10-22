@@ -10,6 +10,9 @@ and upload comparisons, inspected before/after captures and scripted desktop mot
 are complete. Full-suite verification passes. The user subsequently reports this revision
 is very fun and requests it as the default. **Next: investigate occasional stuck-looking
 waves**, especially tight turns and the river. See [default promotion](#default-promotion).
+The subsequent [arcade review](WAKE_ARCADE_REVIEW.md) also identifies flight/capsize and
+boat-interaction limits, measures full-pool rendering and recommends the next gameplay
+and appearance sequence; the [wake plan](WAKE_REWRITE_PLAN.md) owns the current next task.
 
 ## Changes
 
@@ -176,3 +179,12 @@ capture, desktop log and browser build log. Full configure/build/suite logs are 
 `/tmp/proteus-default-{configure,build,review-build,ctest}.log`.
 Earlier measurements above remain historical evidence for the unchanged wake recipe,
 not new measurements of this selection change.
+
+## Subsequent arcade gameplay pass
+
+[Arcade implementation](WAKE_ARCADE_IMPLEMENTATION.md) now owns flight/landing/capsize,
+height-aware contacts, a mutual-impact basin rival, outcome sweeps and crest readability.
+The tight-turn stationary-camera case tracks moving individual crests within persistent
+similar-looking overlaps; the user says this sounds very similar to the reported symptom.
+An exact reproduction and propagation/readability fix remain unconfirmed. Earlier test,
+mesh and performance measurements in this document remain historical.

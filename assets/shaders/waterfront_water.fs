@@ -85,6 +85,7 @@ vec3 crossingWake(vec2 world, float clock)
 uniform int objectWakeEnabled;
 uniform float objectWakeLife;
 uniform sampler2D objectWakeData;
+float objectCrestFoam = 0.0;
 vec3 objectWakePiece(vec2 p, vec4 a, vec4 b)
 {
     vec2 delta=p-a.xy, direction=a.zw;
@@ -115,6 +116,9 @@ vec3 objectWakePiece(vec2 p, vec4 a, vec4 b)
     vec2 qG=normal*(v/radius)+direction*(2.4*b.w);
     vec2 gradient=envelope*(direction*(windowU*shape)+qG*(window*shapeSlope))
         -direction*(b.w*window*shape*envelopeAge);
+    float narrow=max(0.0,1.0-q*q/(0.45*0.45));
+    float breakup=0.55+0.225*sin(2.3*u+3.0*age)+0.225*sin(5.1*u-4.2*age);
+    objectCrestFoam+=clamp(b.z/1.8,0.0,1.0)*window*envelope*narrow*narrow*narrow*breakup;
     return b.z*vec3(envelope*window*shape,gradient);
 }
 vec3 objectWake(vec2 p)
@@ -230,15 +234,26 @@ void main()
     vec3 wake = vec3(0.0);
     if (physicalWaves != 0) {
         vec2 slope = vec2(0.0);
+        float surfaceHeight = 0.0;
         for (int i = 0; i < 3; ++i) {
             vec4 w = waveParameters[i];
             float filtering = waterfrontWater != 0 ? resolved(length(w.xy), footprint) : 1.0;
+            surfaceHeight += w.z * sin(dot(w.xy, fragWorldPosition.xz) - w.w * time);
             slope += w.xy * w.z * cos(dot(w.xy, fragWorldPosition.xz) - w.w * time) * filtering;
         }
         wake = crossingWake(fragWorldPosition.xz, time) + playerWake(fragWorldPosition.xz, time)
             + wakeFieldSample(fragWorldPosition.xz);
         slope += wake.yz;
-        if (waterfrontWater != 0) slope *= mix(0.55, 1.0, exposed);
+        surfaceHeight += wake.x;
+        if (waterPatchPass != 0 && wakeFieldEnabled == 0) {
+            float span = wavePatch.w - wavePatch.z;
+            float t = clamp((boatDistance - wavePatch.z) / span, 0.0, 1.0);
+            float fade = 1.0 - t*t*(3.0-2.0*t);
+            vec2 fadeGradient = -6.0*t*(1.0-t)/span
+                * (fragWorldPosition.xz-wavePatch.xy)/max(boatDistance,0.001);
+            slope = slope*fade + surfaceHeight*fadeGradient;
+        }
+        if (waterfrontWater != 0 && objectWakeEnabled == 0) slope *= mix(0.55, 1.0, exposed);
         normal = normalize(vec3(-slope.x, 1.0, -slope.y));
         base *= vec3(0.78, 0.94, 1.0) * (0.95 + 0.35 * dot(normal.xz, vec2(0.7)));
     } else {
@@ -289,7 +304,9 @@ void main()
         color += highlight * pow(max(dot(normal, halfVector), 0.0), 96.0);
     }
     if (wakeAmplitude > 0.0 || playerWakeCount > 0 || wakeFieldEnabled != 0) {
-        float crest = clamp(wake.x / 0.38, 0.0, 1.0);
+        float crest = objectWakeEnabled != 0
+            ? clamp(objectCrestFoam, 0.0, 1.0) * clamp(wake.x / 0.3, 0.0, 1.0)
+            : clamp(wake.x / 0.38, 0.0, 1.0);
         color = mix(color, vec3(0.65, 0.78, 0.80), crest * 0.65);
     }
     finalColor = vec4(color * waterShadow(), 1.0);

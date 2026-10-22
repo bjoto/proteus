@@ -5,6 +5,7 @@
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define CHECK(condition)                                                                           \
@@ -14,6 +15,99 @@
             return 1;                                                                              \
         }                                                                                          \
     } while (0)
+
+static int validate_flight_outcomes(void)
+{
+    // Both axes can invert in flight without magical righting or immediate failure.
+    for (int axis = 0; axis < 2; ++axis) {
+        Boat boat;
+        boat_reset(&boat);
+        boat.height = 20;
+        if (axis == 0)
+            boat.pitch = PI;
+        else
+            boat.roll = 80 * DEG2RAD;
+        float angle = axis == 0 ? boat.pitch : boat.roll;
+        for (int tick = 0; tick < 60; ++tick)
+            boat_step(&boat, 0, 0);
+        CHECK(boat.motion_state == BOAT_AIRBORNE);
+        CHECK(fabsf((axis == 0 ? boat.pitch : boat.roll) - angle) < .00001f);
+        CHECK(boat.inverted_contact_time == 0);
+    }
+    Boat flying;
+    boat_reset(&flying);
+    flying.height = 20;
+    flying.velocity = (Vector2) { 3, -7 };
+    flying.throttle = flying.engine_response = flying.wheel = 1;
+    for (int tick = 0; tick < 60; ++tick)
+        boat_step(&flying, 1, 0);
+    CHECK(flying.velocity.x == 3 && flying.velocity.y == -7);
+    CHECK(flying.heading > 0 && flying.heading < .05f);
+    CHECK(flying.roll == 0 && flying.pitch == 0);
+    CHECK(fabsf(flying.height - (20 - .5f * 9.81f * .5f * (.5f + BOAT_STEP))) < .001f);
+    // Inversion is an orientation, not an Euler-angle range. Test odd/even full turns.
+    for (int axis = 0; axis < 2; ++axis) {
+        for (int turns = -3; turns <= 3; ++turns) {
+            Boat boat;
+            boat_reset(&boat);
+            float angle = turns * PI;
+            if (axis == 0)
+                boat.pitch = angle;
+            else
+                boat.roll = angle;
+            for (int tick = 0; tick < 120; ++tick)
+                boat_step(&boat, 0, 1);
+            CHECK((boat.motion_state == BOAT_CAPSIZED) == (abs(turns) % 2 == 1));
+            if (boat.motion_state == BOAT_CAPSIZED) {
+                CHECK(boat.throttle == 0 && boat.engine_response == 0);
+                boat_reset(&boat);
+                CHECK(boat.motion_state == BOAT_WATERBORNE);
+                CHECK(boat.inverted_contact_time == 0 && boat.landings == 0);
+            }
+        }
+    }
+    Boat boat;
+    boat_reset(&boat);
+    boat.height = 2;
+    bool landing = false;
+    for (int tick = 0; tick < 600; ++tick) {
+        boat_step(&boat, 0, 0);
+        landing |= boat.motion_state == BOAT_LANDING;
+    }
+    CHECK(landing && boat.landings == 1 && boat.motion_state == BOAT_WATERBORNE);
+    CHECK(fabsf(boat.height) < .001f);
+    return 0;
+}
+
+static int validate_dynamic_pair(void)
+{
+    Boat a, b;
+    boat_reset(&a);
+    boat_reset(&b);
+    a.position = (Vector2) { -.7f, 0 };
+    b.position = (Vector2) { .7f, 0 };
+    a.velocity.x = 6;
+    Vector2 initial_a = a.position, initial_b = b.position;
+    b.height = 10;
+    CHECK(!boat_collide_pair(&a, 1, &b, 1.6f));
+    CHECK(a.velocity.x == 6 && b.velocity.x == 0);
+    b.height = 0;
+    CHECK(boat_collide_pair(&a, 1, &b, 1.6f));
+    CHECK(b.velocity.x > 0 && a.velocity.x < 6);
+    CHECK(fabsf(a.velocity.x + 1.6f * b.velocity.x - 6) < .0001f);
+    CHECK(.5f * a.velocity.x * a.velocity.x + .8f * b.velocity.x * b.velocity.x < 18);
+    CHECK(Vector2Distance(a.position, initial_a) > Vector2Distance(b.position, initial_b));
+    CHECK(!boat_collide_pair(&a, 1, &b, 1.6f));
+    // Offset impact transfers angular momentum as well as linear momentum.
+    a.yaw_velocity = b.yaw_velocity = 0;
+    a.position = (Vector2) { -.7f, 1 };
+    b.position = (Vector2) { .7f, 0 };
+    a.velocity = (Vector2) { 6, 0 };
+    b.velocity = (Vector2) { 0 };
+    CHECK(boat_collide_pair(&a, 1, &b, 1.6f));
+    CHECK(fabsf(a.yaw_velocity) > .1f && fabsf(b.yaw_velocity) > .1f);
+    return 0;
+}
 
 static int particles(const Boat *boat, bool spray)
 {
@@ -840,12 +934,13 @@ static int validate_gentle_encounters(void)
 static int validate_calm_reference(void)
 {
     // Straight sample retains the accepted C2 baseline. Turning/coasting samples are
-    // measured H3 trajectories, backed by the separate force/energy/entry checks.
+    // measured H3 trajectories. Revision 5 updates only the final coast after dry-stern
+    // skeg disengagement; the powered straight/turn references remain unchanged.
     const float expected[3][10] = { { 0, 3.60687423f, 0, -8.85409927f, 0, 0, .00596522959f,
                                         .0537321381f, 0, .276249886f },
         { 23.757431f, -49.1584587f, 15.6087561f, 1.88263535f, 1.85332334f, 1.05519712f,
             .0500000007f, .053120777f, .211947575f, 1 },
-        { 39.5839539f, -33.2139511f, 9.77335072f, -13.291688f, -2.50756741f, 0, 0, 0, 0, 0 } };
+        { 39.4533844f, -33.0364151f, 9.76989174f, -13.2869892f, -2.50756764f, 0, 0, 0, 0, 0 } };
     Boat boat;
     boat_reset(&boat);
     int sample = 0;
@@ -858,9 +953,8 @@ static int validate_calm_reference(void)
             const float actual[] = { boat.position.x, boat.position.y, boat.velocity.x,
                 boat.velocity.y, boat.heading, boat.yaw_velocity, boat.height, boat.pitch,
                 boat.roll, boat.planing };
-            for (int i = 0; i < 10; ++i) {
+            for (int i = 0; i < 10; ++i)
                 CHECK(fabsf(actual[i] - expected[sample][i]) < (i < 4 ? .002f : .00001f));
-            }
             if (sample == 1) {
                 printf("banked_calm_reference height=%.9g pitch=%.9g roll=%.9g load=%.9g\n",
                     boat.height, boat.pitch, boat.roll, boat.turn_roll_load);
@@ -998,40 +1092,49 @@ static int validate_water_patch(void)
     BoatWater water = boat_water_gentle();
     const Vector2 centers[]
         = { { 12, 60 }, { 12, -125 }, { 170, -250 }, { -80, -455 }, { -60, -175 }, { 940, 100 } };
-    for (int location = 0; location < 2; ++location)
-        for (size_t k = 0; k < sizeof(centers) / sizeof(*centers); ++k) {
-            if (!location && k > 1)
-                break;
-            Vector2 center = location ? centers[k] : (Vector2) { k ? 100 : 0, 0 };
-            const Mesh3D *mesh = boat_water_patch(center, location);
-            CHECK(mesh && mesh->triangle_count > 0 && mesh->triangle_count < 50000);
-            for (size_t i = 0; i < mesh->triangle_count; ++i) {
-                Vector3 centroid = { 0 };
-                float height = 0;
-                for (int j = 0; j < 3; ++j) {
-                    Vector3 p = mesh->vertices[mesh->triangles[i].vertices[j]];
-                    Vector3 q = mesh->vertices[mesh->triangles[i].vertices[(j + 1) % 3]];
-                    CHECK(p.y == 0 && isfinite(p.x) && isfinite(p.z));
-                    CHECK(Vector3Distance(p, q) <= 2.122f);
-                    centroid = Vector3Add(centroid, Vector3Scale(p, 1.0f / 3));
-                    height += boat_water_query(water, (Vector2) { -p.x, p.z }, .7f).height / 3;
+    for (int detail = 0; detail < 2; ++detail)
+        for (int location = 0; location < 2; ++location)
+            for (size_t k = 0; k < sizeof(centers) / sizeof(*centers); ++k) {
+                if (!location && k > 1)
+                    break;
+                Vector2 center = location ? centers[k] : (Vector2) { k ? 100 : 0, 0 };
+                const Mesh3D *mesh = detail ? boat_water_patch_arcade(center, location)
+                                            : boat_water_patch(center, location);
+                CHECK(mesh && mesh->triangle_count > 0
+                    && mesh->triangle_count < (detail ? 80000 : 50000));
+                for (size_t i = 0; i < mesh->triangle_count; ++i) {
+                    Vector3 centroid = { 0 };
+                    float height = 0;
+                    for (int j = 0; j < 3; ++j) {
+                        Vector3 p = mesh->vertices[mesh->triangles[i].vertices[j]];
+                        Vector3 q = mesh->vertices[mesh->triangles[i].vertices[(j + 1) % 3]];
+                        CHECK(p.y == 0 && isfinite(p.x) && isfinite(p.z));
+                        CHECK(Vector3Distance(p, q) <= 2.122f);
+                        Vector2 snapped
+                            = { roundf(center.x / 12) * 12, roundf(center.y / 12) * 12 };
+                        if (detail && fabsf(p.x - snapped.x) < 23 && fabsf(q.x - snapped.x) < 23
+                            && fabsf(p.z - snapped.y) < 23 && fabsf(q.z - snapped.y) < 23)
+                            CHECK(Vector3Distance(p, q) <= 1.061f);
+                        centroid = Vector3Add(centroid, Vector3Scale(p, 1.0f / 3));
+                        height += boat_water_query(water, (Vector2) { -p.x, p.z }, .7f).height / 3;
+                    }
+                    float exact
+                        = boat_water_query(water, (Vector2) { -centroid.x, centroid.z }, .7f)
+                              .height;
+                    CHECK(fabsf(height - exact) < .035f);
                 }
-                float exact
-                    = boat_water_query(water, (Vector2) { -centroid.x, centroid.z }, .7f).height;
-                CHECK(fabsf(height - exact) < .035f);
+                // Sample the entire visible disk against the original water, including land,
+                // narrow dock edges, the southern bank, and the artificial map crop.
+                for (int z = -78; z <= 78; z += 6)
+                    for (int x = -78; x <= 78; x += 6) {
+                        if (x * x + z * z > 78 * 78)
+                            continue;
+                        Vector2 p = { center.x + x + .17f, center.y + z + .23f };
+                        bool expected = location ? boat_map_water((Vector2) { -p.x, p.y }, 0)
+                                                 : fabsf(p.x) <= 120 && fabsf(p.y) <= 80;
+                        CHECK(patch_contains(mesh, p) == expected);
+                    }
             }
-            // Sample the entire visible disk against the original water, including land,
-            // narrow dock edges, the southern bank, and the artificial map crop.
-            for (int z = -78; z <= 78; z += 6)
-                for (int x = -78; x <= 78; x += 6) {
-                    if (x * x + z * z > 78 * 78)
-                        continue;
-                    Vector2 p = { center.x + x + .17f, center.y + z + .23f };
-                    bool expected = location ? boat_map_water((Vector2) { -p.x, p.y }, 0)
-                                             : fabsf(p.x) <= 120 && fabsf(p.y) <= 80;
-                    CHECK(patch_contains(mesh, p) == expected);
-                }
-        }
     const Mesh3D *mesh = boat_water_patch((Vector2) { 5.99f, -250 }, true);
     CHECK(mesh);
     uint64_t before = patch_overlap(mesh);
@@ -1044,6 +1147,8 @@ static int validate_water_patch(void)
 
 int main(void)
 {
+    CHECK(validate_flight_outcomes() == 0);
+    CHECK(validate_dynamic_pair() == 0);
     CHECK(validate_water_patch() == 0);
     CHECK(shared_water() == 0);
     CHECK(validate_buoyancy() == 0);

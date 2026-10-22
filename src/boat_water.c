@@ -250,6 +250,7 @@ BoatWaterSample boat_water_query(BoatWater water, Vector2 position, float time)
     if (water.objects) {
         BoatWakeObjectSample q = boat_wake_objects_query(water.objects, position);
         sample.height += q.height;
+        sample.crest_foam = q.crest_foam;
         gradient = Vector2Add(gradient, q.gradient);
         sample.velocity.y += q.vertical_velocity;
     }
@@ -297,8 +298,8 @@ typedef struct {
 } Surface;
 static Surface surfaces[2];
 static Surface candidate_surface;
-static Surface patches[2];
-static Vector2 patch_centers[2];
+static Surface patches[4];
+static Vector2 patch_centers[4];
 
 static bool surface_triangle(Surface *s, Vector3 a, Vector3 b, Vector3 c)
 {
@@ -350,6 +351,9 @@ void boat_water_destroy(void)
         free(patches[i].vertices);
         free(patches[i].triangles);
         patches[i] = (Surface) { 0 };
+        free(patches[i + 2].vertices);
+        free(patches[i + 2].triangles);
+        patches[i + 2] = (Surface) { 0 };
     }
 }
 
@@ -383,18 +387,43 @@ static int clip_edge(
     return written;
 }
 
-static bool patch_triangle(Surface *s, Vector3 a, Vector3 b, Vector3 c, Vector2 origin)
+// A bounded 48 m central square uses .75 m cells; outer cells remain 1.5 m.
+// One shared axis partition avoids cracks/T junctions at the density transition.
+static float patch_coordinate(int cell, bool fine)
 {
-    const float spacing = 1.5f;
-    int min_z = (int)floorf((fminf(a.z, fminf(b.z, c.z)) - origin.y) / spacing);
-    int max_z = (int)floorf((fmaxf(a.z, fmaxf(b.z, c.z)) - origin.y) / spacing);
+    if (!fine)
+        return cell * 1.5f;
+    if (cell < 48)
+        return cell * 1.5f;
+    if (cell < 112)
+        return 72 + (cell - 48) * .75f;
+    return 120 + (cell - 112) * 1.5f;
+}
+
+static int patch_cell(float coordinate, bool fine)
+{
+    if (!fine)
+        return (int)floorf(coordinate / 1.5f);
+    if (coordinate < 72)
+        return (int)floorf(coordinate / 1.5f);
+    if (coordinate < 120)
+        return 48 + (int)floorf((coordinate - 72) / .75f);
+    return 112 + (int)floorf((coordinate - 120) / 1.5f);
+}
+
+static bool patch_triangle(Surface *s, Vector3 a, Vector3 b, Vector3 c, Vector2 origin, bool fine)
+{
+    int last = fine ? 159 : 127;
+    int min_z = patch_cell(fminf(a.z, fminf(b.z, c.z)) - origin.y, fine);
+    int max_z = patch_cell(fmaxf(a.z, fmaxf(b.z, c.z)) - origin.y, fine);
     min_z = min_z < 0 ? 0 : min_z;
-    max_z = max_z > 127 ? 127 : max_z;
+    max_z = max_z > last ? last : max_z;
     for (int z = min_z; z <= max_z; ++z) {
-        float bottom = origin.y + z * spacing;
+        float bottom = origin.y + patch_coordinate(z, fine);
         Vector3 triangle[3] = { a, b, c }, strip[12], temporary[12];
         int strip_count = clip_edge(triangle, 3, temporary, 1, bottom, true);
-        strip_count = clip_edge(temporary, strip_count, strip, 1, bottom + spacing, false);
+        strip_count = clip_edge(
+            temporary, strip_count, strip, 1, origin.y + patch_coordinate(z + 1, fine), false);
         if (strip_count < 3)
             continue;
         // A row-clipped triangle often spans only a few cells even when its whole AABB
@@ -404,15 +433,15 @@ static bool patch_triangle(Surface *s, Vector3 a, Vector3 b, Vector3 c, Vector2 
             min = fminf(min, strip[j].x);
             max = fmaxf(max, strip[j].x);
         }
-        int min_x = (int)floorf((min - origin.x) / spacing);
-        int max_x = (int)floorf((max - origin.x) / spacing);
+        int min_x = patch_cell(min - origin.x, fine);
+        int max_x = patch_cell(max - origin.x, fine);
         min_x = min_x < 0 ? 0 : min_x;
-        max_x = max_x > 127 ? 127 : max_x;
+        max_x = max_x > last ? last : max_x;
         for (int x = min_x; x <= max_x; ++x) {
-            float left = origin.x + x * spacing;
+            float left = origin.x + patch_coordinate(x, fine);
             Vector3 p[12], q[12];
             int count = clip_edge(strip, strip_count, q, 0, left, true);
-            count = clip_edge(q, count, p, 0, left + spacing, false);
+            count = clip_edge(q, count, p, 0, origin.x + patch_coordinate(x + 1, fine), false);
             for (int j = 1; j + 1 < count; ++j) {
                 Vector3 ab = Vector3Subtract(p[j], p[0]);
                 Vector3 ac = Vector3Subtract(p[j + 1], p[0]);
@@ -426,11 +455,12 @@ static bool patch_triangle(Surface *s, Vector3 a, Vector3 b, Vector3 c, Vector2 
     return true;
 }
 
-const Mesh3D *boat_water_patch(Vector2 world_center, bool eriksberg)
+static const Mesh3D *water_patch(Vector2 world_center, bool eriksberg, bool fine)
 {
-    Surface *s = &patches[eriksberg];
+    int index = eriksberg + 2 * fine;
+    Surface *s = &patches[index];
     Vector2 center = { roundf(world_center.x / 12) * 12, roundf(world_center.y / 12) * 12 };
-    if (s->count && Vector2Equals(center, patch_centers[eriksberg]))
+    if (s->count && Vector2Equals(center, patch_centers[index]))
         return &s->mesh;
     s->count = 0;
     Vector2 origin = { center.x - 96, center.y - 96 };
@@ -443,21 +473,31 @@ const Mesh3D *boat_water_patch(Vector2 world_center, bool eriksberg)
             Vector3 c = city->vertices[t.vertices[2]];
             if (a.y != 0 || b.y != 0 || c.y != 0)
                 break;
-            ok = patch_triangle(s, a, b, c, origin);
+            ok = patch_triangle(s, a, b, c, origin, fine);
         }
     } else {
         ok = patch_triangle(s, (Vector3) { -120, 0, -80 }, (Vector3) { -120, 0, 80 },
-                 (Vector3) { 120, 0, 80 }, origin)
+                 (Vector3) { 120, 0, 80 }, origin, fine)
             && patch_triangle(s, (Vector3) { -120, 0, -80 }, (Vector3) { 120, 0, 80 },
-                (Vector3) { 120, 0, -80 }, origin);
+                (Vector3) { 120, 0, -80 }, origin, fine);
     }
     if (!ok) {
         s->count = 0;
         return NULL;
     }
-    patch_centers[eriksberg] = center;
+    patch_centers[index] = center;
     s->mesh = (Mesh3D) { s->vertices, s->triangles, s->count };
     return &s->mesh;
+}
+
+const Mesh3D *boat_water_patch(Vector2 center, bool eriksberg)
+{
+    return water_patch(center, eriksberg, false);
+}
+
+const Mesh3D *boat_water_patch_arcade(Vector2 center, bool eriksberg)
+{
+    return water_patch(center, eriksberg, true);
 }
 
 const Mesh3D *boat_water_surface(BoatWater water, float time, bool eriksberg)
@@ -502,7 +542,9 @@ const Mesh3D *boat_water_surface(BoatWater water, float time, bool eriksberg)
         float light = Clamp(.95f + .55f * (-q.normal.x + q.normal.z), .85f, 1.05f);
         Color base = eriksberg ? (Color) { 45, 79, 104, 255 } : (Color) { 36, 107, 125, 255 };
         float crest = 0;
-        if (water.wake_amplitude > 0 || water.player_wake_enabled || water.objects)
+        if (water.objects)
+            crest = .65f * Clamp(q.crest_foam, 0, 1) * Clamp(q.height / .3f, 0, 1);
+        else if (water.wake_amplitude > 0 || water.player_wake_enabled)
             crest = .65f
                 * Clamp(
                     (q.height

@@ -29,13 +29,29 @@ switch. Completed: free-boating default selection, explicit legacy/opt-out overr
 an updated default-versus-explicit object capture check. Course/replay/ghost behavior is retained.
 Default launch is 1.8 m / 1920 ticks (16 s); `--wake-height 1.2` offers a gentler ride.
 
-Next task: **investigate waves sometimes appearing stuck**, particularly on turns and
-the river. Pieces have fixed longitudinal support while their crests propagate sideways;
-overlap may contribute to the impression, but no reproduction or confirmed cause exists yet.
-Keep the accepted fun and monitor render cost. Default-switch verification is recorded in
-[the continuity follow-up](WAKE_OBJECT_SMOOTHING.md#default-promotion).
-The scripted craft does not add hard hull collision. Shore occlusion, full overlapping
-four-boat render cost, browser gameplay and Windows timing remain unverified.
+Completed review: [arcade gameplay/performance assessment](WAKE_ARCADE_REVIEW.md),
+2026-10-22. Jumping and signed reinforcement work, but flight retains water-handling
+forces, contacts ignore height, pitch can settle inverted without a capsize outcome,
+and ordinary boats react through their pose rather than dynamic motion. The review
+records targeted probes, full-pool GPU costs, appearance recommendations and limits.
+
+Implemented follow-up, 2026-10-22: the user requested addressing the review in order.
+[Arcade implementation](WAKE_ARCADE_IMPLEMENTATION.md) owns explicit flight/landing/capsize
+states, separated dry-flight handling, height-aware obstacles, the mutual-impact basin rival,
+a 108-case outcome sweep and local four-boat play. It also owns narrow moving crest foam,
+a finer bounded GPU near patch and stationary-camera tight-turn crest tracking. Normal
+powered H3 references are preserved; dry-stern skeg disengagement changes the later coast
+and advances replay compatibility to revision 5. Debug build, all 83 active CTests (20 GPU, 121.79 s), Emscripten build,
+inspected captures and visible scripted basin/river runs pass; the implementation record
+separates that evidence from hands-on driving and user acceptance.
+
+Next: user driving and readability feedback, especially the persistent tight-turn pattern.
+Individual crests demonstrably move while overlapping patterns can retain a similar shape;
+the user says this sounds very similar to their experience. The exact original report and
+a propagation/readability fix remain unconfirmed. Current source height/propagation and
+signed reinforcement are retained. Broader river/browser multi-boat rendering cost,
+Windows playback and hands-on restart/control review remain unverified. The scripted basin
+craft now has mutual hull contact; the ordinary harbor/traffic fleet remains kinematic.
 
 Verification, 2026-10-22, development Mac: Debug/optimized builds, all 97 CTests
 (including 23 GPU checks), portable ASan/UBSan,

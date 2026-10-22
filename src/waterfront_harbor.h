@@ -32,6 +32,8 @@ Vector3 waterfront_harbor_attachment(Transform3D pose, Vector3 local);
 // Stationary conservative water-plane envelopes, including outboards and wave excursion.
 // Inputs/normal are simulation X/Z, as in boat_map_water_contact. True means blocked.
 bool waterfront_harbor_contact(Vector2 position, float clearance, Vector2 *normal);
+bool waterfront_harbor_contact_height(Vector2 position, float clearance, float bottom, float top,
+    BoatWater water, float time, Vector2 *normal);
 bool waterfront_harbor_camera_clear(Vector3 position, float clearance);
 
 #endif

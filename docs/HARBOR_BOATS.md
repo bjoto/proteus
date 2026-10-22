@@ -125,3 +125,11 @@ recording physics revisions when handling changes. Propulsion, mass, planing, an
 comfort should provide useful differences. The upgrade/progression system remains deferred in
 [the boating design](BOATING_PLAN.md); new interacting city actors still start with step 05 in
 [the living-city plan](LIVING_CITY_PLAN.md).
+
+## Arcade contact follow-up — 2026-10-22
+
+Player contacts now require vertical overlap with the transformed conservative berth
+hull/cabin/mast bounds, or the pontoon/quay height interval. Horizontal envelopes stay
+forgiving. Shoreline and basin limits remain intentional boundaries at any flight height.
+The boats are still kinematic; [arcade implementation](WAKE_ARCADE_IMPLEMENTATION.md)
+owns the dynamic basin rival, contact tests and limitations.

@@ -174,6 +174,14 @@ static bool rectangles(Vector2 delta, Vector2 player_forward, Vector2 player_rig
 bool waterfront_traffic_contact(Vector2 position, float heading, float bow, float stern,
     float half_beam, float time, WaterfrontTrafficContact *contact)
 {
+    return waterfront_traffic_contact_height(position, heading, bow, stern, half_beam, -INFINITY,
+        INFINITY, (BoatWater) { 0 }, time, contact);
+}
+
+bool waterfront_traffic_contact_height(Vector2 position, float heading, float bow, float stern,
+    float half_beam, float bottom, float top, BoatWater water, float time,
+    WaterfrontTrafficContact *contact)
+{
     Vector2 forward = { sinf(heading), -cosf(heading) }, right = { cosf(heading), sinf(heading) };
     float mid = (bow - stern) * .5f;
     Vector2 center = Vector2Add(position, Vector2Scale(forward, mid));
@@ -188,6 +196,12 @@ bool waterfront_traffic_contact(Vector2 position, float heading, float bow, floa
         if (!rectangles(Vector2Subtract(center, ship), forward, right, vf, vr,
                 (Vector2) { half_beam + .15f, (bow + stern) * .5f + .15f },
                 (Vector2) { spec.beam * .5f + .25f, spec.length * .5f + .5f }, &normal, &depth))
+            continue;
+        Transform3D pose
+            = boat_water_pose(water, time, motion.position, motion.heading, spec.length, spec.beam);
+        float low, high;
+        boat_model_vertical_bounds(spec, pose, &low, &high);
+        if (bottom > high || top < low)
             continue;
         float nr = Vector2DotProduct(normal, right), nf = Vector2DotProduct(normal, forward);
         Vector2 local = { fabsf(nr) < .001f ? 0 : -copysignf(half_beam, nr),

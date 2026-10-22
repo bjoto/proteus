@@ -48,6 +48,9 @@ void waterfront_traffic_evaluate(BoatWater water, float time, WaterfrontTrafficF
 // only the player responds. No basin traffic, traffic AI, or physical crossing-wake source.
 bool waterfront_traffic_contact(Vector2 position, float heading, float bow, float stern,
     float half_beam, float time, WaterfrontTrafficContact *contact);
+bool waterfront_traffic_contact_height(Vector2 position, float heading, float bow, float stern,
+    float half_beam, float bottom, float top, BoatWater water, float time,
+    WaterfrontTrafficContact *contact);
 bool waterfront_traffic_camera_clear(Vector3 position, float time, float clearance);
 
 #endif

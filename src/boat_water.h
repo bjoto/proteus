@@ -35,6 +35,7 @@ typedef struct {
 
 typedef struct {
     float height;
+    float crest_foam;
     Vector3 normal, velocity; // Y-up, simulation X/Z; velocity is local surface motion.
 } BoatWaterSample;
 
@@ -69,6 +70,7 @@ const Mesh3D *boat_water_surface_field(BoatWater water, const BoatWake *field, f
 #define BOAT_WATER_PATCH_FULL 48.0f
 #define BOAT_WATER_PATCH_RADIUS 80.0f
 const Mesh3D *boat_water_patch(Vector2 world_center, bool eriksberg);
+const Mesh3D *boat_water_patch_arcade(Vector2 world_center, bool eriksberg);
 void boat_water_destroy(void);
 
 #endif

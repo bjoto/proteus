@@ -11,8 +11,8 @@ Both default to GPU rendering; the CPU reference supports display-free captures.
 | --- | --- | --- |
 | [Boating foundations](BOATING_FOUNDATIONS_PLAN.md) | P1 frame/tick instrumentation implemented; later phases pending | P2: repeatable benchmark/report tool and renderer counters; then baseline, clock correction, explicit world ownership, and simulation/presentation separation |
 | [Boating design](BOATING_PLAN.md) | Basin, Eriksberg, and river locations; timed S course, recordings, persistent bests, ghosts, replays, full-window presentation with modal `?` help, quiet engine/water audio with a joyful repeating XM, and a user-accepted wind-driven Swedish ensign | [Boat visual improvement](BOATING_PLAN.md#boat-visual-improvement--saved-2026-10-20) saved for later: cabin/hull shapes and palette; optional closer-camera comparison, score-loop, and archipelago remain proposals |
-| [Boat physics](BOAT_PHYSICS_PLAN.md) | A–D3 plus accepted H1/H2 countersteering and speed view; T1–T5 load-driven banking and quicker recovery; user-accepted H3 firmer planing hull grip for stern-led turns, revision 4 | [H3 carving pass](BOAT_PHYSICS_PLAN.md#h3--stern-led-carving-feel-2026-10-20): feel accepted on 2026-10-20; exhaustive hands-on/platform checks unverified; optional trim/loading not started |
-| [Wake rewrite](WAKE_REWRITE_PLAN.md) | Arcade wake objects are the free-boating default by user request; half-second pieces, smoother strength and aligned fading, bounded to 128 objects | Investigate occasional stuck-looking waves; preserve fun and monitor cost; [continuity/default results](WAKE_OBJECT_SMOOTHING.md#default-promotion) |
+| [Boat physics](BOAT_PHYSICS_PLAN.md) | A–D3 plus accepted H1/H2 countersteering and speed view; T1–T5 load-driven banking and quicker recovery; user-accepted H3 firmer planing hull grip; arcade flight/contact rules advance compatibility to revision 5 | [H3 carving pass](BOAT_PHYSICS_PLAN.md#h3--stern-led-carving-feel-2026-10-20): feel accepted on 2026-10-20; exhaustive hands-on/platform checks unverified; optional trim/loading not started |
+| [Wake rewrite](WAKE_REWRITE_PLAN.md) | Arcade default; bounded 128-object pool, smoother pieces; [review implementation](WAKE_ARCADE_IMPLEMENTATION.md): flight/landing/capsize, height-aware contacts, dynamic rival, crossing outcomes and crest readability | User driving/readability feedback; tight-turn overlapping pattern resembles the stuck-wave report, exact reproduction/fix unconfirmed; platform/fleet costs remain open |
 | [Living city](LIVING_CITY_PLAN.md) | 01–05: city dressing, materials, berths, shared actors; travelling boats and a compact ferry brought forward; demo flock and 32 reactive boating gulls | 06 people/cyclists; varied road traffic, building activity, ferry polish, perched gulls, and final review remain |
 | [River / Älvsborgsbron](eriksberg/bridge/README.md) | Separate source/crop, navigable bridge blockout, blocking tower legs, and grounded road approaches | Bridge/shoreline/building refinement; human handling and camera review |
 | [GPU migration](GPU_WATERFRONT_PLAN.md) | Steps 01–12 implemented; GPU default, lighting, shadows, atmosphere, reflections, and regression checks | Migration is implemented; other-platform and human visual acceptance remain separate from automated checks |
@@ -48,6 +48,12 @@ does not authorize advancing every plan. Use the requested track's scope and acc
   to the current owners above. Dated progress entries retain results for their original revisions.
 
 ## Verification baseline
+
+Arcade review implementation, 2026-10-22, M1 Max/macOS: Debug build and all 83 active
+CTests (20 GPU) pass in 121.79 s; fifteen retired field cases stay disabled. The Emscripten
+build, inspected captures and visible scripted basin-rival/river runs pass. The
+[implementation record](WAKE_ARCADE_IMPLEMENTATION.md) owns outcome sweeps, full-pool GPU
+cost, the tight-turn overlap investigation and remaining human/platform checks.
 
 Routine test selection and timings are owned by [the test workflow](TESTING.md).
 On 2026-10-22, M1 Max/macOS, all 83 active cases (20 GPU) pass in 97.40 s, down from

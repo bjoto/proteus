@@ -34,6 +34,7 @@ typedef struct {
 } BoatWakeObjects;
 typedef struct {
     float height, vertical_velocity;
+    float crest_foam; // Visual crest coordinate/age mask; never contributes to hull forces.
     Vector2 gradient;
 } BoatWakeObjectSample;
 

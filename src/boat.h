@@ -29,6 +29,8 @@ typedef struct {
     float variation; // Stable birth variation; independent of the front-spray sequence.
 } BoatWaterParticle;
 
+typedef enum { BOAT_WATERBORNE, BOAT_AIRBORNE, BOAT_LANDING, BOAT_CAPSIZED } BoatMotionState;
+
 typedef struct {
     BoatFlag flag; // Visual cloth only; never contributes forces to the hull.
     Vector2 position; // Water-plane X/Z coordinates.
@@ -47,6 +49,9 @@ typedef struct {
     // Physical heave relative to the rest waterline, plus bow-up pitch and local Z roll.
     float height, vertical_velocity;
     float pitch, pitch_velocity, roll, roll_velocity;
+    BoatMotionState motion_state;
+    float dry_time, landing_time, inverted_contact_time;
+    unsigned landings; // Whole-hull flights followed by renewed water support.
     float turn_roll_load; // Filtered gain-weighted lateral acceleration, not a pose angle.
     float wave_spray; // Smoothed 0..1 bow-entry load, used only for wave encounter particles.
     float wheel; // Spring-centred steering setting, -1 (full port) to 1 (full starboard).
@@ -69,6 +74,9 @@ void boat_scene_frame(const Boat *boat, BoatCamera camera, WaterfrontSceneFrame 
 // Advance one fixed tick. Inputs are adjustment rates in -1..1; zero centres the wheel and holds
 // throttle. Opposite steering unwinds the existing wheel angle three times faster than turn-in.
 void boat_step(Boat *boat, float wheel_change, float throttle_change);
+// Mutual planar impulse/separation for two dynamic hulls with vertical overlap.
+// Positive normalized masses also scale yaw inertia; no allocation or route ownership.
+bool boat_collide_pair(Boat *a, float mass_a, Boat *b, float mass_b);
 BoatWakeStern boat_wake_stern(const Boat *boat);
 bool boat_draw(Renderer3D *renderer, Color *pixels, int width, int height, const Boat *boat,
     BoatCamera camera_settings);

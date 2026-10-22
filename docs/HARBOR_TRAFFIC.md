@@ -79,3 +79,13 @@ Night deck lighting, passenger animation, ferry docking/boarding, dynamic traffi
 physical fleet crossing wakes, and a large ship are future work. Human handling/artistic acceptance
 remains separate from successful automated checks; see the living-city progress log for the
 current verification evidence.
+
+## Arcade height-aware contacts — 2026-10-22
+
+The player now uses vertical overlap against conservative transformed hull/cabin/mast
+bounds evaluated at the shared water pose. Horizontal SAT and obstacle-relative impact
+response are retained. A clear jump over a low craft does not collide; a tall mast still
+blocks. The scenery fleet remains kinematic. The optional basin crossing craft instead
+uses real `Boat` dynamics, shared wake emission and mutual mass/inertia-aware impacts;
+[arcade implementation](WAKE_ARCADE_IMPLEMENTATION.md) owns its recovery and verification.
+These are conservative envelopes, not triangle-accurate collisions or walkable decks.
