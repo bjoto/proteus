@@ -53,6 +53,7 @@ typedef struct {
     Mesh near_water_extra; // Optional second indexed candidate strip, same lifetime.
     Texture2D wake_field; // Borrowed, immutable for the complete draw; owned by BoatGpu.
     float wake_spacing;
+    Texture2D object_wakes; // Owned compact object records; not a sampled water height field.
     Mesh windows;
     Mesh corner;
     Mesh corner_emissive;

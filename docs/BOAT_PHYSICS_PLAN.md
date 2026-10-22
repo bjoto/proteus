@@ -1,6 +1,6 @@
 # Boat physics: learnable handling
 
-Status, 2026-10-21: A1–D3 implemented; the user-requested
+Status, 2026-10-22: A1–D3 implemented; the user-requested
 [handling feel pass](#handling-feel-pass--2026-10-19) adds quicker countersteering and a speed view, accepted by the user on 2026-10-19. Phase C is accepted; Phase D handling and
 player-wake motion are provisionally accepted by the user, with continued evaluation
 over time. On 2026-10-20 the user requested longer-lived, coherent wakes for jumping and
@@ -9,11 +9,19 @@ owns that follow-up: W1 measurements/prototype complete on 2026-10-21; the strip
 prototype failed its physical gates; the isolated periodic heightfield fallback passes its
 free-propagation gates. W2.1 now completes the isolated owned C field, ledger, deep snapshots and matched-accuracy
 boundary/island proof. A native basin candidate now uses exact cosine evaluation, fixed-tick wetted stern forcing
-and common queries/rendering behind `--wake-field`. D3 remains default; the provisional
+and common queries/rendering behind `--wake-field`. At that checkpoint D3 remained default; the provisional
 2 ms budget is not met. [Candidate evidence](WAKE_CANDIDATE_RESULTS.md) owns costs, limits
 and continued play review. The user likes the revision-3 basin results as a foundation;
-[performance and large-water scaling](WAKE_SCALING_RESULTS.md) now take priority over the
-separate appearance pass. D3 remains default.
+[performance and large-water scaling](WAKE_SCALING_RESULTS.md) led to an isolated compact
+quadrature rejection. The user then selected a third, arcade-oriented alternative:
+`--wake-objects` now provides bounded per-boat pieces, tick expiry, tall jump crests and
+signed overlap, with an optional second craft. [Object results](WAKE_OBJECT_RESULTS.md)
+own current commands, measured jumps/cost, automated verification and play feedback. The user enjoys the huge waves; the [continuity revision](WAKE_OBJECT_SMOOTHING.md)
+now shortens source pieces and smooths strength/growth/fading while retaining the default
+crest and lifetime. The user reports the revision is very fun and requests it as the
+free-boating default. Objects now launch by default; `--player-wake` selects legacy D3.
+Investigating occasional stuck-looking waves is next. This supersedes physical-packet
+refinement as the active task.
 The 2026-10-18 acceptance remains a historical baseline.
 Current/scripted-wake options now work in all locations; player-path wakes are
 enabled by default in free boating, with `--no-player-wake` available for calm practice.

@@ -1,47 +1,65 @@
 # Coherent, crossable wakes
 
-Status, 2026-10-21: **native basin review candidate implemented behind `--wake-field`.**
-D3 remains the default. Initial user feedback prompted stronger full-speed forcing and an
-optimized-build launch recipe. The user likes revision 3's basin results as a foundation
-and now prioritizes much faster wakes on arbitrarily large water spaces. A measured
-transform optimization is implemented; large-world support remains open. Water appearance
-is a separate later follow-up, and no default switch has been requested.
-[Candidate evidence, limits, commands and play recipe](WAKE_CANDIDATE_RESULTS.md).
-[Performance and large-water follow-up](WAKE_SCALING_RESULTS.md).
+Status, 2026-10-22: **bounded arcade wake objects are now the free-boating default,
+with `--wake-objects` retained as an explicit selector.** The user redirected the work toward tall waves that are fun to jump,
+independent per-boat pieces, explicit tick lifetimes and signed overlap. D3 is available
+with `--player-wake`; `--wake-field` remains the separate native basin comparison.
 
-Completed for this bounded candidate: exact cosine evaluation of the existing order-256
-operator on an entirely wet rectangle; matched-accuracy open/island/barrier rerun; full-basin
-leave/return proof; actual fixed-tick wetted stern forcing with explicit mass/density;
-signed work and independent sinks/residual; shared height/gradient/vertical/horizontal velocity;
-CPU and GPU surface access; explicit application ownership and reset retirement; desktop
-integration, source/query convergence tools and integrated profiling. The operator, .75 m
-spacing and 120 Hz cadence retain the numerical reference. The graph evaluator remains the
-land-aware fallback and comparison oracle; it is not a fast mapped gameplay backend.
+Completed: caller-owned four-emitter world with thirty-two slots per boat; actual wetted
+stern-span emission; independent travelling crest/trough objects; smooth birth/expiry;
+shared height/gradient/vertical-motion contact queries; matching CPU/GPU rendering;
+configurable crest/lifetime; reset; basin/Eriksberg/river free boating; optional scripted
+second boat sharing the same wakes. The user enjoys the huge-wave mode; the new
+continuity revision emits every half-second, smooths source strength and aligns
+growth/fading along each span. No map-sized state or per-tick allocation is used.
+[Object-mode results and play commands](WAKE_OBJECT_RESULTS.md) own the detailed behavior,
+measurements, verification and limitations. [Continuity follow-up](WAKE_OBJECT_SMOOTHING.md)
+owns the latest change and before/after evidence.
 
-The provisional **2 ms per rendered 60 Hz frame target is not met**. Select the measured
-CPU cosine path for this opt-in review, with a fixed 288x192 m field covering the full basin.
-No camera culling, scrolling, artificial ageing, lower cadence or weaker wave band is used
-to meet a budget. Mapped locations, currents, courses/replays and browser candidate launches
-are explicitly rejected. The desktop default renderer consumes the CPU field; a second GPU
-wave solver is not selected. Full costs and storage belong to the candidate results.
+The development-Mac world is 5320 bytes. A three-minute four-emitter loop fills but never
+exceeds 128 live objects. Current actual hull checks retain 7.195 m above-calm jumps and
+larger launches through crossed wakes. One-boat optimized measurements include about
+.15 ms for two physics/source ticks and 2.42–2.45 ms median for physics plus complete
+GPU rendering, versus 2.05 ms before this continuity change in the same review workload.
+The 16-second lifetime and 1.8 m crest setting are retained. These are observations,
+not a hard 2 ms guarantee or a four-boat rendering result.
 
-Next task: **W3.S scalable representation and travel/return proof**, before the water-appearance
-pass. Prototype sparse phase-carrying state with bounded detailed queries/rendering against
-the existing field; do not enlarge the dense basin grid or add an unproved scrolling cutoff.
-The acceptance gates and current size/cost measurements are in
-[scaling results](WAKE_SCALING_RESULTS.md#required-next-representation).
-W4's broader crossing/landing review remains open alongside W3's land-aware backend,
-mapped locations and supported-device performance. Uniform/spatial-current transport,
-a common scripted second vessel, reciprocal
-hull/wave work and nonlinear breaking remain out of scope for this still-water candidate.
-W5's default switch requires the user's explicit play acceptance and remains blocked on it.
+The user reviewed the continuity revision, reports it is very fun and requested the default
+switch. Completed: free-boating default selection, explicit legacy/opt-out overrides, and
+an updated default-versus-explicit object capture check. Course/replay/ghost behavior is retained.
+Default launch is 1.8 m / 1920 ticks (16 s); `--wake-height 1.2` offers a gentler ride.
 
-Historical numerical and feasibility checkpoints: [W1](WAKE_W1_RESULTS.md),
-[W2.1 field/domain proof](WAKE_W2_FIELD_RESULTS.md), and
-[original CPU/direct GPU limit](WAKE_RUNTIME_RESULTS.md).
+Next task: **investigate waves sometimes appearing stuck**, particularly on turns and
+the river. Pieces have fixed longitudinal support while their crests propagate sideways;
+overlap may contribute to the impression, but no reproduction or confirmed cause exists yet.
+Keep the accepted fun and monitor render cost. Default-switch verification is recorded in
+[the continuity follow-up](WAKE_OBJECT_SMOOTHING.md#default-promotion).
+The scripted craft does not add hard hull collision. Shore occlusion, full overlapping
+four-boat render cost, browser gameplay and Windows timing remain unverified.
+
+Verification, 2026-10-22, development Mac: Debug/optimized builds, all 97 CTests
+(including 23 GPU checks), portable ASan/UBSan,
+lifetime/resource stress, jump/recovery, source smoothing and final focused object CTests
+pass. Growth/fade shader probes and exact production object-record upload comparison pass.
+The visible diagnostic completes 1200 frames / 2400 physics ticks and the Emscripten target
+builds. The [continuity follow-up](WAKE_OBJECT_SMOOTHING.md) records full-suite and final focused checks,
+inspected before/after captures and limitations. Scripted checks do not establish hands-on
+input/audio review. Subsequent user feedback accepts the fun and requests the default switch,
+while reporting occasional stuck-looking waves.
+
+The earlier proposed W3.S localized physical-packet experiment is **superseded as the next
+work item by this user-authorized arcade direction**. Its old physical acceptance gates
+remain historical requirements of that alternative, not blockers for object-mode play.
+The user requested suspension of retired field tests until that track resumes.
+`PROTEUS_WAKE_FIELD_TESTS=OFF` is now the default; active arcade checks stay enabled.
+[Test workflow and timings](TESTING.md) own the selection, re-enable command and evidence:
+all 83 retained tests pass in 97.40 s, compared with 748.21 s for the original 98-case run.
+Historical evidence: [basin candidate](WAKE_CANDIDATE_RESULTS.md), [scaling](WAKE_SCALING_RESULTS.md),
+[compact quadrature rejection](WAKE_PACKET_RESULTS.md), [W1](WAKE_W1_RESULTS.md),
+[field/domain proof](WAKE_W2_FIELD_RESULTS.md), and [original GPU checkpoint](WAKE_RUNTIME_RESULTS.md).
 Parent: [boat physics](BOAT_PHYSICS_PLAN.md).
 
-## Recommendation
+## Physical-field design (historical; retained for that alternative)
 
 The connected-front design below is the original 2026-10-20 proposal. W1 tested a
 connected Hermite-strip reconstruction on 2026-10-21 and rejected that implementation
@@ -448,15 +466,48 @@ including 22 GPU checks; both native and portable sanitizer checks pass. Inspect
 captures match the previous revision byte for byte, and a scripted desktop run completes.
 The browser baseline builds; large-world and other-device performance remain unverified.
 
-Next: isolated sparse dispersive representation, shared near-query/render reconstruction,
-and comparison against a large reference while leaving and returning to wakes. This is
-an experiment, not selection of the rejected W1 strips or a validated packet algorithm.
+The first isolated compact experiment below is complete; localized/adaptive reconstruction
+is next. This is not selection of the rejected W1 strips or a validated packet algorithm.
 Require stable interference, transfer/retirement energy accounting, island blocking,
 bounded long-travel storage and complete measured cost before gameplay integration.
 Map size must not dictate full-resolution field area. No detail radius, distant-wave
 cutoff or default switch has been selected; a necessary physical compromise requires
 measured evidence and user judgment. The present basin candidate remains usable as the
 behavior reference while this work proceeds.
+
+## W3.S first compact experiment — 2026-10-22
+
+Implemented world-space Gaussian dipole source records with shared spectral quadrature,
+matched discrete propagation, all six query outputs, signed combined-field work, explicit
+capacity/rejection and retirement checks. The existing C field supplies the independent
+reference on 288x192 m and doubled domains. Four quadrature sizes, separated/overlapping/
+returning query regions and diagnostic captures expose the accuracy/storage/cost tradeoff.
+[Packet results](WAKE_PACKET_RESULTS.md) owns equations, gates, measured results, commands,
+verification and limitations.
+
+Reject fixed quadrature as a runtime choice. Width 256 uses 2.36 MB and has at most
+.04313% sampled history error, but cache construction, six queries, a 16x16 height surface
+and spectral audit take 56.6 ms. Width 32 is cheap but has false signed replicas and
+>100% history errors despite closely matching scalar energy. The reference-domain control
+supports the cropped finite-horizon comparison, not arbitrary long propagation. The strengthened
+return path encounters a 6.83 mm RMS wake with .04624% height error; intermediate
+per-time relative gates still do not all pass.
+
+At that checkpoint, the proposed next task was localized dispersive packets with adaptive
+spectral refinement and independent reconstructed-energy convergence. The later arcade
+direction in the current status supersedes that task. That proposal would have preserved
+the strong return/source probes and added a stationary encounter and longer histories.
+Actual stern resampling, full tick-history comparison, topology, continuous-emission
+resource handling and GPU reconstruction were not implemented by that experiment.
+No default, source calibration, runtime/backend or physical acceptance switch is made.
+
+Verification, 2026-10-22 on the development Mac: Debug configure/build and all 92 CTest
+cases pass across split runs, including 22 GPU checks resumed with desktop access after
+a sandboxed initialization stall. The final packet contract test was rebuilt/rerun;
+portable ASan/UBSan contracts, optimized sweeps, doubled-reference comparison, inspected
+diagnostic plots, formatting and changed local file links pass. No new manual demo,
+browser/Windows packet measurement or user acceptance is claimed. Detailed commands,
+logs and numerical limitations remain in the packet results.
 
 ## Water appearance follow-up — 2026-10-21
 

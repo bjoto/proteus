@@ -1,10 +1,15 @@
 # Wake performance and large-water follow-up
 
-2026-10-21. Owner: [wake rewrite plan](WAKE_REWRITE_PLAN.md). The user likes the
+Historical physical-field follow-up, 2026-10-21. Owner: [wake rewrite plan](WAKE_REWRITE_PLAN.md). The user likes the
 revision-3 basin results as a foundation, but requires much faster wakes that can apply
 to arbitrarily large water spaces. Performance and world scaling take priority over the
 separate water-appearance pass. **The current candidate is still basin-only and opt-in;
-D3 remains default. Neither large-world support nor the 2 ms wake target has passed.**
+D3 remained default at this checkpoint. Neither large-world support nor the 2 ms wake target had passed.**
+
+On 2026-10-22 the user selected [bounded arcade wake objects](WAKE_OBJECT_RESULTS.md)
+as a third alternative, subsequently promoted to the free-boating default by user request.
+That is now the active track; the physical representation gates
+and proposed next experiment below remain historical requirements of the field track.
 
 ## Implemented optimization
 
@@ -137,8 +142,12 @@ Before enabling large-world gameplay, require:
    CPU/GPU split with hidden readback latency is a pass.
 
 No representation switch, detail radius or distant-retirement threshold is selected yet.
-The concrete next task is the isolated sparse-representation comparison and travel/return
-experiment. Water appearance remains a later, separate pass preserving the accepted feel.
+The first isolated [compact source-packet experiment](WAKE_PACKET_RESULTS.md), completed
+2026-10-22, rejects fixed spectral quadrature: fine reconstruction matches the sampled
+finite-horizon reference but is too expensive; cheap versions reconstruct false copies.
+The historical proposed next step was spatially localized, adaptively refined reconstruction, with stronger
+return probes and reconstructed-energy convergence. The gates above remain open.
+Water appearance remains a later, separate pass preserving the accepted feel.
 
 ## Reproduction and verification
 

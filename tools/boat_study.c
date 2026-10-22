@@ -22,8 +22,11 @@ static void usage(void)
         "Wheel springs to centre when released; thrust holds. R: reset and centre wheel | Esc: "
         "close\n"
         "+/-: closer/farther | PageUp/PageDown: raise/lower camera | C: reset view\n"
-        "--wake-field: opt-in coherent CPU field, native basin only (D3 remains default)\n"
-        "--player-wake / --no-player-wake: physical player trail (default on in free boating)\n"
+        "--wake-field: opt-in coherent CPU field, native basin only\n"
+        "--wake-objects: bounded arcade jump wakes (default in free boating)\n"
+        "--wake-objects-crossing: add a scripted boat sharing the arcade wakes (basin only)\n"
+        "--wake-life-ticks 240..1920 (default 1920) | --wake-height 0.1..3 (default 1.8 m)\n"
+        "--player-wake: legacy D3 trail | --no-player-wake: visual-only player trail\n"
         "--current / --crossing-wake: opt-in authored tests in all locations; R restarts passage\n"
         "--camera-distance UNITS: 8..48 (default 20; river 32)\n"
         "--camera-height UNITS: 4..36 (default 14; river 6)\n"
@@ -55,12 +58,59 @@ static BoatWater study_water(bool waves, bool current, bool crossing, bool playe
     return water;
 }
 
-static void timed_boat_step(
-    Boat *boat, float steering, float throttle, BoatFrameMetrics *metrics, BoatWakePlayer *wake)
+typedef struct {
+    BoatWakeObjects world;
+    Boat other;
+    bool crossing;
+    unsigned waypoint;
+} ObjectStudy;
+
+static void object_study_reset(
+    ObjectStudy *study, Boat *boat, bool crossing, unsigned life, float height)
+{
+    *study = (ObjectStudy) { .crossing = crossing };
+    boat_wake_objects_init(&study->world, life, height);
+    boat->water_settings.objects = &study->world;
+    boat_reset(&study->other);
+    study->other.position = (Vector2) { -65, -12 };
+    study->other.heading = PI / 2;
+    study->other.water_settings.objects = &study->world;
+}
+
+static void object_track(ObjectStudy *study, const Boat *boat, unsigned id)
+{
+    BoatWakeStern s = boat_wake_stern(boat);
+    if (!boat_wake_objects_track(&study->world, id, (Vector2) { (float)s.x, (float)s.z },
+            (float)hypot(s.vx, s.vz), (float)s.wet)) {
+        fprintf(stderr, "Wake object emission contract failed.\n");
+        exit(1);
+    }
+}
+
+static void timed_boat_step(Boat *boat, float steering, float throttle, BoatFrameMetrics *metrics,
+    BoatWakePlayer *wake, ObjectStudy *objects)
 {
     double started = boat_profile_time(IsWindowReady());
+    if (objects)
+        boat_wake_objects_advance(&objects->world);
     BoatWakeStern before = wake ? boat_wake_stern(boat) : (BoatWakeStern) { 0 };
     boat_step(boat, steering, throttle);
+    if (objects) {
+        object_track(objects, boat, 0);
+        if (objects->crossing) {
+            const Vector2 route[] = { { 60, -12 }, { 0, -55 }, { -60, -12 }, { 0, 45 } };
+            Boat *other = &objects->other;
+            Vector2 delta = Vector2Subtract(route[objects->waypoint], other->position);
+            if (Vector2Length(delta) < 16)
+                objects->waypoint = (objects->waypoint + 1) % 4;
+            float target = atan2f(delta.x, -delta.y);
+            float error = remainderf(target - other->heading, 2 * PI);
+            float wheel = Clamp(2 * error - other->yaw_velocity, -1, 1);
+            boat_step(other, Clamp((wheel - other->wheel) / BOAT_STEP, -1, 1),
+                Clamp((.75f - other->throttle) / (.5f * BOAT_STEP), -1, 1));
+            object_track(objects, other, 1);
+        }
+    }
     if (wake && !boat_wake_player_step(wake, before, boat_wake_stern(boat))) {
         fprintf(stderr, "Wake field update failed.\n");
         exit(1);
@@ -73,28 +123,29 @@ static void timed_boat_step(
     }
 }
 
-static void demo_step(Boat *boat, int tick, BoatFrameMetrics *metrics, BoatWakePlayer *wake)
+static void demo_step(
+    Boat *boat, int tick, BoatFrameMetrics *metrics, BoatWakePlayer *wake, ObjectStudy *objects)
 {
-    if (wake || boat->water_settings.player_wake_enabled) {
+    if (wake || objects || boat->water_settings.player_wake_enabled) {
         float throttle = tick < 1440 ? 1 : 0;
         float wheel = tick >= 420 && tick < 1440 ? 1 : 0;
         timed_boat_step(boat, Clamp((wheel - boat->wheel) / BOAT_STEP, -1, 1),
-            Clamp((throttle - boat->throttle) / (.5f * BOAT_STEP), -1, 1), metrics, wake);
+            Clamp((throttle - boat->throttle) / (.5f * BOAT_STEP), -1, 1), metrics, wake, objects);
         return;
     }
     if (boat->water_settings.wake_amplitude != 0
         || Vector2LengthSqr(boat->water_settings.current) > 0) {
         // Let the source become visible, approach its spreading wake, then recover in neutral.
         float target = tick < 720 ? 0 : tick < 1200 ? .65f : 0;
-        timed_boat_step(
-            boat, 0, Clamp((target - boat->throttle) / (.5f * BOAT_STEP), -1, 1), metrics, wake);
+        timed_boat_step(boat, 0, Clamp((target - boat->throttle) / (.5f * BOAT_STEP), -1, 1),
+            metrics, wake, objects);
         return;
     }
     // Ease through neutral into reverse with the same held steering.
     float target_wheel = tick >= 360 ? 0.65f : 0;
     float wheel_change = fmaxf(-1, fminf(1, (target_wheel - boat->wheel) / BOAT_STEP));
     float throttle_change = tick < 240 ? 1 : tick < 480 ? 0 : tick < 960 ? -1 : 0;
-    timed_boat_step(boat, wheel_change, throttle_change, metrics, wake);
+    timed_boat_step(boat, wheel_change, throttle_change, metrics, wake, objects);
 }
 
 static void draw_help(bool course, bool eriksberg)
@@ -213,6 +264,9 @@ int main(int argc, char **argv)
     bool eriksberg = false, course = false, waves = false;
     bool river = false, current = false, crossing_wake = false, player_wake = true;
     bool player_wake_set = false, wake_field = false;
+    bool wake_objects = false, object_crossing = false, object_tuning = false;
+    unsigned object_life = BOAT_OBJECT_LIFE_TICKS;
+    float object_height = 1.8f;
     bool gpu_enabled = true, gpu_aa = false;
     bool profiler_visible = false;
     int frame_limit = 0;
@@ -245,6 +299,26 @@ int main(int argc, char **argv)
             profiler_visible = true;
         } else if (strcmp(argv[i], "--wake-field") == 0) {
             wake_field = true;
+        } else if (strcmp(argv[i], "--wake-objects") == 0) {
+            wake_objects = true;
+        } else if (strcmp(argv[i], "--wake-objects-crossing") == 0) {
+            wake_objects = object_crossing = true;
+        } else if (strcmp(argv[i], "--wake-life-ticks") == 0 && i + 1 < argc) {
+            char *end;
+            const char *value = argv[++i];
+            long parsed = strtol(value, &end, 10);
+            if (end == value || *end || parsed < 240 || parsed > BOAT_OBJECT_LIFE_TICKS)
+                goto invalid;
+            object_life = (unsigned)parsed;
+            object_tuning = true;
+        } else if (strcmp(argv[i], "--wake-height") == 0 && i + 1 < argc) {
+            char *end;
+            const char *value = argv[++i];
+            float parsed = strtof(value, &end);
+            if (end == value || *end || !isfinite(parsed) || parsed < .1f || parsed > 3)
+                goto invalid;
+            object_height = parsed;
+            object_tuning = true;
         } else if (strcmp(argv[i], "--player-wake") == 0) {
             player_wake = true;
             player_wake_set = true;
@@ -330,6 +404,21 @@ int main(int argc, char **argv)
             stderr, "--player-wake requires free boating, without course/replay/ghost modes.\n");
         goto invalid;
     }
+    // Choose the free-boating default after parsing so explicit alternatives and
+    // recorded course/replay water remain independent of argument order.
+    if (!wake_objects && !wake_field && !player_wake_set && !course && !ghost_path)
+        wake_objects = true;
+    if ((object_tuning && !wake_objects)
+        || (wake_objects
+            && (wake_field || course || ghost_path || (player_wake_set && player_wake)
+                || (object_crossing && eriksberg)))) {
+        fprintf(stderr,
+            "Wake objects require free boating, without another player-wake mode; "
+            "the scripted crossing boat requires the basin.\n");
+        goto invalid;
+    }
+    if (wake_objects)
+        player_wake = false;
     if (wake_field
         && (eriksberg || course || ghost_path || current || crossing_wake
             || (player_wake_set && !player_wake))) {
@@ -386,6 +475,10 @@ int main(int argc, char **argv)
         boat_reset_location(&boat, eriksberg);
     boat.water_settings = study_water(waves, current, crossing_wake, player_wake, eriksberg);
     BoatWakePlayer *wake = NULL;
+    ObjectStudy object_world = { 0 };
+    ObjectStudy *objects = wake_objects ? &object_world : NULL;
+    if (objects)
+        object_study_reset(objects, &boat, object_crossing, object_life, object_height);
     int result = 1;
     BoatReplayRuns runs = { .ghost_visible = true, .export_path = export_path };
     BoatReplayFlag playback_flag = { 0 }, ghost_flag = { 0 };
@@ -437,11 +530,15 @@ int main(int argc, char **argv)
         boat_replay_animate_flag(runs.playing, &boat, &playback_flag);
     } else if (screenshot) {
         for (int tick = 0; tick < (int)roundf(time / BOAT_STEP); ++tick)
-            demo_step(&boat, tick, NULL, wake);
+            demo_step(&boat, tick, NULL, wake, objects);
     }
     Boat ghost;
     const Boat *ghost_view = NULL;
     float ghost_opacity = 0;
+    if (objects && objects->crossing) {
+        ghost_view = &objects->other;
+        ghost_opacity = 1;
+    }
     if (course && !runs.playing && runs.opponent.complete
         && boat_replay_sample(&runs.opponent, boat.course.elapsed, &ghost)) {
         boat_replay_animate_flag(&runs.opponent, &ghost, &ghost_flag);
@@ -637,6 +734,8 @@ int main(int argc, char **argv)
                 boat_wake_player_reset(wake);
                 boat.wake_surface = boat_wake_player_field(wake);
             }
+            if (objects)
+                object_study_reset(objects, &boat, object_crossing, object_life, object_height);
             if (course)
                 boat_replay_runs_reset(&runs);
             accumulator = 0;
@@ -659,13 +758,13 @@ int main(int argc, char **argv)
             accumulator += fmin(raw_active_delta, 0.1);
             while (accumulator >= BOAT_STEP) {
                 if (demo)
-                    demo_step(&boat, demo_tick++, &metrics, wake);
+                    demo_step(&boat, demo_tick++, &metrics, wake, objects);
                 else {
                     double course_started_at = boat_profile_time(true);
                     BoatReplaySample before = boat_replay_pose(&boat);
                     metrics.course_replay_ms
                         += (float)((boat_profile_time(true) - course_started_at) * 1000.0);
-                    timed_boat_step(&boat, steering, throttle_change, &metrics, wake);
+                    timed_boat_step(&boat, steering, throttle_change, &metrics, wake, objects);
                     course_started_at = boat_profile_time(true);
                     if (course)
                         boat_replay_runs_step(&runs, before, &boat);
@@ -704,6 +803,10 @@ int main(int argc, char **argv)
         double ghost_started_at = boat_profile_time(true);
         ghost_view = NULL;
         ghost_opacity = 0;
+        if (objects && objects->crossing) {
+            ghost_view = &objects->other;
+            ghost_opacity = 1;
+        }
         if (course && !runs.playing && runs.ghost_visible && runs.opponent.complete) {
             double fade
                 = 1 - fmax(0, boat.course.elapsed - runs.opponent.splits[BOAT_COURSE_GATES - 1]);
@@ -742,7 +845,10 @@ int main(int argc, char **argv)
             boat_snapshot = boat_profile_snapshot(&boat_profile);
             snapshot.scene_label = river ? "river" : eriksberg ? "eriksberg" : "basin";
             snapshot.renderer_label = gpu_enabled ? (gpu_aa ? "GPU 4x SSAA" : "GPU") : "CPU";
-            snapshot.texture_upload_kib = gpu_enabled ? (wake ? 384 : 0) : snapshot.framebuffer_kib;
+            snapshot.texture_upload_kib = gpu_enabled ? (wake ? 384
+                                                                : objects ? 4
+                                                                          : 0)
+                                                      : snapshot.framebuffer_kib;
             next_snapshot_time = current_frame_started_at + 0.25;
         }
         double present_started_at = boat_profile_time(true);
@@ -755,6 +861,10 @@ int main(int argc, char **argv)
         if (wake)
             DrawText(TextFormat("WAKE FIELD / REVIEW %d", BOAT_WAKE_SOURCE_REVISION), 12,
                 GetScreenHeight() - 24, 12, SKYBLUE);
+        if (objects)
+            DrawText(TextFormat("WAKE OBJECTS / %u LIVE / %.1f m / %u TICKS", objects->world.live,
+                         object_height, object_life),
+                12, GetScreenHeight() - 24, 12, SKYBLUE);
         if (course)
             course_runs_hud(&runs, view, ghost_view, GetScreenWidth());
         if (!IsWindowFocused())
@@ -773,6 +883,14 @@ int main(int argc, char **argv)
         ++frames;
     }
 cleanup:
+    if (objects)
+        fprintf(stdout,
+            "Wake objects: %llu ticks; %u live (peak %u / %d); %llu emitted, "
+            "%llu expired; %zu bytes; lifetime %u ticks, crest %.2f m\n",
+            (unsigned long long)objects->world.tick, objects->world.live, objects->world.peak_live,
+            BOAT_OBJECT_CAPACITY, (unsigned long long)objects->world.emitted,
+            (unsigned long long)objects->world.expired, sizeof(objects->world), object_life,
+            object_height);
     if (music_ready)
         UnloadMusicStream(music);
     boat_audio_destroy(&audio);

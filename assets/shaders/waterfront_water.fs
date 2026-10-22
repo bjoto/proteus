@@ -81,10 +81,59 @@ vec3 crossingWake(vec2 world, float clock)
 }
 
 
+// BEGIN OBJECT RECIPE -- same signed ridge and derivatives as boat_wake_objects.c.
+uniform int objectWakeEnabled;
+uniform float objectWakeLife;
+uniform sampler2D objectWakeData;
+vec3 objectWakePiece(vec2 p, vec4 a, vec4 b)
+{
+    vec2 delta=p-a.xy, direction=a.zw;
+    float u=dot(delta,direction);
+    if (abs(u)>=b.x) return vec3(0.0);
+    vec2 normal=vec2(-direction.y,direction.x);
+    float v=dot(delta,normal), radius=sqrt(v*v+0.25);
+    float clock=b.y, age=clock-u*b.w;
+    float q=radius-0.9-2.4*age;
+    if (q<=-7.0 || q>=2.0) return vec3(0.0);
+    float inverseWidth=0.25+0.25*step(0.0,q);
+    float crestEdge=max(0.0,1.0-q*q*inverseWidth*inverseWidth);
+    float troughQ=q+4.5;
+    float troughEdge=max(0.0,1.0-troughQ*troughQ/6.25);
+    float shape=crestEdge*crestEdge*crestEdge-0.28*troughEdge*troughEdge*troughEdge;
+    float shapeSlope=-6.0*q*inverseWidth*inverseWidth*crestEdge*crestEdge
+        +0.28*6.0*troughQ/6.25*troughEdge*troughEdge;
+    float riseT=clamp(age/0.65,0.0,1.0);
+    float fallT=clamp((age-(0.75*objectWakeLife-b.x*b.w))/(0.25*objectWakeLife),0.0,1.0);
+    float rise=riseT*riseT*(3.0-2.0*riseT);
+    float fall=1.0-fallT*fallT*(3.0-2.0*fallT);
+    float birth=smoothstep(0.0,0.3,clock);
+    float envelope=birth*rise*fall;
+    float envelopeAge=birth*(6.0*riseT*(1.0-riseT)/0.65*fall
+        -rise*6.0*fallT*(1.0-fallT)/(0.25*objectWakeLife));
+    float angle=3.14159265359*u/(2.0*b.x), c=cos(angle);
+    float window=c*c, windowU=-3.14159265359/b.x*c*sin(angle);
+    vec2 qG=normal*(v/radius)+direction*(2.4*b.w);
+    vec2 gradient=envelope*(direction*(windowU*shape)+qG*(window*shapeSlope))
+        -direction*(b.w*window*shape*envelopeAge);
+    return b.z*vec3(envelope*window*shape,gradient);
+}
+vec3 objectWake(vec2 p)
+{
+    vec3 result=vec3(0.0);
+    for (int i=0; i<128; ++i) {
+        if (i>=playerWakeCount) break;
+        result+=objectWakePiece(p,texelFetch(objectWakeData,ivec2(i,0),0),
+            texelFetch(objectWakeData,ivec2(i,1),0));
+    }
+    return result;
+}
+// END OBJECT RECIPE
+
 // Same owned path history and analytic derivatives as boat_water.c. Each entry is
 // two vec4s: world centre/direction, support half-length/birth/amplitude/inverse speed.
 vec3 playerWake(vec2 p, float clock)
 {
+    if (objectWakeEnabled != 0) return objectWake(p);
     float sum = 0.0, weight = 0.0;
     vec2 sumG = vec2(0.0), weightG = vec2(0.0);
     for (int i = 0; i < playerWakeCount; ++i) {

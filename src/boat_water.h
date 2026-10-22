@@ -2,6 +2,7 @@
 #define PROTEUS_BOAT_WATER_H
 
 #include "boat_wake.h"
+#include "boat_wake_objects.h"
 #include "renderer3d.h"
 
 typedef struct {
@@ -20,6 +21,7 @@ typedef struct {
 
 typedef struct {
     float amplitude, wavelength, angular_speed;
+    const BoatWakeObjects *objects; // Borrowed app-owned arcade world; copies do not own it.
     Vector2 direction;
     Vector2 current; // Uniform flow, or a compact channel when current_width > 0.
     float current_center, current_width; // Simulation X centre and half-width.
@@ -46,7 +48,7 @@ bool boat_water_displaced(BoatWater water);
 // Append a travelled segment. Clear/zero the water settings to discard its entire history.
 void boat_water_emit_wake(
     BoatWater *water, Vector2 start, Vector2 end, float emitted, float duration, float water_speed);
-// Pack live segments into renderer/world-space vec4 arrays for both production and probes.
+// Pack live D3 segments into renderer/world-space vec4 arrays for production and probes.
 int boat_water_wake_uniforms(BoatWater water, float time, float *origins, float *parameters);
 Vector2 boat_water_current(BoatWater water, Vector2 position);
 // One source travels X=-24..24 at Z=-8 plus wake_offset over the first 12 seconds.

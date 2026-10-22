@@ -25,9 +25,15 @@ The first configure downloads the pinned raylib source. Later builds are offline
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
-ctest --test-dir build
+ctest --test-dir build -j 4 --output-on-failure
 ./build/proteus
 ```
+
+The normal suite keeps arcade wakes and gameplay checks enabled. Retired physical wake-field
+experiments are disabled until that work resumes; re-enable with
+`-DPROTEUS_WAKE_FIELD_TESTS=ON`. Numerical validators use `-O2` in Clang/GCC Debug
+builds while retaining assertions; use `-DPROTEUS_OPTIMIZE_TESTS=OFF` for source stepping.
+See [test workflow and timings](docs/TESTING.md) for the fast suite and optional field checks.
 
 Start at a global timeline position, or select a scene and use a scene-local time:
 
@@ -310,30 +316,27 @@ and have no collision yet. Varied foam traces your path and fades; short-lived s
 separates and erodes as it travels aft. Hard turns throw spray
 according to sideways slip. Reset clears both effects. The default basin has no geographic scenery; `--course` adds timed gates, and Eriksberg and river provide mapped scenery.
 
-Physical player wakes are enabled by default in basin, Eriksberg, and river free boating:
+Bounded arcade wake objects are the default in basin, Eriksberg, and river free boating:
 
 ```sh
-./build/boat_study --location river --gpu-aa
-./build/boat_study --demo --gpu-aa
+./build/boat_study --location river --profiler
+./build/boat_study --demo
 ./build/boat_study --no-player-wake
+./build/boat_study --player-wake
 ```
 
-Your travelled path leaves stronger crests at higher water-relative speed. Crests travel
-outward at 3 units/s through a slower 1.6 units/s packet and last about 20 seconds;
-visible geometry, normals, and hull response use the same history. The short-lived foam
-and front spray remain. `--no-player-wake` restores the visual-only player trail;
-`--player-wake` explicitly enables it again. With no other water options, the opt-out
-restores the earlier flat, still-water practice mode.
+Tall crests travel outward, live for sixteen seconds and add together at crossings.
+Visible geometry, normals and hull response sample the same objects. Short-lived foam
+and front spray remain. `--no-player-wake` selects the visual-only player trail and,
+without other water options, flat still-water practice. `--player-wake` explicitly selects
+the legacy D3 model: twenty-second travelled-path packets with 3 units/s crests and
+1.6 units/s envelope spread. `--wake-objects` explicitly selects the new default.
 The default demo accelerates, turns into a loop after 3.5 seconds, crosses its older trail,
-and returns to neutral after 12 seconds. R clears the history and restarts the demo.
-The isolated [W1 wake experiment](docs/WAKE_W1_RESULTS.md) measures this baseline and
-rejects its connected-strip prototype. Its periodic heightfield experiment led to the
-bounded native candidate below; neither changes the default wake.
-Courses, saved replays, and ghosts retain their original water settings automatically;
-explicit `--player-wake` is rejected in those modes to preserve existing comparisons.
+and returns to neutral after 12 seconds. R clears the wake world and restarts the demo.
+Courses, saved replays and ghosts retain their original water settings automatically;
+explicit player-wake modes are rejected in those modes to preserve existing comparisons.
 
-A native, still-water basin candidate is available with `--wake-field`; D3 remains the
-normal default. Use an optimized build for play review (the Debug field is substantially
+A native, still-water basin candidate is available with `--wake-field`. Use an optimized build for play review (the Debug field is substantially
 slower):
 
 ```sh
@@ -351,8 +354,29 @@ record measured cost, storage and limitations. This flag is rejected for mapped 
 current/scripted-source options, courses/replays and the browser. The full-speed source was
 strengthened after initial user feedback; the window identifies `REVIEW 3`. The user reports
 improved feel. [Performance and large-water scaling](docs/WAKE_SCALING_RESULTS.md) are now
-the priority before appearance work; this candidate still simulates only the bounded basin.
-The default-switch decision remains separate.
+historical field-track evidence; this candidate still simulates only the bounded basin.
+The field candidate remains opt-in.
+
+The default **arcade wake objects** build tall, rideable jump waves:
+
+```sh
+./build/review/boat_study --wake-objects --profiler
+./build/review/boat_study --wake-objects-crossing --profiler
+./build/review/boat_study --wake-objects --wake-height 1.2 --wake-life-ticks 1440
+```
+
+The default crest scale is 1.8 m and pieces live for 1920 ticks (16 seconds). Nearby
+pieces add directly, so crossings can produce taller waves. Half-second emission, smoothed
+strength and age-aligned fading reduce visible packet joins; the sixteen-second lifetime
+is retained. `--wake-height` accepts
+.1–3 m; `--wake-life-ticks` accepts 240–1920. `R` clears the shared wake world and
+restarts the optional crossing boat. The extra craft follows a basin loop and shares
+the same water/contact queries; it does not add hard hull collision with the player.
+Ordinary object mode also supports Eriksberg/river, waves and current. Course/replay/ghost,
+field mode and explicit D3 `--player-wake` combinations are rejected. The HUD identifies
+object mode. [Object-mode results](docs/WAKE_OBJECT_RESULTS.md) own behavior, performance,
+verification and remaining issues. The user selected this as the default after enjoying
+the continuity revision; occasional waves appearing stuck remain an open issue.
 
 Currents and the separate scripted crossing wake remain opt-in in **all three locations**:
 

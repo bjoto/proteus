@@ -7,7 +7,8 @@
 Superseded runtime selection: the [native basin candidate](WAKE_CANDIDATE_RESULTS.md) now
 uses exact rectangular cosine evaluation and is integrated behind `--wake-field`. The
 measurements below describe the original graph/direct-GPU checkpoint, not the current
-candidate's total cost. D3 remains default and the 2 ms integrated target still fails.
+candidate's total cost. At that checkpoint D3 remained default and the 2 ms integrated target failed.
+[Arcade wake objects](WAKE_OBJECT_RESULTS.md) now provide the free-boating default.
 
 **Decision: the current order-256 operator fails the provisional 2 ms per rendered
 60 Hz frame budget on both CPU and the direct fragment-shader GPU prototype.**

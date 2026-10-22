@@ -200,6 +200,8 @@ void boat_gpu_draw_with_ghost(
     waterfront_gpu_scene_draw(&gpu->scene, &frame, target.texture.width, target.texture.height);
     EndTextureMode();
 restore_water:
+    if (boat->water_settings.objects && !gpu->scene.object_wakes.id)
+        gpu->failed = true;
     if (boat->wake_surface
         && (!gpu->wake_texture.id || !gpu->wave_mesh.vaoId || !gpu->wave_mesh_extra.vaoId))
         gpu->failed = true;

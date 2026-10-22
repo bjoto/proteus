@@ -7,6 +7,8 @@ set(CMAKE_C_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(PROTEUS_GPU_TESTS "Enable GPU-context CTest cases and the GPU review target" OFF)
+option(PROTEUS_WAKE_FIELD_TESTS "Enable retired physical wake-field and prototype experiments" OFF)
+option(PROTEUS_OPTIMIZE_TESTS "Optimize numerical validators in Debug, retaining assertions" ON)
 
 if(EMSCRIPTEN)
   set(PLATFORM Web CACHE STRING "" FORCE)
@@ -29,7 +31,7 @@ if(APPLE)
 endif()
 
 set(PROTEUS_BOAT_WORLD_SOURCES
-  src/boat_water.c src/boat_wake.c src/boat_wake_player.c src/boat_course.c src/boat_replay.c src/boat_map.c
+  src/boat_water.c src/boat_wake_objects.c src/boat_wake.c src/boat_wake_player.c src/boat_course.c src/boat_replay.c src/boat_map.c
   src/waterfront.c src/waterfront_scene.c src/waterfront_corner.c)
 set(PROTEUS_HARBOR_SOURCES
   src/boat_flag.c src/boat_model.c src/waterfront_harbor.c src/waterfront_traffic.c)
@@ -143,6 +145,16 @@ if(NOT MSVC)
 endif()
 add_test(NAME wake_runtime_cadence COMMAND wake_runtime_review --check)
 
+# Compact representation diagnostic only; no player or renderer dependency.
+add_executable(wake_packet_review tools/wake_packet_review.c src/boat_wake.c)
+target_include_directories(wake_packet_review PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_options(wake_packet_review PRIVATE
+  $<$<C_COMPILER_ID:AppleClang,Clang,GNU>:-Wall;-Wextra;-Wpedantic>)
+if(NOT MSVC)
+  target_link_libraries(wake_packet_review PRIVATE m)
+endif()
+add_test(NAME wake_packet_contracts COMMAND wake_packet_review --check)
+
 add_executable(wake_candidate_review tools/wake_candidate_review.c src/boat_wake.c src/boat_wake_player.c)
 target_include_directories(wake_candidate_review PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_options(wake_candidate_review PRIVATE
@@ -184,6 +196,25 @@ target_link_libraries(wake_play_review PRIVATE raylib)
 target_compile_options(wake_play_review PRIVATE
   $<$<C_COMPILER_ID:AppleClang,Clang,GNU>:-Wall;-Wextra;-Wpedantic>)
 add_dependencies(wake_play_review proteus_assets)
+add_executable(wake_objects_review tools/wake_objects_review.c src/boat.c src/renderer3d.c
+  src/boat_gpu.c src/renderer_gpu.c ${PROTEUS_BOAT_WORLD_SOURCES} ${PROTEUS_HARBOR_SOURCES})
+target_include_directories(wake_objects_review PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${raylib_SOURCE_DIR}/src)
+target_link_libraries(wake_objects_review PRIVATE raylib)
+target_compile_options(wake_objects_review PRIVATE
+  $<$<C_COMPILER_ID:AppleClang,Clang,GNU>:-Wall;-Wextra;-Wpedantic>)
+add_dependencies(wake_objects_review proteus_assets)
+add_test(NAME wake_objects_contracts_jumps COMMAND wake_objects_review)
+set_tests_properties(wake_objects_contracts_jumps PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} TIMEOUT 120)
+if(PROTEUS_GPU_TESTS)
+  add_test(NAME wake_objects_gpu COMMAND wake_objects_review --gpu)
+  set_tests_properties(wake_objects_gpu PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    LABELS "gpu" RUN_SERIAL TRUE TIMEOUT 120)
+endif()
+add_test(NAME wake_objects_course_rejected COMMAND boat_study --wake-objects --course)
+add_test(NAME wake_objects_mixed_rejected COMMAND boat_study --wake-objects --wake-field)
+add_test(NAME wake_objects_lifetime_rejected COMMAND boat_study --wake-objects --wake-life-ticks 1921)
+set_tests_properties(wake_objects_course_rejected wake_objects_mixed_rejected
+  wake_objects_lifetime_rejected PROPERTIES WILL_FAIL TRUE)
 add_test(NAME wake_candidate_boat COMMAND wake_play_review)
 add_test(NAME wake_candidate_crossing COMMAND wake_play_review --crossing)
 set_tests_properties(wake_candidate_boat PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} TIMEOUT 180)
@@ -254,11 +285,14 @@ add_test(NAME boat_environment_river_screenshot COMMAND boat_study --renderer cp
 set_tests_properties(boat_environment_course_rejected PROPERTIES WILL_FAIL TRUE)
 add_test(NAME boat_default_player_wake_screenshot COMMAND boat_study --renderer cpu --time 9
   --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-default-player-wake.png)
-set_tests_properties(boat_default_player_wake_screenshot boat_player_wake_screenshot
+add_test(NAME boat_object_wake_screenshot COMMAND boat_study --renderer cpu --wake-objects --time 9
+  --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-object-wake.png)
+set_tests_properties(boat_object_wake_screenshot PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(boat_default_player_wake_screenshot boat_object_wake_screenshot
   PROPERTIES FIXTURES_SETUP player_wake_defaults)
 add_test(NAME boat_default_wake_matches_explicit COMMAND ${CMAKE_COMMAND} -E compare_files
   ${CMAKE_CURRENT_BINARY_DIR}/boat-default-player-wake.png
-  ${CMAKE_CURRENT_BINARY_DIR}/boat-player-wake.png)
+  ${CMAKE_CURRENT_BINARY_DIR}/boat-object-wake.png)
 set_tests_properties(boat_default_wake_matches_explicit PROPERTIES FIXTURES_REQUIRED player_wake_defaults)
 add_test(NAME boat_water_route COMMAND boat_water_review --check)
 add_test(NAME boat_water_wave_route COMMAND boat_water_review --check --waves)
@@ -367,7 +401,7 @@ target_compile_options(waterfront_storyboard PRIVATE
 add_test(NAME waterfront_storyboard_is_valid COMMAND waterfront_storyboard --check)
 add_executable(validate_harbor tools/validate_harbor.c src/boat.c src/renderer3d.c
   src/boat_flag.c src/boat_model.c src/waterfront_harbor.c src/waterfront_traffic.c
-  src/boat_water.c src/boat_wake.c src/boat_map.c
+  src/boat_water.c src/boat_wake_objects.c src/boat_wake.c src/boat_map.c
   src/boat_course.c src/boat_replay.c src/waterfront.c src/waterfront_scene.c src/waterfront_corner.c)
 target_include_directories(validate_harbor PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(validate_harbor PRIVATE raylib)
@@ -377,7 +411,7 @@ add_test(NAME harbor_geometry COMMAND validate_harbor)
 
 add_executable(validate_traffic tools/validate_traffic.c src/boat.c src/renderer3d.c
   src/boat_flag.c src/boat_model.c src/waterfront_harbor.c src/waterfront_traffic.c
-  src/boat_water.c src/boat_wake.c src/boat_map.c
+  src/boat_water.c src/boat_wake_objects.c src/boat_wake.c src/boat_map.c
   src/boat_course.c src/boat_replay.c src/waterfront.c src/waterfront_scene.c src/waterfront_corner.c)
 target_include_directories(validate_traffic PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(validate_traffic PRIVATE raylib)
@@ -406,7 +440,7 @@ foreach(target proteus gpu_fixture validate_boat validate_boat_banking validate_
 endforeach()
 foreach(target proteus gpu_fixture waterfront_storyboard validate_waterfront_actors
     validate_city_dressing harbor_review)
-  target_sources(${target} PRIVATE src/boat_water.c src/boat_wake.c)
+  target_sources(${target} PRIVATE src/boat_water.c src/boat_wake_objects.c src/boat_wake.c)
 endforeach()
 
 add_executable(validate_renderer3d tools/validate_renderer3d.c src/renderer3d.c)
@@ -552,4 +586,31 @@ if(Python3_Interpreter_FOUND)
     --baseline $<TARGET_FILE:wake_baseline>)
   add_test(NAME wake_heightfield_prototype COMMAND ${Python3_EXECUTABLE}
     ${CMAKE_CURRENT_SOURCE_DIR}/tools/wake_heightfield_review.py --check)
+endif()
+
+# Retired physical-field research is opt-in; arcade objects stay in the normal suite.
+set(PROTEUS_WAKE_FIELD_CASES
+  boat_wake_owned_field wake_field_refinement wake_runtime_cadence wake_packet_contracts
+  wake_candidate_backend_queries wake_candidate_moving_source wake_gpu_runtime
+  wake_candidate_boat wake_candidate_crossing wake_candidate_gpu
+  wake_candidate_course_rejected wake_candidate_map_rejected wake_candidate_current_rejected
+  wake_front_prototype wake_heightfield_prototype)
+foreach(test IN LISTS PROTEUS_WAKE_FIELD_CASES)
+  if(TEST ${test})
+    set_property(TEST ${test} APPEND PROPERTY LABELS wake_field)
+    if(NOT PROTEUS_WAKE_FIELD_TESTS)
+      set_property(TEST ${test} PROPERTY DISABLED TRUE)
+    endif()
+  endif()
+endforeach()
+
+# Long deterministic physics runs need optimization even in the development build.
+# This does not define NDEBUG or enable fast-math; all assertions/scenarios remain.
+# Turn this off for instruction-by-instruction debugging of these executables.
+if(PROTEUS_OPTIMIZE_TESTS)
+  foreach(target validate_boat validate_boat_banking validate_boat_turn_entry
+      validate_boat_environment validate_boat_replay boat_water_review wake_objects_review)
+    target_compile_options(${target} PRIVATE
+      $<$<AND:$<CONFIG:Debug>,$<C_COMPILER_ID:AppleClang,Clang,GNU>>:-O2>)
+  endforeach()
 endif()

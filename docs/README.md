@@ -1,6 +1,6 @@
 # Documentation and current plans
 
-Current status reconciled on 2026-10-21. The main demo is a four-minute Eriksberg
+Current status reconciled on 2026-10-22. The main demo is a four-minute Eriksberg
 journey following five gulls to “Below the surface” at 120 BPM. The separate
 `boat_study`, with quiet engine/water audio and a gentle XM background loop, provides free boating and a basin time trial.
 Both default to GPU rendering; the CPU reference supports display-free captures.
@@ -12,7 +12,7 @@ Both default to GPU rendering; the CPU reference supports display-free captures.
 | [Boating foundations](BOATING_FOUNDATIONS_PLAN.md) | P1 frame/tick instrumentation implemented; later phases pending | P2: repeatable benchmark/report tool and renderer counters; then baseline, clock correction, explicit world ownership, and simulation/presentation separation |
 | [Boating design](BOATING_PLAN.md) | Basin, Eriksberg, and river locations; timed S course, recordings, persistent bests, ghosts, replays, full-window presentation with modal `?` help, quiet engine/water audio with a joyful repeating XM, and a user-accepted wind-driven Swedish ensign | [Boat visual improvement](BOATING_PLAN.md#boat-visual-improvement--saved-2026-10-20) saved for later: cabin/hull shapes and palette; optional closer-camera comparison, score-loop, and archipelago remain proposals |
 | [Boat physics](BOAT_PHYSICS_PLAN.md) | A–D3 plus accepted H1/H2 countersteering and speed view; T1–T5 load-driven banking and quicker recovery; user-accepted H3 firmer planing hull grip for stern-led turns, revision 4 | [H3 carving pass](BOAT_PHYSICS_PLAN.md#h3--stern-led-carving-feel-2026-10-20): feel accepted on 2026-10-20; exhaustive hands-on/platform checks unverified; optional trim/loading not started |
-| [Wake rewrite](WAKE_REWRITE_PLAN.md) | Opt-in basin candidate with positive user feedback; real DFT/cache optimization reduces measured physics from 8.91 to 6.31 ms/frame; D3 remains default | W3.S sparse representation and large-world travel/return proof take priority over appearance; 2 ms target still fails; mapped/current/browser support and W5 remain pending; [scaling evidence](WAKE_SCALING_RESULTS.md) |
+| [Wake rewrite](WAKE_REWRITE_PLAN.md) | Arcade wake objects are the free-boating default by user request; half-second pieces, smoother strength and aligned fading, bounded to 128 objects | Investigate occasional stuck-looking waves; preserve fun and monitor cost; [continuity/default results](WAKE_OBJECT_SMOOTHING.md#default-promotion) |
 | [Living city](LIVING_CITY_PLAN.md) | 01–05: city dressing, materials, berths, shared actors; travelling boats and a compact ferry brought forward; demo flock and 32 reactive boating gulls | 06 people/cyclists; varied road traffic, building activity, ferry polish, perched gulls, and final review remain |
 | [River / Älvsborgsbron](eriksberg/bridge/README.md) | Separate source/crop, navigable bridge blockout, blocking tower legs, and grounded road approaches | Bridge/shoreline/building refinement; human handling and camera review |
 | [GPU migration](GPU_WATERFRONT_PLAN.md) | Steps 01–12 implemented; GPU default, lighting, shadows, atmosphere, reflections, and regression checks | Migration is implemented; other-platform and human visual acceptance remain separate from automated checks |
@@ -49,12 +49,46 @@ does not authorize advancing every plan. Use the requested track's scope and acc
 
 ## Verification baseline
 
+Routine test selection and timings are owned by [the test workflow](TESTING.md).
+On 2026-10-22, M1 Max/macOS, all 83 active cases (20 GPU) pass in 97.40 s, down from
+748.21 s for the old 98-case serial suite. Fifteen retired physical-field experiments
+are disabled by default; arcade/gameplay coverage remains active. Debug numerical
+validators retain assertions with optimization. Use four CPU jobs; graphics cases
+retain serial scheduling.
+
+
+Wake continuity revision, 2026-10-22, macOS / M1 Max: Debug/optimized builds, all 97
+CTest cases (23 GPU checks), final focused object checks, portable ASan/UBSan and the
+Emscripten build pass. Before/after basin/river GPU and current basin CPU captures were
+inspected; visible scripted jumping/landing completes. [Continuity results](WAKE_OBJECT_SMOOTHING.md)
+own the denser/smoother source, 128-piece bound, .37–.40 ms observed cost increase,
+verification and limits. The user subsequently enjoyed this revision and requested it as
+the default; [default promotion](WAKE_OBJECT_SMOOTHING.md#default-promotion) owns the switch
+and the remaining stuck-wave report.
+
+Initial arcade wake objects, 2026-10-22, macOS / M1 Max: Debug/optimized builds and all 97 CTest
+cases pass after correcting/rerunning the object GPU comparison, including 23 GPU checks.
+Portable ASan/UBSan, bounded four-emitter stress, actual jumping/recovery, CPU/GPU recipe
+parity, inspected captures, a visible scripted run and the Emscripten build pass. [Object results](WAKE_OBJECT_RESULTS.md)
+own exact evidence and scope. The user subsequently reported enjoying the mode;
+[continuity follow-up](WAKE_OBJECT_SMOOTHING.md) owns the subsequent revision and default promotion.
+
+Earlier compact packet experiment, 2026-10-22, macOS / M1 Max: Debug build and all 92 CTest
+cases pass across split runs, including 22 GPU checks after resuming with desktop access.
+Portable packet ASan/UBSan contracts, four quadrature sweeps, doubled-reference control,
+inspected diagnostic plots and documentation checks pass. [Packet results](WAKE_PACKET_RESULTS.md)
+record the fixed-quadrature rejection, strong returning encounter and remaining limits.
+At that checkpoint large-world runtime acceptance and the 2 ms target remained open.
+The subsequent arcade direction above supersedes its proposed next task; D3 remained default
+at this historical checkpoint.
+
 Wake performance follow-up, 2026-10-21, macOS / M1 Max: Debug configure/build and all
 91 CTests passed, including 22 GPU checks (349.92 s). Native and portable sanitizer checks,
 identical CPU/GPU captures, scripted desktop animation and the Emscripten baseline build
 pass. [Scaling results](WAKE_SCALING_RESULTS.md) record the 29.2% measured physics reduction,
-frame percentiles, size sweep and remaining limits. The 2 ms target still fails; large-world
-simulation is the next experiment, and D3 remains default.
+frame percentiles, size sweep and remaining limits. At that checkpoint the 2 ms target
+failed and large-world simulation remained open. The subsequent [packet experiment](WAKE_PACKET_RESULTS.md)
+then narrowed the physical-track proposal; arcade object play review is now the active task.
 
 Wake candidate, 2026-10-21, macOS / M1 Max: Debug configure/build and all 91 CTests passed,
 including 22 GPU checks. Matched 80 s boundary/island and 160 s basin-domain proofs,
@@ -62,7 +96,7 @@ source/query convergence, physical crossing/recovery, CPU/GPU captures, Instrume
 scripted desktop animation, portable sanitizers and browser-baseline smoke checks are recorded
 in [candidate results](WAKE_CANDIDATE_RESULTS.md). The user reports revision 3 looks and feels
 much better; the subsequent [performance/large-water follow-up](WAKE_SCALING_RESULTS.md)
-takes priority over water appearance. The 2 ms wake target fails, D3 remains
+takes priority over water appearance. At that checkpoint the 2 ms wake target failed and D3 remained
 default, and broader scenario/platform review is not inferred from these checks.
 
 Swedish flag, 2026-10-20, macOS: Debug build and all 77 CTests passed, including 20 GPU
@@ -139,7 +173,7 @@ assessment, or musical acceptance. See the owning plans for existing manual evid
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DPROTEUS_GPU_TESTS=ON
 cmake --build build -j
-ctest --test-dir build --output-on-failure
+ctest --test-dir build -j 4 --output-on-failure
 ```
 
 GPU tests require a desktop graphics context. In display-free environments configure a separate

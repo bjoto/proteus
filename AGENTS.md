@@ -29,8 +29,14 @@ The first configure fetches pinned raylib 6.0 sources and therefore needs networ
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
 cmake --build build -j
-ctest --test-dir build --output-on-failure
+ctest --test-dir build -j 4 --output-on-failure
 ```
+
+The routine suite disables retired physical wake-field experiments by default
+(`PROTEUS_WAKE_FIELD_TESTS=OFF`); re-enable them only when revisiting that work.
+Arcade-wake and gameplay checks remain active. Numerical validators retain assertions
+with optimization in Clang/GCC Debug builds; `PROTEUS_OPTIMIZE_TESTS=OFF` restores
+unoptimized validator debugging. See `docs/TESTING.md` for timings and opt-in commands.
 
 Run the demo from the repository root so its relative asset paths resolve:
 

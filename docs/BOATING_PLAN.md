@@ -187,7 +187,9 @@ surfaces. Free boating in every location now enables physical player wakes by de
 profiles also work in all locations, with an authored river source/channel for mapped views.
 They reject course/replay/ghost modes, which retain their existing water settings. See
 [Phase D](BOAT_PHYSICS_PLAN.md#phase-d--currents-and-crossing-wakes).
-Player crests travel at 3 units/s through a slower packet and persist about 20 seconds.
+Default arcade wake pieces live for sixteen seconds and add signed height at crossings.
+`--player-wake` selects the legacy D3 model, whose crests travel at 3 units/s through a
+slower packet and persist about twenty seconds. See [the wake plan](WAKE_REWRITE_PLAN.md).
 Harbor traffic still leaves visual foam only.
 A spreading, fading wake traces the travelled path, with varied foam patches and short-lived
 stern wash that separates and erodes; planing broadens the trail and adds symmetric spray
@@ -583,8 +585,8 @@ three angular rates. Faster crossings increase the load and bow spray; slowing d
 response. Foam follows the local surface slope as well as height. Flat mode retains C2 handling.
 This remains a support-spring/normal-damping model, without displaced hull volumes, orbital flow,
 ventilation, or capsize behavior. The user accepted Phase C after playtesting. Its default baseline
-remains available through `--no-player-wake`; Phase D player wakes are now the free-boating
-default, while currents/scripted sources remain opt-in. See
+remains available through `--no-player-wake`; bounded arcade wake objects are now the free-boating
+default (`--player-wake` selects legacy Phase D wakes), while currents/scripted sources remain opt-in. See
 [the physics plan](BOAT_PHYSICS_PLAN.md#phase-c--buoyancy-and-gentle-waves).
 
 The GPU's boat-level water pass now uses a clipped near patch and a much smaller flat

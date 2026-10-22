@@ -1,0 +1,486 @@
+/* Arcade wake contracts, actual hull jumps, bounded stress and complete GPU timing. */
+#include "boat_gpu.h"
+#include "external/glad.h"
+#include "raymath.h"
+#include "rlgl.h"
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+#define CHECK(x)                                                                                   \
+    do {                                                                                           \
+        if (!(x)) {                                                                                \
+            fprintf(stderr, "FAIL %d: %s\n", __LINE__, #x);                                        \
+            exit(1);                                                                               \
+        }                                                                                          \
+    } while (0)
+
+static void track(BoatWakeObjects *w, const Boat *boat)
+{
+    BoatWakeStern s = boat_wake_stern(boat);
+    CHECK(boat_wake_objects_track(
+        w, 0, (Vector2) { (float)s.x, (float)s.z }, (float)hypot(s.vx, s.vz), (float)s.wet));
+}
+
+static BoatWakeObjects seed(void)
+{
+    BoatWakeObjects w;
+    CHECK(boat_wake_objects_init(&w, BOAT_OBJECT_LIFE_TICKS, 1.8f));
+    CHECK(boat_wake_objects_track(&w, 0, (Vector2) { -7.5f, 0 }, 15, 1));
+    for (unsigned t = 1; t <= BOAT_OBJECT_EMIT_TICKS; ++t) {
+        boat_wake_objects_advance(&w);
+        CHECK(boat_wake_objects_track(
+            &w, 0, (Vector2) { -7.5f + t * (15.0f / BOAT_OBJECT_EMIT_TICKS), 0 }, 30, 1));
+    }
+    CHECK(w.live == 1);
+    for (unsigned t = 0; t < 120; ++t)
+        boat_wake_objects_advance(&w);
+    return w;
+}
+
+static void contracts(void)
+{
+    BoatWakeObjects a = seed(), b = a, sum = a;
+    Vector2 p = { 2.8f, 2.8f };
+    b.objects[0].direction = (Vector2) { 0, 1 };
+    sum.objects[BOAT_OBJECT_PER_BOAT] = b.objects[0];
+    sum.live = 2;
+    BoatWakeObjectSample x = boat_wake_objects_query(&a, p);
+    BoatWakeObjectSample y = boat_wake_objects_query(&b, p);
+    BoatWakeObjectSample q = boat_wake_objects_query(&sum, p);
+    CHECK(fabsf(q.height - x.height - y.height) < 1e-6 && q.height > 3);
+    CHECK(Vector2Length(Vector2Subtract(q.gradient, Vector2Add(x.gradient, y.gradient))) < 1e-6);
+    CHECK(fabsf(q.vertical_velocity - x.vertical_velocity - y.vertical_velocity) < 1e-6);
+    float eps = .002f;
+    for (unsigned i = 0; i < 40; ++i) {
+        p = (Vector2) { -6 + i * .29f, 2 + i * .081f };
+        q = boat_wake_objects_query(&sum, p);
+        float dx = (boat_wake_objects_query(&sum, (Vector2) { p.x + eps, p.y }).height
+                       - boat_wake_objects_query(&sum, (Vector2) { p.x - eps, p.y }).height)
+            / (2 * eps);
+        CHECK(fabsf(dx - q.gradient.x) < .002f);
+        BoatWakeObjects before = sum, after = sum;
+        --before.tick;
+        ++after.tick;
+        float dt = (boat_wake_objects_query(&after, p).height
+                       - boat_wake_objects_query(&before, p).height)
+            * 60;
+        CHECK(fabsf(dt - q.vertical_velocity) < .003f);
+    }
+    /* Cancellation and remote queries never rewrite or normalize a crossing. */
+    sum.objects[BOAT_OBJECT_PER_BOAT] = sum.objects[0];
+    sum.objects[BOAT_OBJECT_PER_BOAT].amplitude *= -1;
+    CHECK(boat_wake_objects_query(&sum, p).height == 0);
+    q = boat_wake_objects_query(&a, p);
+    (void)boat_wake_objects_query(&a, (Vector2) { 1000000, -1000000 });
+    CHECK(boat_wake_objects_query(&a, p).height == q.height);
+    uint64_t before_emitted = a.emitted;
+    CHECK(!boat_wake_objects_track(&a, 4, p, 15, 1));
+    CHECK(!boat_wake_objects_track(&a, 1, p, NAN, 1));
+    CHECK(a.emitted == before_emitted);
+    a.tick = a.objects[0].born + a.life_ticks - 1;
+    CHECK(fabsf(boat_wake_objects_query(&a, (Vector2) { 0, 39 }).height) < .00005f);
+    boat_wake_objects_advance(&a);
+    CHECK(a.live == 0 && a.expired == 1 && boat_wake_objects_query(&a, p).height == 0);
+    CHECK(!boat_wake_objects_init(&a, BOAT_OBJECT_LIFE_TICKS + 1, 1.8f));
+    puts("object contracts: signed crossing >3m, derivatives, phase, expiry and validation pass");
+}
+
+static void continuity(void)
+{
+    BoatWakeObjects w;
+    CHECK(boat_wake_objects_init(&w, BOAT_OBJECT_LIFE_TICKS, 1.8f));
+    CHECK(boat_wake_objects_track(&w, 0, (Vector2) { 0 }, 15, 1));
+    for (unsigned tick = 1; tick <= 300; ++tick) {
+        boat_wake_objects_advance(&w);
+        BoatWakeObjects before = w;
+        unsigned phase = tick % BOAT_OBJECT_EMIT_TICKS;
+        float wet = phase >= BOAT_OBJECT_EMIT_TICKS - 6 || phase == 0 ? .1f : 1;
+        CHECK(boat_wake_objects_track(&w, 0, (Vector2) { tick * .125f, 0 }, 15, wet));
+        if (w.emitted != before.emitted) {
+            // Birth must not insert a visible strip into the already-published surface.
+            for (unsigned j = 0; j < 12; ++j) {
+                Vector2 p = { tick * .125f - j, .3f * j };
+                CHECK(fabsf(boat_wake_objects_query(&w, p).height
+                          - boat_wake_objects_query(&before, p).height)
+                    < 1e-6f);
+            }
+        }
+    }
+    float minimum = 3, change = 0;
+    for (unsigned i = 0; i < 5; ++i) {
+        minimum = fminf(minimum, w.objects[i].amplitude);
+        if (i)
+            change = fmaxf(change, fabsf(w.objects[i].amplitude - w.objects[i - 1].amplitude));
+    }
+    CHECK(w.emitted == 5 && minimum > 1.5f && change < .18f);
+    uint64_t emitted = w.emitted;
+    for (unsigned j = 0; j < 60; ++j) {
+        boat_wake_objects_advance(&w);
+        CHECK(boat_wake_objects_track(&w, 0, (Vector2) { 37.5f + j * .125f, 0 }, 15, 0));
+    }
+    CHECK(w.emitted == emitted); // Smoothing must never emit a wake from a dry boat.
+
+    // The denser straight-running windows still partition one full-height crest.
+    w = seed();
+    w.objects[1] = w.objects[0];
+    w.objects[1].position.x += 15;
+    w.objects[1].born += BOAT_OBJECT_EMIT_TICKS;
+    w.tick = w.objects[0].born + 240;
+    float ripple = 0;
+    for (unsigned i = 0; i <= 100; ++i) {
+        float x = i * .15f;
+        float age = 2 - x * w.objects[0].inverse_speed;
+        float radius = .9f + 2.4f * age;
+        float h
+            = boat_wake_objects_query(&w, (Vector2) { x, sqrtf(radius * radius - .25f) }).height;
+        ripple = fmaxf(ripple, fabsf(h - w.objects[0].amplitude));
+    }
+    CHECK(ripple < .00001f);
+    float gradient_error = 0, time_error = 0;
+    for (unsigned phase = 0; phase < 2; ++phase) {
+        w = seed();
+        w.tick = w.objects[0].born + (phase ? 1590 : 30);
+        for (unsigned i = 0; i < 30; ++i) {
+            Vector2 p = { -4 + i * .27f, (phase ? 32 : 1) + i * .05f };
+            float eps = .002f;
+            BoatWakeObjectSample q = boat_wake_objects_query(&w, p);
+            float gx = (boat_wake_objects_query(&w, (Vector2) { p.x + eps, p.y }).height
+                           - boat_wake_objects_query(&w, (Vector2) { p.x - eps, p.y }).height)
+                / (2 * eps);
+            gradient_error = fmaxf(gradient_error, fabsf(gx - q.gradient.x));
+            BoatWakeObjects before = w, after = w;
+            --before.tick;
+            ++after.tick;
+            float vt = (boat_wake_objects_query(&after, p).height
+                           - boat_wake_objects_query(&before, p).height)
+                * 60;
+            time_error = fmaxf(time_error, fabsf(vt - q.vertical_velocity));
+        }
+    }
+    CHECK(gradient_error < .003f && time_error < .02f);
+    printf("continuity: brief wetness dips retain %.4gm, adjacent strength delta %.4gm, "
+           "straight crest ripple %.4gm, growth/fade gradient error %.4g, time error %.4g\n",
+        minimum, change, ripple, gradient_error, time_error);
+}
+
+static void stress(void)
+{
+    BoatWakeObjects w;
+    CHECK(boat_wake_objects_init(&w, BOAT_OBJECT_LIFE_TICKS, 1.8f));
+    float maximum = 0;
+    for (unsigned tick = 0; tick < 120 * 180; ++tick) {
+        boat_wake_objects_advance(&w);
+        float t = tick / 120.0f;
+        for (unsigned boat = 0; boat < 4; ++boat) {
+            /* Widely separated world origins and repeated tight turns. */
+            Vector2 p = { boat * 100000.0f + 15 * cosf(t), 15 * sinf(t) };
+            CHECK(boat_wake_objects_track(&w, boat, p, 15, 1));
+            float h = boat_wake_objects_query(&w, p).height;
+            CHECK(isfinite(h));
+            maximum = fmaxf(maximum, fabsf(h));
+        }
+        CHECK(w.live <= BOAT_OBJECT_CAPACITY);
+    }
+    CHECK(w.peak_live == BOAT_OBJECT_CAPACITY && w.expired > 600);
+    printf("four-boat 180s loop stress: peak %u/%d objects, %llu expired, %zu bytes, local peak "
+           "%.4gm\n",
+        w.peak_live, BOAT_OBJECT_CAPACITY, (unsigned long long)w.expired, sizeof(w), maximum);
+}
+
+static void jumps(void)
+{
+    BoatWakeObjects world = seed(), flat;
+    CHECK(boat_wake_objects_init(&flat, BOAT_OBJECT_LIFE_TICKS, 1.8f));
+    Boat receiver;
+    boat_reset(&receiver);
+    receiver.position = (Vector2) { 0, 14 };
+    receiver.velocity = (Vector2) { 0, -16 };
+    receiver.throttle = receiver.engine_response = .7f;
+    receiver.planing = 1;
+    receiver.water_settings.objects = &world;
+    Boat calm = receiver;
+    calm.water_settings.objects = &flat;
+    float height = 0, lift = 0;
+    unsigned dry = 0;
+    for (unsigned t = 0; t < 600; ++t) {
+        boat_wake_objects_advance(&world);
+        boat_wake_objects_advance(&flat);
+        boat_step(&receiver, 0, 0);
+        boat_step(&calm, 0, 0);
+        height = fmaxf(height, receiver.height - calm.height);
+        lift = fmaxf(lift, receiver.vertical_velocity);
+        dry += boat_wake_stern(&receiver).wet == 0;
+        CHECK(isfinite(receiver.height) && fabsf(receiver.height) < 8);
+    }
+    printf("real hull crossing: height above calm %.4gm, launch %.4gm/s, dry stern %u ticks\n",
+        height, lift, dry);
+    CHECK(height > .6f && lift > 2 && dry > 10);
+    for (unsigned t = 0; t < 2400; ++t) {
+        boat_wake_objects_advance(&world);
+        float neutral = Clamp(-receiver.throttle / (.5f * BOAT_STEP), -1, 1);
+        boat_step(&receiver, 0, neutral);
+        CHECK(isfinite(receiver.height) && fabsf(receiver.height) < 8);
+    }
+    CHECK(world.live == 0 && fabsf(receiver.vertical_velocity) < .2f);
+}
+
+static float diagonal_jump(bool crossing)
+{
+    BoatWakeObjects world = seed(), flat;
+    CHECK(boat_wake_objects_init(&flat, BOAT_OBJECT_LIFE_TICKS, 1.8f));
+    if (crossing) {
+        world.objects[BOAT_OBJECT_PER_BOAT] = world.objects[0];
+        world.objects[BOAT_OBJECT_PER_BOAT].direction = (Vector2) { 0, 1 };
+        world.live = 2;
+    }
+    Boat boat;
+    boat_reset(&boat);
+    boat.position = (Vector2) { 12, 12 };
+    boat.heading = -PI / 4;
+    boat.velocity = (Vector2) { -11.3137f, -11.3137f };
+    boat.throttle = boat.engine_response = .7f;
+    boat.planing = 1;
+    boat.water_settings.objects = &world;
+    Boat calm = boat;
+    calm.water_settings.objects = &flat;
+    float peak = 0;
+    for (unsigned tick = 0; tick < 720; ++tick) {
+        boat_wake_objects_advance(&world);
+        boat_wake_objects_advance(&flat);
+        boat_step(&boat, 0, 0);
+        boat_step(&calm, 0, 0);
+        CHECK(isfinite(boat.height) && fabsf(boat.height) < 40);
+        peak = fmaxf(peak, boat.height - calm.height);
+    }
+    return peak;
+}
+
+static int compare_time(const void *a, const void *b)
+{
+    double x = *(const double *)a, y = *(const double *)b;
+    return (x > y) - (x < y);
+}
+
+static void shader_checks(const BoatWakeObjects *w, float probe_z)
+{
+    const char *paths[]
+        = { "assets/shaders/waterfront_water.vs", "assets/shaders/waterfront_water.fs" };
+    const char *vertex = "#version 330\nvoid main(){vec2 p=vec2((gl_VertexID<<1)&2,gl_VertexID&2);"
+                         "gl_Position=vec4(2*p-1,0,1);}";
+    GLuint tex, fb, vao, records_texture;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 1, 1, 0, GL_RGBA, GL_FLOAT, NULL);
+    glGenFramebuffers(1, &fb);
+    glBindFramebuffer(GL_FRAMEBUFFER, fb);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex, 0);
+    CHECK(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
+    glGenVertexArrays(1, &vao);
+    glBindVertexArray(vao);
+    float records[BOAT_OBJECT_CAPACITY * 8] = { 0 };
+    int count = boat_wake_objects_pack(w, records, records + BOAT_OBJECT_CAPACITY * 4);
+    glGenTextures(1, &records_texture);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, records_texture);
+    glTexImage2D(
+        GL_TEXTURE_2D, 0, GL_RGBA32F, BOAT_OBJECT_CAPACITY, 2, 0, GL_RGBA, GL_FLOAT, records);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glActiveTexture(GL_TEXTURE0);
+    glViewport(0, 0, 1, 1);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_CULL_FACE);
+    glDisable(GL_BLEND);
+    for (unsigned stage = 0; stage < 2; ++stage) {
+        char *source = LoadFileText(paths[stage]);
+        CHECK(source);
+        char *start = strstr(source, "// BEGIN OBJECT RECIPE"),
+             *end = strstr(source, "// BEGIN NATIVE WAKE FIELD");
+        CHECK(start && end && end > start);
+        size_t capacity = (size_t)(end - start) + 500;
+        char *code = malloc(capacity);
+        CHECK(code);
+        int written = snprintf(code, capacity,
+            "#version 330\nout vec4 color; uniform vec2 probe; uniform int playerWakeCount;"
+            "uniform vec4 playerWakeOrigins[64],playerWakeParameters[64];\n%.*s\n"
+            "void main(){color=vec4(playerWake(probe,0.0),1);}",
+            (int)(end - start), start);
+        CHECK(written >= 0 && (size_t)written < capacity);
+        Shader shader = LoadShaderFromMemory(vertex, code);
+        CHECK(shader.id && shader.id != rlGetShaderIdDefault());
+        free(code);
+        UnloadFileText(source);
+        glUseProgram(shader.id);
+        glUniform1i(GetShaderLocation(shader, "playerWakeCount"), count);
+        glUniform1f(GetShaderLocation(shader, "objectWakeLife"), w->life_ticks / 120.0f);
+        glUniform1i(GetShaderLocation(shader, "objectWakeData"), 1);
+        glUniform1i(GetShaderLocation(shader, "objectWakeEnabled"), 1);
+        double error = 0, scale = 0, component_error[3] = { 0 }, component_scale[3] = { 0 };
+        for (int z = -18; z <= 18; ++z)
+            for (int x = -15; x <= 15; x += 2) {
+                Vector2 p = { x + .173f, z + .391f + probe_z };
+                BoatWakeObjectSample q = boat_wake_objects_query(w, p);
+                glUniform2f(GetShaderLocation(shader, "probe"), -p.x, p.y);
+                glDrawArrays(GL_TRIANGLES, 0, 3);
+                float result[4];
+                glReadPixels(0, 0, 1, 1, GL_RGBA, GL_FLOAT, result);
+                float ref[] = { q.height, -q.gradient.x, q.gradient.y };
+                for (unsigned j = 0; j < 3; ++j) {
+                    error += pow(result[j] - ref[j], 2);
+                    scale += ref[j] * ref[j];
+                    component_error[j] += pow(result[j] - ref[j], 2);
+                    component_scale[j] += ref[j] * ref[j];
+                }
+            }
+        printf("object production %s recipe (%d objects) relative L2 %.8g\n", stage ? "FS" : "VS",
+            count, sqrt(error / scale));
+        printf("height %.8g, gx %.8g, gz %.8g\n", sqrt(component_error[0] / component_scale[0]),
+            sqrt(component_error[1] / component_scale[1]),
+            sqrt(component_error[2] / component_scale[2]));
+        CHECK(sqrt(error / scale) < .0001);
+        UnloadShader(shader);
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glUseProgram(0);
+    glBindVertexArray(0);
+    glDeleteVertexArrays(1, &vao);
+    glDeleteFramebuffers(1, &fb);
+    glDeleteTextures(1, &tex);
+    glDeleteTextures(1, &records_texture);
+}
+
+static void runtime(bool graphics, bool visible)
+{
+    BoatWakeObjects w;
+    CHECK(boat_wake_objects_init(&w, BOAT_OBJECT_LIFE_TICKS, 1.8f));
+    Boat boat;
+    boat_reset(&boat);
+    boat.water_settings.objects = &w;
+    BoatGpu gpu = { 0 };
+    double cold_draw_ms = 0;
+    if (graphics) {
+        SetConfigFlags(visible ? 0 : FLAG_WINDOW_HIDDEN);
+        InitWindow(visible ? 960 : 320, visible ? 600 : 200, "Arcade wake review");
+        if (visible)
+            SetTargetFPS(60);
+        CHECK(IsWindowReady() && boat_gpu_init(&gpu, false));
+        double cold_begin = GetTime();
+        boat_gpu_draw(&gpu, &boat, BOAT_CAMERA_DEFAULT);
+        glFinish();
+        cold_draw_ms = (GetTime() - cold_begin) * 1000;
+    }
+    double physics[120], render[120], frames[120];
+    unsigned count = 0, dry = 0;
+    float peak = 0;
+    for (unsigned frame = 0; frame < 1200; ++frame) {
+        if (visible && WindowShouldClose())
+            break;
+        double begin = graphics ? GetTime() : (double)clock() / CLOCKS_PER_SEC;
+        for (unsigned j = 0; j < 2; ++j) {
+            boat_wake_objects_advance(&w);
+            float wheel = frame > 210 ? 1 : 0;
+            boat_step(&boat, Clamp((wheel - boat.wheel) / BOAT_STEP, -1, 1), 1);
+            track(&w, &boat);
+            CHECK(isfinite(boat.height) && fabsf(boat.height) < 8);
+            dry += boat_wake_stern(&boat).wet == 0;
+            peak = fmaxf(peak, boat.height);
+        }
+        double stepped = graphics ? GetTime() : (double)clock() / CLOCKS_PER_SEC;
+        if (graphics) {
+            boat_gpu_draw(&gpu, &boat, BOAT_CAMERA_DEFAULT);
+            CHECK(!gpu.failed);
+            glFinish();
+            if (visible) {
+                BeginDrawing();
+                ClearBackground(BLACK);
+                DrawTexturePro(gpu.target.texture, (Rectangle) { 0, 0, 320, -200 },
+                    (Rectangle) { 0, 0, (float)GetScreenWidth(), (float)GetScreenHeight() },
+                    (Vector2) { 0 }, 0, WHITE);
+                DrawText("WAKE OBJECTS / SCRIPTED JUMP REVIEW", 12, 12, 20, WHITE);
+                EndDrawing();
+            }
+        }
+        double ended = graphics ? GetTime() : (double)clock() / CLOCKS_PER_SEC;
+        if (frame >= 1080) {
+            physics[count] = 1000 * (stepped - begin);
+            render[count] = 1000 * (ended - stepped);
+            frames[count++] = 1000 * (ended - begin);
+        }
+    }
+    if (count != 120) {
+        printf("Desktop review closed after %llu physics ticks.\n", (unsigned long long)w.tick);
+        if (graphics) {
+            boat_gpu_destroy(&gpu);
+            CloseWindow();
+        }
+        return;
+    }
+    qsort(physics, 120, sizeof(double), compare_time);
+    qsort(render, 120, sizeof(double), compare_time);
+    qsort(frames, 120, sizeof(double), compare_time);
+    printf("actual self-wake loops: peak hull %.4gm, dry stern %u ticks, %u live, %zu bytes\n",
+        peak, dry, w.live, sizeof(w));
+    if (graphics)
+        printf("startup first draw (outside warmed sample): %.4f ms\n", cold_draw_ms);
+    printf("120 complete frames: physics median %.4f/p95 %.4f ms, renderer median %.4f ms, "
+           "total median %.4f/p95 %.4f/max %.4f ms\n",
+        physics[60], physics[113], render[60], frames[60], frames[113], frames[119]);
+    CHECK(w.live > 0 && w.peak_live <= BOAT_OBJECT_CAPACITY);
+    if (graphics) {
+        float expected[BOAT_OBJECT_CAPACITY * 8] = { 0 }, actual[BOAT_OBJECT_CAPACITY * 8];
+        boat_wake_objects_pack(&w, expected, expected + BOAT_OBJECT_CAPACITY * 4);
+        CHECK(gpu.scene.object_wakes.id != 0);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, gpu.scene.object_wakes.id);
+        glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_FLOAT, actual);
+        CHECK(memcmp(expected, actual, sizeof(expected)) == 0);
+        puts("production object-record upload matches current CPU world");
+        Image image = LoadImageFromTexture(gpu.target.texture);
+        ImageFlipVertical(&image);
+        CHECK(ExportImage(image, "build/wake-objects-gpu.png"));
+        UnloadImage(image);
+        BoatWakeObjects probe = seed();
+        BoatWakeObject first = probe.objects[0];
+        shader_checks(&probe, 0);
+        probe.tick = first.born + 30;
+        shader_checks(&probe, 0); // Birth/growth includes spatial envelope derivatives.
+        probe.tick = first.born + 1590;
+        shader_checks(&probe, 30); // Same derivatives while a long wake fades.
+        probe.tick = first.born + 120;
+        probe.objects[BOAT_OBJECT_PER_BOAT] = probe.objects[0];
+        probe.objects[BOAT_OBJECT_PER_BOAT].direction = (Vector2) { .6f, .8f };
+        probe.objects[0].amplitude = 0;
+        shader_checks(&probe, 0);
+        probe.objects[0] = first;
+        shader_checks(&probe, 0);
+        BoatWakeObject rotated = probe.objects[BOAT_OBJECT_PER_BOAT];
+        for (unsigned i = 0; i < BOAT_OBJECT_CAPACITY; ++i) {
+            probe.objects[i] = first;
+            probe.objects[i].position = (Vector2) { 1000 + i * 10, 1000 };
+        }
+        probe.objects[BOAT_OBJECT_CAPACITY - 2] = first;
+        probe.objects[BOAT_OBJECT_CAPACITY - 1] = rotated;
+        shader_checks(&probe, 0); // Full record table, with local pieces in its final slots.
+        boat_gpu_destroy(&gpu);
+        CloseWindow();
+    }
+}
+
+int main(int argc, char **argv)
+{
+    SetTraceLogLevel(LOG_WARNING);
+    contracts();
+    continuity();
+    stress();
+    jumps();
+    float single = diagonal_jump(false), crossed = diagonal_jump(true);
+    printf("same diagonal approach: one wake %.4gm, crossing wakes %.4gm above calm\n", single,
+        crossed);
+    CHECK(crossed > single * 1.2f);
+    bool visible = argc == 2 && strcmp(argv[1], "--desktop") == 0;
+    runtime(visible || (argc == 2 && strcmp(argv[1], "--gpu") == 0), visible);
+    boat_water_destroy();
+    return 0;
+}

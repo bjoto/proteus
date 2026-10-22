@@ -984,6 +984,12 @@ static void set_atmosphere_uniforms(WaterfrontGpuScene *scene, Vector3 camera_po
 static void set_water_uniforms(WaterfrontGpuScene *scene, const WaterfrontSceneFrame *frame)
 {
     BoatWater water = frame->player_water;
+    int objects = water.objects != NULL;
+    float object_life = objects ? water.objects->life_ticks / 120.0f : 16;
+    SetShaderValue(scene->water_shader, GetShaderLocation(scene->water_shader, "objectWakeEnabled"),
+        &objects, SHADER_UNIFORM_INT);
+    SetShaderValue(scene->water_shader, GetShaderLocation(scene->water_shader, "objectWakeLife"),
+        &object_life, SHADER_UNIFORM_FLOAT);
     int field_enabled = scene->wake_field.id != 0;
     SetShaderValue(scene->water_shader, GetShaderLocation(scene->water_shader, "wakeFieldEnabled"),
         &field_enabled, SHADER_UNIFORM_INT);
@@ -1013,9 +1019,29 @@ static void set_water_uniforms(WaterfrontGpuScene *scene, const WaterfrontSceneF
     int wake_count = frame->player_active
         ? boat_water_wake_uniforms(water, frame->time, wake_origins, wake_parameters)
         : 0;
+    if (objects && frame->player_active) {
+        float records[BOAT_OBJECT_CAPACITY * 8] = { 0 };
+        wake_count
+            = boat_wake_objects_pack(water.objects, records, records + BOAT_OBJECT_CAPACITY * 4);
+        if (!scene->object_wakes.id) {
+            Image image
+                = { records, BOAT_OBJECT_CAPACITY, 2, 1, PIXELFORMAT_UNCOMPRESSED_R32G32B32A32 };
+            scene->object_wakes = LoadTextureFromImage(image);
+            SetTextureFilter(scene->object_wakes, TEXTURE_FILTER_POINT);
+        } else {
+            UpdateTexture(scene->object_wakes, records);
+        }
+        int slot = 14;
+        rlEnableShader(scene->water_shader.id);
+        rlActiveTextureSlot(slot);
+        rlEnableTexture(scene->object_wakes.id);
+        rlSetUniform(
+            GetShaderLocation(scene->water_shader, "objectWakeData"), &slot, SHADER_UNIFORM_INT, 1);
+        rlActiveTextureSlot(0);
+    }
     SetShaderValue(scene->water_shader, GetShaderLocation(scene->water_shader, "playerWakeCount"),
         &wake_count, SHADER_UNIFORM_INT);
-    if (wake_count) {
+    if (wake_count && !objects) {
         SetShaderValueV(scene->water_shader,
             GetShaderLocation(scene->water_shader, "playerWakeOrigins[0]"), wake_origins,
             SHADER_UNIFORM_VEC4, wake_count);
@@ -1644,6 +1670,8 @@ void waterfront_gpu_scene_destroy(WaterfrontGpuScene *scene)
     }
     if (scene->sky_texture.id != 0)
         UnloadTexture(scene->sky_texture);
+    if (scene->object_wakes.id != 0)
+        UnloadTexture(scene->object_wakes);
     if (scene->sky_shader.id != 0 && scene->sky_shader.id != rlGetShaderIdDefault())
         UnloadShader(scene->sky_shader);
     if (scene->roof_texture.id != 0)

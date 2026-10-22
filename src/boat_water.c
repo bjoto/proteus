@@ -61,7 +61,8 @@ BoatWater boat_water_test(bool waves, bool current, bool wake)
 
 bool boat_water_displaced(BoatWater water)
 {
-    return water.amplitude != 0 || water.wake_amplitude != 0 || water.player_wake_enabled;
+    return water.amplitude != 0 || water.wake_amplitude != 0 || water.player_wake_enabled
+        || water.objects;
 }
 
 void boat_water_emit_wake(
@@ -246,6 +247,12 @@ BoatWaterSample boat_water_query(BoatWater water, Vector2 position, float time)
     }
     crossing_wake(water, position, time, &sample.height, &gradient, &sample.velocity.y);
     player_wake(&water, position, time, &sample.height, &gradient, &sample.velocity.y);
+    if (water.objects) {
+        BoatWakeObjectSample q = boat_wake_objects_query(water.objects, position);
+        sample.height += q.height;
+        gradient = Vector2Add(gradient, q.gradient);
+        sample.velocity.y += q.vertical_velocity;
+    }
     // Material surface velocity includes the current's travel along the local slope.
     sample.velocity.y += Vector2DotProduct(current, gradient);
     sample.normal = Vector3Normalize((Vector3) { -gradient.x, 1, -gradient.y });
@@ -482,6 +489,7 @@ const Mesh3D *boat_water_surface(BoatWater water, float time, bool eriksberg)
     BoatWater ambient = water;
     ambient.wake_amplitude = 0;
     ambient.player_wake_enabled = false;
+    ambient.objects = NULL;
     for (size_t i = 0; i < s->count; ++i) {
         Vector3 centre = { 0 };
         for (int j = 0; j < 3; ++j) {
@@ -494,7 +502,7 @@ const Mesh3D *boat_water_surface(BoatWater water, float time, bool eriksberg)
         float light = Clamp(.95f + .55f * (-q.normal.x + q.normal.z), .85f, 1.05f);
         Color base = eriksberg ? (Color) { 45, 79, 104, 255 } : (Color) { 36, 107, 125, 255 };
         float crest = 0;
-        if (water.wake_amplitude > 0 || water.player_wake_enabled)
+        if (water.wake_amplitude > 0 || water.player_wake_enabled || water.objects)
             crest = .65f
                 * Clamp(
                     (q.height
