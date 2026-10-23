@@ -4,7 +4,8 @@ Prepared 2026-10-19 against `f60ede8`, following the
 [architecture review](ARCHITECTURE_REVIEW.md). This document owns this technical sequence;
 [BOATING_PLAN.md](BOATING_PLAN.md) continues to own gameplay direction.
 
-Status: P1 implemented; P2 and later tasks remain pending. Next task: P2.
+Status: P1 and P2a implemented; full P2 and later tasks remain pending. Next task: P3a
+(current arcade-loop baseline; see [performance evidence](BOATING_PERFORMANCE.md)).
 At preparation, the user requested a plan only. Implementation began with P1 on 2026-10-19;
 execute later requested tasks using the protocol below. No additional approval gates are created
 by this plan. Verification of the original planning work is recorded at the end.
@@ -56,8 +57,10 @@ All rows start **pending**. Replace the evidence column with actual dated result
 
 | Task | Deliverable | Depends on | Status / evidence |
 | --- | --- | --- | --- |
-| P1 | Frame/tick metrics and correct timing boundaries | — | Implemented 2026-10-19; original verification limits and later 70-test result recorded below. P2 remains next. |
+| P1 | Frame/tick metrics and correct timing boundaries | — | Implemented 2026-10-19; original verification limits and later 70-test result recorded below. P2a is implemented; P3a is next. |
 | P2 | Repeatable benchmark/report tool and renderer counters | P1 | Pending |
+| P2a | Existing arcade-loop simulation benchmark; subset of P2 | P1 | Implemented 2026-10-23; [report contract and verification](BOATING_PERFORMANCE.md) |
+| P3a | Current arcade-loop baseline; subset of P3 | P2a | Pending; next task |
 | P3 | Baseline report and workload fixtures | P2 | Pending |
 | C1 | Integer tick authority and replay revision | P3 | Pending |
 | C2 | Precise CPU/GPU time consumers | C1 | Pending |
@@ -633,10 +636,30 @@ support passes. P2 remains next.
 
 ## P2a extraction progress — 2026-10-23
 
-Starting revision `2994e0d`; README and thirteen existing documentation edits plus the new
+Historical intermediate checkpoint; superseded by the completion record below.
+
+Starting revision `2994e0d`; README and twelve existing documentation edits plus the new
 multiplayer plan were present before implementation and are preserved. The driver extraction
 is implemented; P2a remains in progress until its benchmark and full verification land.
 The [performance record](BOATING_PERFORMANCE.md#shared-driver-extraction--2026-10-23)
 records the frozen-driver checks, identical inspected CPU captures and scripted desktop run.
 Next: benchmark schema/error/deterministic-state checks and common verification. No handling,
 clock, wake-emission or asset changes are intended; no user acceptance is inferred.
+
+## P2a completion — 2026-10-23
+
+P2a is implemented; P3a is next. Full P2 renderer counters and full P3 fixtures remain pending.
+The tools-only shared driver preserves the current default arcade input/step path and optional
+rival/wake paths. `boat_benchmark` adds bounded simulation-only JSON/CSV reporting and named
+physical/wake state hashing; it does not change physics, float time, emission or controls.
+
+[The performance record](BOATING_PERFORMANCE.md#p2a-completion-evidence--2026-10-23) owns the
+report contract, exact commands/platform/options, captures, scripted app check, repeated hashes
+and limitations. Debug configure/build and all 85 active CTests pass with desktop access
+(20 active GPU cases, 113.79 s; fifteen retired field tests disabled). Final focused benchmark
+and driver tests pass after metadata/output-error changes. CPU before/after captures match at
+1080/2400 ticks and were inspected; the frozen driver matches all 3840 tick hashes.
+No cross-platform determinism, controlled P3a baseline or user acceptance is inferred.
+
+The extraction was committed as `b06ecd2`; benchmark/report completion follows separately.
+Pre-existing documentation/planning edits are preserved and excluded from these commits.

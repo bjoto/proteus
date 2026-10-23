@@ -1,0 +1,134 @@
+/* Finite scripted wake-return workload; no window, audio, replay or timed I/O. */
+#include "boat_study_state.h"
+#include <errno.h>
+#include <inttypes.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+static int compare(const void *a, const void *b)
+{
+    double x = *(const double *)a, y = *(const double *)b;
+    return (x > y) - (x < y);
+}
+static int fail(const char *message)
+{
+    fprintf(stderr, "boat_benchmark: %s\n", message);
+    return 1;
+}
+static bool count(const char *s, unsigned *out)
+{
+    if (!*s || *s < '0' || *s > '9')
+        return false;
+    char *end;
+    errno = 0;
+    unsigned long n = strtoul(s, &end, 10);
+    if (errno || *end || n > 100000)
+        return false;
+    *out = (unsigned)n;
+    return true;
+}
+int main(int argc, char **argv)
+{
+    unsigned warmup = 120, frames = 1800;
+    const char *output = NULL;
+    for (int i = 1; i < argc; ++i) {
+        const char *key = argv[i];
+        if (++i == argc)
+            return fail("every option requires a value");
+        const char *v = argv[i];
+        if (!strcmp(key, "--scenario")) {
+            if (strcmp(v, "wake-loop"))
+                return fail("unsupported scenario");
+        } else if (!strcmp(key, "--mode")) {
+            if (strcmp(v, "simulation"))
+                return fail("only simulation mode is supported");
+        } else if (!strcmp(key, "--renderer")) {
+            if (strcmp(v, "none"))
+                return fail("only renderer none is supported");
+        } else if (!strcmp(key, "--warmup")) {
+            if (!count(v, &warmup))
+                return fail("warmup must be 0..100000");
+        } else if (!strcmp(key, "--frames")) {
+            if (!count(v, &frames) || !frames)
+                return fail("frames must be 1..100000");
+        } else if (!strcmp(key, "--output"))
+            output = v;
+        else
+            return fail("unknown option");
+    }
+    if (!output || !*output || strlen(output) > 4000)
+        return fail("output prefix required (1..4000 bytes)");
+    /* Counts are bounded above before multiplication, allocation, or conversion to driver int. */
+    double *samples = calloc(frames, sizeof(*samples));
+    double *sorted = calloc(frames, sizeof(*sorted));
+    if (!samples || !sorted) {
+        free(samples);
+        free(sorted);
+        return fail("allocation failed");
+    }
+    Boat boat;
+    ObjectStudy objects;
+    boat_reset(&boat);
+    boat.water_settings = boat_water_test(false, false, false);
+    object_study_reset(&objects, &boat, false, BOAT_OBJECT_LIFE_TICKS, 1.8f);
+    unsigned tick = 0;
+    uint64_t hash = BOAT_STUDY_HASH_SEED;
+    for (unsigned f = 0; f < warmup + frames; ++f) {
+        double start = boat_profile_time(false);
+        for (unsigned j = 0; j < 2; ++j)
+            demo_step(&boat, (int)tick++, NULL, NULL, &objects);
+        double elapsed = (boat_profile_time(false) - start) * 1000;
+        /* Trace serialization is deliberately outside the measured simulation interval. */
+        hash = boat_study_state_hash(hash, &boat, &objects);
+        if (f >= warmup)
+            samples[f - warmup] = elapsed;
+    }
+    memcpy(sorted, samples, frames * sizeof(*sorted));
+    qsort(sorted, frames, sizeof(*sorted), compare);
+    char path[4096];
+    snprintf(path, sizeof(path), "%s.csv", output);
+    FILE *csv = fopen(path, "w");
+    bool ok = csv != NULL;
+    if (csv) {
+        if (fprintf(csv, "frame,end_tick,simulation_ms\n") < 0)
+            ok = false;
+        for (unsigned i = 0; i < frames; ++i)
+            if (fprintf(csv, "%u,%u,%.9f\n", i, (warmup + i + 1) * 2, samples[i]) < 0)
+                ok = false;
+        if (fclose(csv))
+            ok = false;
+    }
+    snprintf(path, sizeof(path), "%s.json", output);
+    FILE *json = ok ? fopen(path, "w") : NULL;
+    if (!json)
+        ok = false;
+    if (json) {
+        if (fprintf(json,
+                "{\n  \"schema_revision\":1,\"scenario\":\"wake-loop\",\"scenario_revision\":1,\n"
+                "  \"fixture\":\"finite scripted wake-return; powered turns end at tick 1440\",\n"
+                "  "
+                "\"mode\":\"simulation\",\"renderer\":\"none\",\"build\":\"%s\",\"platform\":\"%"
+                "s\",\n"
+                "  "
+                "\"warmup_frames\":%u,\"frames\":%u,\"ticks_per_frame\":2,\"warmup_ticks\":%u,"
+                "\"measured_ticks\":%u,\"total_ticks\":%u,\n"
+                "  \"life_ticks\":%u,\"crest_height\":%.9g,\"births\":%" PRIu64
+                ",\"peak_objects\":%u,\"landings\":%u,\n"
+                "  \"state_hash\":\"%016" PRIx64 "\",\"hash_revision\":1,\n"
+                "  \"simulation_ms\":{\"p50\":%.9f,\"p95\":%.9f,\"p99\":%.9f,\"max\":%.9f},\n"
+                "  \"render_cpu_ms\":null,\"gpu_ms\":null\n}\n",
+                BOAT_BENCH_BUILD, BOAT_BENCH_PLATFORM, warmup, frames, warmup * 2, frames * 2, tick,
+                objects.world.life_ticks, (double)objects.world.crest_height, objects.world.emitted,
+                objects.world.peak_live, boat.landings, hash, sorted[(frames - 1) * 50 / 100],
+                sorted[(frames - 1) * 95 / 100], sorted[(frames - 1) * 99 / 100],
+                sorted[frames - 1])
+            < 0)
+            ok = false;
+        if (fclose(json))
+            ok = false;
+    }
+    free(samples);
+    free(sorted);
+    return ok ? 0 : fail("cannot write report (parent directory must exist)");
+}

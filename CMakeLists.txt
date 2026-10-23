@@ -196,6 +196,26 @@ target_link_libraries(wake_play_review PRIVATE raylib)
 target_compile_options(wake_play_review PRIVATE
   $<$<C_COMPILER_ID:AppleClang,Clang,GNU>:-Wall;-Wextra;-Wpedantic>)
 add_dependencies(wake_play_review proteus_assets)
+execute_process(COMMAND git rev-parse --short HEAD WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+  OUTPUT_VARIABLE BOAT_BENCH_REV OUTPUT_STRIP_TRAILING_WHITESPACE)
+if(NOT BOAT_BENCH_REV)
+  set(BOAT_BENCH_REV unknown)
+endif()
+execute_process(COMMAND git status --porcelain --untracked-files=no
+  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} OUTPUT_VARIABLE BOAT_BENCH_DIRTY)
+if(BOAT_BENCH_DIRTY)
+  string(APPEND BOAT_BENCH_REV "-dirty")
+endif()
+add_executable(boat_benchmark tools/boat_benchmark.c tools/boat_study_state.c tools/boat_study_drive.c src/boat.c
+  src/renderer3d.c src/boat_profile.c ${PROTEUS_BOAT_WORLD_SOURCES} ${PROTEUS_HARBOR_SOURCES})
+target_include_directories(boat_benchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(boat_benchmark PRIVATE raylib)
+target_compile_definitions(boat_benchmark PRIVATE
+  BOAT_BENCH_BUILD="${BOAT_BENCH_REV}/${CMAKE_BUILD_TYPE}/${CMAKE_C_COMPILER_ID}-${CMAKE_C_COMPILER_VERSION}"
+  BOAT_BENCH_PLATFORM="${CMAKE_SYSTEM_NAME}/${CMAKE_SYSTEM_PROCESSOR}")
+target_compile_options(boat_benchmark PRIVATE
+  $<$<C_COMPILER_ID:AppleClang,Clang,GNU>:-Wall;-Wextra;-Wpedantic>)
+
 add_executable(validate_boat_drive tools/validate_boat_drive.c tools/boat_study_state.c tools/boat_study_drive.c
   src/boat.c src/renderer3d.c src/boat_profile.c
   ${PROTEUS_BOAT_WORLD_SOURCES} ${PROTEUS_HARBOR_SOURCES})
@@ -204,6 +224,9 @@ target_link_libraries(validate_boat_drive PRIVATE raylib)
 target_compile_options(validate_boat_drive PRIVATE
   $<$<C_COMPILER_ID:AppleClang,Clang,GNU>:-Wall;-Wextra;-Wpedantic>)
 add_test(NAME boat_drive_extraction COMMAND validate_boat_drive)
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+add_test(NAME boat_benchmark_contract COMMAND ${Python3_EXECUTABLE}
+  ${CMAKE_CURRENT_SOURCE_DIR}/tools/validate_boat_benchmark.py $<TARGET_FILE:boat_benchmark>)
 
 add_executable(wake_objects_review tools/wake_objects_review.c src/boat.c src/renderer3d.c
   src/boat_gpu.c src/renderer_gpu.c ${PROTEUS_BOAT_WORLD_SOURCES} ${PROTEUS_HARBOR_SOURCES})
