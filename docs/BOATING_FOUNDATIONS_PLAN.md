@@ -4,9 +4,9 @@ Prepared 2026-10-19 against `f60ede8`, following the
 [architecture review](ARCHITECTURE_REVIEW.md). This document owns this technical sequence;
 [BOATING_PLAN.md](BOATING_PLAN.md) continues to own gameplay direction.
 
-Status: P1, P2a, P3a, C1 and C2 implemented; C3's automated gate and replacement baseline are
-implemented, with its manual mode playback pending. Full P2/P3 remain pending. Next for the
-[multiplayer prerequisite](MULTIPLAYER_PLAN.md): manual C3 mode playback, then the basin W1/W3 slice (immutable definition, explicit water/world/session).
+Status: P1, P2a, P3a and phase C (C1–C3) implemented; full P2/P3 remain pending. Next for the
+[multiplayer prerequisite](MULTIPLAYER_PLAN.md): the basin W1/W3 slice (immutable definition,
+explicit water/world/session).
 At preparation, the user requested a plan only. Implementation began with P1 on 2026-10-19;
 execute later requested tasks using the protocol below. No additional approval gates are created
 by this plan. Verification of the original planning work is recorded at the end.
@@ -65,7 +65,7 @@ All rows start **pending**. Replace the evidence column with actual dated result
 | P3a | Current arcade-loop baseline; subset of P3 | P2a | Implemented 2026-10-23; [three-run trace, timings and captures](BOATING_PERFORMANCE.md#p3a-current-arcade-baseline--2026-10-23); full P3 matrix pending |
 | C1 | Integer tick authority and replay revision | P3 | Implemented 2026-10-23 after P3a slice; [clock handoff below](#c1-handoff--2026-10-23) |
 | C2 | Precise CPU/GPU time consumers | C1 | Implemented 2026-10-23; [C2 handoff below](#c2-handoff--2026-10-23); 85 active CTests pass |
-| C3 | Long-session/compatibility gate and new baseline | C2 | Automated gate and baseline implemented 2026-10-23; manual wave/traffic/pause/course/ghost/replay playback pending; [C3 handoff below](#c3-handoff--2026-10-23) |
+| C3 | Long-session/compatibility gate and new baseline | C2 | Implemented 2026-10-23; automated gate, replacement baseline and user manual playback of all modes; [C3 handoff below](#c3-handoff--2026-10-23) |
 | W1 | Explicit immutable location definitions | C3 | Pending |
 | W2 | Caller-owned collision and water-mesh caches | W1 | Pending |
 | W3 | World/session owners and water migration | W2 | Pending |
@@ -857,13 +857,15 @@ world/session extraction. No cross-platform bit identity or user acceptance is i
 
 ## C3 handoff — 2026-10-23
 
-- **Status / next:** C3's automated long-session gate and replacement baseline are implemented
-  (code `ce3b53d`, after C2 `0252d0a` and the multiplayer documentation commit `dc5a5f0`).
-  The specified manual playback of wave, traffic, pause/reset, course, ghost and replay modes
-  has not been performed; the user's 2026-10-23 default-basin play predates C3 and covers only
-  that mode. Next: that manual playback, then the basin W1/W3 slice from the
+- **Status / next:** C3 is implemented (code `ce3b53d`, documentation `a22f0ec`, after C2
+  `0252d0a` and the multiplayer documentation commit `dc5a5f0`), completing phase C. Next: the
+  basin W1/W3 slice from the
   [multiplayer prerequisite slices](#multiplayer-prerequisite-slices--2026-10-23). Full P2/P3
   and mapped W/S tasks remain pending.
+- **Manual playback:** On 2026-10-23, after the C3 commits, the user played all the specified
+  modes (wave, traffic, pause/reset, course, ghost and replay) and reported that they work
+  fine. Platform: the user's macOS development machine; build details beyond the earlier
+  `build/review` RelWithDebInfo recipe were not reported.
 - **Gate audit:** Live world time is `Boat.tick`; no float accumulator acts as a world clock.
   Remaining `+= BOAT_STEP` fields are bounded emission/contact timers that reset; the course
   timer accumulates exact double tick durations within one run. Physical water and traffic
