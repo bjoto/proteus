@@ -21,12 +21,12 @@ ctest --test-dir build -j 4 --output-on-failure
 disabled, covering the owned field, refinement, cadence, candidate sources/boats/GPU,
 compact packets and Python prototypes. CTest lists them as disabled, not failed. Their
 sources, targets and manual diagnostic commands remain available. All arcade-object tests
-stay enabled. With `PROTEUS_GPU_TESTS=ON`, the current normal suite runs 83 checks,
+stay enabled. With `PROTEUS_GPU_TESTS=ON`, the normal suite runs 87 checks as of 2026-10-23,
 including 20 graphics checks. GPU cases retain serial scheduling while independent CPU
 checks may run concurrently; fixture dependencies still govern capture/replay comparisons.
 
 `PROTEUS_OPTIMIZE_TESTS=ON` compiles the long numerical validators at `-O2` even in
-Clang/GCC Debug builds: boat handling, banking, turn entry, environment, replay, water
+Clang/GCC Debug builds: boat handling, banking, turn entry, environment, replay, clock, water
 routes and object-wake review. Debug symbols and assertions remain enabled; there is no
 fast-math, reduced simulation duration or sampled-down scenario coverage. Application
 executables keep their selected build type. For stepping through these validators:
@@ -40,6 +40,23 @@ The optimization override currently applies to Clang/GCC only. MSVC keeps its se
 configuration; Windows timings have not been measured. GPU checks are opt-in through
 `PROTEUS_GPU_TESTS=ON` and need a desktop context. A display-free suite with GPU checks
 off has less coverage; report that omission.
+
+## Long-session clock gate
+
+`boat_clock` checks direct-time cases (one day, 30 days) without simulating the preceding
+ticks; `boat_clock_soak_smoke` runs a 60 second wave soak. The actual one-hour soak is opt-in
+and should use a Release build; it took about 95 s CPU on an M1 Max on 2026-10-23:
+
+```sh
+cmake -S . -B build/release -DCMAKE_BUILD_TYPE=Release
+cmake --build build/release --target validate_boat_clock -j
+mkdir -p build/bench/c3
+./build/release/validate_boat_clock --soak 3600 build/bench/c3
+./build/release/validate_boat_clock --soak 3600 build/bench/c3 --waves
+```
+
+The soak accepts 60..86400 seconds and writes CPU frames at one minute, halfway and the end.
+Its printed hash is same-build evidence, not a cross-platform contract.
 
 ## Revisit the physical field
 

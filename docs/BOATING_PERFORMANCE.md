@@ -234,3 +234,51 @@ The water path no longer copies `BoatWater` for every internal query. On the sam
 Release CPU `boat_study --location eriksberg --waves --player-wake --time 60` screenshot
 run took 1.29 s versus 1.48 s for `6500a65`; the default basin run took 0.33 s versus
 0.35 s. These are wall-clock observations that include startup and one render.
+
+## C3 replacement baseline — 2026-10-23
+
+This is the adopted baseline for W/S work on the multiplayer prerequisite track. It was
+measured sequentially after the build and CTest jobs finished, on the same MacBookPro18,2
+(Apple M1 Max, 64 GiB), macOS 26.6.2, on AC with `pmset` `powermode=2`. Release
+AppleClang 21.0.0.21000101; configure-time identifier `ce3b53d/Release` (clean tree).
+
+```sh
+cmake -S . -B build/p3a-release -DCMAKE_BUILD_TYPE=Release \
+  -DFETCHCONTENT_SOURCE_DIR_RAYLIB="$PWD/build/_deps/raylib-src"
+cmake --build build/p3a-release --target boat_benchmark boat_study validate_boat_clock -j
+python3 tools/boat_benchmark_baseline.py build/p3a-release/boat_benchmark build/bench/c3/baseline
+mkdir -p build/bench/c3
+./build/p3a-release/validate_boat_clock --soak 3600 build/bench/c3
+./build/p3a-release/validate_boat_clock --soak 3600 build/bench/c3 --waves
+```
+
+| Run | Simulation p50 | p95 | p99 | max | Units |
+| --- | ---: | ---: | ---: | ---: | --- |
+| 1 | 0.063 | 0.132 | 0.144 | 0.240 | ms per two-tick frame |
+| 2 | 0.063 | 0.130 | 0.153 | 0.193 | ms per two-tick frame |
+| 3 | 0.063 | 0.126 | 0.144 | 0.813 | ms per two-tick frame |
+
+All three traces (`build/bench/c3/baseline/run-{1,2,3}.state.csv`, runner output
+`build/bench/c3/baseline-runs.log`) are identical to each other and to C1/C2: 7320 rows,
+17 births/peak, one landing, airborne at 1118, landing at 1328, capsize at 1450, wake expiry
+after 3468, final time exactly 122 s, hash `24d582aae45971b4`. Relative to P3a, only derived
+time and the rolling hash (which folds time) changed. P3a's 0.065 ms p50 and this 0.063 ms
+are the same within run-to-run noise. Run 3's 0.813 ms max is a single outlier; other
+background activity was not measured.
+
+Release views in `build/bench/c3/views/` match the P3a files for `cpu-t{9,11,20,60}`,
+`gpu-t20` and `gpu-aa-t20`; `gpu-t11`, `gpu-aa-t9` and `gpu-aa-t11` differ in two pixels
+by one level (C2 shader restructure). They were inspected.
+
+The simulated hours each run 432,000 ticks; every tick checks finiteness, basin containment,
+exact tick-derived time, wake-world tick agreement, `emitted == expired + live` and capacity.
+
+| Soak | Births | Peak live | Landings | Recoveries | Max speed | Max height | CPU | Final hash |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| Calm | 11,401 | 63/128 | 263 | 86 | 23.5 m/s | 14.4 m | 93.9 s | `43dfc74ddac0055d` |
+| Waves | 11,587 | 64/128 | 256 | 86 | 23.2 m/s | 12.9 m | 97.6 s | `56e31ce5c3d7a7c4` |
+
+Logs and CPU frames at 60/1800/3600 s are `build/bench/c3/soak{,-waves}.log` and
+`build/bench/c3/soak{,-waves}-{60,1800,3600}s.png`. Both hours ran concurrently on separate
+cores, so their CPU seconds are indicative only. The soak is a stability gate, not a timing
+baseline; full P2 render counters and the remaining P3 workloads are still pending.

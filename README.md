@@ -200,6 +200,8 @@ cannot replace your recorded best.
 an imported ghost must match your selected water preset (`--waves` for a wave run).
 An imported ghost stays selected across retries while your personal best is tracked separately.
 Live simulation time now comes from an integer 120 Hz tick; the float physics step is unchanged.
+Recorded world time is absolute session time, so a course started long after launch still saves
+and loads.
 Version-2 recordings store double-precision world time alongside poses at the 120 Hz simulation
 rate, with exact START/FINISH boundary samples and gate splits, so playback does not rerun
 physics. File, course, and physics revisions are checked when loading; bump `BOAT_PHYSICS_REVISION` in `src/boat_replay.h` when changing handling or wave presets,

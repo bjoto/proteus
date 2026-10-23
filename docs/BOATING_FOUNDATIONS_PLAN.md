@@ -4,8 +4,9 @@ Prepared 2026-10-19 against `f60ede8`, following the
 [architecture review](ARCHITECTURE_REVIEW.md). This document owns this technical sequence;
 [BOATING_PLAN.md](BOATING_PLAN.md) continues to own gameplay direction.
 
-Status: P1, P2a, P3a, C1 and C2 implemented; full P2/P3 remain pending. Next task for the
-[multiplayer prerequisite](MULTIPLAYER_PLAN.md): C3 long-session gate and replacement baseline.
+Status: P1, P2a, P3a, C1 and C2 implemented; C3's automated gate and replacement baseline are
+implemented, with its manual mode playback pending. Full P2/P3 remain pending. Next for the
+[multiplayer prerequisite](MULTIPLAYER_PLAN.md): manual C3 mode playback, then the basin W1/W3 slice (immutable definition, explicit water/world/session).
 At preparation, the user requested a plan only. Implementation began with P1 on 2026-10-19;
 execute later requested tasks using the protocol below. No additional approval gates are created
 by this plan. Verification of the original planning work is recorded at the end.
@@ -64,7 +65,7 @@ All rows start **pending**. Replace the evidence column with actual dated result
 | P3a | Current arcade-loop baseline; subset of P3 | P2a | Implemented 2026-10-23; [three-run trace, timings and captures](BOATING_PERFORMANCE.md#p3a-current-arcade-baseline--2026-10-23); full P3 matrix pending |
 | C1 | Integer tick authority and replay revision | P3 | Implemented 2026-10-23 after P3a slice; [clock handoff below](#c1-handoff--2026-10-23) |
 | C2 | Precise CPU/GPU time consumers | C1 | Implemented 2026-10-23; [C2 handoff below](#c2-handoff--2026-10-23); 85 active CTests pass |
-| C3 | Long-session/compatibility gate and new baseline | C2 | Pending |
+| C3 | Long-session/compatibility gate and new baseline | C2 | Automated gate and baseline implemented 2026-10-23; manual wave/traffic/pause/course/ghost/replay playback pending; [C3 handoff below](#c3-handoff--2026-10-23) |
 | W1 | Explicit immutable location definitions | C3 | Pending |
 | W2 | Caller-owned collision and water-mesh caches | W1 | Pending |
 | W3 | World/session owners and water migration | W2 | Pending |
@@ -853,3 +854,57 @@ world/session extraction. No cross-platform bit identity or user acceptance is i
   boat's recovery reset, whereas production restores the tick; C3 should decide whether the
   oracle needs a C1-era revision. Specific pause/focus/replay and long-session playback
   were not separately reported.
+
+## C3 handoff — 2026-10-23
+
+- **Status / next:** C3's automated long-session gate and replacement baseline are implemented
+  (code `ce3b53d`, after C2 `0252d0a` and the multiplayer documentation commit `dc5a5f0`).
+  The specified manual playback of wave, traffic, pause/reset, course, ghost and replay modes
+  has not been performed; the user's 2026-10-23 default-basin play predates C3 and covers only
+  that mode. Next: that manual playback, then the basin W1/W3 slice from the
+  [multiplayer prerequisite slices](#multiplayer-prerequisite-slices--2026-10-23). Full P2/P3
+  and mapped W/S tasks remain pending.
+- **Gate audit:** Live world time is `Boat.tick`; no float accumulator acts as a world clock.
+  Remaining `+= BOAT_STEP` fields are bounded emission/contact timers that reset; the course
+  timer accumulates exact double tick durations within one run. Physical water and traffic
+  phases take double input and reduce before narrowing (C2). Arcade wake objects already use
+  64-bit relative tick ages. Compatibility remains replay format 2 and physics revision 6
+  for the whole C phase; C2/C3 changed no handling coefficients.
+- **Replay behavior:** Recorded `world_time` is absolute session time, not course time, so a
+  course may start long after launch. Loading previously rejected samples above 100,000 s
+  (about 27.8 hours), which would have made such a personal best unloadable. Version-2 loading
+  now accepts finite, non-negative world time up to `BOAT_REPLAY_MAX_WORLD_SECONDS` (100 years).
+  No format, version or revision change; earlier valid files remain valid.
+- **New validator:** `validate_boat_clock` (CTest `boat_clock`, 10.6 s Debug) checks exact
+  tick seconds through 2^40 ticks; 200,000 random phase/cycle reductions over 30 days, which
+  equal libm `remainder` after narrowing; the P3a input sequence started at tick 0, one day and
+  30 days, with bit-identical physical hashes for all 14,640 ticks (17 births, one landing);
+  the legacy D3 trail over 2400 ticks with zero divergence; 30 s powered wave sessions with
+  D3 trails at one day and 30 days in basin, Eriksberg and river (finite, contained, riding
+  waves); and an exact save/load round trip of a course recorded 30 days into a session.
+  `boat_clock_soak_smoke` runs `--soak 60 ... --waves` in the routine suite.
+- **Simulated hour:** Release `validate_boat_clock --soak 3600 build/bench/c3 [--waves]` ran
+  432,000 ticks each with a steered player loop, a crossing boat and arcade wakes, checking
+  every tick: finite state, basin containment, exact tick-derived time, matching wake-world
+  tick, `emitted == expired + live` and capacity. Calm: 11,401 births, peak 63/128, 263
+  landings, 86 pose recoveries, hash `43dfc74ddac0055d`, 93.9 s CPU. Waves: 11,587 births,
+  peak 64/128, 256 landings, 86 recoveries, hash `56e31ce5c3d7a7c4`, 97.6 s CPU. Frames at
+  1, 30 and 60 minutes were inspected. Full numbers are in the
+  [C3 baseline](BOATING_PERFORMANCE.md#c3-replacement-baseline--2026-10-23).
+- **Baseline comparison:** P3a's three Release runs at `ce3b53d` match C1 and C2 at every trace
+  row; final time is exactly 122 s (P3a accumulated 121.992271 s), hash `24d582aae45971b4`.
+  This calm fixture has no time-driven water, so only derived time differs from P3a, as the
+  clock correction intends. CPU views match P3a byte for byte; GPU 9/11 s and GPU AA 9/11 s
+  differ by at most two pixels at one level, from C2's shader restructure. This is the
+  adopted W/S baseline.
+- **Automated verification:** Apple M1 Max/macOS 26.6.2, Debug common recipe: 87 active CTests
+  pass (20 GPU) in 119.04 s; fifteen retired field cases stay disabled.
+- **Observation, not changed:** At full throttle into overlapping 1.8 m arcade crests the
+  soak's player reached a 14.4 m ballistic peak far from the crossing boat. This is
+  existing arcade handling, unrelated to the clock; gameplay tuning, if wanted, belongs to
+  the boating plan, not C3.
+- **Limits:** One machine; Windows/Linux/browser not run. Soak frames are CPU only. The frozen
+  P2a oracle `tools/boat_drive_baseline.h` still restores only the derived `time` after a
+  crossing-boat recovery; production restores the tick. It remains an untouched oracle; the
+  calm-independence check uses the production driver. The benchmark CSV/profiler display
+  print `Boat.time` as float (diagnostic only).

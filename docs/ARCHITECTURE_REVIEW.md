@@ -6,7 +6,8 @@ Gameplay direction remains in [BOATING_PLAN.md](BOATING_PLAN.md).
 
 Status: source review and clock probe complete; verification results recorded below.
 The [foundations implementation plan](BOATING_FOUNDATIONS_PLAN.md) owns the selected next
-sequence and its task status. P1/P2a/P3a, C1 and C2 are now implemented; C3 is next.
+sequence and its task status. P1/P2a/P3a, C1, C2 and C3's automated gate are now implemented; C3 manual
+playback, then the basin W1/W3 slice, is next.
 No runtime changes in this review.
 
 Current-context note, 2026-10-23: this is a dated baseline. Arcade wakes now use four
