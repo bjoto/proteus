@@ -1,4 +1,5 @@
 #include "renderer_gpu.h"
+#include "boat_clock.h"
 #include "waterfront_corner.h"
 
 #include "raymath.h"
@@ -1057,17 +1058,8 @@ static void set_water_uniforms(WaterfrontGpuScene *scene, const WaterfrontSceneF
     SetShaderValue(scene->water_shader, GetShaderLocation(scene->water_shader, "wavePatch"), patch,
         SHADER_UNIFORM_VEC4);
     if (physical_waves) {
-        BoatWave waves[]
-            = { { water.amplitude, water.wavelength, water.angular_speed, water.direction },
-                  water.crossing[0], water.crossing[1] };
-        float parameters[12] = { 0 };
-        for (int i = 0; i < 3; ++i) {
-            float k = waves[i].wavelength > 0 ? 2 * PI / waves[i].wavelength : 0;
-            parameters[i * 4] = -k * waves[i].direction.x; // Simulation X is reflected.
-            parameters[i * 4 + 1] = k * waves[i].direction.y;
-            parameters[i * 4 + 2] = waves[i].wavelength > 0 ? waves[i].amplitude : 0;
-            parameters[i * 4 + 3] = waves[i].angular_speed;
-        }
+        float parameters[12];
+        boat_water_wave_uniforms(water, frame->time, parameters);
         SetShaderValueV(scene->water_shader,
             GetShaderLocation(scene->water_shader, "waveParameters[0]"), parameters,
             SHADER_UNIFORM_VEC4, 3);
@@ -1100,9 +1092,20 @@ static void set_water_uniforms(WaterfrontGpuScene *scene, const WaterfrontSceneF
     location = GetShaderLocation(scene->water_shader, "cameraPosition");
     if (location >= 0)
         SetShaderValue(scene->water_shader, location, camera, SHADER_UNIFORM_VEC3);
-    location = GetShaderLocation(scene->water_shader, "time");
+    // Double frame time never reaches a float uniform; upload bounded, reduced payloads.
+    float crossing_clock = boat_water_crossing_clock(water, frame->time);
+    location = GetShaderLocation(scene->water_shader, "crossingWakeTime");
     if (location >= 0)
-        SetShaderValue(scene->water_shader, location, &frame->time, SHADER_UNIFORM_FLOAT);
+        SetShaderValue(scene->water_shader, location, &crossing_clock, SHADER_UNIFORM_FLOAT);
+    float detail_phase[] = { boat_phase(1.5, frame->time), boat_phase(2.1, frame->time) };
+    location = GetShaderLocation(scene->water_shader, "detailRipplePhase");
+    if (location >= 0)
+        SetShaderValue(scene->water_shader, location, detail_phase, SHADER_UNIFORM_VEC2);
+    float reflection_phase[] = { boat_phase(.80, frame->time), boat_phase(.55, frame->time),
+        boat_phase(.65, frame->time), boat_phase(.35, frame->time) };
+    location = GetShaderLocation(scene->water_shader, "reflectionRipplePhase");
+    if (location >= 0)
+        SetShaderValue(scene->water_shader, location, reflection_phase, SHADER_UNIFORM_VEC4);
     location = GetShaderLocation(scene->water_shader, "reflectionsEnabled");
     if (location >= 0)
         SetShaderValue(scene->water_shader, location, &reflections_enabled, SHADER_UNIFORM_INT);

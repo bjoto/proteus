@@ -142,7 +142,7 @@ static void mooring(WaterfrontHarborFrame *frame, Vector3 a, Vector3 b)
     frame->lines[frame->line_count++] = segment(middle, b, .055f);
 }
 
-void waterfront_harbor_evaluate(BoatWater water, float time, WaterfrontHarborFrame *frame)
+void waterfront_harbor_evaluate(BoatWater water, double time, WaterfrontHarborFrame *frame)
 {
     *frame = (WaterfrontHarborFrame) { 0 };
     frame->pontoon = boat_water_pose(water, time, dock_center, 0, 37, 2.1f);
@@ -209,7 +209,7 @@ bool waterfront_harbor_contact(Vector2 position, float clearance, Vector2 *norma
 }
 
 bool waterfront_harbor_contact_height(Vector2 position, float clearance, float bottom, float top,
-    BoatWater water, float time, Vector2 *normal)
+    BoatWater water, double time, Vector2 *normal)
 {
     Vector2 p = { -position.x, position.y }, world_normal;
     bool hit = false;

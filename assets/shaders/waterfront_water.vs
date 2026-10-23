@@ -14,8 +14,8 @@ uniform vec2 wakeOffset; // World X/Z translation of the scripted source.
 uniform int playerWakeCount;
 uniform vec4 playerWakeOrigins[64];
 uniform vec4 playerWakeParameters[64];
-uniform vec4 waveParameters[3]; // World X/Z wave vector, amplitude, angular speed.
-uniform float time;
+uniform vec4 waveParameters[3]; // World X/Z wave vector, amplitude, CPU-reduced phase.
+uniform float crossingWakeTime; // Gated scripted clock; -1 after its finite support.
 uniform int waterPatchPass; // 0: legacy, 1: planar far field, 2: clipped near patch.
 uniform vec4 wavePatch; // Boat world X/Z, full displacement radius, zero displacement radius.
 
@@ -100,8 +100,9 @@ vec3 objectWake(vec2 p)
 // END OBJECT RECIPE
 
 // Same owned path history and analytic derivatives as boat_water.c. Each entry is
-// two vec4s: world centre/direction, support half-length/birth/amplitude/inverse speed.
-vec3 playerWake(vec2 p, float clock)
+// two vec4s: world centre/direction, support half-length/age at frame time/amplitude/
+// inverse speed. Packing age rather than absolute birth keeps long sessions precise.
+vec3 playerWake(vec2 p)
 {
     if (objectWakeEnabled != 0) return objectWake(p);
     float sum = 0.0, weight = 0.0;
@@ -112,7 +113,7 @@ vec3 playerWake(vec2 p, float clock)
         vec2 normal = vec2(-direction.y, direction.x);
         float u = dot(delta, direction);
         if (abs(u) >= b.x) continue;
-        float age = clock - b.y - u * b.w;
+        float age = b.y - u * b.w;
         if (age <= 0.4 || age >= 20.0) continue;
         float v = dot(delta, normal), radius = sqrt(v * v + 0.25);
         float q = radius - 0.9 - 1.6 * age;
@@ -202,9 +203,9 @@ void main()
         position.y = 0.0;
         for (int i = 0; i < 3; ++i) {
             vec4 w = waveParameters[i];
-            position.y += w.z * sin(dot(w.xy, position.xz) - w.w * time);
+            position.y += w.z * sin(dot(w.xy, position.xz) - w.w);
         }
-        position.y += crossingWake(position.xz, time).x + playerWake(position.xz, time).x
+        position.y += crossingWake(position.xz, crossingWakeTime).x + playerWake(position.xz).x
             + wakeVertexHeight(position.xz);
         if (waterPatchPass == 2 && wakeFieldEnabled == 0)
             position.y *= 1.0 - smoothstep(wavePatch.z, wavePatch.w,

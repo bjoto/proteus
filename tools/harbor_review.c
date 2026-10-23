@@ -20,11 +20,12 @@ static void usage(void)
          "GPU uses 4x4 supersampling. CPU screenshots need no graphics context. Esc exits.");
 }
 
-static bool number(const char *text, float *value)
+// Double world seconds up to 30 days, for long-session water and traffic probes.
+static bool number(const char *text, double *value)
 {
     char *end;
-    *value = strtof(text, &end);
-    return end != text && !*end && isfinite(*value) && *value >= 0 && *value <= 600;
+    *value = strtod(text, &end);
+    return end != text && !*end && isfinite(*value) && *value >= 0 && *value <= 2592000;
 }
 
 static Mesh patch(Vector3 center)
@@ -46,7 +47,7 @@ static Mesh patch(Vector3 center)
     return mesh;
 }
 
-static View3D follow_vessel(View3D camera, const char *view, float time)
+static View3D follow_vessel(View3D camera, const char *view, double time)
 {
     int index = !strcmp(view, "ferry") ? 3 : !strcmp(view, "launch") ? 0 : -1;
     if (index >= 0) {
@@ -66,7 +67,7 @@ int main(int argc, char **argv)
 {
     const char *view = "marina", *screenshot = NULL;
     bool gpu = true, waves = false;
-    float time = 0;
+    double time = 0;
     int frames = 0, height = 200;
     for (int i = 1; i < argc; ++i) {
         if (!strcmp(argv[i], "--help")) {
@@ -189,7 +190,7 @@ int main(int argc, char **argv)
     do {
         WaterfrontSceneFrame frame;
         waterfront_scene_evaluate(0, true, &frame);
-        float local_time = time + count / 60.0f;
+        double local_time = time + count / 60.0;
         waterfront_scene_evaluate_actors(local_time, water, &frame);
         frame.camera = follow_vessel(camera, view, local_time);
         frame.player_active = true;

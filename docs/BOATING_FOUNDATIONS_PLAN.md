@@ -4,8 +4,8 @@ Prepared 2026-10-19 against `f60ede8`, following the
 [architecture review](ARCHITECTURE_REVIEW.md). This document owns this technical sequence;
 [BOATING_PLAN.md](BOATING_PLAN.md) continues to own gameplay direction.
 
-Status: P1, P2a, P3a and C1 implemented; full P2/P3 remain pending. Next task for the
-[multiplayer prerequisite](MULTIPLAYER_PLAN.md): C2 precise water/traffic and shader time.
+Status: P1, P2a, P3a, C1 and C2 implemented; full P2/P3 remain pending. Next task for the
+[multiplayer prerequisite](MULTIPLAYER_PLAN.md): C3 long-session gate and replacement baseline.
 At preparation, the user requested a plan only. Implementation began with P1 on 2026-10-19;
 execute later requested tasks using the protocol below. No additional approval gates are created
 by this plan. Verification of the original planning work is recorded at the end.
@@ -63,7 +63,7 @@ All rows start **pending**. Replace the evidence column with actual dated result
 | P3a | Current arcade-loop baseline; subset of P3 | P2a | Implemented 2026-10-23; [three-run trace, timings and captures](BOATING_PERFORMANCE.md#p3a-current-arcade-baseline--2026-10-23); full P3 matrix pending |
 | P3 | Baseline report and workload fixtures | P2 | Pending |
 | C1 | Integer tick authority and replay revision | P3 | Implemented 2026-10-23 after P3a slice; [clock handoff below](#c1-handoff--2026-10-23) |
-| C2 | Precise CPU/GPU time consumers | C1 | Pending |
+| C2 | Precise CPU/GPU time consumers | C1 | Implemented 2026-10-23; [C2 handoff below](#c2-handoff--2026-10-23); 85 active CTests pass |
 | C3 | Long-session/compatibility gate and new baseline | C2 | Pending |
 | W1 | Explicit immutable location definitions | C3 | Pending |
 | W2 | Caller-owned collision and water-mesh caches | W1 | Pending |
@@ -717,6 +717,65 @@ world/session extraction. No cross-platform bit identity or user acceptance is i
   14,640 ticks end at exactly 122 s instead of 121.992271 s. Release CPU/GPU captures at
   9/11/20 s match P3a byte for byte and were inspected. Scripted 180-frame desktop demo
   and course runs completed. No human handling/focus/audio acceptance is claimed.
-- **Limits:** Water/traffic/scene/shader APIs still narrow time to float; C2 owns their
-  precision and phase contract. C3 owns the long-session gate and replacement baseline.
-  Windows/Linux/browser execution and manual pause/focus/replay playback were not checked.
+- **Limits at C1:** Water/traffic/scene/shader APIs still narrowed time to float; the
+  [C2 handoff](#c2-handoff--2026-10-23) records that migration. C3 owns the long-session gate
+  and replacement baseline. Windows/Linux/browser execution and manual pause/focus/replay
+  playback were not checked.
+
+## C2 handoff — 2026-10-23
+
+- **Status / next:** C2 implemented on the multiplayer prerequisite track, starting from
+  `6500a65` with the existing README/documentation edits and untracked multiplayer plan
+  preserved. C3 long-session gate and replacement baseline is next; full P2/P3 remain pending.
+- **Time contract:** Water, harbor, traffic, scene-actor, boating-gull and flag APIs take
+  double world seconds; `WaterfrontSceneFrame.time` and D3 `BoatWakeSegment.emitted` are
+  double. `boat_clock.h` adds `boat_phase`/`boat_cycle`, a nearest-cycle FMA reduction in
+  double before narrowing. Wake ages subtract doubles and are gated before narrowing; short
+  particle/integration timers remain float. Bounded main-demo timeline entry points
+  (`waterfront_demo_evaluate`, `waterfront_scene_evaluate`) keep their float timeline time.
+- **Water/shader payloads:** `boat_water_wave_uniforms` packs each ambient component's
+  `remainder(angular_speed * seconds, 2*pi)` into `waveParameters[i].w`; CPU queries and both
+  shader stages subtract that same float phase. The shared `time` uniform is removed: no
+  double is uploaded as a float. `playerWakeParameters[i].y` is now age at frame time (was
+  absolute birth), and shader local age is `packed_age - u * inverse_speed`. The scripted
+  crossing uses `crossingWakeTime`, which is -1 outside its finite 0–24 s support, so it
+  never recurs. Cosmetic ripples use per-component `detailRipplePhase` (1.5, 2.1 rad/s) and
+  `reflectionRipplePhase` (0.80, 0.55, 0.65, 0.35 rad/s). The fragment shader's ambient loop
+  is `ambientWaves()`, shared by production and the parity probe. Traffic keeps its double
+  route reduction with double input; `waterfront_traffic_period` now returns the exact double
+  period. Car lanes, gull cues/wingbeats, flag wind and the current cue reduce each period
+  before float trigonometry. No compatibility wrapper or main-demo branch was needed.
+- **Performance:** `boat_water.c` now queries through internal const pointers instead of
+  copying the 2.7 KB `BoatWater` per call; public signatures are unchanged. A Release CPU
+  `boat_study --location eriksberg --waves --player-wake --time 60` screenshot run took
+  1.29 s versus 1.48 s for `6500a65` (default basin 0.33 s versus 0.35 s), same machine.
+- **Automated verification:** Apple M1 Max/macOS 26.6.2, Debug, the common configure/build
+  and `ctest --test-dir build -j 4 --output-on-failure` pass 85 active cases (20 GPU) in
+  110.46 s; fifteen retired field cases stay disabled. `boat_environment` now checks ambient
+  water against an independent double reference (<1e-5 m) at 0/10/3600/86400/30-day epochs,
+  FD derivatives there, 60 individual phase-wrap samples, large-epoch D3 wakes against equal
+  short-age wakes, and expired D3/crossing wakes at later times. A control shows the former
+  float-time phase misses the reference by 1.53 mm at 24 h. `boat_environment_gpu` reads the
+  production fragment and vertex stages through an RGBA32F target: 1155 samples at 0 h, 1 h,
+  24 h and ±1e-4 s around each component's wrap, max error 3.44e-4 (wake tolerance 5e-4,
+  ambient-only 1.5e-4). `harbor_traffic` adds 1 h/24 h/30-day route periodicity, smooth motion,
+  render/contact agreement and gull continuity; `waterfront_actors` adds smooth car lanes at
+  the same epochs. `wake_objects_gpu` was updated to the one-argument `playerWake`.
+- **Baseline difference:** The [C2 comparison](BOATING_PERFORMANCE.md#c2-time-consumer-comparison--2026-10-23)
+  has three Release arcade traces identical to C1 at every row (final hash
+  `24d582aae45971b4`). Release CPU captures at 9/11/20 s and GPU 9/20 s match C1 byte for
+  byte; GPU 11 s differs in two pixels by one level. Of 32 Debug CPU/GPU reference frames,
+  all CPU and main-demo GPU frames match; six boating GPU frames differ in at most four pixels.
+  Traffic renders at 24 h and 30 days were inspected. Scripted 180-frame Release demo, Eriksberg
+  wave/player-wake demo and course runs exited normally.
+- **Manual playback:** On 2026-10-23 the user played the default basin build from
+  `cmake -S . -B build/review -DCMAKE_BUILD_TYPE=RelWithDebInfo`,
+  `cmake --build build/review --target boat_study -j` and `./build/review/boat_study`, and
+  reported that it works great. Other locations and options were not reported as played.
+- **Limits:** GPU tolerances were measured on one Apple GPU; Windows/Linux/browser were not run.
+  No simulated hour was run (C3). The benchmark trace CSV and profiler overlay still print
+  `Boat.time` as float (diagnostic display only). The frozen P2a oracle
+  `tools/boat_drive_baseline.h` restores only the derived `time` cache after its crossing
+  boat's recovery reset, whereas production restores the tick; C3 should decide whether the
+  oracle needs a C1-era revision. Specific pause/focus/replay and long-session playback
+  were not separately reported.

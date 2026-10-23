@@ -41,16 +41,16 @@ typedef struct {
 BoatModelSpec waterfront_traffic_spec(int index);
 const Mesh3D *waterfront_traffic_mesh(int index);
 // Closed authored routes; negative time supports wakes across the start and lap boundary.
-WaterfrontVesselMotion waterfront_traffic_motion(int index, float time);
-float waterfront_traffic_period(int index);
-void waterfront_traffic_evaluate(BoatWater water, float time, WaterfrontTrafficFrame *frame);
+WaterfrontVesselMotion waterfront_traffic_motion(int index, double time);
+double waterfront_traffic_period(int index); // Exact route period in seconds.
+void waterfront_traffic_evaluate(BoatWater water, double time, WaterfrontTrafficFrame *frame);
 // Full rectangle SAT against moving, padded traffic hulls. Traffic follows its route;
 // only the player responds. No basin traffic, traffic AI, or physical crossing-wake source.
 bool waterfront_traffic_contact(Vector2 position, float heading, float bow, float stern,
-    float half_beam, float time, WaterfrontTrafficContact *contact);
+    float half_beam, double time, WaterfrontTrafficContact *contact);
 bool waterfront_traffic_contact_height(Vector2 position, float heading, float bow, float stern,
-    float half_beam, float bottom, float top, BoatWater water, float time,
+    float half_beam, float bottom, float top, BoatWater water, double time,
     WaterfrontTrafficContact *contact);
-bool waterfront_traffic_camera_clear(Vector3 position, float time, float clearance);
+bool waterfront_traffic_camera_clear(Vector3 position, double time, float clearance);
 
 #endif

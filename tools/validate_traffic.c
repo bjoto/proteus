@@ -95,6 +95,53 @@ static bool hulls_clear(const Boat *boat)
 
 // Exercise the boating snapshot as well as the authored paths: both renderers must
 // receive the same flock, and moving stimuli must not introduce frame-history dependence.
+// Day-long sessions keep exact route periodicity, smooth motion, and contact/render agreement.
+static int check_long_session(void)
+{
+    const double epochs[] = { 3600.3, 86400.3, 30 * 86400.3 };
+    WaterfrontTrafficFrame frame;
+    WaterfrontSceneFrame gulls = { 0 }, next = { 0 };
+    Vector3 far = { 10000, 0, 10000 };
+    for (int e = 0; e < 3; ++e) {
+        double time = epochs[e];
+        waterfront_traffic_evaluate(boat_water_gentle(), time, &frame);
+        for (int i = 0; i < WATERFRONT_TRAFFIC_VESSELS; ++i) {
+            double period = waterfront_traffic_period(i);
+            WaterfrontVesselMotion m = waterfront_traffic_motion(i, time);
+            WaterfrontVesselMotion lap
+                = waterfront_traffic_motion(i, time - floor(time / period) * period);
+            CHECK(near(m.position, lap.position, .001f) && near(m.velocity, lap.velocity, .001f));
+            Vector3 finite_difference
+                = Vector3Scale(Vector3Subtract(waterfront_traffic_motion(i, time + .01).position,
+                                   waterfront_traffic_motion(i, time - .01).position),
+                    50);
+            CHECK(near(m.velocity, finite_difference, .03f));
+            // Rendered pose, moving contact, and route sample use one time evaluation.
+            const WaterfrontVesselState *vessel = &frame.vessels[i];
+            CHECK(!memcmp(&vessel->motion, &m, sizeof(m)));
+            CHECK(
+                vessel->pose.position.x == m.position.x && vessel->pose.position.z == m.position.z);
+            WaterfrontTrafficContact contact;
+            CHECK(waterfront_traffic_contact((Vector2) { -m.position.x, m.position.z }, m.heading,
+                2, 1.6f, .75f, time, &contact));
+            CHECK(contact.vessel == i);
+        }
+        for (int j = 0; j < frame.wake_count; ++j)
+            CHECK(boat_map_water(
+                (Vector2) { -frame.wakes[j].pose.position.x, frame.wakes[j].pose.position.z },
+                .5f));
+        waterfront_boating_gulls(time, far, (Vector3) { 0 }, &gulls);
+        waterfront_boating_gulls(time + 1 / 120.0, far, (Vector3) { 0 }, &next);
+        for (int i = 0; i < gulls.gull_count; ++i) {
+            float step = Vector3Distance(gulls.gulls[i][0].position, next.gulls[i][0].position);
+            // Fastest followers fly about 13 m/s; float time would freeze or jump at 30 days.
+            CHECK(step > 1e-4f && step < .25f);
+            CHECK(fabsf(gulls.gulls[i][1].rotation.x - next.gulls[i][1].rotation.x) < .2f);
+        }
+    }
+    return 0;
+}
+
 static int check_gulls(void)
 {
     WaterfrontSceneFrame previous = { 0 }, frame = { 0 }, sought = { 0 };
@@ -158,7 +205,7 @@ static int check_gulls(void)
 int main(void)
 {
     CHECK(check_vertical_contacts() == 0);
-    if (check_gulls())
+    if (check_gulls() || check_long_session())
         return 1;
     for (int river = 0; river < 2; ++river) {
         boat_map_destroy();
@@ -287,6 +334,7 @@ int main(void)
     CHECK(waterfront_traffic_mesh(-1) == NULL);
     CHECK(waterfront_traffic_period(-1) == 0);
     boat_map_destroy();
-    puts("harbor_traffic=ok routes=4 pairwise_schedule=4160s visual_wakes=64 moving_contacts=ok");
+    puts("harbor_traffic=ok routes=4 pairwise_schedule=4160s visual_wakes=64 moving_contacts=ok "
+         "long_session=30d");
     return 0;
 }

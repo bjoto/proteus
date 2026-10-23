@@ -16,7 +16,8 @@ typedef struct {
 
 typedef struct {
     Vector2 position, direction; // Segment centre and unit travel direction in simulation X/Z.
-    float length, emitted, amplitude, inverse_speed;
+    double emitted; // Absolute world time; subtract before narrowing the bounded age.
+    float length, amplitude, inverse_speed;
 } BoatWakeSegment;
 
 typedef struct {
@@ -41,30 +42,38 @@ typedef struct {
 
 // Kinematic four-sample rigid pose in renderer/world X/Z (X reflected from simulation).
 // Shared by moored and travelling scenery; the player retains its dynamic six-support model.
+// All evaluation times are double world seconds; periodic phases and bounded ages are reduced
+// before narrowing to float.
 Transform3D boat_water_pose(
-    BoatWater water, float time, Vector3 position, float heading, float length, float beam);
+    BoatWater water, double time, Vector3 position, float heading, float length, float beam);
 BoatWater boat_water_gentle(void);
 BoatWater boat_water_test(bool waves, bool current, bool wake);
 bool boat_water_displaced(BoatWater water);
 // Append a travelled segment. Clear/zero the water settings to discard its entire history.
-void boat_water_emit_wake(
-    BoatWater *water, Vector2 start, Vector2 end, float emitted, float duration, float water_speed);
+void boat_water_emit_wake(BoatWater *water, Vector2 start, Vector2 end, double emitted,
+    float duration, float water_speed);
 // Pack live D3 segments into renderer/world-space vec4 arrays for production and probes.
-int boat_water_wake_uniforms(BoatWater water, float time, float *origins, float *parameters);
+// Parameters are support half-length, age at TIME, amplitude and inverse speed.
+int boat_water_wake_uniforms(BoatWater water, double time, float *origins, float *parameters);
+// Pack three world-space vec4 ambient components: wave vector X/Z, amplitude and the phase
+// remainder(angular_speed * time, 2*pi). CPU queries subtract the same float phase.
+void boat_water_wave_uniforms(BoatWater water, double time, float *parameters);
+// Scripted crossing clock, or -1 outside its finite 0..24 s support (never recurring).
+float boat_water_crossing_clock(BoatWater water, double time);
 Vector2 boat_water_current(BoatWater water, Vector2 position);
 // One source travels X=-24..24 at Z=-8 plus wake_offset over the first 12 seconds.
-bool boat_water_wake_source(BoatWater water, float time, Vector2 *position);
-BoatWaterSample boat_water_query(BoatWater water, Vector2 position, float time);
+bool boat_water_wake_source(BoatWater water, double time, Vector2 *position);
+BoatWaterSample boat_water_query(BoatWater water, Vector2 position, double time);
 BoatWaterSample boat_water_query_field(
-    BoatWater water, const BoatWake *field, Vector2 position, float time);
+    BoatWater water, const BoatWake *field, Vector2 position, double time);
 // Dissipative normal resistance in simulation coordinates. Positive support is the local upward
 // spring force; it caps exit damping so the combined support never pulls the hull underwater.
 Vector3 boat_water_resistance(
     BoatWaterSample water, Vector3 point_velocity, float damping, float support);
 // Borrowed, tessellated surface; renderer X is reflected from simulation X. NULL on allocation
 // failure. CPU reference draws the colors and full displaced surface. Each call updates storage.
-const Mesh3D *boat_water_surface(BoatWater water, float time, bool eriksberg);
-const Mesh3D *boat_water_surface_field(BoatWater water, const BoatWake *field, float time);
+const Mesh3D *boat_water_surface(BoatWater water, double time, bool eriksberg);
+const Mesh3D *boat_water_surface_field(BoatWater water, const BoatWake *field, double time);
 // GPU-only rest topology, clipped to the original shoreline. World X/Z, not simulation X.
 // Cached on a fixed 1.5 m grid; shifts by 12 m outside the visible displacement radius.
 #define BOAT_WATER_PATCH_FULL 48.0f

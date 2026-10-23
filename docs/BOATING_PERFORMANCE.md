@@ -197,5 +197,40 @@ machine, not a controlled replacement baseline.
 Release CPU and GPU captures at 9, 11 and 20 s in `build/bench/c1/` match the corresponding
 P3a PNG files byte for byte and were inspected. A scripted Release windowed demo and basin
 course run of 180 frames each completed (379 and 376 ticks respectively). No human handling,
-focus, pause or audio listening acceptance is inferred. The current water/traffic and shader
-time consumers still narrow to float; C2 must migrate them before long-session acceptance.
+focus, pause or audio listening acceptance is inferred. At C1, the water/traffic and shader
+time consumers still narrowed to float; the C2 comparison below records their migration.
+
+## C2 time-consumer comparison — 2026-10-23
+
+C2 carries double world time into water, traffic, scene actors and shader payloads (see the
+[C2 handoff](BOATING_FOUNDATIONS_PLAN.md#c2-handoff--2026-10-23)). The same Release fixture
+was run three times after building the changed sources:
+
+```sh
+cmake --build build/p3a-release --target boat_benchmark boat_study harbor_review -j
+mkdir -p build/bench/c2
+for run in 1 2 3; do
+  ./build/p3a-release/boat_benchmark --scenario wake-loop --mode simulation --renderer none \
+    --warmup 120 --frames 7200 --output build/bench/c2/run-$run
+done
+```
+
+All three `build/bench/c2/run-{1,2,3}.state.csv` traces are byte-identical to
+`build/bench/c1/wake-loop.state.csv`: 7320 rows, final time 122 s, hash `24d582aae45971b4`.
+That is expected because this fixture uses arcade wake objects (already age-packed) and no
+ambient waves or D3 trail. Simulation p50 is 0.064 ms in each run; p95/p99/max are
+0.133/0.147/0.199, 0.129/0.146/0.255 and 0.131/0.147/0.228 ms. These are diagnostic
+same-machine observations, not the C3 replacement baseline.
+
+Release `boat_study --renderer cpu|gpu --time 9|11|20 --screenshot ...` captures in
+`build/bench/c2/` match C1 byte for byte, except `gpu-t11.png`: two pixels differ by one
+level. The basin's ambient amplitudes are zero there; the difference is GPU rounding from the
+restructured shader expression, not a time change. Traffic captures from
+`./build/p3a-release/harbor_review --renderer cpu|gpu --view traffic --waves --time T` at
+T = 40, 86400.5 and 2591999.5 s (`build/bench/c2/{cpu,gpu}-traffic-*.png`) were inspected:
+vessels, trails, waves and reflections remain coherent at 24 hours and 30 days.
+
+The water path no longer copies `BoatWater` for every internal query. On the same M1 Max, a
+Release CPU `boat_study --location eriksberg --waves --player-wake --time 60` screenshot
+run took 1.29 s versus 1.48 s for `6500a65`; the default basin run took 0.33 s versus
+0.35 s. These are wall-clock observations that include startup and one render.

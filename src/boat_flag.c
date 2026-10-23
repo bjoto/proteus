@@ -1,4 +1,5 @@
 #include "boat_flag.h"
+#include "boat_clock.h"
 #include "raymath.h"
 
 #include <math.h>
@@ -8,14 +9,29 @@ static const float columns[BOAT_FLAG_COLS]
     = { 0, .15625f, .3125f, .4375f, .55f, .6625f, .775f, .8875f, 1 };
 static const float width = BOAT_FLAG_WIDTH, height = BOAT_FLAG_HEIGHT;
 
-Vector3 boat_flag_wind(Vector3 p, float t)
+// Each periodic wind component reduced once per evaluation time, shared by all cloth points.
+typedef struct {
+    float gust[2], eddy, lift, side;
+} WindPhase;
+
+static WindPhase wind_phase(double t)
 {
-    float gust = 1 + .18f * sinf(.73f * t + .013f * p.z) + .10f * sinf(1.61f * t - .021f * p.x);
-    // Small advected eddies give a sheet aligned with the mean wind a varying angle of attack.
-    float eddy = 8.3f * t - 2.1f * p.x - .7f * p.z;
-    return (Vector3) { .35f * gust + .035f * sinf(eddy), .015f * sinf(eddy * 1.37f),
-        .10f * gust + .04f * sinf(eddy * .83f + p.y * 2) };
+    return (WindPhase) { { boat_phase(.73f, t), boat_phase(1.61f, t) }, boat_phase(8.3f, t),
+        boat_phase(8.3f * 1.37f, t), boat_phase(8.3f * .83f, t) };
 }
+
+static Vector3 wind_at(Vector3 p, WindPhase phase)
+{
+    float gust
+        = 1 + .18f * sinf(phase.gust[0] + .013f * p.z) + .10f * sinf(phase.gust[1] - .021f * p.x);
+    // Small advected eddies give a sheet aligned with the mean wind a varying angle of attack.
+    float space = -2.1f * p.x - .7f * p.z;
+    return (Vector3) { .35f * gust + .035f * sinf(phase.eddy + space),
+        .015f * sinf(phase.lift + space * 1.37f),
+        .10f * gust + .04f * sinf(phase.side + space * .83f + p.y * 2) };
+}
+
+Vector3 boat_flag_wind(Vector3 p, double t) { return wind_at(p, wind_phase(t)); }
 
 Vector3 boat_flag_attachment(Transform3D hull, int row)
 {
@@ -25,7 +41,7 @@ Vector3 boat_flag_attachment(Transform3D hull, int row)
     return Vector3Add(hull.position, Vector3Transform(local, MatrixRotateXYZ(hull.rotation)));
 }
 
-void boat_flag_reset(BoatFlag *flag, Transform3D hull, Vector3 velocity, float time)
+void boat_flag_reset(BoatFlag *flag, Transform3D hull, Vector3 velocity, double time)
 {
     Vector3 air = Vector3Subtract(boat_flag_wind(hull.position, time), velocity);
     // Begin hanging at low speed, including the initial frame at spawn/reset.
@@ -59,13 +75,14 @@ static void constrain(BoatFlag *flag, int a, int b, float rest, float stiffness)
     flag->surface.points[b] = Vector3Subtract(flag->surface.points[b], Vector3Scale(delta, wb));
 }
 
-void boat_flag_step(BoatFlag *flag, Transform3D hull, Vector3 velocity, float time)
+void boat_flag_step(BoatFlag *flag, Transform3D hull, Vector3 velocity, double time)
 {
     if (!flag->initialized
         || Vector3Distance(flag->surface.points[0], boat_flag_attachment(hull, 0)) > 2)
         boat_flag_reset(flag, hull, velocity, time);
-    float apparent_speed = Vector3Length(
-        Vector3Subtract(boat_flag_wind(boat_flag_attachment(hull, 0), time), velocity));
+    WindPhase phase = wind_phase(time);
+    float apparent_speed
+        = Vector3Length(Vector3Subtract(wind_at(boat_flag_attachment(hull, 0), phase), velocity));
     flag->flutter_phase = remainderf(
         flag->flutter_phase + 2 * PI * (1.7f + .32f * apparent_speed) * BOAT_FLAG_STEP, 2 * PI);
     Vector3 acceleration[BOAT_FLAG_POINTS];
@@ -74,7 +91,7 @@ void boat_flag_step(BoatFlag *flag, Transform3D hull, Vector3 velocity, float ti
             int i = y * BOAT_FLAG_COLS + x;
             Vector3 p = flag->surface.points[i];
             Vector3 v = Vector3Scale(Vector3Subtract(p, flag->previous[i]), 1 / BOAT_FLAG_STEP);
-            Vector3 air = Vector3Subtract(boat_flag_wind(p, time), v);
+            Vector3 air = Vector3Subtract(wind_at(p, phase), v);
             Vector3 across = Vector3Subtract(
                 flag->surface.points[y * BOAT_FLAG_COLS + (x < BOAT_FLAG_COLS - 1 ? x + 1 : x)],
                 flag->surface.points[y * BOAT_FLAG_COLS + (x > 0 ? x - 1 : x)]);

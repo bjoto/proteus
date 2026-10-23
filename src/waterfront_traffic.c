@@ -35,11 +35,11 @@ const Mesh3D *waterfront_traffic_mesh(int index)
     return &models[index].mesh;
 }
 
-float waterfront_traffic_period(int index)
+double waterfront_traffic_period(int index)
 {
     if (index < 0 || index >= WATERFRONT_TRAFFIC_VESSELS)
         return 0;
-    return index == 0 ? (260 + 28 * PI) / dock_speed : index == 3 ? 320 : 260;
+    return index == 0 ? (260 + 28 * (double)PI) / dock_speed : index == 3 ? 320 : 260;
 }
 
 static double wrapped(double value, double period)
@@ -48,7 +48,7 @@ static double wrapped(double value, double period)
     return value < 0 ? value + period : value;
 }
 
-WaterfrontVesselMotion waterfront_traffic_motion(int index, float time)
+WaterfrontVesselMotion waterfront_traffic_motion(int index, double time)
 {
     WaterfrontVesselMotion out = { 0 };
     if (index < 0 || index >= WATERFRONT_TRAFFIC_VESSELS || !isfinite(time))
@@ -99,7 +99,7 @@ WaterfrontVesselMotion waterfront_traffic_motion(int index, float time)
     return out;
 }
 
-static Vector3 wake_point(int index, float time, float age, int side)
+static Vector3 wake_point(int index, double time, float age, int side)
 {
     BoatModelSpec spec = waterfront_traffic_spec(index);
     WaterfrontVesselMotion motion = waterfront_traffic_motion(index, time - age);
@@ -109,7 +109,7 @@ static Vector3 wake_point(int index, float time, float age, int side)
         Vector3Scale(right, side * (spec.beam * .42f + age * .38f)));
 }
 
-void waterfront_traffic_evaluate(BoatWater water, float time, WaterfrontTrafficFrame *frame)
+void waterfront_traffic_evaluate(BoatWater water, double time, WaterfrontTrafficFrame *frame)
 {
     *frame = (WaterfrontTrafficFrame) { 0 };
     for (int i = 0; i < WATERFRONT_TRAFFIC_VESSELS; ++i) {
@@ -172,14 +172,14 @@ static bool rectangles(Vector2 delta, Vector2 player_forward, Vector2 player_rig
 }
 
 bool waterfront_traffic_contact(Vector2 position, float heading, float bow, float stern,
-    float half_beam, float time, WaterfrontTrafficContact *contact)
+    float half_beam, double time, WaterfrontTrafficContact *contact)
 {
     return waterfront_traffic_contact_height(position, heading, bow, stern, half_beam, -INFINITY,
         INFINITY, (BoatWater) { 0 }, time, contact);
 }
 
 bool waterfront_traffic_contact_height(Vector2 position, float heading, float bow, float stern,
-    float half_beam, float bottom, float top, BoatWater water, float time,
+    float half_beam, float bottom, float top, BoatWater water, double time,
     WaterfrontTrafficContact *contact)
 {
     Vector2 forward = { sinf(heading), -cosf(heading) }, right = { cosf(heading), sinf(heading) };
@@ -223,7 +223,7 @@ bool waterfront_traffic_contact_height(Vector2 position, float heading, float bo
     return false;
 }
 
-bool waterfront_traffic_camera_clear(Vector3 p, float time, float clearance)
+bool waterfront_traffic_camera_clear(Vector3 p, double time, float clearance)
 {
     for (int i = 0; i < WATERFRONT_TRAFFIC_VESSELS; ++i) {
         BoatModelSpec spec = waterfront_traffic_spec(i);

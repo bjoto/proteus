@@ -1,4 +1,5 @@
 #include "boat_water.h"
+#include "boat_clock.h"
 #include "boat_model.h"
 #include "raymath.h"
 #include "waterfront_scene.h"
@@ -6,21 +7,24 @@
 #include <math.h>
 #include <stdlib.h>
 
-static float pose_height(BoatWater water, Vector3 p, float time)
+// Internal queries borrow the settings: BoatWater carries its whole wake history by value.
+static BoatWaterSample query(const BoatWater *water, Vector2 position, double time);
+
+static float pose_height(const BoatWater *water, Vector3 p, double time)
 {
-    return boat_water_query(water, (Vector2) { -p.x, p.z }, time).height;
+    return query(water, (Vector2) { -p.x, p.z }, time).height;
 }
 
 Transform3D boat_water_pose(
-    BoatWater water, float time, Vector3 p, float yaw, float length, float beam)
+    BoatWater water, double time, Vector3 p, float yaw, float length, float beam)
 {
     Matrix heading = MatrixRotateY(yaw);
     Vector3 fore = Vector3Add(p, Vector3Transform((Vector3) { 0, 0, -length * .35f }, heading));
     Vector3 aft = Vector3Add(p, Vector3Transform((Vector3) { 0, 0, length * .35f }, heading));
     Vector3 left = Vector3Add(p, Vector3Transform((Vector3) { -beam * .35f, 0, 0 }, heading));
     Vector3 right = Vector3Add(p, Vector3Transform((Vector3) { beam * .35f, 0, 0 }, heading));
-    float f = pose_height(water, fore, time), a = pose_height(water, aft, time);
-    float l = pose_height(water, left, time), r = pose_height(water, right, time);
+    float f = pose_height(&water, fore, time), a = pose_height(&water, aft, time);
+    float l = pose_height(&water, left, time), r = pose_height(&water, right, time);
     p.y = (f + a + l + r) * .25f;
     float pitch = atanf((f - a) / (length * .7f));
     float roll = atanf((r - l) / (beam * .7f));
@@ -59,14 +63,16 @@ BoatWater boat_water_test(bool waves, bool current, bool wake)
     return water;
 }
 
-bool boat_water_displaced(BoatWater water)
+static bool displaced(const BoatWater *water)
 {
-    return water.amplitude != 0 || water.wake_amplitude != 0 || water.player_wake_enabled
-        || water.objects;
+    return water->amplitude != 0 || water->wake_amplitude != 0 || water->player_wake_enabled
+        || water->objects;
 }
 
+bool boat_water_displaced(BoatWater water) { return displaced(&water); }
+
 void boat_water_emit_wake(
-    BoatWater *water, Vector2 start, Vector2 end, float emitted, float duration, float speed)
+    BoatWater *water, Vector2 start, Vector2 end, double emitted, float duration, float speed)
 {
     Vector2 delta = Vector2Subtract(end, start);
     float distance = Vector2Length(delta);
@@ -84,17 +90,18 @@ void boat_water_emit_wake(
         ++water->player_wake_count;
 }
 
-int boat_water_wake_uniforms(BoatWater water, float time, float *origins, float *parameters)
+int boat_water_wake_uniforms(BoatWater water, double time, float *origins, float *parameters)
 {
     int count = 0;
     if (!water.player_wake_enabled)
         return 0;
     for (int i = 0; i < water.player_wake_count; ++i) {
         BoatWakeSegment s = water.player_wake[i];
-        if (time - s.emitted > BOAT_WAKE_LIFETIME + 1)
+        double age = time - s.emitted; // Bounded by the gate below before narrowing.
+        if (age > BOAT_WAKE_LIFETIME + 1)
             continue;
         float a[] = { -s.position.x, s.position.y, -s.direction.x, s.direction.y };
-        float b[] = { s.length, s.emitted, s.amplitude, s.inverse_speed };
+        float b[] = { s.length, (float)age, s.amplitude, s.inverse_speed };
         for (int j = 0; j < 4; ++j) {
             origins[count * 4 + j] = a[j];
             parameters[count * 4 + j] = b[j];
@@ -104,33 +111,65 @@ int boat_water_wake_uniforms(BoatWater water, float time, float *origins, float 
     return count;
 }
 
-Vector2 boat_water_current(BoatWater water, Vector2 position)
+void boat_water_wave_uniforms(BoatWater water, double time, float *parameters)
+{
+    const BoatWave waves[]
+        = { { water.amplitude, water.wavelength, water.angular_speed, water.direction },
+              water.crossing[0], water.crossing[1] };
+    for (int i = 0; i < 3; ++i) {
+        float k = waves[i].wavelength > 0 ? 2 * PI / waves[i].wavelength : 0;
+        parameters[i * 4] = -k * waves[i].direction.x; // Simulation X is reflected.
+        parameters[i * 4 + 1] = k * waves[i].direction.y;
+        parameters[i * 4 + 2] = waves[i].wavelength > 0 ? waves[i].amplitude : 0;
+        parameters[i * 4 + 3] = boat_phase(waves[i].angular_speed, time);
+    }
+}
+
+static float crossing_clock(const BoatWater *water, double time)
+{
+    // Emission ends at 12 s and each packet lives 12 s; later times are permanently calm.
+    return water->wake_amplitude != 0 && time > 0 && time < 24 ? (float)time : -1;
+}
+
+float boat_water_crossing_clock(BoatWater water, double time)
+{
+    return crossing_clock(&water, time);
+}
+
+static Vector2 current_at(const BoatWater *water, Vector2 position)
 {
     float weight = 1;
-    if (water.current_width > 0) {
-        float x = (position.x - water.current_center) / water.current_width;
+    if (water->current_width > 0) {
+        float x = (position.x - water->current_center) / water->current_width;
         weight = fmaxf(0, 1 - x * x);
         weight *= weight;
     }
-    return Vector2Scale(water.current, weight);
+    return Vector2Scale(water->current, weight);
 }
 
-bool boat_water_wake_source(BoatWater water, float time, Vector2 *position)
+Vector2 boat_water_current(BoatWater water, Vector2 position)
 {
-    *position = Vector2Add(water.wake_offset, (Vector2) { -24 + 4 * time, -8 });
+    return current_at(&water, position);
+}
+
+bool boat_water_wake_source(BoatWater water, double time, Vector2 *position)
+{
+    float t = (float)fmin(fmax(time, 0), 12); // Inactive positions are clamped to the path.
+    *position = Vector2Add(water.wake_offset, (Vector2) { -24 + 4 * t, -8 });
     return water.wake_amplitude != 0 && time >= 0 && time <= 12;
 }
 
 // Compact wave packet with analytic spatial/time derivatives. Keep the matching GLSL
 // recipe in waterfront_water.vs/fs in sync. It is a scripted wake, not fluid simulation.
-static void crossing_wake(
-    BoatWater water, Vector2 p, float time, float *height, Vector2 *gradient, float *vertical_speed)
+static void crossing_wake(const BoatWater *water, Vector2 p, double time, float *height,
+    Vector2 *gradient, float *vertical_speed)
 {
-    if (water.wake_amplitude == 0)
+    float clock = crossing_clock(water, time);
+    if (clock < 0)
         return;
-    p = Vector2Subtract(p, water.wake_offset);
+    p = Vector2Subtract(p, water->wake_offset);
     float emitted = (p.x + 24) / 4;
-    float age = time - emitted;
+    float age = clock - emitted;
     if (emitted <= 0 || emitted >= 12 || age <= 0 || age >= 12)
         return;
     float radius = sqrtf((p.y + 8) * (p.y + 8) + .25f);
@@ -146,7 +185,7 @@ static void crossing_wake(
     float de = PI / 12 * sinf(2 * PI * age / 12);
     window *= window;
     envelope *= envelope;
-    float a = water.wake_amplitude;
+    float a = water->wake_amplitude;
     *height += a * window * envelope * f;
     gradient->x += a / 4 * ((dw * envelope - window * de) * f + window * envelope * df * 2.4f);
     gradient->y += a * window * envelope * df * (p.y + 8) / radius;
@@ -162,7 +201,7 @@ static float wake_smooth(float start, float end, float x, float *derivative)
 
 // A path-aligned packet expands from both sides of each travelled segment. Smooth
 // normalization bounds overlapping/looped wakes, including all derivative terms.
-static void player_wake(const BoatWater *water, Vector2 p, float time, float *height,
+static void player_wake(const BoatWater *water, Vector2 p, double time, float *height,
     Vector2 *gradient, float *vertical_speed)
 {
     if (!water->player_wake_enabled)
@@ -171,9 +210,10 @@ static void player_wake(const BoatWater *water, Vector2 p, float time, float *he
     Vector2 sum_g = { 0 }, weight_g = { 0 };
     for (int i = 0; i < water->player_wake_count; ++i) {
         const BoatWakeSegment *s = &water->player_wake[i];
-        float clock = time - s->emitted;
-        if (clock < -1 || clock > BOAT_WAKE_LIFETIME + 1)
+        double elapsed = time - s->emitted;
+        if (elapsed < -1 || elapsed > BOAT_WAKE_LIFETIME + 1)
             continue;
+        float clock = (float)elapsed;
         Vector2 delta = Vector2Subtract(p, s->position);
         Vector2 normal = { -s->direction.y, s->direction.x };
         float u = Vector2DotProduct(delta, s->direction);
@@ -222,33 +262,35 @@ static void player_wake(const BoatWater *water, Vector2 p, float time, float *he
     *vertical_speed += (sum_t - correction * weight_t) / divisor;
 }
 
-BoatWaterSample boat_water_query(BoatWater water, Vector2 position, float time)
+static BoatWaterSample query(const BoatWater *water, Vector2 position, double time)
 {
     BoatWaterSample sample = { .normal = { 0, 1, 0 } };
-    Vector2 current = boat_water_current(water, position);
+    Vector2 current = current_at(water, position);
     sample.velocity.x = current.x;
     sample.velocity.z = current.y;
-    if (!boat_water_displaced(water))
+    if (!displaced(water))
         return sample;
     const BoatWave waves[]
-        = { { water.amplitude, water.wavelength, water.angular_speed, water.direction },
-              water.crossing[0], water.crossing[1] };
+        = { { water->amplitude, water->wavelength, water->angular_speed, water->direction },
+              water->crossing[0], water->crossing[1] };
     Vector2 gradient = { 0 };
     for (int i = 0; i < 3; ++i) {
         BoatWave w = waves[i];
         if (w.amplitude == 0 || w.wavelength <= 0)
             continue;
         float k = 2 * PI / w.wavelength;
-        float phase = k * Vector2DotProduct(w.direction, position) - w.angular_speed * time;
+        // The packed phase is shared with both shader stages; see boat_water_wave_uniforms.
+        float phase
+            = k * Vector2DotProduct(w.direction, position) - boat_phase(w.angular_speed, time);
         float slope = w.amplitude * k * cosf(phase);
         sample.height += w.amplitude * sinf(phase);
         gradient = Vector2Add(gradient, Vector2Scale(w.direction, slope));
         sample.velocity.y -= w.amplitude * w.angular_speed * cosf(phase);
     }
     crossing_wake(water, position, time, &sample.height, &gradient, &sample.velocity.y);
-    player_wake(&water, position, time, &sample.height, &gradient, &sample.velocity.y);
-    if (water.objects) {
-        BoatWakeObjectSample q = boat_wake_objects_query(water.objects, position);
+    player_wake(water, position, time, &sample.height, &gradient, &sample.velocity.y);
+    if (water->objects) {
+        BoatWakeObjectSample q = boat_wake_objects_query(water->objects, position);
         sample.height += q.height;
         sample.crest_foam = q.crest_foam;
         gradient = Vector2Add(gradient, q.gradient);
@@ -259,6 +301,11 @@ BoatWaterSample boat_water_query(BoatWater water, Vector2 position, float time)
     sample.normal = Vector3Normalize((Vector3) { -gradient.x, 1, -gradient.y });
     // Horizontal velocity is the authored current; waves add vertical surface motion.
     return sample;
+}
+
+BoatWaterSample boat_water_query(BoatWater water, Vector2 position, double time)
+{
+    return query(&water, position, time);
 }
 
 Vector3 boat_water_resistance(
@@ -273,9 +320,9 @@ Vector3 boat_water_resistance(
 }
 
 BoatWaterSample boat_water_query_field(
-    BoatWater water, const BoatWake *field, Vector2 position, float time)
+    BoatWater water, const BoatWake *field, Vector2 position, double time)
 {
-    BoatWaterSample s = boat_water_query(water, position, time);
+    BoatWaterSample s = query(&water, position, time);
     if (!field)
         return s;
     BoatWakeSample q;
@@ -500,7 +547,7 @@ const Mesh3D *boat_water_patch_arcade(Vector2 center, bool eriksberg)
     return water_patch(center, eriksberg, true);
 }
 
-const Mesh3D *boat_water_surface(BoatWater water, float time, bool eriksberg)
+const Mesh3D *boat_water_surface(BoatWater water, double time, bool eriksberg)
 {
     Surface *s = &surfaces[eriksberg];
     if (!s->count) {
@@ -534,10 +581,10 @@ const Mesh3D *boat_water_surface(BoatWater water, float time, bool eriksberg)
         Vector3 centre = { 0 };
         for (int j = 0; j < 3; ++j) {
             Vector3 *v = &s->vertices[i * 3 + j];
-            v->y = boat_water_query(water, (Vector2) { -v->x, v->z }, time).height;
+            v->y = query(&water, (Vector2) { -v->x, v->z }, time).height;
             centre = Vector3Add(centre, Vector3Scale(*v, 1.0f / 3));
         }
-        BoatWaterSample q = boat_water_query(water, (Vector2) { -centre.x, centre.z }, time);
+        BoatWaterSample q = query(&water, (Vector2) { -centre.x, centre.z }, time);
         // Restrained slope light; geometry and GPU reflections carry the wave shape.
         float light = Clamp(.95f + .55f * (-q.normal.x + q.normal.z), .85f, 1.05f);
         Color base = eriksberg ? (Color) { 45, 79, 104, 255 } : (Color) { 36, 107, 125, 255 };
@@ -546,9 +593,7 @@ const Mesh3D *boat_water_surface(BoatWater water, float time, bool eriksberg)
             crest = .65f * Clamp(q.crest_foam, 0, 1) * Clamp(q.height / .3f, 0, 1);
         else if (water.wake_amplitude > 0 || water.player_wake_enabled)
             crest = .65f
-                * Clamp(
-                    (q.height
-                        - boat_water_query(ambient, (Vector2) { -centre.x, centre.z }, time).height)
+                * Clamp((q.height - query(&ambient, (Vector2) { -centre.x, centre.z }, time).height)
                         / .38f,
                     0, 1);
         s->triangles[i].color = (Color) { (unsigned char)Lerp(base.r * light, 166, crest),
@@ -559,7 +604,7 @@ const Mesh3D *boat_water_surface(BoatWater water, float time, bool eriksberg)
     return &s->mesh;
 }
 
-const Mesh3D *boat_water_surface_field(BoatWater water, const BoatWake *field, float time)
+const Mesh3D *boat_water_surface_field(BoatWater water, const BoatWake *field, double time)
 {
     Surface *s = &candidate_surface;
     if (!s->count) {

@@ -18,6 +18,7 @@ static bool transform_equal(Transform3D a, Transform3D b)
 
 // Independent copy of the original street equations: catches phase, lane, orientation,
 // light attachment, and wrap changes rather than merely repeating the new evaluator.
+// Since C2, each lane's travel is reduced in double before the original float wrap.
 static bool legacy_matches(const WaterfrontSceneFrame *frame)
 {
     const Color colors[] = { { 153, 69, 57, 255 }, { 170, 178, 181, 255 }, { 51, 88, 117, 255 },
@@ -50,8 +51,8 @@ static bool legacy_matches(const WaterfrontSceneFrame *frame)
         for (int i = 0; i < 10; ++i) {
             const WaterfrontCarState *car = &frame->cars[street * 10 + i];
             int sign = i % 2 ? 1 : -1;
-            float distance
-                = fmodf(i * length / 10 + frame->time * (5.5f + street) * sign + length, length);
+            float travel = (float)remainder(frame->time * (5.5f + street), length);
+            float distance = fmodf(i * length / 10 + travel * sign + length, length);
             if (distance < 0)
                 distance += length;
             Vector3 forward;
@@ -273,14 +274,45 @@ static bool check_flock(void)
     return snapshot_hash(&previous) == snapshot_hash(&sought);
 }
 
+// Day-long boating sessions keep the lane equations and smooth per-tick car travel.
+static bool check_long_session(void)
+{
+    const double epochs[] = { 3600.25, 86400.25, 30 * 86400.25 };
+    WaterfrontSceneFrame frame, next;
+    for (int e = 0; e < 3; ++e) {
+        int stalls[WATERFRONT_CAR_COUNT] = { 0 };
+        for (int tick = 0; tick < 240; ++tick) {
+            double time = epochs[e] + tick / 120.0;
+            waterfront_scene_evaluate_actors(time, (BoatWater) { 0 }, &frame);
+            waterfront_scene_evaluate_actors(time + 1 / 120.0, (BoatWater) { 0 }, &next);
+            if (frame.time != time || !legacy_matches(&frame))
+                return false;
+            for (int i = 0; i < WATERFRONT_CAR_COUNT; ++i) {
+                // About 5 cm per tick. Only an end-of-street wrap may jump; a lane-offset
+                // corner can briefly shorten one step. Float time would stall every ~15 ticks
+                // at one day and jump about 1.5 m at thirty days.
+                float step = Vector3Distance(frame.cars[i].position, next.cars[i].position);
+                if (step > .2f && step < 20)
+                    return false;
+                stalls[i] += step < .01f;
+            }
+        }
+        for (int i = 0; i < WATERFRONT_CAR_COUNT; ++i)
+            if (stalls[i] > 4)
+                return false;
+    }
+    return true;
+}
+
 int main(void)
 {
-    if (!check_route(true) || !check_route(false) || !check_flock()) {
+    if (!check_route(true) || !check_route(false) || !check_flock() || !check_long_session()) {
         fputs("Actor motion, flock framing/continuity, or seek regression failed\n", stderr);
         return 1;
     }
     puts(
         "Five-gull framing, spacing, camera continuity, and direct seeks pass across 240 seconds.");
+    puts("Car lanes match the reduced-time equations at 1 hour, 24 hours, and 30 days.");
     printf("Actor snapshots match legacy motion and forward/backward/direct seeks on both routes.\n"
            "%d cars, 25 lamps, %d travelling vessels, %d wake patches; snapshot=%zu bytes.\n",
         WATERFRONT_CAR_COUNT, WATERFRONT_TRAFFIC_VESSELS, WATERFRONT_TRAFFIC_WAKES,

@@ -25,11 +25,12 @@ typedef struct {
 } BoatFlag;
 
 // Gentle world-space breeze in renderer coordinates (metres/second), independent of water flow.
-Vector3 boat_flag_wind(Vector3 position, float time);
+// Time is double world seconds; each periodic component is reduced before narrowing.
+Vector3 boat_flag_wind(Vector3 position, double time);
 Vector3 boat_flag_attachment(Transform3D hull, int row);
 // Fixed 120 Hz cloth integration. Hull scale is one; attachments are in physical metres.
-void boat_flag_reset(BoatFlag *flag, Transform3D hull, Vector3 velocity, float time);
-void boat_flag_step(BoatFlag *flag, Transform3D hull, Vector3 velocity, float time);
+void boat_flag_reset(BoatFlag *flag, Transform3D hull, Vector3 velocity, double time);
+void boat_flag_step(BoatFlag *flag, Transform3D hull, Vector3 velocity, double time);
 // Two-sided Swedish cross geometry; returned view borrows the snapshot and static topology.
 Mesh3D boat_flag_mesh(const BoatFlagSurface *surface);
 

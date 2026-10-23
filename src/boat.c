@@ -895,7 +895,7 @@ static void environment_visit(const Boat *boat, BoatCourseBoxDraw draw, void *co
     if (Vector2LengthSqr(boat->water_settings.current) > 0) {
         for (int x = -24; x <= 24; x += 8)
             for (int z = -48; z <= 48; z += 16) {
-                float phase = fmodf(boat->time + (float)(x + z + 80) * .11f, 8);
+                float phase = (float)fmod(boat->time + (float)(x + z + 80) * .11f, 8);
                 float fade = sinf(PI * phase / 8);
                 float center_z = boat->eriksberg ? roundf(boat->position.y / 16) * 16 : 0;
                 Vector2 p = { x + boat->water_settings.current_center, z + center_z };

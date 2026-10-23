@@ -6,7 +6,7 @@ Gameplay direction remains in [BOATING_PLAN.md](BOATING_PLAN.md).
 
 Status: source review and clock probe complete; verification results recorded below.
 The [foundations implementation plan](BOATING_FOUNDATIONS_PLAN.md) owns the selected next
-sequence and its task status. P1/P2a/P3a and C1 are now implemented; C2 is next.
+sequence and its task status. P1/P2a/P3a, C1 and C2 are now implemented; C3 is next.
 No runtime changes in this review.
 
 ## Recommendation

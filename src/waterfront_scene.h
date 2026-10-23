@@ -65,7 +65,7 @@ typedef struct {
     float ghost_opacity;
     Transform3D ghost_hull, ghost_cabin, ghost_engine;
     BoatFlagSurface ghost_flag;
-    float time;
+    double time; // World seconds; GPU uploads only reduced float phases and bounded clocks.
     Transform3D bridge;
     Color bridge_color;
     WaterfrontCarState cars[WATERFRONT_CAR_COUNT];
@@ -85,11 +85,11 @@ typedef struct {
 // Four-minute soundtrack route. Deterministic flock and chase camera; holds at the ending.
 void waterfront_demo_evaluate(float time, WaterfrontSceneFrame *frame);
 // Reevaluate scene-owned actors at explicit time/water, preserving the caller's camera/player.
-void waterfront_scene_evaluate_actors(float time, BoatWater water, WaterfrontSceneFrame *frame);
+void waterfront_scene_evaluate_actors(double time, BoatWater water, WaterfrontSceneFrame *frame);
 // Boat-study flocks: explicit-time social cues, feeding passes, and vessel avoidance.
 // Player position/velocity use renderer coordinates; no accumulated simulation state.
 void waterfront_boating_gulls(
-    float time, Vector3 player, Vector3 velocity, WaterfrontSceneFrame *frame);
+    double time, Vector3 player, Vector3 velocity, WaterfrontSceneFrame *frame);
 const Mesh3D *waterfront_gull_mesh(int part);
 const Mesh3D *waterfront_player_hull_mesh(void);
 const Mesh3D *waterfront_player_cabin_mesh(void);

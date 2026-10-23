@@ -101,7 +101,7 @@ mkdir -p build/living-city/harbor
 The review tool defaults to GPU with the existing 4×4 supersampling/downsample shader.
 CPU screenshots need no window; GPU capture and playback require desktop graphics access.
 `--resolution` accepts 320x180, 320x200, and 320x240; `--time` selects a deterministic pose
-from 0–600 seconds. `--frames` bounds windowed playback at 60 Hz; Esc exits. Timing output
+from 0 seconds to 30 days (2,592,000 s), parsed as double world time for long-session probes. `--frames` bounds windowed playback at 60 Hz; Esc exits. Timing output
 reports CPU rendering or GPU CPU-submission cost, including downsampling, not GPU execution.
 
 `harbor_geometry` checks seven presets and 35 parameter variants, finite/nondegenerate

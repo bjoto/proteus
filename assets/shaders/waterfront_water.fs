@@ -10,7 +10,11 @@ uniform sampler2D reflectionTexture;
 uniform vec4 objectColor;
 uniform mat4 reflectionViewProjection;
 uniform vec3 cameraPosition;
-uniform float time;
+// Explicit float payloads: each periodic component is reduced from double world time on
+// the CPU. There is no shared float time uniform.
+uniform float crossingWakeTime; // Gated scripted clock; -1 after its finite support.
+uniform vec2 detailRipplePhase; // Long and short exposed-water detail ripples.
+uniform vec4 reflectionRipplePhase; // Four timeline reflection ripple components.
 uniform vec3 sunDirection;
 uniform int physicalWaves;
 uniform float wakeAmplitude;
@@ -18,7 +22,7 @@ uniform vec2 wakeOffset; // World X/Z translation of the scripted source.
 uniform int playerWakeCount;
 uniform vec4 playerWakeOrigins[64];
 uniform vec4 playerWakeParameters[64];
-uniform vec4 waveParameters[3];
+uniform vec4 waveParameters[3]; // World X/Z wave vector, amplitude, CPU-reduced phase.
 uniform int reflectionsEnabled;
 uniform int shadowsEnabled;
 uniform sampler2D shadowMap;
@@ -56,6 +60,19 @@ float resolved(float frequency, float footprint)
 
 
 // Same bounded packet and derivatives as boat_water.c, in reflected world X/Z.
+// Height and world X/Z slope from CPU-reduced phases; production and parity probes share it.
+vec3 ambientWaves(vec2 world, float footprint)
+{
+    vec3 result = vec3(0.0);
+    for (int i = 0; i < 3; ++i) {
+        vec4 w = waveParameters[i];
+        float filtering = waterfrontWater != 0 ? resolved(length(w.xy), footprint) : 1.0;
+        float phase = dot(w.xy, world) - w.w;
+        result += vec3(w.z * sin(phase), w.xy * w.z * cos(phase) * filtering);
+    }
+    return result;
+}
+
 vec3 crossingWake(vec2 world, float clock)
 {
     world -= wakeOffset;
@@ -134,8 +151,9 @@ vec3 objectWake(vec2 p)
 // END OBJECT RECIPE
 
 // Same owned path history and analytic derivatives as boat_water.c. Each entry is
-// two vec4s: world centre/direction, support half-length/birth/amplitude/inverse speed.
-vec3 playerWake(vec2 p, float clock)
+// two vec4s: world centre/direction, support half-length/age at frame time/amplitude/
+// inverse speed. Packing age rather than absolute birth keeps long sessions precise.
+vec3 playerWake(vec2 p)
 {
     if (objectWakeEnabled != 0) return objectWake(p);
     float sum = 0.0, weight = 0.0;
@@ -146,7 +164,7 @@ vec3 playerWake(vec2 p, float clock)
         vec2 normal = vec2(-direction.y, direction.x);
         float u = dot(delta, direction);
         if (abs(u) >= b.x) continue;
-        float age = clock - b.y - u * b.w;
+        float age = b.y - u * b.w;
         if (age <= 0.4 || age >= 20.0) continue;
         float v = dot(delta, normal), radius = sqrt(v * v + 0.25);
         float q = radius - 0.9 - 1.6 * age;
@@ -233,15 +251,11 @@ void main()
     float exposed = exposure(fragWorldPosition.xz);
     vec3 wake = vec3(0.0);
     if (physicalWaves != 0) {
-        vec2 slope = vec2(0.0);
-        float surfaceHeight = 0.0;
-        for (int i = 0; i < 3; ++i) {
-            vec4 w = waveParameters[i];
-            float filtering = waterfrontWater != 0 ? resolved(length(w.xy), footprint) : 1.0;
-            surfaceHeight += w.z * sin(dot(w.xy, fragWorldPosition.xz) - w.w * time);
-            slope += w.xy * w.z * cos(dot(w.xy, fragWorldPosition.xz) - w.w * time) * filtering;
-        }
-        wake = crossingWake(fragWorldPosition.xz, time) + playerWake(fragWorldPosition.xz, time)
+        vec3 ambient = ambientWaves(fragWorldPosition.xz, footprint);
+        vec2 slope = ambient.yz;
+        float surfaceHeight = ambient.x;
+        wake = crossingWake(fragWorldPosition.xz, crossingWakeTime)
+            + playerWake(fragWorldPosition.xz)
             + wakeFieldSample(fragWorldPosition.xz);
         slope += wake.yz;
         surfaceHeight += wake.x;
@@ -261,8 +275,8 @@ void main()
     }
     if (waterfrontWater != 0) {
         vec2 wind = vec2(-0.6, -0.8), crossing = vec2(0.8, -0.6);
-        float longRipple = dot(wind, fragWorldPosition.xz) * 1.65 - time * 1.5;
-        float shortRipple = dot(crossing, fragWorldPosition.xz) * 3.7 - time * 2.1;
+        float longRipple = dot(wind, fragWorldPosition.xz) * 1.65 - detailRipplePhase.x;
+        float shortRipple = dot(crossing, fragWorldPosition.xz) * 3.7 - detailRipplePhase.y;
         vec2 detail = wind * cos(longRipple) * resolved(1.65, footprint)
             + crossing * cos(shortRipple) * 0.45 * resolved(3.7, footprint);
         vec2 slope = normal.xz + detail * mix(0.004, 0.035, exposed);
@@ -276,10 +290,10 @@ void main()
 
     vec4 reflectedPosition = reflectionViewProjection * vec4(fragWorldPosition, 1.0);
     vec2 reflectionUv = reflectedPosition.xy / max(reflectedPosition.w, 0.0001) * 0.5 + 0.5;
-    vec2 ripple = vec2(sin(fragWorldPosition.x * 0.09 + time * 0.80)
-            + sin(fragWorldPosition.z * 0.05 - time * 0.55),
-        sin(fragWorldPosition.z * 0.08 + time * 0.65)
-            + sin(fragWorldPosition.x * 0.04 + time * 0.35)) * 0.0025;
+    vec2 ripple = vec2(sin(fragWorldPosition.x * 0.09 + reflectionRipplePhase.x)
+            + sin(fragWorldPosition.z * 0.05 - reflectionRipplePhase.y),
+        sin(fragWorldPosition.z * 0.08 + reflectionRipplePhase.z)
+            + sin(fragWorldPosition.x * 0.04 + reflectionRipplePhase.w)) * 0.0025;
     if (physicalWaves != 0) ripple = normal.xz * 0.08;
     if (waterfrontWater != 0 && physicalWaves == 0)
         ripple = normal.xz * 0.06 + ripple * mix(0.25, 0.75, exposed);

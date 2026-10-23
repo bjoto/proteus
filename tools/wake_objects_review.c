@@ -468,7 +468,7 @@ static void shader_checks(const BoatWakeObjects *w, float probe_z)
         int written = snprintf(code, capacity,
             "#version 330\nout vec4 color; uniform vec2 probe; uniform int playerWakeCount;"
             "uniform vec4 playerWakeOrigins[64],playerWakeParameters[64];\n%.*s\n"
-            "void main(){vec3 wake=playerWake(probe,0.0);color=vec4(wake,%s);}",
+            "void main(){vec3 wake=playerWake(probe);color=vec4(wake,%s);}",
             (int)(end - start), start, stage ? "objectCrestFoam" : "1.0");
         CHECK(written >= 0 && (size_t)written < capacity);
         Shader shader = LoadShaderFromMemory(vertex, code);

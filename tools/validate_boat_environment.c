@@ -1,6 +1,8 @@
 #include "boat.h"
+#include "boat_clock.h"
 #include "boat_map.h"
 #include "raymath.h"
+#include "rlgl.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -246,7 +248,141 @@ static int player_wake_checks(void)
     return 0;
 }
 
-// Compile the production fragment wake function into a readback probe, then test the
+// Upload the production float payloads derived from double TIME to each probe shader.
+static void set_probe_time(Shader slope, Shader height, BoatWater water, double time)
+{
+    float waves[12], origins[BOAT_WAKE_SEGMENTS * 4], parameters[BOAT_WAKE_SEGMENTS * 4];
+    boat_water_wave_uniforms(water, time, waves);
+    float clock = boat_water_crossing_clock(water, time);
+    int count = boat_water_wake_uniforms(water, time, origins, parameters);
+    float amplitude = water.wake_amplitude;
+    float offset[] = { -water.wake_offset.x, water.wake_offset.y };
+    const Shader shaders[] = { slope, height };
+    for (int si = 0; si < 2; ++si) {
+        Shader shader = shaders[si];
+        SetShaderValueV(
+            shader, GetShaderLocation(shader, "waveParameters[0]"), waves, SHADER_UNIFORM_VEC4, 3);
+        SetShaderValue(
+            shader, GetShaderLocation(shader, "crossingWakeTime"), &clock, SHADER_UNIFORM_FLOAT);
+        SetShaderValue(
+            shader, GetShaderLocation(shader, "playerWakeCount"), &count, SHADER_UNIFORM_INT);
+        if (count) {
+            SetShaderValueV(shader, GetShaderLocation(shader, "playerWakeOrigins[0]"), origins,
+                SHADER_UNIFORM_VEC4, count);
+            SetShaderValueV(shader, GetShaderLocation(shader, "playerWakeParameters[0]"),
+                parameters, SHADER_UNIFORM_VEC4, count);
+        }
+        SetShaderValue(
+            shader, GetShaderLocation(shader, "wakeAmplitude"), &amplitude, SHADER_UNIFORM_FLOAT);
+        SetShaderValue(
+            shader, GetShaderLocation(shader, "wakeOffset"), offset, SHADER_UNIFORM_VEC2);
+    }
+}
+
+// Unclamped RGBA32F readback: 8-bit targets cannot resolve millimetre phase errors.
+static RenderTexture2D float_target(int size)
+{
+    RenderTexture2D target = { .id = rlLoadFramebuffer(),
+        .texture = { .width = size,
+            .height = size,
+            .mipmaps = 1,
+            .format = PIXELFORMAT_UNCOMPRESSED_R32G32B32A32 } };
+    target.texture.id = rlLoadTexture(NULL, size, size, target.texture.format, 1);
+    rlFramebufferAttach(
+        target.id, target.texture.id, RL_ATTACHMENT_COLOR_CHANNEL0, RL_ATTACHMENT_TEXTURE2D, 0);
+    if (!target.texture.id || !rlFramebufferComplete(target.id)) {
+        rlUnloadFramebuffer(target.id);
+        rlUnloadTexture(target.texture.id);
+        return (RenderTexture2D) { 0 };
+    }
+    return target;
+}
+
+static bool read_center(RenderTexture2D target, float *rgb)
+{
+    float *pixels = rlReadTexturePixels(
+        target.texture.id, target.texture.width, target.texture.height, target.texture.format);
+    if (!pixels)
+        return false;
+    int center = (target.texture.height / 2 * target.texture.width + target.texture.width / 2) * 4;
+    memcpy(rgb, pixels + center, 3 * sizeof(float));
+    MemFree(pixels);
+    return true;
+}
+
+typedef struct {
+    Shader slope, height;
+    Material material;
+    Mesh plane;
+    float *rest;
+    RenderTexture2D target;
+    float error; // Largest observed CPU/GPU difference in height or slope.
+    int checked;
+} GpuProbe;
+
+// Compare one world point: production fragment height/slope and actual vertex displacement.
+static int probe_point(GpuProbe *probe, BoatWater water, Vector2 p, double time, float tolerance)
+{
+    BoatWaterSample q = boat_water_query(water, p, time);
+    float world[] = { -p.x, p.y };
+    SetShaderValue(
+        probe->slope, GetShaderLocation(probe->slope, "probePosition"), world, SHADER_UNIFORM_VEC2);
+    BeginTextureMode(probe->target);
+    ClearBackground(BLANK);
+    BeginShaderMode(probe->slope);
+    DrawRectangle(0, 0, probe->target.texture.width, probe->target.texture.height, WHITE);
+    EndShaderMode();
+    EndTextureMode();
+    float actual[3];
+    CHECK(read_center(probe->target, actual));
+    float values[] = { q.height, q.normal.x / q.normal.y, -q.normal.z / q.normal.y };
+    for (int i = 0; i < 3; ++i) {
+        float error = fabsf(actual[i] - values[i]);
+        probe->error = fmaxf(probe->error, error);
+        if (error > tolerance)
+            fprintf(stderr, "fragment mismatch x=%g z=%g t=%.17g channel=%d cpu=%g gpu=%g\n", p.x,
+                p.y, time, i, values[i], actual[i]);
+        CHECK(error <= tolerance);
+    }
+    Camera3D camera = { .position = { world[0], 10, world[1] },
+        .target = { world[0], 0, world[1] },
+        .up = { 0, 0, -1 },
+        .fovy = .01f,
+        .projection = CAMERA_ORTHOGRAPHIC };
+    for (int v = 0; v < probe->plane.vertexCount; ++v) {
+        probe->plane.vertices[v * 3] = probe->rest[v * 3] + world[0];
+        probe->plane.vertices[v * 3 + 2] = probe->rest[v * 3 + 2] + world[1];
+    }
+    UpdateMeshBuffer(probe->plane, 0, probe->plane.vertices,
+        probe->plane.vertexCount * 3 * (int)sizeof(float), 0);
+    BeginTextureMode(probe->target);
+    ClearBackground(BLANK);
+    BeginMode3D(camera);
+    DrawMesh(probe->plane, probe->material, MatrixIdentity());
+    EndMode3D();
+    EndTextureMode();
+    CHECK(read_center(probe->target, actual));
+    float error = fabsf(actual[0] - q.height);
+    probe->error = fmaxf(probe->error, error);
+    if (error > tolerance)
+        fprintf(stderr, "vertex mismatch x=%g z=%g t=%.17g cpu=%g gpu=%g\n", p.x, p.y, time,
+            q.height, actual[0]);
+    CHECK(error <= tolerance);
+    ++probe->checked;
+    return 0;
+}
+
+static int probe_grid(GpuProbe *probe, BoatWater water, double time, float tolerance)
+{
+    set_probe_time(probe->slope, probe->height, water, time);
+    for (int x = -16; x <= 16; x += 8)
+        for (int z = -24; z <= 16; z += 4)
+            CHECK(
+                probe_point(probe, water, (Vector2) { (float)x, (float)z }, time, tolerance) == 0);
+    return 0;
+}
+
+// Compile the production fragment wave/wake functions into a readback probe, then test the
 // actual production vertex displacement independently. No copied wave formula in tests.
 static int gpu_checks(void)
 {
@@ -260,125 +396,224 @@ static int gpu_checks(void)
     char *main = strstr(fragment, "void main()");
     CHECK(main);
     size_t prefix = (size_t)(main - fragment);
-    char *probe = malloc(prefix + 512);
-    CHECK(probe);
-    memcpy(probe, fragment, prefix);
-    strcpy(probe + prefix,
-        "uniform vec2 probePosition;\nvoid main() { "
-        "finalColor = vec4((crossingWake(probePosition, time) + playerWake(probePosition, time)) * "
-        "0.5 + 0.5, 1.0); }");
-    Shader slope = LoadShaderFromMemory(NULL, probe);
+    char *source = malloc(prefix + 512);
+    CHECK(source);
+    memcpy(source, fragment, prefix);
+    strcpy(source + prefix,
+        "uniform vec2 probePosition;\nvoid main() { finalColor = vec4("
+        "ambientWaves(probePosition, 0.0) + crossingWake(probePosition, crossingWakeTime)"
+        " + playerWake(probePosition), 1.0); }");
+    GpuProbe probe = { .slope = LoadShaderFromMemory(NULL, source) };
     const char *height_fragment = "#version 330\nin vec3 fragWorldPosition;\n"
                                   "out vec4 finalColor; void main() { "
-                                  "finalColor=vec4(fragWorldPosition.y * 0.5 + 0.5,0,0,1); }";
-    Shader height = LoadShaderFromMemory(vertex, height_fragment);
-    CHECK(IsShaderValid(slope) && IsShaderValid(height));
-    free(probe);
+                                  "finalColor=vec4(fragWorldPosition.y,0,0,1); }";
+    probe.height = LoadShaderFromMemory(vertex, height_fragment);
+    CHECK(IsShaderValid(probe.slope) && IsShaderValid(probe.height));
+    free(source);
     UnloadFileText(fragment);
     UnloadFileText(vertex);
-    RenderTexture2D target = LoadRenderTexture(8, 8);
-    CHECK(IsRenderTextureValid(target));
-    Mesh plane = GenMeshPlane(.01f, .01f, 1, 1);
-    float *rest = malloc((size_t)plane.vertexCount * 3 * sizeof(float));
-    CHECK(rest);
-    memcpy(rest, plane.vertices, (size_t)plane.vertexCount * 3 * sizeof(float));
-    Material material = LoadMaterialDefault();
-    material.shader = height;
+    probe.target = float_target(8);
+    CHECK(probe.target.id);
+    probe.plane = GenMeshPlane(.01f, .01f, 1, 1);
+    probe.rest = malloc((size_t)probe.plane.vertexCount * 3 * sizeof(float));
+    CHECK(probe.rest);
+    memcpy(probe.rest, probe.plane.vertices, (size_t)probe.plane.vertexCount * 3 * sizeof(float));
+    probe.material = LoadMaterialDefault();
+    probe.material.shader = probe.height;
+    int enabled = 1, patch = 0;
+    SetShaderValue(probe.height, GetShaderLocation(probe.height, "physicalWaves"), &enabled,
+        SHADER_UNIFORM_INT);
+    SetShaderValue(probe.height, GetShaderLocation(probe.height, "waterPatchPass"), &patch,
+        SHADER_UNIFORM_INT);
+    // Observed 2026-10-23 on Apple M1 Max: wakes <=3.5e-4 and ambient <=6.5e-5 at every epoch.
+    // Float shader time would add about 1e-3 m of ambient phase error at 24 hours.
+    const float tolerance = 5e-4f, ambient_tolerance = 1.5e-4f;
+    // Short-session crossing and player wakes, exercising a full uniform array.
     BoatWater wake = boat_water_test(false, false, true);
     wake.player_wake_enabled = true;
-    // Exercise a full uniform array: the local packets occupy its last three slots.
-    for (int i = 0; i < BOAT_WAKE_SEGMENTS - 3; ++i)
-        boat_water_emit_wake(&wake, (Vector2) { 500, 500 }, (Vector2) { 508, 500 }, 4, .4f, 20);
-    boat_water_emit_wake(&wake, (Vector2) { -20, -8 }, (Vector2) { -12, -8 }, 4, .4f, 20);
-    boat_water_emit_wake(&wake, (Vector2) { -12, -8 }, (Vector2) { -4, -4 }, 4.4f, .4f, 20);
-    boat_water_emit_wake(&wake, (Vector2) { -4, -4 }, (Vector2) { 4, -4 }, 4.8f, .4f, 20);
-    float origins[BOAT_WAKE_SEGMENTS * 4], parameters[BOAT_WAKE_SEGMENTS * 4];
-    int count = boat_water_wake_uniforms(wake, 8, origins, parameters);
-    const Shader shaders[] = { slope, height };
-    for (int si = 0; si < 2; ++si) {
-        Shader shader = shaders[si];
-        SetShaderValue(
-            shader, GetShaderLocation(shader, "playerWakeCount"), &count, SHADER_UNIFORM_INT);
-        SetShaderValueV(shader, GetShaderLocation(shader, "playerWakeOrigins[0]"), origins,
-            SHADER_UNIFORM_VEC4, count);
-        SetShaderValueV(shader, GetShaderLocation(shader, "playerWakeParameters[0]"), parameters,
-            SHADER_UNIFORM_VEC4, count);
-    }
     wake.wake_offset = (Vector2) { 3, -2 };
-    float offset[] = { -wake.wake_offset.x, wake.wake_offset.y };
-    SetShaderValue(slope, GetShaderLocation(slope, "wakeOffset"), offset, SHADER_UNIFORM_VEC2);
-    SetShaderValue(height, GetShaderLocation(height, "wakeOffset"), offset, SHADER_UNIFORM_VEC2);
-    float amplitude = wake.wake_amplitude;
-    int enabled = 1, patch = 0;
-    SetShaderValue(
-        slope, GetShaderLocation(slope, "wakeAmplitude"), &amplitude, SHADER_UNIFORM_FLOAT);
-    SetShaderValue(
-        height, GetShaderLocation(height, "wakeAmplitude"), &amplitude, SHADER_UNIFORM_FLOAT);
-    SetShaderValue(
-        height, GetShaderLocation(height, "physicalWaves"), &enabled, SHADER_UNIFORM_INT);
-    SetShaderValue(height, GetShaderLocation(height, "waterPatchPass"), &patch, SHADER_UNIFORM_INT);
-    int checked = 0;
-    for (float time = 8; time <= 16; time += 4) {
-        SetShaderValue(slope, GetShaderLocation(slope, "time"), &time, SHADER_UNIFORM_FLOAT);
-        SetShaderValue(height, GetShaderLocation(height, "time"), &time, SHADER_UNIFORM_FLOAT);
-        for (int x = -16; x <= 16; x += 8)
-            for (int z = -24; z <= 16; z += 4) {
-                BoatWaterSample q = boat_water_query(wake, (Vector2) { (float)x, (float)z }, time);
-                float world[] = { -(float)x, (float)z };
-                SetShaderValue(
-                    slope, GetShaderLocation(slope, "probePosition"), world, SHADER_UNIFORM_VEC2);
-                BeginTextureMode(target);
-                ClearBackground(BLACK);
-                BeginShaderMode(slope);
-                DrawRectangle(0, 0, 8, 8, WHITE);
-                EndShaderMode();
-                EndTextureMode();
-                Image image = LoadImageFromTexture(target.texture);
-                CHECK(image.data);
-                Color pixel = GetImageColor(image, 4, 4);
-                UnloadImage(image);
-                float values[] = { q.height, q.normal.x / q.normal.y, -q.normal.z / q.normal.y };
-                unsigned char actual[] = { pixel.r, pixel.g, pixel.b };
-                for (int i = 0; i < 3; ++i)
-                    CHECK(abs((int)actual[i] - (int)roundf((values[i] * .5f + .5f) * 255)) <= 2);
-                Camera3D camera = { .position = { world[0], 10, world[1] },
-                    .target = { world[0], 0, world[1] },
-                    .up = { 0, 0, -1 },
-                    .fovy = .01f,
-                    .projection = CAMERA_ORTHOGRAPHIC };
-                BeginTextureMode(target);
-                ClearBackground(BLACK);
-                BeginMode3D(camera);
-                for (int v = 0; v < plane.vertexCount; ++v) {
-                    plane.vertices[v * 3] = rest[v * 3] + world[0];
-                    plane.vertices[v * 3 + 2] = rest[v * 3 + 2] + world[1];
-                }
-                UpdateMeshBuffer(
-                    plane, 0, plane.vertices, plane.vertexCount * 3 * (int)sizeof(float), 0);
-                DrawMesh(plane, material, MatrixIdentity());
-                EndMode3D();
-                EndTextureMode();
-                image = LoadImageFromTexture(target.texture);
-                CHECK(image.data);
-                pixel = GetImageColor(image, 4, 4);
-                UnloadImage(image);
-                if (abs((int)pixel.r - (int)roundf((q.height * .5f + .5f) * 255)) > 2)
-                    fprintf(stderr, "vertex mismatch x=%d z=%d t=%g h=%g pixel=%u\n", x, z, time,
-                        q.height, pixel.r);
-                CHECK(abs((int)pixel.r - (int)roundf((q.height * .5f + .5f) * 255)) <= 2);
-                ++checked;
-            }
+    const double epochs[] = { 0, 3600, 86400 };
+    for (int e = 0; e < 3; ++e) {
+        BoatWater water = e ? boat_water_gentle() : wake;
+        water.player_wake_enabled = true;
+        water.wake_amplitude = wake.wake_amplitude; // Gated off after 24 s at later epochs.
+        water.wake_offset = wake.wake_offset;
+        // The local packets occupy the last three slots after stale far-away history.
+        for (int i = 0; i < BOAT_WAKE_SEGMENTS - 3; ++i)
+            boat_water_emit_wake(
+                &water, (Vector2) { 500, 500 }, (Vector2) { 508, 500 }, epochs[e] + 4, .4f, 20);
+        boat_water_emit_wake(
+            &water, (Vector2) { -20, -8 }, (Vector2) { -12, -8 }, epochs[e] + 4, .4f, 20);
+        boat_water_emit_wake(
+            &water, (Vector2) { -12, -8 }, (Vector2) { -4, -4 }, epochs[e] + 4.4f, .4f, 20);
+        boat_water_emit_wake(
+            &water, (Vector2) { -4, -4 }, (Vector2) { 4, -4 }, epochs[e] + 4.8f, .4f, 20);
+        for (double t = 8; t <= 16; t += 4)
+            CHECK(probe_grid(&probe, water, epochs[e] + t, tolerance) == 0);
     }
+    // Ambient-only surface immediately around each component's individual phase wrap.
+    BoatWater ambient = boat_water_gentle();
+    const float speeds[] = { ambient.angular_speed, ambient.crossing[0].angular_speed,
+        ambient.crossing[1].angular_speed };
+    for (int i = 0; i < 3; ++i)
+        for (int e = 1; e < 3; ++e) {
+            double n = floor(speeds[i] * epochs[e] / BOAT_TWO_PI);
+            double wrap = (2 * n + 1) * (BOAT_TWO_PI / 2) / speeds[i];
+            for (int side = -1; side <= 1; side += 2)
+                CHECK(probe_grid(&probe, ambient, wrap + side * 1e-4, ambient_tolerance) == 0);
+        }
     // Material borrows the shader; release it separately exactly once.
-    material.shader = (Shader) { 0 };
-    free(rest);
-    UnloadMaterial(material);
-    UnloadMesh(plane);
-    UnloadShader(slope);
-    UnloadShader(height);
-    UnloadRenderTexture(target);
+    probe.material.shader = (Shader) { 0 };
+    free(probe.rest);
+    UnloadMaterial(probe.material);
+    UnloadMesh(probe.plane);
+    UnloadShader(probe.slope);
+    UnloadShader(probe.height);
+    rlUnloadFramebuffer(probe.target.id);
+    rlUnloadTexture(probe.target.texture.id);
     CloseWindow();
-    printf("boat_environment_gpu=ok samples=%d\n", checked);
+    printf("boat_environment_gpu=ok samples=%d max_error=%.3g\n", probe.checked, probe.error);
+    return 0;
+}
+
+// Independent double reference for the ambient components; it never uses packed phases.
+static double ambient_reference(BoatWater water, Vector2 p, double time)
+{
+    const BoatWave waves[]
+        = { { water.amplitude, water.wavelength, water.angular_speed, water.direction },
+              water.crossing[0], water.crossing[1] };
+    double height = 0;
+    for (int i = 0; i < 3; ++i) {
+        BoatWave w = waves[i];
+        double k = BOAT_TWO_PI / w.wavelength;
+        height += w.amplitude
+            * sin(k * ((double)w.direction.x * p.x + (double)w.direction.y * p.y)
+                - (double)w.angular_speed * time);
+    }
+    return height;
+}
+
+static int sample_matches(BoatWaterSample a, BoatWaterSample b, float tolerance)
+{
+    return fabsf(a.height - b.height) <= tolerance
+        && Vector3Distance(a.normal, b.normal) <= tolerance
+        && Vector3Distance(a.velocity, b.velocity) <= tolerance;
+}
+
+// Long-session contract: double time reaches every periodic phase and bounded wake age.
+static int clock_checks(void)
+{
+    BoatWater ambient = boat_water_gentle();
+    const double epochs[] = { 0, 10.25, 3600, 3600.37, 86400, 86400.71, 30 * 86400.0 };
+    for (int e = 0; e < 7; ++e)
+        for (float x = -30; x < 30; x += 7.3f)
+            for (float z = -30; z < 30; z += 6.1f) {
+                Vector2 p = { x, z };
+                double t = epochs[e];
+                BoatWaterSample q = boat_water_query(ambient, p, t);
+                CHECK(fabs(q.height - ambient_reference(ambient, p, t)) < 1e-5);
+                double dt = .001;
+                float dy = (float)((boat_water_query(ambient, p, t + dt).height
+                                       - boat_water_query(ambient, p, t - dt).height)
+                    / (2 * dt));
+                float ds = .001f;
+                float dx = (boat_water_query(ambient, (Vector2) { x + ds, z }, t).height
+                               - boat_water_query(ambient, (Vector2) { x - ds, z }, t).height)
+                    / (2 * ds);
+                float dz = (boat_water_query(ambient, (Vector2) { x, z + ds }, t).height
+                               - boat_water_query(ambient, (Vector2) { x, z - ds }, t).height)
+                    / (2 * ds);
+                CHECK(fabsf(dy - q.velocity.y) < .002f);
+                CHECK(fabsf(dx + q.normal.x / q.normal.y) < .002f);
+                CHECK(fabsf(dz + q.normal.z / q.normal.y) < .002f);
+            }
+    // Control: the former float-time phase misses this reference by about a millimetre.
+    float legacy_error = 0;
+    for (float x = -30; x < 30; x += 7.3f) {
+        Vector2 p = { x, 3 };
+        float time = (float)epochs[5], height = 0;
+        const BoatWave waves[]
+            = { { ambient.amplitude, ambient.wavelength, ambient.angular_speed, ambient.direction },
+                  ambient.crossing[0], ambient.crossing[1] };
+        for (int i = 0; i < 3; ++i) {
+            float k = 2 * PI / waves[i].wavelength;
+            height += waves[i].amplitude
+                * sinf(
+                    k * Vector2DotProduct(waves[i].direction, p) - waves[i].angular_speed * time);
+        }
+        legacy_error
+            = fmaxf(legacy_error, fabsf(height - (float)ambient_reference(ambient, p, epochs[5])));
+    }
+    CHECK(legacy_error > 2e-4f);
+    // Each component's packed phase wraps from +pi to -pi independently; the surface must not.
+    const float speeds[] = { ambient.angular_speed, ambient.crossing[0].angular_speed,
+        ambient.crossing[1].angular_speed };
+    int wraps = 0;
+    for (int i = 0; i < 3; ++i)
+        for (int e = 0; e < 4; ++e) {
+            double epoch = (double[]) { 20, 3600, 86400, 30 * 86400.0 }[e];
+            double n = floor(speeds[i] * epoch / BOAT_TWO_PI);
+            double wrap = (2 * n + 1) * (BOAT_TWO_PI / 2) / speeds[i];
+            CHECK(boat_phase(speeds[i], wrap - 1e-6) > 3.1f);
+            CHECK(boat_phase(speeds[i], wrap + 1e-6) < -3.1f);
+            for (float x = -12; x <= 12; x += 6) {
+                Vector2 p = { x, 5 };
+                BoatWaterSample before = boat_water_query(ambient, p, wrap - 1e-6);
+                BoatWaterSample after = boat_water_query(ambient, p, wrap + 1e-6);
+                CHECK(sample_matches(before, after, 2e-5f));
+                for (double d = -1e-3; d <= 1e-3; d += 5e-4)
+                    CHECK(fabs(boat_water_query(ambient, p, wrap + d).height
+                              - ambient_reference(ambient, p, wrap + d))
+                        < 1e-5);
+                ++wraps;
+            }
+        }
+    // A recent wake far into a session equals the same short-age wake, ambient disabled.
+    for (int e = 2; e < 7; ++e) {
+        double epoch = epochs[e];
+        BoatWater early = { .player_wake_enabled = true }, late = early;
+        const Vector2 path[] = { { -8, 0 }, { 0, 0 }, { 8, 0 }, { 8, 8 } };
+        for (int i = 0; i < 3; ++i) {
+            boat_water_emit_wake(&early, path[i], path[i + 1], 2 + .4f * i, .4f, 20);
+            boat_water_emit_wake(&late, path[i], path[i + 1], epoch + 2 + .4f * i, .4f, 20);
+        }
+        for (float t = 3; t < 24; t += .71f) {
+            for (float x = -12; x < 12; x += 2.3f)
+                for (float z = -16; z < 16; z += 2.7f) {
+                    BoatWaterSample a = boat_water_query(early, (Vector2) { x, z }, t);
+                    BoatWaterSample b = boat_water_query(late, (Vector2) { x, z }, epoch + t);
+                    CHECK(sample_matches(a, b, 2e-5f));
+                }
+            float oa[BOAT_WAKE_SEGMENTS * 4], pa[BOAT_WAKE_SEGMENTS * 4];
+            float ob[BOAT_WAKE_SEGMENTS * 4], pb[BOAT_WAKE_SEGMENTS * 4];
+            int count = boat_water_wake_uniforms(early, t, oa, pa);
+            CHECK((count == 3 || t > 20)
+                && boat_water_wake_uniforms(late, epoch + t, ob, pb) == count);
+            for (int j = 0; j < count * 4; ++j)
+                CHECK(oa[j] == ob[j] && fabsf(pa[j] - pb[j]) < 1e-5f);
+        }
+        // Expired history and the finite scripted crossing never wrap into recurring events.
+        float o[BOAT_WAKE_SEGMENTS * 4], q[BOAT_WAKE_SEGMENTS * 4];
+        for (double later = epoch + 30; later < epoch + 2 * 86400; later = later * 1.7 + 11) {
+            CHECK(boat_water_wake_uniforms(late, later, o, q) == 0);
+            for (float x = -12; x < 12; x += 2.3f)
+                CHECK(boat_water_query(late, (Vector2) { x, 4 }, later).height == 0);
+        }
+    }
+    BoatWater crossing = boat_water_test(false, false, true);
+    Vector2 source;
+    CHECK(boat_water_crossing_clock(crossing, 6) == 6);
+    CHECK(boat_water_crossing_clock((BoatWater) { 0 }, 6) == -1);
+    const double expired[] = { 24, 24.5, 36, 48, 3606, 86406, 30 * 86400.0 + 6 };
+    for (int e = 0; e < 7; ++e) {
+        CHECK(boat_water_crossing_clock(crossing, expired[e]) == -1);
+        CHECK(!boat_water_wake_source(crossing, expired[e], &source));
+        for (float x = -40; x < 40; x += 4)
+            for (float z = -20; z < 4; z += 4)
+                CHECK(boat_water_query(crossing, (Vector2) { x, z }, expired[e]).height == 0);
+    }
+    printf(
+        "boat_clock_water=ok epochs=%d wraps=%d legacy_24h_error=%.3g\n", 7, wraps, legacy_error);
     return 0;
 }
 
@@ -390,6 +625,7 @@ int main(int argc, char **argv)
     CHECK(current_checks() == 0);
     CHECK(wake_checks() == 0);
     CHECK(player_wake_checks() == 0);
+    CHECK(clock_checks() == 0);
     puts("boat_environment=ok");
     return 0;
 }

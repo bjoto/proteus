@@ -42,8 +42,8 @@ Artifacts live under `build/living-city/water-review/`:
 - `flat/route.csv`, `waves/route.csv`: simulation tick, nominal tick time, position,
   heading, smoothed camera heading, speed, heave/pitch/roll, sampled distance to the
   nearest water boundary, and next waypoint. Headings are radians; zero faces -Z.
-  Simulation X is the negative of map east. CSV time is tick / 120; the existing
-  simulation's accumulated float time drives wave evaluation.
+  Simulation X is the negative of map east. CSV time is tick / 120. Since foundations C1/C2,
+  wave evaluation also uses tick-derived double time, reduced to one float phase per wave.
 - `compare-<stop>.png`: annotated comparisons, GPU flat / GPU waves / CPU flat;
   close camera above, default camera below. The originals remain separate PNGs.
 - `overview.png`, `motion-<preset>-<second>.png`: all key views and consecutive 0.1 s
