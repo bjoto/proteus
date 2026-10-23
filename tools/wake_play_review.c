@@ -225,7 +225,7 @@ int main(int argc, char **argv)
     for (; tick < 1080; ++tick)
         step(&boat, world, tick);
     if (graphics) {
-        boat_gpu_draw(&gpu, &boat.boat, &boat.world, BOAT_CAMERA_DEFAULT);
+        boat_gpu_draw(&gpu, &boat.boat, &boat.presentation, &boat.world, BOAT_CAMERA_DEFAULT);
         glFinish();
     }
     double physics = 0, render = 0, peak = 0;
@@ -240,7 +240,7 @@ int main(int argc, char **argv)
         physics += stepped - start;
         double rendered = stepped;
         if (graphics) {
-            boat_gpu_draw(&gpu, &boat.boat, &boat.world, BOAT_CAMERA_DEFAULT);
+            boat_gpu_draw(&gpu, &boat.boat, &boat.presentation, &boat.world, BOAT_CAMERA_DEFAULT);
             glFinish();
             rendered = GetTime();
             render += rendered - stepped;
@@ -318,7 +318,7 @@ int main(int argc, char **argv)
         gpu.scene.near_water = (Mesh) { 0 };
         double start = GetTime();
         for (unsigned i = 0; i < 60; ++i) {
-            boat_gpu_draw(&gpu, &flat.boat, &flat.world, BOAT_CAMERA_DEFAULT);
+            boat_gpu_draw(&gpu, &flat.boat, &flat.presentation, &flat.world, BOAT_CAMERA_DEFAULT);
             glFinish();
         }
         printf(

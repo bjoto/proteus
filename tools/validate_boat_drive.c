@@ -1,6 +1,7 @@
 /* Compare the frozen 2994e0d app driver against the extracted production helper. */
 #include "boat_drive_baseline.h"
 #include "boat_study_state.h"
+#include "boat_view.h"
 #include "raymath.h"
 #include <math.h>
 #include <stdio.h>
@@ -31,8 +32,10 @@ int main(void)
         CHECK(boat_study_state_hash(BOAT_STUDY_HASH_SEED, &a.boat, &wa)
             == boat_study_state_hash(BOAT_STUDY_HASH_SEED, &b.boat, &wb));
         if (tick == 1079 || tick == 2399) {
-            CHECK(boat_draw(&ra, pa, 320, 200, &a.boat, &a.world, BOAT_CAMERA_DEFAULT));
-            CHECK(boat_draw(&rb, pb, 320, 200, &b.boat, &b.world, BOAT_CAMERA_DEFAULT));
+            CHECK(boat_draw(
+                &ra, pa, 320, 200, &a.boat, &a.presentation, &a.world, BOAT_CAMERA_DEFAULT));
+            CHECK(boat_draw(
+                &rb, pb, 320, 200, &b.boat, &b.presentation, &b.world, BOAT_CAMERA_DEFAULT));
             CHECK(memcmp(pa, pb, sizeof(pa)) == 0);
         }
     }

@@ -1,6 +1,6 @@
 #ifndef PROTEUS_BOAT_GPU_H
 #define PROTEUS_BOAT_GPU_H
-#include "boat.h"
+#include "boat_view.h"
 #include "renderer_gpu.h"
 
 typedef struct {
@@ -22,9 +22,11 @@ typedef struct {
 } BoatGpu;
 
 bool boat_gpu_init(BoatGpu *gpu, bool aa);
-void boat_gpu_draw(BoatGpu *gpu, const Boat *boat, const BoatWorld *world, BoatCamera camera);
+void boat_gpu_draw(BoatGpu *gpu, const Boat *boat, const BoatPresentation *presentation,
+    const BoatWorld *world, BoatCamera camera);
 void boat_gpu_destroy(BoatGpu *gpu);
-void boat_gpu_draw_with_ghost(BoatGpu *gpu, const Boat *boat, const BoatWorld *world,
-    BoatCamera camera, const Boat *ghost, float opacity);
+void boat_gpu_draw_with_ghost(BoatGpu *gpu, const Boat *boat, const BoatPresentation *presentation,
+    const BoatWorld *world, BoatCamera camera, const Boat *ghost, const BoatFlag *ghost_flag,
+    float opacity);
 
 #endif

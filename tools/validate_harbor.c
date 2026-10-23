@@ -1,6 +1,7 @@
 #include "boat_map.h"
 #include "boat_session.h"
 #include "waterfront_harbor.h"
+#include "waterfront_scene.h"
 
 #include "raymath.h"
 
@@ -173,7 +174,7 @@ int main(void)
         BoatSession boat;
         boat_session_init(&boat, boat_location(BOAT_LOCATION_ERIKSBERG), (BoatWater) { 0 });
         boat.boat.position = starts[test];
-        boat.boat.heading = boat.boat.camera_heading = headings[test];
+        boat.boat.heading = boat.presentation.camera_heading = headings[test];
         boat.boat.velocity
             = (Vector2) { sinf(boat.boat.heading) * 8, -cosf(boat.boat.heading) * 8 };
         for (int tick = 0; tick < 600; ++tick) {

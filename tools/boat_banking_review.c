@@ -37,8 +37,9 @@ static Vector3 point(Transform3D t, Vector3 p)
 static int pose_check(const BoatSession *session)
 {
     const Boat *b = &session->boat;
+    const BoatPresentation *view = &session->presentation;
     WaterfrontPlayerState p = { 0 };
-    boat_player_pose(b, &p);
+    boat_player_pose(b, &view->flag, &p);
     Vector3 base = { -b->position.x, b->height, b->position.y };
     const Vector3 probes[] = { { 0, 0, 0 }, { 1, .3f, -.7f }, { -.8f, 1, 1 } };
     for (int i = 0; i < 3; ++i) {
@@ -60,7 +61,7 @@ static int pose_check(const BoatSession *session)
     Vector2 flow = boat_water_current(session->world.water, b->position);
     float slip = Vector2DotProduct(Vector2Subtract(b->velocity, flow), right);
     for (int i = 0; i < BOAT_WATER_PARTICLES; ++i) {
-        const BoatWaterParticle *w = &b->water[i];
+        const BoatWaterParticle *w = &view->water[i];
         if (!w->spray || w->lifetime <= 0 || w->age != 0)
             continue;
         bool matched = false;
@@ -79,7 +80,7 @@ static int pose_check(const BoatSession *session)
             minus.pitch -= epsilon * b->pitch_velocity;
             float vertical = b->vertical_velocity
                 + (rotate(local, &plus).y - rotate(local, &minus).y) / (2 * epsilon);
-            float variation = (float)((b->emission * 37u) % 101u) / 100;
+            float variation = (float)((view->emission * 37u) % 101u) / 100;
             float strength = fabsf(slip) > .9f ? 1 : fmaxf(b->planing, b->wave_spray);
             float expected = (2 + variation * 2 + fminf(fabsf(slip) * .25f, 1.5f)) * strength
                 + vertical + (boat_water_displaced(session->world.water) ? b->wave_spray : 0);
@@ -89,7 +90,7 @@ static int pose_check(const BoatSession *session)
         CHECK(matched);
     }
     WaterfrontSceneFrame frame;
-    boat_scene_frame(b, &session->world, BOAT_CAMERA_DEFAULT, &frame);
+    boat_scene_frame(b, view, &session->world, BOAT_CAMERA_DEFAULT, &frame);
     CHECK(Vector3Distance(frame.camera.up, (Vector3) { 0, 1, 0 }) < .000001f);
     CHECK(Vector3Distance(frame.player.engine.position, p.engine.position) < .000001f);
     return 0;
@@ -105,20 +106,22 @@ static int capture(BoatGpu *gpu, Renderer3D *cpu, const BoatSession *session, bo
     opponent.position.y += -7 * cosf(b->heading) + 3 * sinf(b->heading);
     Vector3 cloth_shift
         = { -(opponent.position.x - b->position.x), 0, opponent.position.y - b->position.y };
+    BoatFlag cloth = session->presentation.flag;
     for (int i = 0; i < BOAT_FLAG_POINTS; ++i) {
-        opponent.flag.surface.points[i] = Vector3Add(opponent.flag.surface.points[i], cloth_shift);
-        opponent.flag.previous[i] = Vector3Add(opponent.flag.previous[i], cloth_shift);
+        cloth.surface.points[i] = Vector3Add(cloth.surface.points[i], cloth_shift);
+        cloth.previous[i] = Vector3Add(cloth.previous[i], cloth_shift);
     }
     Image image;
     if (use_gpu) {
-        boat_gpu_draw_with_ghost(gpu, b, &session->world, camera, ghost ? &opponent : NULL, .6f);
+        boat_gpu_draw_with_ghost(gpu, b, &session->presentation, &session->world, camera,
+            ghost ? &opponent : NULL, &cloth, .6f);
         image = LoadImageFromTexture(gpu->target.texture);
         CHECK(image.data);
         ImageFlipVertical(&image);
         ImageFlipHorizontal(&image);
     } else {
-        CHECK(boat_draw_with_ghost(
-            cpu, pixels, 320, 200, b, &session->world, camera, ghost ? &opponent : NULL, .6f));
+        CHECK(boat_draw_with_ghost(cpu, pixels, 320, 200, b, &session->presentation,
+            &session->world, camera, ghost ? &opponent : NULL, &cloth, .6f));
         image = (Image) { pixels, 320, 200, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 };
     }
     bool ok = ExportImage(image, path);
@@ -192,7 +195,7 @@ int main(int argc, char **argv)
                     = view == 0 ? BOAT_CAMERA_DEFAULT : (BoatCamera) { .distance = 8, .height = 4 };
                 BoatSession shown = selected;
                 if (view == 2)
-                    shown.boat.camera_heading = shown.boat.heading + .65f;
+                    shown.presentation.camera_heading = shown.boat.heading + .65f;
                 char path[2048];
                 CHECK(snprintf(path, sizeof(path), "%s/%s-%s.png", output, names[fixture],
                           view == 0       ? "default"
@@ -245,7 +248,7 @@ int main(int argc, char **argv)
             for (int view = 0; view < 2; ++view) {
                 BoatSession shown = entry;
                 if (view)
-                    shown.boat.camera_heading = shown.boat.heading + .65f;
+                    shown.presentation.camera_heading = shown.boat.heading + .65f;
                 BoatCamera camera
                     = view ? (BoatCamera) { .distance = 8, .height = 4 } : BOAT_CAMERA_DEFAULT;
                 char path[2048];

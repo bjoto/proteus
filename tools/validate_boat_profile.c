@@ -1,6 +1,7 @@
 #include "boat.h"
 #include "boat_profile.h"
 #include "boat_session.h"
+#include "boat_view.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -89,10 +90,10 @@ static int check_drive(void)
     Color *right = calloc(320 * 200, sizeof(Color));
     CHECK(left && right);
     Renderer3D renderer_left = { 0 }, renderer_right = { 0 };
-    CHECK(boat_draw(
-        &renderer_left, left, 320, 200, plain_boat, &plain_session.world, BOAT_CAMERA_DEFAULT));
-    CHECK(boat_draw(&renderer_right, right, 320, 200, measured_boat, &measured_session.world,
-        BOAT_CAMERA_DEFAULT));
+    CHECK(boat_draw(&renderer_left, left, 320, 200, plain_boat, &plain_session.presentation,
+        &plain_session.world, BOAT_CAMERA_DEFAULT));
+    CHECK(boat_draw(&renderer_right, right, 320, 200, measured_boat, &measured_session.presentation,
+        &measured_session.world, BOAT_CAMERA_DEFAULT));
     CHECK(memcmp(left, right, 320 * 200 * sizeof(Color)) == 0);
     free(left);
     free(right);

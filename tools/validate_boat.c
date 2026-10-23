@@ -1,5 +1,6 @@
 #include "boat_map.h"
 #include "boat_test_session.h"
+#include "boat_view.h"
 #include "raymath.h"
 
 #include <math.h>
@@ -111,11 +112,11 @@ static int validate_dynamic_pair(void)
     return 0;
 }
 
-static int particles(const Boat *boat, bool spray)
+static int particles(const BoatPresentation *view, bool spray)
 {
     int count = 0;
     for (int i = 0; i < BOAT_WATER_PARTICLES; ++i)
-        if (boat->water[i].lifetime > 0 && boat->water[i].spray == spray)
+        if (view->water[i].lifetime > 0 && view->water[i].spray == spray)
             ++count;
     return count;
 }
@@ -126,22 +127,22 @@ static int validate_wake_independence(void)
     BoatSession a, b;
     boat_session_init(&a, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
     boat_session_init(&b, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
-    b.boat.wake_emission = 931;
+    b.presentation.wake_emission = 931;
     for (int tick = 0; tick < 720; ++tick) {
         a.boat.throttle = b.boat.throttle = tick < 480 ? 1 : -1;
         boat_session_step(&a, tick > 360 ? .4f : 0, 0);
         boat_session_step(&b, tick > 360 ? .4f : 0, 0);
         CHECK(a.boat.position.x == b.boat.position.x && a.boat.position.y == b.boat.position.y);
-        CHECK(a.boat.heading == b.boat.heading && a.boat.emission == b.boat.emission
+        CHECK(a.boat.heading == b.boat.heading && a.presentation.emission == b.presentation.emission
             && a.boat.turn_roll_load == b.boat.turn_roll_load);
-        CHECK(particles(&a.boat, true) == particles(&b.boat, true));
+        CHECK(particles(&a.presentation, true) == particles(&b.presentation, true));
         for (int i = 0; i < BOAT_WATER_PARTICLES; ++i) {
-            const BoatWaterParticle *p = &a.boat.water[i];
+            const BoatWaterParticle *p = &a.presentation.water[i];
             if (!p->spray || p->lifetime <= 0)
                 continue;
             bool found = false;
             for (int j = 0; j < BOAT_WATER_PARTICLES; ++j) {
-                const BoatWaterParticle *q = &b.boat.water[j];
+                const BoatWaterParticle *q = &b.presentation.water[j];
                 if (q->spray && q->lifetime > 0 && p->age == q->age
                     && p->position.x == q->position.x && p->position.y == q->position.y
                     && p->height == q->height && p->size == q->size && p->lift == q->lift) {
@@ -155,12 +156,13 @@ static int validate_wake_independence(void)
     // Even a saturated pool must not let a foam birth overwrite live airborne spray.
     boat_session_init(&a, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
     a.boat.throttle = a.boat.engine_response = 1;
-    a.boat.propeller_time = .075f;
+    a.presentation.propeller_time = .075f;
     for (int i = 0; i < BOAT_WATER_PARTICLES; ++i)
-        a.boat.water[i] = (BoatWaterParticle) { .height = 100, .lifetime = 100, .spray = true };
+        a.presentation.water[i]
+            = (BoatWaterParticle) { .height = 100, .lifetime = 100, .spray = true };
     boat_session_step(&a, 0, 0);
-    CHECK(particles(&a.boat, true) == BOAT_WATER_PARTICLES);
-    CHECK(particles(&a.boat, false) == 0);
+    CHECK(particles(&a.presentation, true) == BOAT_WATER_PARTICLES);
+    CHECK(particles(&a.presentation, false) == 0);
     return 0;
 }
 
@@ -230,7 +232,7 @@ static int validate_speed_view(void)
     float previous = 55 * DEG2RAD;
     for (int step = 0; step <= 240; ++step) {
         boat.boat.velocity.y = -(float)step * .1f;
-        boat_scene_frame(&boat.boat, &boat.world, BOAT_CAMERA_DEFAULT, &frame);
+        boat_scene_frame(&boat.boat, &boat.presentation, &boat.world, BOAT_CAMERA_DEFAULT, &frame);
         float fov = frame.camera.vertical_fov;
         CHECK(fov >= previous && fov <= 62 * DEG2RAD + .000001f);
         CHECK(fov - previous < .08f * DEG2RAD);
@@ -244,18 +246,18 @@ static int validate_speed_view(void)
     }
     BoatCamera fixed = BOAT_CAMERA_DEFAULT;
     fixed.fixed_fov = true;
-    boat_scene_frame(&boat.boat, &boat.world, fixed, &frame);
+    boat_scene_frame(&boat.boat, &boat.presentation, &boat.world, fixed, &frame);
     CHECK(frame.camera.vertical_fov == 55 * DEG2RAD);
     // Reverse, sideways drift and rest do not open the lens; it uses ground travel, not flow.
     boat.boat.velocity = (Vector2) { 0, 20 };
-    boat_scene_frame(&boat.boat, &boat.world, BOAT_CAMERA_DEFAULT, &frame);
+    boat_scene_frame(&boat.boat, &boat.presentation, &boat.world, BOAT_CAMERA_DEFAULT, &frame);
     CHECK(frame.camera.vertical_fov == 55 * DEG2RAD);
     boat.boat.velocity = (Vector2) { 20, 0 };
-    boat_scene_frame(&boat.boat, &boat.world, BOAT_CAMERA_DEFAULT, &frame);
+    boat_scene_frame(&boat.boat, &boat.presentation, &boat.world, BOAT_CAMERA_DEFAULT, &frame);
     CHECK(frame.camera.vertical_fov == 55 * DEG2RAD);
     boat_session_init(&boat, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
     boat.world.water.current = (Vector2) { 0, -20 };
-    boat_scene_frame(&boat.boat, &boat.world, BOAT_CAMERA_DEFAULT, &frame);
+    boat_scene_frame(&boat.boat, &boat.presentation, &boat.world, BOAT_CAMERA_DEFAULT, &frame);
     CHECK(frame.camera.vertical_fov == 55 * DEG2RAD);
     return 0;
 }
@@ -441,7 +443,7 @@ static int validate_planing_attitude(void)
     }
     CHECK(peak > 5 * DEG2RAD);
     CHECK(boat.boat.pitch > 2 * DEG2RAD && boat.boat.pitch < 4 * DEG2RAD);
-    CHECK(particles(&boat.boat, true) > 0);
+    CHECK(particles(&boat.presentation, true) > 0);
 
     // Validate rigid attachments and local bow rise across headings, including Euler singularities.
     WaterfrontSceneFrame frame;
@@ -450,7 +452,8 @@ static int validate_planing_attitude(void)
         boat.boat.engine_angle = .4f;
         for (int attitude = 0; attitude < 2; ++attitude) {
             boat.boat.pitch = attitude * .15f;
-            boat_scene_frame(&boat.boat, &boat.world, BOAT_CAMERA_DEFAULT, &frame);
+            boat_scene_frame(
+                &boat.boat, &boat.presentation, &boat.world, BOAT_CAMERA_DEFAULT, &frame);
             Matrix hull = MatrixRotateXYZ(frame.player.hull.rotation);
             Matrix expected
                 = MatrixMultiply(MatrixRotateX(boat.boat.pitch), MatrixRotateY(boat.boat.heading));
@@ -482,7 +485,7 @@ static int validate_planing_attitude(void)
     boat_session_step(&level, 0, 0);
     CHECK(Vector2Distance(boat.boat.velocity, level.boat.velocity) == 0);
     CHECK(boat.boat.heading == level.boat.heading
-        && boat.boat.camera_heading == level.boat.camera_heading);
+        && boat.presentation.camera_heading == level.presentation.camera_heading);
     boat.boat.throttle = 0;
     for (int tick = 0; tick < 2400; ++tick) {
         float previous = boat.boat.pitch;
@@ -541,7 +544,7 @@ static int validate_basin_stress(float heading)
                 i, boat.boat.yaw_velocity, hypotf(boat.boat.velocity.x, boat.boat.velocity.y),
                 kinetic_energy(&boat.boat));
         CHECK(kinetic_energy(&boat.boat) < energy_limit);
-        CHECK(isfinite(boat.boat.camera_heading));
+        CHECK(isfinite(boat.presentation.camera_heading));
         CHECK(fabsf(boat.boat.position.x) < BOAT_BASIN_HALF_X);
         CHECK(fabsf(boat.boat.position.y) < BOAT_BASIN_HALF_Z);
         CHECK(hypotf(boat.boat.velocity.x, boat.boat.velocity.y) < 23);
@@ -727,7 +730,7 @@ static int validate_buoyancy(void)
         boat.boat.roll = -.09f;
         boat.boat.engine_angle = .3f;
         WaterfrontSceneFrame frame;
-        boat_scene_frame(&boat.boat, &boat.world, BOAT_CAMERA_DEFAULT, &frame);
+        boat_scene_frame(&boat.boat, &boat.presentation, &boat.world, BOAT_CAMERA_DEFAULT, &frame);
         Matrix expected = MatrixMultiply(
             MatrixMultiply(MatrixRotateZ(boat.boat.roll), MatrixRotateX(boat.boat.pitch)),
             MatrixRotateY(boat.boat.heading));
@@ -767,7 +770,7 @@ static int validate_buoyancy(void)
                     && fabsf(boat.boat.roll) < .35f);
                 motion = fmaxf(motion, fabsf(boat.boat.height));
                 for (int i = 0; i < BOAT_WATER_PARTICLES; ++i) {
-                    BoatWaterParticle p = boat.boat.water[i];
+                    BoatWaterParticle p = boat.presentation.water[i];
                     if (p.lifetime <= 0)
                         continue;
                     float surface
@@ -889,14 +892,17 @@ static int validate_gentle_encounters(void)
         fast[angle] = wave_encounter(heading, 12);
         Encounter repeat = wave_encounter(heading, 12);
         CHECK(memcmp(&fast[angle].final.boat, &repeat.final.boat, sizeof(Boat)) == 0);
+        CHECK(memcmp(&fast[angle].final.presentation, &repeat.final.presentation,
+                  sizeof(BoatPresentation))
+            == 0);
         CHECK(slow.angular_motion < fast[angle].angular_motion * .8f);
         CHECK(slow.vertical_acceleration < fast[angle].vertical_acceleration);
         CHECK(slow.spray_load < fast[angle].spray_load);
         CHECK(fast[angle].angular_motion < .4f && fast[angle].vertical_acceleration < 5);
         CHECK(fast[angle].spray_load < .4f);
         WaterfrontSceneFrame frame;
-        boat_scene_frame(
-            &fast[angle].final.boat, &fast[angle].final.world, BOAT_CAMERA_DEFAULT, &frame);
+        boat_scene_frame(&fast[angle].final.boat, &fast[angle].final.presentation,
+            &fast[angle].final.world, BOAT_CAMERA_DEFAULT, &frame);
         CHECK(frame.camera.up.y == 1 && frame.camera.position.y == BOAT_CAMERA_DEFAULT.height);
         CHECK(frame.player.particle_count > 0);
         int foam_count = 0;
@@ -1180,13 +1186,14 @@ int main(void)
     BoatSession player
         = basin_session((Boat) { .position = { 4, 9 }, .heading = .7f, .engine_angle = .2f });
     boat_session_set_tick(&player, 360);
-    player.boat.water[0]
+    player.presentation.water[0]
         = (BoatWaterParticle) { .position = { 2, 8 }, .height = .1f, .lifetime = 2, .size = .4f };
-    player.boat.water[1] = (BoatWaterParticle) {
+    player.presentation.water[1] = (BoatWaterParticle) {
         .position = { 3, 8 }, .height = 1, .lifetime = 1, .size = .2f, .spray = true
     };
     WaterfrontSceneFrame frame;
-    boat_scene_frame(&player.boat, &player.world, BOAT_CAMERA_DEFAULT, &frame);
+    boat_scene_frame(
+        &player.boat, &player.presentation, &player.world, BOAT_CAMERA_DEFAULT, &frame);
     CHECK(frame.player_active && frame.time == 3);
     CHECK(frame.player.hull.position.x == -4 && frame.player.hull.position.z == 9);
     CHECK(fabsf(frame.player.engine.rotation.y - .5f) < .0001f);
@@ -1195,7 +1202,8 @@ int main(void)
     CHECK(frame.player.particles[0].transform.position.x == -2);
     CHECK(frame.player.particles[1].transform.position.y == 1);
     boat_session_init(&player, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
-    boat_scene_frame(&player.boat, &player.world, BOAT_CAMERA_DEFAULT, &frame);
+    boat_scene_frame(
+        &player.boat, &player.presentation, &player.world, BOAT_CAMERA_DEFAULT, &frame);
     CHECK(frame.time == 0 && frame.player.particle_count == 0);
     waterfront_scene_evaluate(0, true, &frame);
     CHECK(!frame.player_active);
@@ -1207,7 +1215,7 @@ int main(void)
     // Drive into both dock quays. Hull clearance must remain in water and impacts rebound.
     for (int side = -1; side <= 1; side += 2) {
         boat_session_init(&mapped, boat_location(BOAT_LOCATION_ERIKSBERG), (BoatWater) { 0 });
-        mapped.boat.heading = mapped.boat.camera_heading = side * 1.5707963f;
+        mapped.boat.heading = mapped.presentation.camera_heading = side * 1.5707963f;
         mapped.boat.throttle = 1;
         bool bumped = false;
         for (int tick = 0; tick < 1200; ++tick) {
@@ -1225,7 +1233,8 @@ int main(void)
     for (size_t i = 0; i < sizeof(heading_offsets) / sizeof(*heading_offsets); ++i)
         for (int side = -1; side <= 1; side += 2) {
             boat_session_init(&mapped, boat_location(BOAT_LOCATION_ERIKSBERG), (BoatWater) { 0 });
-            mapped.boat.heading = mapped.boat.camera_heading = side * PI / 2 + heading_offsets[i];
+            mapped.boat.heading = mapped.presentation.camera_heading
+                = side * PI / 2 + heading_offsets[i];
             mapped.boat.throttle = 1;
             for (int tick = 0; tick < 900; ++tick) {
                 boat_session_step(&mapped, tick > 500 ? side : 0, 0);
@@ -1271,12 +1280,12 @@ int main(void)
     boat_session_init(&boat, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
     // Follow the short arc across the +/-pi boundary, without a full camera orbit.
     boat.boat.heading = -3.13f;
-    boat.boat.camera_heading = 3.13f;
+    boat.presentation.camera_heading = 3.13f;
     boat_session_step(&boat, 0, 0);
-    float camera_turn = remainderf(boat.boat.camera_heading - 3.13f, 6.2831853f);
+    float camera_turn = remainderf(boat.presentation.camera_heading - 3.13f, 6.2831853f);
     CHECK(camera_turn > 0 && camera_turn < 0.01f);
     boat_session_init(&boat, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
-    CHECK(boat.boat.camera_heading == 0);
+    CHECK(boat.presentation.camera_heading == 0);
     // Wheel adjustments are bounded and reversible; release springs back symmetrically.
     for (int i = 0; i < 60; ++i)
         boat_session_step(&boat, 1, 0);
@@ -1315,7 +1324,7 @@ int main(void)
     CHECK(boat.boat.heading == 0 && boat.boat.yaw_velocity == 0);
     CHECK(boat.boat.position.x == 0 && boat.boat.position.y == 10);
     CHECK(boat.boat.engine_angle > 0 && boat.boat.engine_angle < 0.6f);
-    CHECK(particles(&boat.boat, false) == 0);
+    CHECK(particles(&boat.presentation, false) == 0);
     // The first powered impulse pushes the stern left while yawing the bow right.
     boat.boat.throttle = 1;
     boat_session_step(&boat, 1, 0);
@@ -1323,8 +1332,8 @@ int main(void)
     CHECK(boat.boat.heading > 0 && boat.boat.yaw_velocity > 0);
     for (int i = 0; i < 10; ++i)
         boat_session_step(&boat, 1, 0);
-    CHECK(particles(&boat.boat, false) > 0);
-    CHECK(boat.boat.water[0].velocity.x > 0 && boat.boat.water[0].velocity.y > 0);
+    CHECK(particles(&boat.presentation, false) > 0);
+    CHECK(boat.presentation.water[0].velocity.x > 0 && boat.presentation.water[0].velocity.y > 0);
     // Cutting the command lets the small engine-response state spool down first.
     float response = boat.boat.engine_response;
     boat.boat.throttle = 0;
@@ -1362,8 +1371,8 @@ int main(void)
         boat_session_step(&boat, 0, 0);
     CHECK(boat.boat.position.y < 10 && boat.boat.velocity.y < -5);
     CHECK(fabsf(boat.boat.position.x) < 0.001f);
-    CHECK(particles(&boat.boat, false) > 0);
-    CHECK(particles(&boat.boat, true) > 0); // Forward planing now throws symmetric spray.
+    CHECK(particles(&boat.presentation, false) > 0);
+    CHECK(particles(&boat.presentation, true) > 0); // Forward planing now throws symmetric spray.
     boat.boat.throttle = 0;
     while (boat.boat.engine_response > 0)
         boat_session_step(&boat, 0, 0);
@@ -1387,14 +1396,14 @@ int main(void)
     CHECK(right.boat.position.x > 1 && left.boat.position.x < -1);
     CHECK(fabsf(left.boat.position.x + right.boat.position.x) < 0.001f);
     CHECK(fabsf(left.boat.position.y - right.boat.position.y) < 0.001f);
-    CHECK(particles(&right.boat, true) > 0);
-    CHECK(particles(&left.boat, true) == particles(&right.boat, true));
+    CHECK(particles(&right.presentation, true) > 0);
+    CHECK(particles(&left.presentation, true) == particles(&right.presentation, true));
     // Stopping leaves existing water effects to fade; steering at idle produces no new wash.
     right.boat.velocity = (Vector2) { 0 };
     right.boat.throttle = 0;
     for (int i = 0; i < 600; ++i)
         boat_session_step(&right, 1, 0);
-    CHECK(particles(&right.boat, false) == 0 && particles(&right.boat, true) == 0);
+    CHECK(particles(&right.presentation, false) == 0 && particles(&right.presentation, true) == 0);
     // A powered turn retains sideways momentum.
     CHECK(fabsf(left.boat.velocity.x * cosf(left.boat.heading)
               + left.boat.velocity.y * sinf(left.boat.heading))
@@ -1409,7 +1418,7 @@ int main(void)
     CHECK(boat.boat.wheel == 0 && boat.boat.engine_angle == 0 && boat.boat.yaw_velocity == 0);
     CHECK(boat.boat.throttle == 0 && boat.boat.engine_response == 0);
     CHECK(boat.boat.planing == 0);
-    CHECK(particles(&boat.boat, false) == 0 && particles(&boat.boat, true) == 0);
+    CHECK(particles(&boat.presentation, false) == 0 && particles(&boat.presentation, true) == 0);
     puts("boat_handling=ok");
     return 0;
 }

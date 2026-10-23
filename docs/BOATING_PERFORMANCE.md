@@ -28,7 +28,9 @@ mkdir -p build/bench
 ```
 
 Only scenario `wake-loop`, mode `simulation`, and renderer `none` are supported (also the
-defaults). `--output` is required: it is a file prefix, with an existing parent directory;
+defaults). `--presentation on|off` (default `on`, as in the P3a baseline) steps or skips the
+cosmetic particles, flag cloth and camera follow after each tick; the physical trace and
+`state_hash` are identical either way, and the report records the choice as `presentation`. `--output` is required: it is a file prefix, with an existing parent directory;
 the tool writes `<prefix>.json` and `<prefix>.csv`. Existing reports are overwritten.
 `--warmup` defaults to 120 and accepts 0..100000 nominal frames; `--frames` defaults to
 1800 and accepts 1..100000. Unknown options, invalid values, allocation and output errors
@@ -43,7 +45,7 @@ the entire run, including warmup. The pool remains 128 slots, 32 per emitter; on
 
 JSON schema/scenario/hash revisions are currently 1. The report identifies the build's configure-time
 Git revision (with `-dirty` for tracked changes), build type/compiler, platform, selected options,
-warmup/measured/total tick counts, wake lifetime/height and observed births/peak/landings.
+presentation choice, warmup/measured/total tick counts, wake lifetime/height and observed births/peak/landings.
 `simulation_ms` contains p50/p95/p99/max over **all measured frames**, using sorted index
 `floor((frames - 1) * percentile / 100)`. CSV columns are zero-based `frame`, absolute
 `end_tick`, and `simulation_ms`. The values use `boat_profile_time(false)` and include the
@@ -313,3 +315,24 @@ The soaks for both trees ran concurrently on separate cores, so their CPU second
 timing comparison. Artifacts: `build/bench/w3/{ref,new,replay,soak-head,soak-new,val-head,
 val-new,baseline}` and `build/bench/w3/baseline-runs.log`. No intended simulation or render
 behavior changed, so this slice adopts no new baseline; C3 remains the reference.
+
+## S1/S2 basin comparison — 2026-10-23
+
+The [S1/S2 basin slice](BOATING_FOUNDATIONS_PLAN.md#s1s2-basin-slice-handoff--2026-10-23)
+moves pose math, views and cosmetic state out of the boat physics. It is compared against a
+detached `5a33f8d` worktree built the same way, on the same MacBookPro18,2 (M1 Max, macOS
+26.6.2), Release AppleClang 21.0.0.21000101, `-DFETCHCONTENT_SOURCE_DIR_RAYLIB` as before.
+`build/bench/s2/compare.sh BUILD OUT FIXTURES` runs the validators, a default 120+1800-frame
+benchmark and the captures for one tree; the hour soaks used
+`validate_boat_clock --soak 3600 DIR [--waves]`.
+
+| Check | Result |
+| --- | --- |
+| Validators/review tools | 18 outputs (handling, banking, turn entry, environment, replay, profile, drive, clock, harbor, traffic, banking review, four water routes, object wakes, flag, benchmark) exit 0 and match except one object-wake timing line |
+| Benchmark trace | Byte-identical state CSV, hash `2c318477117e222e`; p50 0.070 ms vs 0.069 ms (presentation on) |
+| Hour soaks, calm/waves | Identical to `5a33f8d` and C3: hashes `43dfc74ddac0055d` / `56e31ce5c3d7a7c4`, same births, landings, recoveries; all six frames byte-identical |
+| Captures | 54 CPU/GPU frames byte-identical: default 3/9/11/20 s, waves, crossing boat (calm, waves), Eriksberg (calm, waves, current/crossing), river (calm, waves, current/crossing), D3, current/crossing/waves, course, banked replay 3/8 s, fixture replay, ghost, wave replay, ferry, marina, demo 48 s, CPU wake field, flag |
+
+Both trees' soaks ran concurrently, so CPU seconds are not a timing comparison. Artifacts:
+`build/bench/s2/{out-head,out-new,soak-head,soak-new,fixtures}`. No intended simulation or
+render behavior changed, so this slice adopts no new baseline; C3 remains the reference.

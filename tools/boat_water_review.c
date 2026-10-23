@@ -1,5 +1,4 @@
 // Deterministic boat-level water audit. Uses the playable simulation, not a camera spline.
-#include "boat.h"
 #include "boat_gpu.h"
 #include "boat_map.h"
 #include "boat_session.h"
@@ -85,20 +84,21 @@ static float shore_distance(Vector2 position)
     return low;
 }
 
-static bool capture(BoatGpu *gpu, Renderer3D *cpu, const Boat *boat, const BoatWorld *world,
-    BoatCamera camera, bool use_gpu, const char *path)
+static bool capture(BoatGpu *gpu, Renderer3D *cpu, const Boat *boat,
+    const BoatPresentation *presentation, const BoatWorld *world, BoatCamera camera, bool use_gpu,
+    const char *path)
 {
     Image image;
     Color pixels[320 * 200];
     if (use_gpu) {
-        boat_gpu_draw(gpu, boat, world, camera);
+        boat_gpu_draw(gpu, boat, presentation, world, camera);
         image = LoadImageFromTexture(gpu->target.texture);
         if (!image.data)
             return false;
         ImageFlipVertical(&image);
         ImageFlipHorizontal(&image);
     } else {
-        if (!boat_draw(cpu, pixels, 320, 200, boat, world, camera))
+        if (!boat_draw(cpu, pixels, 320, 200, boat, presentation, world, camera))
             return false;
         image = (Image) { pixels, 320, 200, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 };
     }
@@ -129,14 +129,14 @@ static int check_gpu_water(void)
     Boat *boat = &session.boat;
     boat->position = (Vector2) { 0, 0 };
     const BoatCamera view = { .distance = 48, .height = 36 };
-    boat_gpu_draw(&gpu, boat, &session.world, view);
+    boat_gpu_draw(&gpu, boat, &session.presentation, &session.world, view);
     Image image = LoadImageFromTexture(gpu.target.texture);
     if (!image.data)
         goto cleanup;
     ImageFlipVertical(&image);
     ImageFlipHorizontal(&image);
     WaterfrontSceneFrame frame;
-    boat_scene_frame(boat, &session.world, view, &frame);
+    boat_scene_frame(boat, &session.presentation, &session.world, view, &frame);
     Camera3D camera = { frame.camera.position, frame.camera.target, frame.camera.up,
         frame.camera.vertical_fov * RAD2DEG, CAMERA_PERSPECTIVE };
     const Vector3 samples[] = { { 0, 0, -20 }, { 45, 0, -45 }, { 60, 0, -55 } };
@@ -162,13 +162,13 @@ static int check_gpu_water(void)
     Color first = { 0 }, previous = { 0 }, last = { 0 };
     for (int z = 60; z >= -260; z -= 10) {
         boat->position.y = (float)z;
-        boat_gpu_draw(&gpu, boat, &session.world, view);
+        boat_gpu_draw(&gpu, boat, &session.presentation, &session.world, view);
         image = LoadImageFromTexture(gpu.target.texture);
         if (!image.data)
             goto cleanup;
         ImageFlipVertical(&image);
         ImageFlipHorizontal(&image);
-        boat_scene_frame(boat, &session.world, view, &frame);
+        boat_scene_frame(boat, &session.presentation, &session.world, view, &frame);
         camera.position = frame.camera.position;
         camera.target = frame.camera.target;
         Vector2 p = GetWorldToScreenEx((Vector3) { 12, 0, z - 20 }, camera, 320, 200);
@@ -267,6 +267,9 @@ int main(int argc, char **argv)
     boat_session_init(&session, location, waves ? boat_water_gentle() : (BoatWater) { 0 });
     const BoatWorld *world = &session.world;
     Boat *boat = &session.boat;
+    const BoatPresentation *presentation = &session.presentation;
+    // Re-aimed review views copy the presentation; the live one keeps following the route.
+    static BoatPresentation shown;
     BoatWater water = world->water;
     const BoatWave components[]
         = { { water.amplitude, water.wavelength, water.angular_speed, water.direction },
@@ -331,14 +334,15 @@ int main(int argc, char **argv)
                 for (int view = 0; view < 2; ++view) {
                     snprintf(path, sizeof(path), "%s/%s-%s.png", output, name,
                         view ? "close" : "default");
-                    if (!capture(&gpu, &cpu, boat, world, cameras[view], use_gpu, path))
+                    if (!capture(
+                            &gpu, &cpu, boat, presentation, world, cameras[view], use_gpu, path))
                         goto cleanup;
                 }
                 if (river && finished) {
-                    Boat lookback = *boat;
-                    lookback.camera_heading += PI;
+                    shown = *presentation;
+                    shown.camera_heading += PI;
                     snprintf(path, sizeof(path), "%s/beyond-lookback.png", output);
-                    if (!capture(&gpu, &cpu, &lookback, world, default_camera, use_gpu, path))
+                    if (!capture(&gpu, &cpu, boat, &shown, world, default_camera, use_gpu, path))
                         goto cleanup;
                     // Fixed inspection views of both landfalls, separate from route poses.
                     const Stop landfalls[] = { { "north-landfall", { 750, -850 } },
@@ -347,21 +351,24 @@ int main(int argc, char **argv)
                     for (int bank = 0; bank < 2; ++bank) {
                         Boat inspection = *boat;
                         inspection.position = landfalls[bank].position;
-                        inspection.flag.initialized = false;
+                        shown = *presentation;
+                        shown.flag.initialized = false;
                         Vector2 delta = Vector2Subtract(targets[bank], inspection.position);
-                        inspection.camera_heading = inspection.heading = atan2f(delta.x, -delta.y);
+                        shown.camera_heading = inspection.heading = atan2f(delta.x, -delta.y);
                         if (!hull_clear(&inspection))
                             goto cleanup;
                         snprintf(path, sizeof(path), "%s/%s.png", output, landfalls[bank].name);
-                        if (!capture(&gpu, &cpu, &inspection, world, default_camera, use_gpu, path))
+                        if (!capture(&gpu, &cpu, &inspection, &shown, world, default_camera,
+                                use_gpu, path))
                             goto cleanup;
                     }
                     Boat overview = *boat;
                     overview.position = (Vector2) { 425, -762 };
-                    overview.flag.initialized = false;
-                    overview.camera_heading = overview.heading = -PI / 2;
+                    shown = *presentation;
+                    shown.flag.initialized = false;
+                    shown.camera_heading = overview.heading = -PI / 2;
                     snprintf(path, sizeof(path), "%s/connections-overview.png", output);
-                    if (!capture(&gpu, &cpu, &overview, world,
+                    if (!capture(&gpu, &cpu, &overview, &shown, world,
                             (BoatCamera) { .distance = 1100, .height = 300 }, use_gpu, path))
                         goto cleanup;
                 }
@@ -373,15 +380,15 @@ int main(int argc, char **argv)
         if (!check && (ticks % sample_ticks == 0 || finished)) {
             fprintf(csv, "%d,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.3f,%zu\n", ticks,
                 ticks * (double)BOAT_STEP, boat->position.x, boat->position.y, boat->heading,
-                boat->camera_heading, Vector2Length(boat->velocity), boat->height, boat->pitch,
-                boat->roll, shore_distance(boat->position), destination);
+                presentation->camera_heading, Vector2Length(boat->velocity), boat->height,
+                boat->pitch, boat->roll, shore_distance(boat->position), destination);
             double start = now();
             if (use_gpu) {
-                boat_gpu_draw(&gpu, boat, world, review_camera);
+                boat_gpu_draw(&gpu, boat, presentation, world, review_camera);
                 rlDrawRenderBatchActive();
             } else {
                 Color pixels[320 * 200];
-                if (!boat_draw(&cpu, pixels, 320, 200, boat, world, review_camera))
+                if (!boat_draw(&cpu, pixels, 320, 200, boat, presentation, world, review_camera))
                     goto cleanup;
             }
             double ms = (now() - start) * 1000;
@@ -392,7 +399,7 @@ int main(int argc, char **argv)
             }
             if (sequence) {
                 snprintf(path, sizeof(path), "%s/frame-%05d.png", output, frames);
-                if (!capture(&gpu, &cpu, boat, world, review_camera, use_gpu, path))
+                if (!capture(&gpu, &cpu, boat, presentation, world, review_camera, use_gpu, path))
                     goto cleanup;
             }
             if (visible && use_gpu) {

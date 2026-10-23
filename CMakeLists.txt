@@ -30,13 +30,16 @@ if(APPLE)
   link_libraries("-framework Accelerate") # Double cosine backend; portable FFT elsewhere.
 endif()
 
+# Physics, shared pose math, cosmetic presentation and CPU views (split into libraries in S4).
+set(PROTEUS_BOAT_SOURCES
+  src/boat.c src/boat_pose.c src/boat_presentation.c src/boat_view.c src/boat_course_view.c)
 set(PROTEUS_BOAT_WORLD_SOURCES
   src/boat_location.c src/boat_world.c src/boat_session.c
   src/boat_water.c src/boat_wake_objects.c src/boat_wake.c src/boat_wake_player.c src/boat_course.c src/boat_replay.c src/boat_map.c
   src/waterfront.c src/waterfront_scene.c src/waterfront_corner.c)
 set(PROTEUS_HARBOR_SOURCES
   src/boat_flag.c src/boat_model.c src/waterfront_harbor.c src/waterfront_traffic.c)
-add_executable(boat_study tools/boat_study.c tools/boat_study_drive.c src/boat.c src/renderer3d.c src/profiler.c
+add_executable(boat_study tools/boat_study.c tools/boat_study_drive.c ${PROTEUS_BOAT_SOURCES} src/renderer3d.c src/profiler.c
   src/boat_profile.c src/boat_audio.c src/xm_audio.c src/boat_gpu.c src/renderer_gpu.c
   ${PROTEUS_BOAT_WORLD_SOURCES} ${PROTEUS_HARBOR_SOURCES})
 target_include_directories(boat_study PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -190,7 +193,7 @@ target_compile_options(validate_boat_audio PRIVATE
 add_test(NAME boat_audio_is_valid COMMAND validate_boat_audio)
 
 add_dependencies(boat_study proteus_assets)
-add_executable(wake_play_review tools/wake_play_review.c src/boat.c src/renderer3d.c
+add_executable(wake_play_review tools/wake_play_review.c ${PROTEUS_BOAT_SOURCES} src/renderer3d.c
   src/boat_gpu.c src/renderer_gpu.c ${PROTEUS_BOAT_WORLD_SOURCES} ${PROTEUS_HARBOR_SOURCES})
 target_include_directories(wake_play_review PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${raylib_SOURCE_DIR}/src)
 target_link_libraries(wake_play_review PRIVATE raylib)
@@ -207,7 +210,7 @@ execute_process(COMMAND git status --porcelain --untracked-files=no
 if(BOAT_BENCH_DIRTY)
   string(APPEND BOAT_BENCH_REV "-dirty")
 endif()
-add_executable(boat_benchmark tools/boat_benchmark.c tools/boat_study_state.c tools/boat_study_drive.c src/boat.c
+add_executable(boat_benchmark tools/boat_benchmark.c tools/boat_study_state.c tools/boat_study_drive.c ${PROTEUS_BOAT_SOURCES}
   src/renderer3d.c src/boat_profile.c ${PROTEUS_BOAT_WORLD_SOURCES} ${PROTEUS_HARBOR_SOURCES})
 target_include_directories(boat_benchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(boat_benchmark PRIVATE raylib)
@@ -218,7 +221,7 @@ target_compile_options(boat_benchmark PRIVATE
   $<$<C_COMPILER_ID:AppleClang,Clang,GNU>:-Wall;-Wextra;-Wpedantic>)
 
 add_executable(validate_boat_drive tools/validate_boat_drive.c tools/boat_study_state.c tools/boat_study_drive.c
-  src/boat.c src/renderer3d.c src/boat_profile.c
+  ${PROTEUS_BOAT_SOURCES} src/renderer3d.c src/boat_profile.c
   ${PROTEUS_BOAT_WORLD_SOURCES} ${PROTEUS_HARBOR_SOURCES})
 target_include_directories(validate_boat_drive PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(validate_boat_drive PRIVATE raylib)
@@ -226,7 +229,7 @@ target_compile_options(validate_boat_drive PRIVATE
   $<$<C_COMPILER_ID:AppleClang,Clang,GNU>:-Wall;-Wextra;-Wpedantic>)
 add_test(NAME boat_drive_extraction COMMAND validate_boat_drive)
 add_executable(validate_boat_clock tools/validate_boat_clock.c tools/boat_study_state.c
-  tools/boat_study_drive.c src/boat.c src/renderer3d.c src/boat_profile.c
+  tools/boat_study_drive.c ${PROTEUS_BOAT_SOURCES} src/renderer3d.c src/boat_profile.c
   ${PROTEUS_BOAT_WORLD_SOURCES} ${PROTEUS_HARBOR_SOURCES})
 target_include_directories(validate_boat_clock PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(validate_boat_clock PRIVATE raylib)
@@ -241,7 +244,7 @@ find_package(Python3 REQUIRED COMPONENTS Interpreter)
 add_test(NAME boat_benchmark_contract COMMAND ${Python3_EXECUTABLE}
   ${CMAKE_CURRENT_SOURCE_DIR}/tools/validate_boat_benchmark.py $<TARGET_FILE:boat_benchmark>)
 
-add_executable(wake_objects_review tools/wake_objects_review.c src/boat.c src/renderer3d.c
+add_executable(wake_objects_review tools/wake_objects_review.c ${PROTEUS_BOAT_SOURCES} src/renderer3d.c
   src/boat_gpu.c src/renderer_gpu.c ${PROTEUS_BOAT_WORLD_SOURCES} ${PROTEUS_HARBOR_SOURCES})
 target_include_directories(wake_objects_review PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${raylib_SOURCE_DIR}/src)
 target_link_libraries(wake_objects_review PRIVATE raylib)
@@ -274,22 +277,23 @@ add_test(NAME wake_candidate_map_rejected COMMAND boat_study --wake-field --loca
 add_test(NAME wake_candidate_current_rejected COMMAND boat_study --wake-field --current)
 set_tests_properties(wake_candidate_course_rejected wake_candidate_map_rejected
   wake_candidate_current_rejected PROPERTIES WILL_FAIL TRUE)
-add_executable(validate_boat tools/validate_boat.c src/boat.c src/renderer3d.c)
-add_executable(validate_boat_banking tools/validate_boat_banking.c src/boat.c src/renderer3d.c)
-add_executable(validate_boat_turn_entry tools/validate_boat_turn_entry.c src/boat.c src/renderer3d.c)
-add_executable(validate_boat_profile tools/validate_boat_profile.c src/boat_profile.c src/boat.c
+add_executable(validate_boat tools/validate_boat.c ${PROTEUS_BOAT_SOURCES} src/renderer3d.c)
+add_executable(validate_boat_banking tools/validate_boat_banking.c ${PROTEUS_BOAT_SOURCES} src/renderer3d.c)
+add_executable(validate_boat_turn_entry tools/validate_boat_turn_entry.c ${PROTEUS_BOAT_SOURCES} src/renderer3d.c)
+add_executable(validate_boat_profile tools/validate_boat_profile.c src/boat_profile.c ${PROTEUS_BOAT_SOURCES}
   src/renderer3d.c)
-add_executable(validate_boat_environment tools/validate_boat_environment.c src/boat.c src/renderer3d.c)
-add_executable(validate_boat_replay tools/validate_boat_replay.c src/boat.c src/renderer3d.c)
-add_executable(validate_boat_world tools/validate_boat_world.c src/boat.c src/renderer3d.c)
-add_executable(wake_baseline tools/wake_baseline.c src/boat.c src/renderer3d.c)
-add_executable(boat_water_review tools/boat_water_review.c src/boat.c src/renderer3d.c
+add_executable(validate_boat_environment tools/validate_boat_environment.c ${PROTEUS_BOAT_SOURCES} src/renderer3d.c)
+add_executable(validate_boat_replay tools/validate_boat_replay.c ${PROTEUS_BOAT_SOURCES} src/renderer3d.c)
+add_executable(validate_boat_world tools/validate_boat_world.c tools/boat_study_drive.c
+  tools/boat_study_state.c src/boat_profile.c ${PROTEUS_BOAT_SOURCES} src/renderer3d.c)
+add_executable(wake_baseline tools/wake_baseline.c ${PROTEUS_BOAT_SOURCES} src/renderer3d.c)
+add_executable(boat_water_review tools/boat_water_review.c ${PROTEUS_BOAT_SOURCES} src/renderer3d.c
   src/boat_gpu.c src/renderer_gpu.c)
 add_dependencies(boat_water_review proteus_assets)
-add_executable(boat_banking_review tools/boat_banking_review.c src/boat.c src/renderer3d.c
+add_executable(boat_banking_review tools/boat_banking_review.c ${PROTEUS_BOAT_SOURCES} src/renderer3d.c
   src/boat_gpu.c src/renderer_gpu.c)
 add_dependencies(boat_banking_review proteus_assets)
-add_executable(boat_flag_review tools/boat_flag_review.c src/boat.c src/renderer3d.c
+add_executable(boat_flag_review tools/boat_flag_review.c ${PROTEUS_BOAT_SOURCES} src/renderer3d.c
   src/boat_gpu.c src/renderer_gpu.c)
 add_dependencies(boat_flag_review proteus_assets)
 foreach(target validate_boat validate_boat_banking validate_boat_turn_entry validate_boat_profile
@@ -446,7 +450,7 @@ target_compile_options(waterfront_storyboard PRIVATE
   $<$<C_COMPILER_ID:AppleClang,Clang,GNU>:-Wall;-Wextra;-Wpedantic>
 )
 add_test(NAME waterfront_storyboard_is_valid COMMAND waterfront_storyboard --check)
-add_executable(validate_harbor tools/validate_harbor.c src/boat.c src/renderer3d.c
+add_executable(validate_harbor tools/validate_harbor.c ${PROTEUS_BOAT_SOURCES} src/renderer3d.c
   ${PROTEUS_BOAT_WORLD_SOURCES} ${PROTEUS_HARBOR_SOURCES})
 target_include_directories(validate_harbor PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(validate_harbor PRIVATE raylib)
@@ -454,7 +458,7 @@ target_compile_options(validate_harbor PRIVATE
   $<$<C_COMPILER_ID:AppleClang,Clang,GNU>:-Wall;-Wextra;-Wpedantic>)
 add_test(NAME harbor_geometry COMMAND validate_harbor)
 
-add_executable(validate_traffic tools/validate_traffic.c src/boat.c src/renderer3d.c
+add_executable(validate_traffic tools/validate_traffic.c ${PROTEUS_BOAT_SOURCES} src/renderer3d.c
   ${PROTEUS_BOAT_WORLD_SOURCES} ${PROTEUS_HARBOR_SOURCES})
 target_include_directories(validate_traffic PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(validate_traffic PRIVATE raylib)

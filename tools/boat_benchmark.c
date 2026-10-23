@@ -38,6 +38,7 @@ int main(int argc, char **argv)
 {
     unsigned warmup = 120, frames = 1800;
     const char *output = NULL;
+    bool presentation = true; // Cosmetics on by default, as in the P3a baseline.
     for (int i = 1; i < argc; ++i) {
         const char *key = argv[i];
         if (++i == argc)
@@ -58,6 +59,10 @@ int main(int argc, char **argv)
         } else if (!strcmp(key, "--frames")) {
             if (!count(v, &frames) || !frames)
                 return fail("frames must be 1..100000");
+        } else if (!strcmp(key, "--presentation")) {
+            if (strcmp(v, "on") && strcmp(v, "off"))
+                return fail("presentation must be on or off");
+            presentation = !strcmp(v, "on");
         } else if (!strcmp(key, "--output"))
             output = v;
         else
@@ -81,6 +86,7 @@ int main(int argc, char **argv)
         &session, boat_location(BOAT_LOCATION_BASIN), boat_water_test(false, false, false));
     const Boat *const boat = &session.boat;
     object_study_reset(&objects, &session, false, BOAT_OBJECT_LIFE_TICKS, 1.8f);
+    session.presentation_enabled = presentation;
     unsigned tick = 0;
     uint64_t hash = BOAT_STUDY_HASH_SEED;
     for (unsigned f = 0; f < warmup + frames; ++f) {
@@ -144,8 +150,8 @@ int main(int argc, char **argv)
                 "{\n  \"schema_revision\":1,\"scenario\":\"wake-loop\",\"scenario_revision\":1,\n"
                 "  \"fixture\":\"finite scripted wake-return; powered turns end at tick 1440\",\n"
                 "  "
-                "\"mode\":\"simulation\",\"renderer\":\"none\",\"build\":\"%s\",\"platform\":\"%"
-                "s\",\n"
+                "\"mode\":\"simulation\",\"renderer\":\"none\",\"presentation\":\"%s\",\n"
+                "  \"build\":\"%s\",\"platform\":\"%s\",\n"
                 "  "
                 "\"warmup_frames\":%u,\"frames\":%u,\"ticks_per_frame\":2,\"warmup_ticks\":%u,"
                 "\"measured_ticks\":%u,\"total_ticks\":%u,\n"
@@ -154,9 +160,10 @@ int main(int argc, char **argv)
                 "  \"state_hash\":\"%016" PRIx64 "\",\"hash_revision\":1,\n"
                 "  \"simulation_ms\":{\"p50\":%.9f,\"p95\":%.9f,\"p99\":%.9f,\"max\":%.9f},\n"
                 "  \"render_cpu_ms\":null,\"gpu_ms\":null\n}\n",
-                BOAT_BENCH_BUILD, BOAT_BENCH_PLATFORM, warmup, frames, warmup * 2, frames * 2, tick,
-                objects.wakes.life_ticks, (double)objects.wakes.crest_height, objects.wakes.emitted,
-                objects.wakes.peak_live, boat->landings, hash, sorted[(frames - 1) * 50 / 100],
+                presentation ? "on" : "off", BOAT_BENCH_BUILD, BOAT_BENCH_PLATFORM, warmup, frames,
+                warmup * 2, frames * 2, tick, objects.wakes.life_ticks,
+                (double)objects.wakes.crest_height, objects.wakes.emitted, objects.wakes.peak_live,
+                boat->landings, hash, sorted[(frames - 1) * 50 / 100],
                 sorted[(frames - 1) * 95 / 100], sorted[(frames - 1) * 99 / 100],
                 sorted[frames - 1])
             < 0)

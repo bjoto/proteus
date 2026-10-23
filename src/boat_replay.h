@@ -1,7 +1,7 @@
 #ifndef PROTEUS_BOAT_REPLAY_H
 #define PROTEUS_BOAT_REPLAY_H
 
-#include "boat.h"
+#include "boat_presentation.h"
 
 #define BOAT_REPLAY_MAX_SECONDS 600
 // Recorded world time is absolute session time, so a course may start long after launch.
@@ -25,13 +25,17 @@ typedef struct {
     bool waves, complete, failed;
 } BoatReplay;
 
-BoatReplaySample boat_replay_pose(const Boat *boat);
+// Physical pose plus the presentation's camera follow, recorded as a view value.
+BoatReplaySample boat_replay_pose(const Boat *boat, const BoatPresentation *presentation);
 // Called after each physics tick, with the pose immediately before that tick.
-void boat_replay_record(
-    BoatReplay *run, BoatReplaySample before, const Boat *boat, const BoatWorld *world);
+void boat_replay_record(BoatReplay *run, BoatReplaySample before, const Boat *boat,
+    const BoatPresentation *presentation, const BoatWorld *world);
 // Water a recording was made in. View a sample in its own world, never the live one.
 BoatWater boat_replay_water(const BoatReplay *run);
-bool boat_replay_sample(const BoatReplay *run, double at, Boat *boat);
+// A view boat at AT. PRESENTATION, when given, is reset to the recorded camera follow;
+// its cloth comes from boat_replay_animate_flag().
+bool boat_replay_sample(
+    const BoatReplay *run, double at, Boat *boat, BoatPresentation *presentation);
 // Caller-owned visual history, separate for playback and ghost. Zero-initialize.
 // Continuous playback advances at fixed ticks; jumps reconstruct at most one second.
 // Seek cloth is an approximation, not additional recorded physics or a file-format change.
@@ -42,7 +46,8 @@ typedef struct {
     BoatFlag flag;
     int tick;
 } BoatReplayFlag;
-void boat_replay_animate_flag(const BoatReplay *run, Boat *boat, BoatReplayFlag *cache);
+void boat_replay_animate_flag(
+    const BoatReplay *run, const Boat *boat, BoatReplayFlag *cache, BoatFlag *flag);
 bool boat_replay_copy(BoatReplay *destination, const BoatReplay *source);
 void boat_replay_destroy(BoatReplay *run);
 // Versioned portable text; load preserves destination on failure, save atomically replaces path.
@@ -70,7 +75,7 @@ void boat_replay_speed_step(BoatReplayRuns *runs, int direction);
 void boat_replay_advance(BoatReplayRuns *runs, double seconds, bool focused);
 void boat_replay_runs_destroy(BoatReplayRuns *runs);
 void boat_replay_runs_reset(BoatReplayRuns *runs);
-void boat_replay_runs_step(
-    BoatReplayRuns *runs, BoatReplaySample before, const Boat *boat, const BoatWorld *world);
+void boat_replay_runs_step(BoatReplayRuns *runs, BoatReplaySample before, const Boat *boat,
+    const BoatPresentation *presentation, const BoatWorld *world);
 
 #endif

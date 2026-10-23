@@ -4,6 +4,7 @@
 #include "boat_replay.h"
 #include "boat_session.h"
 #include "boat_study_state.h"
+#include "boat_view.h"
 #include "raymath.h"
 
 #include <inttypes.h>
@@ -158,7 +159,8 @@ static int large_time_locations(void)
             }
             CHECK(peak > .02f); // The hull actually rides the time-driven waves.
             WaterfrontSceneFrame frame;
-            boat_scene_frame(boat, &session.world, BOAT_CAMERA_DEFAULT, &frame);
+            boat_scene_frame(
+                boat, &session.presentation, &session.world, BOAT_CAMERA_DEFAULT, &frame);
             CHECK(frame.time == boat->time);
         }
         boat_map_destroy();
@@ -180,14 +182,15 @@ static int replay_world_time(const char *path)
     const Vector2 points[] = { { 0, 37 }, { 22, 7 }, { -22, -23 }, { 0, -55 } };
     for (int leg = 0; leg < 3 && !run.complete; ++leg)
         for (int tick = 1; tick <= 480 && !run.complete; ++tick) {
-            BoatReplaySample before = boat_replay_pose(boat);
+            BoatReplaySample before = boat_replay_pose(boat, &session.presentation);
             float t = (float)tick / 480;
             boat->position = Vector2Lerp(points[leg], points[leg + 1], t);
             boat->velocity = Vector2Scale(Vector2Subtract(boat->position, before.position), 120);
-            boat->heading = boat->camera_heading = atan2f(boat->velocity.x, -boat->velocity.y);
+            boat->heading = session.presentation.camera_heading
+                = atan2f(boat->velocity.x, -boat->velocity.y);
             boat_session_set_tick(&session, session.tick + 1);
             boat_course_step(&boat->course, before.position, boat->position, BOAT_TICK_SECONDS);
-            boat_replay_record(&run, before, boat, &session.world);
+            boat_replay_record(&run, before, boat, &session.presentation, &session.world);
         }
     CHECK(run.complete && run.samples[0].world_time > 30 * 86400.0);
     CHECK(boat_replay_save(&run, path) && boat_replay_load(&loaded, path));
@@ -195,7 +198,7 @@ static int replay_world_time(const char *path)
     for (size_t i = 0; i < run.count; ++i)
         CHECK(loaded.samples[i].world_time == run.samples[i].world_time);
     Boat view;
-    CHECK(boat_replay_sample(&loaded, loaded.samples[1].at, &view));
+    CHECK(boat_replay_sample(&loaded, loaded.samples[1].at, &view, NULL));
     CHECK(view.replay_view && view.time == loaded.samples[1].world_time);
     boat_replay_destroy(&run);
     boat_replay_destroy(&loaded);
@@ -274,8 +277,9 @@ static int soak(double seconds, const char *directory, bool waves)
                 CHECK(snprintf(path, sizeof(path), "%s/soak%s-%" PRIu64 "s.png", directory,
                           waves ? "-waves" : "", samples[s] / 120)
                     < (int)sizeof(path));
-                CHECK(boat_draw_with_ghost(&renderer, pixels, 320, 200, boat, &session.world,
-                    BOAT_CAMERA_DEFAULT, &study.other, 1));
+                CHECK(boat_draw_with_ghost(&renderer, pixels, 320, 200, boat, &session.presentation,
+                    &session.world, BOAT_CAMERA_DEFAULT, &study.other,
+                    &study.other_presentation.flag, 1));
                 Image image = { pixels, 320, 200, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 };
                 CHECK(ExportImage(image, path));
             }

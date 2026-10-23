@@ -9,8 +9,9 @@ No networking, gameplay, dependencies, workflows or releases changed in this pla
 Completed: source assessment, transport documentation review, phased design and first-task
 definition. At preparation the next task was foundations **P2a**.
 Current prerequisite status: P2a, P3a, C1–C3 (including the actual hour soak and manual
-playback of all modes) and the foundations basin W1/W3 slice (explicit world/session, isolation
-gate; user-played) are implemented; the basin S1/S2 slice is next. All M1–M8 work
+playback of all modes), the foundations basin W1/W3 slice (explicit world/session, isolation
+gate; user-played) and the basin S1/S2 slice (shared pose math, presentation split; not yet
+user-played) are implemented; the basin S3 slice is next. All M1–M8 work
 is pending. Numerical budgets below are proposed gates, not measured multiplayer results.
 The final evidence section distinguishes checks performed for this document from future checks.
 

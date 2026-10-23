@@ -91,11 +91,12 @@ int main(int argc, char **argv)
     int count = screenshot ? 1 : frames;
     for (int f = 0; f < count && (screenshot || !WindowShouldClose()); ++f) {
         WaterfrontPlayerState player = { 0 };
-        boat_player_pose(&boat.boat, &player);
+        boat_player_pose(&boat.boat, &boat.presentation.flag, &player);
         View3D camera = camera_for(&boat.boat);
         if (gpu) {
             WaterfrontSceneFrame frame;
-            boat_scene_frame(&boat.boat, &boat.world, BOAT_CAMERA_DEFAULT, &frame);
+            boat_scene_frame(
+                &boat.boat, &boat.presentation, &boat.world, BOAT_CAMERA_DEFAULT, &frame);
             frame.camera = camera;
             frame.scenery_count = 0;
             frame.gull_count = 0;

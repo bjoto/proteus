@@ -4,10 +4,11 @@ Prepared 2026-10-19 against `f60ede8`, following the
 [architecture review](ARCHITECTURE_REVIEW.md). This document owns this technical sequence;
 [BOATING_PLAN.md](BOATING_PLAN.md) continues to own gameplay direction.
 
-Status: P1, P2a, P3a, phase C (C1–C3) and the basin W1/W3 slice implemented; full P2/P3 and
-mapped W1/W3, W2 and W4 remain pending. Next for the
-[multiplayer prerequisite](MULTIPLAYER_PLAN.md): the basin S1/S2 slice (shared pure pose math,
-cosmetic/view separation); see the [W1/W3 basin handoff](#w1w3-basin-slice-handoff--2026-10-23).
+Status: P1, P2a, P3a, phase C (C1–C3) and the basin W1/W3 and S1/S2 slices implemented; full
+P2/P3, mapped W1/W3, W2, W4 and the remaining S1 frame consolidation remain pending. Next for the
+[multiplayer prerequisite](MULTIPLAYER_PLAN.md): the basin S3 slice (session-owned course/replay
+orchestration, no file I/O in the physical tick); see the
+[S1/S2 basin handoff](#s1s2-basin-slice-handoff--2026-10-23).
 At preparation, the user requested a plan only. Implementation began with P1 on 2026-10-19;
 execute later requested tasks using the protocol below. No additional approval gates are created
 by this plan. Verification of the original planning work is recorded at the end.
@@ -71,8 +72,8 @@ All rows start **pending**. Replace the evidence column with actual dated result
 | W2 | Caller-owned collision and water-mesh caches | W1 | Pending |
 | W3 | World/session owners and water migration | W2 | Basin slice implemented 2026-10-23 ahead of W2 (explicit world, session clock, isolation gate); mapped caches/resources pending; [handoff](#w1w3-basin-slice-handoff--2026-10-23) |
 | W4 | Reload/isolation/resource-lifetime gate | W3 | Pending |
-| S1 | Extract pose, camera, scenery, and drawing | W4 | Pending |
-| S2 | Separate cosmetic state from boat simulation | S1 | Pending |
+| S1 | Extract pose, camera, scenery, and drawing | W4 | Basin slice implemented 2026-10-23 ahead of W4 (shared `boat_pose`, `boat_view`, `boat_course_view`); one shared CPU/GPU scene frame pending; [handoff](#s1s2-basin-slice-handoff--2026-10-23) |
+| S2 | Separate cosmetic state from boat simulation | S1 | Basin slice implemented 2026-10-23 (`BoatPresentation`, presentation on/off and 30/60/144 Hz gates); [handoff](#s1s2-basin-slice-handoff--2026-10-23) |
 | S3 | Session-owned course/replay orchestration and finish I/O | S2 | Pending |
 | S4 | Shared build targets and dependency checks | S3 | Pending |
 | S5 | Final comparison, playback, and handoff | S4 | Pending |
@@ -943,7 +944,8 @@ world/session extraction. No cross-platform bit identity or user acceptance is i
   global `boat_map`/`boat_water` mapped caches keyed by `definition->mapped` (mapped W1/W2;
   river and Eriksberg still cannot coexist in one process); `BoatGpu.wave_mapped` patch cache
   (W2); `Boat.time` as a derived view cache written by `boat_step` (S3); basin scenery/view
-  geometry still uses the basin macros rather than the definition (S1 `boat_view`). The
+  geometry still uses the basin macros rather than the definition (S1 `boat_view`; resolved by
+  the [S1/S2 basin slice](#s1s2-basin-slice-handoff--2026-10-23)). The
   scripted crossing boat keeps its original calm basin (`ObjectStudy.other_world`, sharing only
   the arcade wakes) and steps at the session's time; the multi-boat schedule belongs to
   multiplayer M2. Test-only `tools/boat_test_session.h` (`basin_session`) wraps authored
@@ -973,3 +975,69 @@ world/session extraction. No cross-platform bit identity or user acceptance is i
 - **Limits:** One machine; Windows/Linux/browser not built or run. Isolation is proven for basin
   worlds and basin/Eriksberg interleaving, not river with Eriksberg. Mapped map/water caches
   and GPU resources are still process-global.
+
+## S1/S2 basin slice handoff — 2026-10-23
+
+- **Status / next:** The basin subset of S1/S2 from the
+  [multiplayer prerequisite slices](#multiplayer-prerequisite-slices--2026-10-23) is
+  implemented, starting from `5a33f8d` with a clean tree. Next: the basin S3 slice
+  (session-owned course/replay orchestration, no file I/O inside the physical tick). Still
+  pending from full S1: one `WaterfrontSceneFrame` per displayed frame consumed by both CPU and
+  GPU (the CPU path still draws directly; the GPU path builds the frame). Mapped W1/W2/W3, W4
+  and full P2/P3 remain pending.
+- **Shared pose math (S1):** `src/boat_pose.[ch]` holds hull rotation, renderer Euler
+  conversion, attachments, attachment motion (`BoatPoseMotion`), hull up, thrust direction,
+  the unit hull frame and the rendered hull/cabin/engine parts, plus `BOAT_ENGINE_ARM`. It
+  has no state and no draw calls. Buoyancy, contacts, stern sampling, particles, cloth,
+  replay cloth pinning and drawing all call this one implementation; the copies in
+  `boat.c` are gone.
+- **Views (S1):** `src/boat_view.[ch]` owns `BoatCamera`/`BOAT_CAMERA_DEFAULT`, camera
+  construction, particle size/colour/pose, current cues and wake-source scenery, basin
+  scenery (now from `definition->half_extent` rather than the basin macros; the GPU basin plane
+  likewise), `boat_scene_frame`, `boat_player_pose` and the CPU `boat_draw*` entry points.
+  `src/boat_course_view.[ch]` owns gate visitors, drawing and the HUD; `boat_course` keeps
+  only crossing math and includes only `raylib.h`. `boat.h` no longer includes renderer or
+  scene headers. No temporary header forwarding was added; callers include the view headers.
+- **Presentation (S2):** `src/boat_presentation.[ch]` owns `BoatPresentation`: the 384
+  particles, slot cursor, emission/wake-variation counters, wash/wake/spray timers, flag cloth
+  and camera follow. `Boat` keeps physical state, the D3 emitter bookkeeping and `wave_spray`
+  (bow-entry load read by particles and audio). `boat_presentation_step` runs the moved
+  camera, cloth and particle code verbatim after `boat_step`; it reads boat and world and writes
+  neither. `BoatSession` holds the presentation by value with `presentation_enabled` (default
+  on); `boat_session_step` steps physics, then presentation. Respawn resets it. The scripted
+  crossing boat has `ObjectStudy.other_presentation`, stepped right after its physics (before
+  the pair collision, as before) when the session's presentation is enabled.
+- **Replay views:** camera follow is recorded from the presentation and sampled into an
+  optional `BoatPresentation` (`boat_replay_sample(run, at, boat, presentation)`); ghosts pass
+  `NULL`. `boat_replay_animate_flag` now writes a caller `BoatFlag`. Draw calls take the view's
+  presentation plus an optional ghost cloth. File format and physics revision are unchanged.
+- **Equivalence:** moving the camera update from mid-tick to after buoyancy is equivalent
+  because only contacts change heading. Particles and cloth already ran after all physics;
+  the course step between them touches neither. The frozen P2a oracle
+  (`tools/boat_drive_baseline.h`) was not edited: it does not step the crossing boat's
+  presentation, which affects no hashed or drawn value in its comparison.
+- **Benchmark:** `boat_benchmark --presentation on|off` (default on, matching P3a); the report
+  records `presentation`. The contract test requires identical traces and hashes for off.
+- **Automated verification:** Apple M1 Max/macOS 26.6.2, Debug common recipe: 88 active CTests
+  pass in 96.28 s (22 active tests carry the `gpu` label); fifteen retired field cases stay
+  disabled. `boat_world_isolation`
+  now also checks that presentation on/off gives byte-identical boat, D3 history and arcade
+  state for its three worlds and the crossing-boat wake loop (3840 ticks), with the disabled
+  presentation never advancing; that 30/60/144 Hz accumulator loops with frames between ticks
+  end equal to the tickless reference, presentation included; that drawing twice gives
+  identical pixels and an unchanged session; and that respawn resets presentation. Wall-clock
+  keyboard sampling at different rates is not covered. `git diff --check` and `clang-format`
+  pass.
+- **Baseline comparison:** see the
+  [S1/S2 comparison](BOATING_PERFORMANCE.md#s1s2-basin-comparison--2026-10-23). Release outputs
+  match a detached `5a33f8d` worktree byte for byte: 18 validator/review outputs (only an
+  object-wake timing line differs), the benchmark trace, both hour soaks (hashes
+  `43dfc74ddac0055d`, `56e31ce5c3d7a7c4`, equal to C3) and their six frames, and 54 CPU/GPU
+  captures including replay, ghost, wave replay, crossing boat and harbour/demo views.
+  Representative frames were inspected.
+- **Manual playback:** Windowed scripted runs (`--demo`; Eriksberg waves with D3; crossing
+  with waves; river current; `--course` without demo, GPU and CPU) exited 0. The user has not
+  played this slice.
+- **Limits:** One machine; Windows/Linux/browser not built or run. The GPU basin plane is still
+  cached without a world key (one basin definition exists). Sessions now carry presentation by
+  value (about 18 KB) even when disabled; a core-only session layout belongs to S4.

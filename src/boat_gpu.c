@@ -58,9 +58,10 @@ failed:
     return false;
 }
 
-void boat_gpu_draw(BoatGpu *gpu, const Boat *boat, const BoatWorld *world, BoatCamera camera)
+void boat_gpu_draw(BoatGpu *gpu, const Boat *boat, const BoatPresentation *presentation,
+    const BoatWorld *world, BoatCamera camera)
 {
-    boat_gpu_draw_with_ghost(gpu, boat, world, camera, NULL, 0);
+    boat_gpu_draw_with_ghost(gpu, boat, presentation, world, camera, NULL, NULL, 0);
 }
 
 static bool candidate_strip(Mesh *m, int first, int rows)
@@ -97,16 +98,17 @@ static bool candidate_strip(Mesh *m, int first, int rows)
     return m->vaoId != 0;
 }
 
-void boat_gpu_draw_with_ghost(BoatGpu *gpu, const Boat *boat, const BoatWorld *world,
-    BoatCamera camera, const Boat *ghost, float opacity)
+void boat_gpu_draw_with_ghost(BoatGpu *gpu, const Boat *boat, const BoatPresentation *presentation,
+    const BoatWorld *world, BoatCamera camera, const Boat *ghost, const BoatFlag *ghost_flag,
+    float opacity)
 {
     gpu->failed = false;
     bool mapped = world->definition->mapped;
     WaterfrontSceneFrame frame;
-    boat_scene_frame(boat, world, camera, &frame);
+    boat_scene_frame(boat, presentation, world, camera, &frame);
     if (ghost && opacity > 0) {
         WaterfrontPlayerState pose = { 0 };
-        boat_player_pose(ghost, &pose);
+        boat_player_pose(ghost, ghost_flag, &pose);
         frame.ghost_opacity = opacity;
         frame.ghost_hull = pose.hull;
         frame.ghost_cabin = pose.cabin;
@@ -117,7 +119,8 @@ void boat_gpu_draw_with_ghost(BoatGpu *gpu, const Boat *boat, const BoatWorld *w
     Mesh original_water = gpu->scene.water;
     if (!mapped) {
         if (!gpu->basin_water.vaoId)
-            gpu->basin_water = GenMeshPlane(2 * BOAT_BASIN_HALF_X, 2 * BOAT_BASIN_HALF_Z, 1, 1);
+            gpu->basin_water = GenMeshPlane(
+                2 * world->definition->half_extent.x, 2 * world->definition->half_extent.y, 1, 1);
         gpu->scene.water = gpu->basin_water;
     }
     gpu->scene.wake_field = (Texture2D) { 0 };

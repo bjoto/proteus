@@ -1,6 +1,7 @@
 #include "boat_banking_fixture.h"
 #include "boat_map.h"
 #include "boat_test_session.h"
+#include "boat_view.h"
 #include "raymath.h"
 #include "waterfront_harbor.h"
 #include "waterfront_traffic.h"
@@ -34,16 +35,18 @@ static bool open_water(const Boat *boat)
         && fabsf(boat->position.y) + 3 < BOAT_BASIN_HALF_Z;
 }
 
-static bool same_state(const Boat *a, const Boat *b)
+static bool same_state(const BoatSession *x, const BoatSession *y)
 {
+    const Boat *a = &x->boat, *b = &y->boat;
     // Explicit physical/control state, never padding or a struct-byte hash.
-    // Presentation particles do not feed physics.
+    // Presentation particles do not feed physics; the camera follow is compared separately.
 #define SAME(member) (a->member == b->member)
     return SAME(position.x) && SAME(position.y) && SAME(velocity.x) && SAME(velocity.y)
         && SAME(time) && SAME(heading) && SAME(yaw_velocity) && SAME(planing) && SAME(height)
         && SAME(vertical_velocity) && SAME(pitch) && SAME(pitch_velocity) && SAME(roll)
         && SAME(roll_velocity) && SAME(turn_roll_load) && SAME(throttle) && SAME(engine_response)
-        && SAME(wheel) && SAME(engine_angle) && SAME(wave_spray) && SAME(camera_heading);
+        && SAME(wheel) && SAME(engine_angle) && SAME(wave_spray)
+        && x->presentation.camera_heading == y->presentation.camera_heading;
 #undef SAME
 }
 
@@ -163,7 +166,7 @@ static int validate_sides(void)
             boat.boat.heading = headings[i];
             boat.boat.roll = sign * .1f;
             WaterfrontPlayerState pose = { 0 };
-            boat_player_pose(&boat.boat, &pose);
+            boat_player_pose(&boat.boat, &boat.presentation.flag, &pose);
             Matrix rotation = MatrixRotateXYZ(pose.hull.rotation);
             // Simulation starboard is renderer local negative X at every heading.
             Vector3 starboard = Vector3Transform((Vector3) { -.65f, 0, 0 }, rotation);
@@ -222,7 +225,7 @@ static int validate_free(FILE *report)
             BoatSession before = boat;
             boat_session_step(&boat, wheel, 0);
             boat_session_step(&repeat, wheel, 0);
-            CHECK(same_state(&boat.boat, &repeat.boat));
+            CHECK(same_state(&boat, &repeat));
             CHECK(open_water(&boat.boat));
             float load
                 = Vector2DotProduct(Vector2Subtract(boat.boat.velocity, before.boat.velocity),
@@ -643,7 +646,7 @@ static int validate_wave_turns(FILE *report)
             BoatSession before = boat;
             boat_session_step(&boat, wheel, 0);
             boat_session_step(&repeat, wheel, 0);
-            CHECK(same_state(&boat.boat, &repeat.boat) && finite_state(&boat.boat));
+            CHECK(same_state(&boat, &repeat) && finite_state(&boat.boat));
             CHECK(open_water(&boat.boat));
             CHECK(fabsf(boat.boat.roll) < 30 * DEG2RAD);
             CHECK(fabsf(boat.boat.height) < 1 && fabsf(boat.boat.pitch) < .65f);
@@ -720,7 +723,7 @@ static int validate_long_transitions(void)
         float wheel = sinf(tick * .005f), throttle_change = sinf(tick * .001f);
         boat_session_step(&boat, wheel, throttle_change);
         boat_session_step(&repeat, wheel, throttle_change);
-        CHECK(same_state(&boat.boat, &repeat.boat) && finite_state(&boat.boat));
+        CHECK(same_state(&boat, &repeat) && finite_state(&boat.boat));
         CHECK(footprint_clear(&boat));
         CHECK(fabsf(boat.boat.roll) < 30 * DEG2RAD);
         peak = fmaxf(peak, fabsf(boat.boat.roll));

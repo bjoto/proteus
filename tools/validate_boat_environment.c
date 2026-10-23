@@ -3,6 +3,7 @@
 #include "boat_session.h"
 #include "raymath.h"
 #include "rlgl.h"
+#include "waterfront_scene.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -138,7 +139,7 @@ static int wake_checks(void)
             boat_session_init(&a, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
             a.boat.position = (Vector2) { 0, 1.6f };
             a.boat.heading = ai * PI / 4;
-            a.boat.camera_heading = a.boat.heading;
+            a.presentation.camera_heading = a.boat.heading;
             boat_session_set_tick(&a, 1200);
             a.boat.velocity = (Vector2) { sinf(a.boat.heading) * speeds[si],
                 -cosf(a.boat.heading) * speeds[si] };

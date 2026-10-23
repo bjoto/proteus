@@ -22,6 +22,7 @@ with tempfile.TemporaryDirectory() as directory:
         reports.append(report)
         assert report['schema_revision'] == report['scenario_revision'] == 1
         assert report['mode'] == 'simulation' and report['renderer'] == 'none'
+        assert report['presentation'] == 'on'
         assert report['frames'] == 800 and report['warmup_frames'] == 10
         assert report['warmup_ticks'] == 20 and report['measured_ticks'] == 1600
         assert report['total_ticks'] == 1620 and report['ticks_per_frame'] == 2
@@ -60,10 +61,18 @@ with tempfile.TemporaryDirectory() as directory:
     assert result.returncode == 0, result.stderr
     continuous = json.loads((root / 'continuous.json').read_text())
     assert continuous['state_hash'] == reports[0]['state_hash']
+    # Cosmetics never feed physics: a simulation-only run has the same physical trace.
+    result = run('--warmup', 10, '--frames', 800, '--presentation', 'off', '--output',
+                 root / 'bare')
+    assert result.returncode == 0, result.stderr
+    bare = json.loads((root / 'bare.json').read_text())
+    assert bare['presentation'] == 'off' and bare['state_hash'] == reports[0]['state_hash']
+    with open(root / 'a.state.csv') as a, open(root / 'bare.state.csv') as b:
+        assert a.read() == b.read()
     for args in [[], ['--frames', '0'], ['--warmup', '-1'], ['--frames', '100001'],
                  ['--frames', '99999999999999999999999'], ['--frames', '2x'],
                  ['--mode', 'render'], ['--renderer', 'cpu'], ['--scenario', 'other'],
-                 ['--unknown', '1'], ['--frames']]:
+                 ['--presentation', 'maybe'], ['--unknown', '1'], ['--frames']]:
         result = run('--output', root / 'invalid', *args) if args else run()
         assert result.returncode != 0 and 'boat_benchmark:' in result.stderr, args
     assert run('--frames', 1, '--output', root / 'missing' / 'out').returncode != 0

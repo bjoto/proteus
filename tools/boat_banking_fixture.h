@@ -49,15 +49,16 @@ static inline void banking_exit_reset(BoatSession *session)
 static inline void banking_exit_step(BoatSession *session, float wheel, int tick)
 {
     Boat *boat = &session->boat;
+    BoatPresentation *view = &session->presentation;
     if (tick == BANKING_EXIT_HOLD_TICKS) {
         Vector2 translation = Vector2Negate(boat->position);
         boat->position = (Vector2) { 0 };
         for (int i = 0; i < BOAT_WATER_PARTICLES; ++i)
-            boat->water[i].position = Vector2Add(boat->water[i].position, translation);
+            view->water[i].position = Vector2Add(view->water[i].position, translation);
         Vector3 cloth_shift = { -translation.x, 0, translation.y };
         for (int i = 0; i < BOAT_FLAG_POINTS; ++i) {
-            boat->flag.surface.points[i] = Vector3Add(boat->flag.surface.points[i], cloth_shift);
-            boat->flag.previous[i] = Vector3Add(boat->flag.previous[i], cloth_shift);
+            view->flag.surface.points[i] = Vector3Add(view->flag.surface.points[i], cloth_shift);
+            view->flag.previous[i] = Vector3Add(view->flag.previous[i], cloth_shift);
         }
     }
     float input

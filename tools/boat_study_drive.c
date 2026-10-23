@@ -12,6 +12,7 @@ void object_study_reset(
     boat_world_init(&study->other_world, boat_location(BOAT_LOCATION_BASIN),
         (BoatWater) { .objects = &study->wakes });
     boat_reset(&study->other);
+    boat_presentation_reset(&study->other_presentation);
     study->other.position = (Vector2) { -65, -12 };
     study->other.heading = PI / 2;
 }
@@ -52,12 +53,16 @@ void timed_boat_step(BoatSession *session, float steering, float throttle,
             boat_step(other, &objects->other_world, now,
                 Clamp((wheel - other->wheel) / BOAT_STEP, -1, 1),
                 Clamp((.75f - other->throttle) / (.5f * BOAT_STEP), -1, 1));
+            if (session->presentation_enabled)
+                boat_presentation_step(
+                    &objects->other_presentation, other, &objects->other_world, now);
             boat_collide_pair(boat, 1, other, 1.6f);
             if (other->motion_state == BOAT_CAPSIZED) {
                 objects->recovery_time += BOAT_STEP;
                 Vector2 spawn = { -65, -12 };
                 if (objects->recovery_time >= 2 && Vector2Distance(boat->position, spawn) > 10) {
                     boat_reset(other);
+                    boat_presentation_reset(&objects->other_presentation);
                     other->position = spawn;
                     other->heading = PI / 2;
                     other->time = now;

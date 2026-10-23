@@ -1,5 +1,6 @@
 #include "boat_map.h"
 #include "boat_session.h"
+#include "boat_view.h"
 #include "waterfront_harbor.h"
 #include "waterfront_traffic.h"
 
@@ -190,13 +191,13 @@ static int check_gulls(void)
     CHECK(sought.gulls[0][0].position.y > idle_height + 1);
     BoatSession boat;
     boat_session_init(&boat, boat_location(BOAT_LOCATION_ERIKSBERG), (BoatWater) { 0 });
-    boat_scene_frame(&boat.boat, &boat.world, BOAT_CAMERA_DEFAULT, &frame);
+    boat_scene_frame(&boat.boat, &boat.presentation, &boat.world, BOAT_CAMERA_DEFAULT, &frame);
     waterfront_boating_gulls(boat.boat.time, frame.player.hull.position,
         (Vector3) { -boat.boat.velocity.x, 0, boat.boat.velocity.y }, &sought);
     CHECK(frame.gull_count == WATERFRONT_HARBOR_GULLS);
     CHECK(!memcmp(frame.gulls, sought.gulls, sizeof(frame.gulls)));
     boat_session_init(&boat, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
-    boat_scene_frame(&boat.boat, &boat.world, BOAT_CAMERA_DEFAULT, &frame);
+    boat_scene_frame(&boat.boat, &boat.presentation, &boat.world, BOAT_CAMERA_DEFAULT, &frame);
     CHECK(frame.gull_count == 0);
     puts("harbor_gulls=ok birds=32 continuity=120s seeks=ok player_stimuli=ok snapshot=ok");
     return 0;
@@ -299,7 +300,7 @@ int main(void)
         BoatSession boat;
         boat_session_init(&boat, boat_location(BOAT_LOCATION_ERIKSBERG), (BoatWater) { 0 });
         boat_session_set_tick(&boat, 7200);
-        boat.boat.heading = boat.boat.camera_heading = ship.heading;
+        boat.boat.heading = boat.presentation.camera_heading = ship.heading;
         Vector3 p = Vector3Add(
             ship.position, Vector3Scale(Vector3Normalize(ship.velocity), spec.length * .5f + 2.7f));
         boat.boat.position = (Vector2) { -p.x, p.z };
@@ -323,7 +324,7 @@ int main(void)
         boat.boat.position = Vector2Add((Vector2) { -ship.position.x, ship.position.z },
             Vector2Scale(right, spec.beam * .5f + 3));
         boat.boat.heading = ship.heading - PI / 2;
-        boat.boat.camera_heading = boat.boat.heading;
+        boat.presentation.camera_heading = boat.boat.heading;
         boat.boat.velocity
             = (Vector2) { sinf(boat.boat.heading) * 8, -cosf(boat.boat.heading) * 8 };
         for (int tick = 0; tick < 120 * 5; ++tick) {

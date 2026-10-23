@@ -8,6 +8,7 @@ typedef struct {
     // It steps at the session's clock; the multi-boat schedule belongs to multiplayer M2.
     BoatWorld other_world;
     Boat other;
+    BoatPresentation other_presentation; // Drawn as its pose and cloth.
     bool crossing;
     unsigned waypoint;
     float recovery_time;
