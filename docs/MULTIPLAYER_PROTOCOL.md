@@ -6,8 +6,8 @@ and acceptance stay in the [multiplayer plan](MULTIPLAYER_PLAN.md); the codec is
 [`src/boat_net_protocol.[ch]`](../src/boat_net_protocol.h) and its fixtures are in
 [`tools/validate_boat_net.c`](../tools/validate_boat_net.c).
 
-v1 is a diagnostic protocol for one basin room of up to four players. It has no prediction
-support beyond the fields listed here, and no encryption or authentication: a room token is a
+v1 is a diagnostic protocol for one basin room of up to four players. M4 client prediction
+uses only the fields listed here. There is no encryption or authentication: a room token is a
 shared word, not a secret.
 
 ## Conventions

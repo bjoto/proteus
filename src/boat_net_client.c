@@ -20,6 +20,7 @@ void boat_net_client_init(BoatNetClient *client, BoatNetTransport transport,
 {
     *client = (BoatNetClient) { .transport = transport,
         .first_sequence = config->first_sequence,
+        .predict = config->predict,
         .started_at = now,
         .mismatch_since = -1,
         .resync_at = -1e9,
@@ -150,6 +151,9 @@ static void install(BoatNetClient *c, double now)
     ++c->stats.bootstraps;
     release_births(c);
     check_wakes(c, now);
+    if (c->predict && c->phase != BOAT_NET_CLIENT_PLAYING)
+        boat_prediction_reset(&c->prediction, &c->fleet, c->inputs, c->slot);
+    c->predict_dirty = true;
     BoatNetMessage m
         = { .header = { .type = BOAT_NET_READY, .tick = state.tick }, .checkpoint = b->checkpoint };
     send_message(c, &m);
@@ -189,6 +193,7 @@ static void snapshot(BoatNetClient *c, const BoatNetMessage *m, double now)
     check_wakes(c, now);
     ++*(c->wake_consistent ? &c->stats.consistent : &c->stats.inconsistent);
     c->snapshot_at = now;
+    c->predict_dirty = true;
     ++c->stats.snapshots;
     // The authority sends snapshot n right after tick n: allow half the round trip.
     double sample = (double)tick + c->rtt * .5 * BOAT_TICK_HZ - now * BOAT_TICK_HZ;
@@ -203,9 +208,11 @@ static void snapshot(BoatNetClient *c, const BoatNetMessage *m, double now)
 static void births(BoatNetClient *c, const BoatNetWakeBirths *b, double now)
 {
     for (unsigned i = 0; i < b->count; ++i) {
-        if (c->phase == BOAT_NET_CLIENT_PLAYING && b->births[i].record.born <= mirror_tick(c))
+        if (c->phase == BOAT_NET_CLIENT_PLAYING && b->births[i].record.born <= mirror_tick(c)) {
+            uint64_t applied = c->stats.births_applied;
             apply_birth(c, &b->births[i]);
-        else
+            c->predict_dirty |= c->stats.births_applied != applied;
+        } else
             hold_birth(c, &b->births[i]);
     }
     if (c->phase == BOAT_NET_CLIENT_PLAYING)
@@ -321,6 +328,11 @@ const BoatFleetSlot *boat_net_client_own(const BoatNetClient *c)
     return &c->fleet.state.slots[c->slot];
 }
 
+const BoatFleet *boat_net_client_view(const BoatNetClient *c)
+{
+    return c->predict ? &c->prediction.fleet : &c->fleet;
+}
+
 // One command per local tick, aimed at the estimated server tick plus the lead.
 static void command(BoatNetClient *c, double now, BoatNetCommand next)
 {
@@ -351,6 +363,10 @@ static void command(BoatNetClient *c, double now, BoatNetCommand next)
     c->history[c->command_count - 1] = next;
     c->command_tick = tick;
     ++c->stats.commands;
+    if (c->predict) {
+        boat_prediction_record(&c->prediction, tick, own->life, next);
+        boat_prediction_advance(&c->prediction, tick);
+    }
     if (++c->commands_since_send < (c->accept.input_ticks ? c->accept.input_ticks : 2))
         return;
     c->commands_since_send = 0;
@@ -414,6 +430,9 @@ bool boat_net_client_service(BoatNetClient *c, double now, BoatInput input, bool
             .resync = { .reason = 1, .snapshot_tick = mirror_tick(c) } };
         send_message(c, &m);
     }
+    if (c->predict && c->predict_dirty)
+        boat_prediction_correct(&c->prediction, &c->fleet, c->inputs);
+    c->predict_dirty = false;
     if (c->input_clock == 0 || now - c->input_clock > .25)
         c->input_clock = now; // Never replay a backlog of held keys after a stall.
     BoatNetCommand next = boat_net_command(input, inactive ? BOAT_NET_COMMAND_INACTIVE : 0);

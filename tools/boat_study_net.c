@@ -12,8 +12,8 @@ static const char *phase_text(BoatNetClientPhase phase)
 
 static void attach(NetStudy *net, BoatSession *session)
 {
-    // The session draws the mirror's water; its objects pointer borrows the mirror pool.
-    session->world.water = boat_fleet_world(&net->client.fleet).water;
+    // The session draws the predicted water; its objects pointer borrows that pool.
+    session->world.water = boat_fleet_world(boat_net_client_view(&net->client)).water;
 }
 
 bool net_study_connect(
@@ -39,7 +39,8 @@ bool net_study_connect(
         boat_net_enet_cleanup();
         return false;
     }
-    BoatNetClientConfig config = { .name = name, .token = token, .build = "boat_study M3" };
+    BoatNetClientConfig config
+        = { .name = name, .token = token, .build = "boat_study M4", .predict = true };
     boat_net_client_init(
         &net->client, boat_net_enet_transport(net->enet), &config, boat_net_clock());
     fprintf(stdout, "Connecting to %s:%u...\n", host, (unsigned)port);
@@ -63,39 +64,49 @@ bool net_study_connect(
     fprintf(stdout, "Joined as slot %u at tick %llu (%s water).\n", net->client.slot,
         (unsigned long long)net->client.fleet.state.tick,
         net->client.accept.waves ? "wave" : "calm");
-    net->display_tick = (double)net->client.fleet.state.tick;
-    net->presented_tick = net->client.fleet.state.tick;
+    net->presented_tick = boat_net_client_view(&net->client)->state.tick;
+    net->correction = net->client.prediction.correction;
     attach(net, session);
     boat_presentation_reset(&session->presentation);
     boat_presentation_reset(&net->other_presentation);
     return true;
 }
 
-// Continuous pose values between two snapshots of one life; discrete state from the newer.
-static Boat blend(const Boat *a, const Boat *b, float t)
+// Fold the newest correction into the visual offsets, then decay them (about 95% in 120 ms).
+static void blend_corrections(NetStudy *net, float dt)
 {
-    Boat boat = *b;
-    if (fabsf(b->heading - a->heading) > PI || Vector2Distance(a->position, b->position) > 10)
-        return boat; // A teleport or wrap: show the newer pose.
-    boat.position = Vector2Lerp(a->position, b->position, t);
-    boat.velocity = Vector2Lerp(a->velocity, b->velocity, t);
-    const float *from[] = { &a->heading, &a->height, &a->pitch, &a->roll, &a->wheel, &a->throttle,
-        &a->engine_response, &a->engine_angle, &a->planing, &a->wave_spray };
-    float *to[]
-        = { &boat.heading, &boat.height, &boat.pitch, &boat.roll, &boat.wheel, &boat.throttle,
-              &boat.engine_response, &boat.engine_angle, &boat.planing, &boat.wave_spray };
-    for (size_t i = 0; i < sizeof(to) / sizeof(*to); ++i)
-        *to[i] = Lerp(*from[i], *to[i], t);
-    return boat;
+    const BoatPrediction *p = &net->client.prediction;
+    if (p->correction != net->correction) {
+        net->correction = p->correction;
+        for (unsigned i = 0; i < BOAT_FLEET_SLOTS; ++i) {
+            BoatPredictionError *o = &net->offset[i];
+            const BoatPredictionError *e = &p->error[i];
+            *o = e->snap ? (BoatPredictionError) { 0 }
+                         : (BoatPredictionError) { Vector2Add(o->position, e->position),
+                               o->heading + e->heading, o->height + e->height, o->pitch + e->pitch,
+                               o->roll + e->roll, false };
+            if (Vector2Length(o->position) > BOAT_PREDICTION_SNAP_DISTANCE)
+                *o = (BoatPredictionError) { 0 };
+        }
+    }
+    float keep = expf(-dt / .04f);
+    for (unsigned i = 0; i < BOAT_FLEET_SLOTS; ++i) {
+        BoatPredictionError *o = &net->offset[i];
+        *o = (BoatPredictionError) { Vector2Scale(o->position, keep), o->heading * keep,
+            o->height * keep, o->pitch * keep, o->roll * keep, false };
+    }
 }
 
-static Boat shown(const NetStudy *net, unsigned slot, float t)
+static Boat shown(const NetStudy *net, unsigned slot)
 {
-    const BoatNetClient *c = &net->client;
-    const BoatFleetSlot *now = &c->fleet.state.slots[slot], *before = &c->previous[slot];
-    if (!before->active || before->life != now->life)
-        return now->boat;
-    return blend(&before->boat, &now->boat, t);
+    Boat boat = boat_net_client_view(&net->client)->state.slots[slot].boat;
+    const BoatPredictionError *o = &net->offset[slot];
+    boat.position = Vector2Add(boat.position, o->position);
+    boat.heading += o->heading;
+    boat.height += o->height;
+    boat.pitch += o->pitch;
+    boat.roll += o->roll;
+    return boat;
 }
 
 bool net_study_frame(NetStudy *net, BoatSession *session, BoatInput input, bool active, bool reset)
@@ -110,27 +121,21 @@ bool net_study_frame(NetStudy *net, BoatSession *session, BoatInput input, bool 
     }
     boat_net_enet_flush(net->enet);
     attach(net, session);
-    // Show authoritative time one snapshot behind the newest, advancing at 120 Hz.
-    uint64_t newest = c->fleet.state.tick;
-    double earliest = (double)c->previous_tick;
-    net->display_tick += fmin(GetFrameTime(), .1) * BOAT_TICK_HZ;
-    if (net->display_tick < earliest || net->display_tick > (double)newest)
-        net->display_tick = net->display_tick < earliest ? earliest : (double)newest;
-    double span = (double)(newest - c->previous_tick);
-    float t = span > 0 ? (float)((net->display_tick - earliest) / span) : 1;
-    const BoatFleetSlot *own = &c->fleet.state.slots[c->slot];
+    blend_corrections(net, fminf(GetFrameTime(), .1f));
+    const BoatFleet *view = boat_net_client_view(c);
+    const BoatFleetSlot *own = &view->state.slots[c->slot];
     net->own_visible = own->active;
     if (own->active) {
         if (own->life != net->own_life) {
             net->own_life = own->life;
             boat_presentation_reset(&session->presentation);
         }
-        session->boat = shown(net, c->slot, t);
+        session->boat = shown(net, c->slot);
     }
     float nearest = INFINITY;
     net->other_visible = false;
     for (unsigned i = 0; i < BOAT_FLEET_SLOTS; ++i) {
-        const BoatFleetSlot *slot = &c->fleet.state.slots[i];
+        const BoatFleetSlot *slot = &view->state.slots[i];
         float distance = Vector2Distance(slot->boat.position, session->boat.position);
         if (i != c->slot && slot->active && distance < nearest) {
             nearest = distance;
@@ -139,14 +144,14 @@ bool net_study_frame(NetStudy *net, BoatSession *session, BoatInput input, bool 
         }
     }
     if (net->other_visible) {
-        const BoatFleetSlot *other = &c->fleet.state.slots[net->other_slot];
+        const BoatFleetSlot *other = &view->state.slots[net->other_slot];
         if (other->life != net->other_life) {
             net->other_life = other->life;
             boat_presentation_reset(&net->other_presentation);
         }
-        net->other = shown(net, net->other_slot, t);
+        net->other = shown(net, net->other_slot);
     }
-    uint64_t tick = (uint64_t)net->display_tick;
+    uint64_t tick = view->state.tick;
     boat_session_set_tick(session, tick);
     BoatWorld world = session->world;
     for (unsigned steps = 0; net->presented_tick < tick && steps < 12; ++steps) {
@@ -179,6 +184,15 @@ void net_study_close(NetStudy *net)
 {
     if (!net->enet)
         return;
+    const BoatPredictionStats *p = &net->client.prediction.stats;
+    if (p->corrections)
+        fprintf(stdout,
+            "prediction: %llu corrections replaying %.1f ticks (max %u); own error mean %.3f m "
+            "max %.3f m; remote mean %.3f m max %.3f m; %llu snaps; %llu held ticks\n",
+            (unsigned long long)p->corrections, (double)p->replayed_ticks / (double)p->corrections,
+            p->max_replay, p->total_error / (double)p->corrections, p->max_error,
+            p->remote_errors ? p->total_remote_error / (double)p->remote_errors : 0,
+            p->max_remote_error, (unsigned long long)p->snaps, (unsigned long long)p->held_ticks);
     boat_net_client_leave(&net->client);
     boat_net_enet_close(net->enet, 1);
     net->enet = NULL;

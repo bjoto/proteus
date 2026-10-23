@@ -1,8 +1,8 @@
 # Multiplayer: shared boating implementation plan
 
 Prepared 2026-10-23 against `2994e0d`. **M3, the protocol, ENet transport and separate
-`boat_server` process, is implemented as a diagnostic: clients see a server-driven, latency-late
-boat with no prediction.** It is not the first playable (M4).
+`boat_server` process, is implemented; M4 has begun with client prediction, so the own boat
+answers the keys at once.** It is not yet the first playable (M4).
 This document owns multiplayer decisions, milestones, verification and acceptance.
 The [foundations plan](BOATING_FOUNDATIONS_PLAN.md) owns prerequisite extractions;
 the [physics](BOAT_PHYSICS_PLAN.md) and [wake](WAKE_REWRITE_PLAN.md) plans own handling.
@@ -24,8 +24,10 @@ rival on 2026-10-23 ("seems to work great"). See the
 in-memory impairment adapter, ENet adapter, authority/client sessions, `boat_server` rooms,
 `boat_bot` and `boat_study --connect`) is implemented and automatically verified on macOS. It
 is not yet user-played; see the [M3 handoff](#m3-protocol-and-transport-handoff--2026-10-23)
-and the [protocol](MULTIPLAYER_PROTOCOL.md). Next: M4, starting with checkpoint/input replay
-(client prediction). M4–M8 are pending.
+and the [protocol](MULTIPLAYER_PROTOCOL.md). M4 step 1, checkpoint/input replay (client
+prediction, `boat_prediction`), is implemented and automatically verified on macOS; the user
+played it beside `boat_bot` on 2026-10-24 ("Works really well!"); see the [M4 prediction handoff](#m4-step-1-client-prediction-handoff--2026-10-23).
+Next: M4 step 2, wake births/repair and provisional-own reconciliation. M5–M8 are pending.
 Numerical budgets below are proposed gates, not measured multiplayer results.
 The final evidence section distinguishes checks performed for this document from future checks.
 
@@ -684,6 +686,12 @@ shared-world reset, LAN and F correction/contact-gap targets pass. This is the *
 vertical slice** and a fun gate before connectivity expansion. Non-goals: four-player release,
 browser, accounts, activities scoring or an elaborate lobby.
 
+Status, 2026-10-24: step 1 (checkpoint/input replay) implemented and automatically verified on
+macOS (2026-10-23); user-played beside `boat_bot`, including its wakes, on 2026-10-24; see the
+[M4 prediction handoff](#m4-step-1-client-prediction-handoff--2026-10-23). Next: step 2, wake
+births/repair and provisional-own reconciliation; then remote interpolation/proximity view,
+fleet rendering and the safe reset UI.
+
 ### M5 — four-player/session and impairment hardening
 
 Depends on M4 feel gate. Likely network/prediction/world modules, `boat_profile`,
@@ -1128,6 +1136,86 @@ driving, no two-window or two-machine session and no listening.
 - The view is deliberately late and draws one other boat; four-boat rendering, prediction,
   reconciliation and remote interpolation are M4.
 - The first configure now also needs network access to fetch ENet.
+
+## M4 step 1: client prediction handoff — 2026-10-23
+
+Started from `c547f92` (M3 committed). The untracked `docs/TITLE_SCREEN_PLAN.md` and its
+`docs/README.md` index row belong to the title-screen track and are not part of this change.
+
+| Implemented | Automated verification | Manual observation | User acceptance |
+| --- | --- | --- | --- |
+| `boat_prediction` speculative fleet with own-command history, correction and replay; predicting `BoatNetClient`; `boat_study --connect` draws the predicted fleet with blended corrections | `boat_net` (replay exactness, three predicting rooms), the full suite | Agent-run windowed `boat_study --connect` beside a bot; no keyboard play | 2026-10-24: the user drove `boat_study --connect` beside `boat_bot`, interacting with its wakes: "Works really well!" |
+
+**Module.** `src/boat_prediction.[ch]` is in `proteus_boat_net` and obeys the core boundary. A
+`BoatPrediction` holds a speculative `BoatFleet` (its tick is the predicted tick), the own
+commands of the last 240 ticks keyed by tick and life, and the rates the authority last used
+for each remote slot. `boat_prediction_advance` steps it toward the newest command's target
+tick. `boat_prediction_correct` restores the mirror (the newest snapshot plus applied births),
+then replays the recorded commands to the previous speculative tick and records each slot's
+speculative-minus-corrected pose. The own slot follows the authority's loss policy as far as
+the client knows it: the command for the tick, else the last one for six ticks, else zero
+rates; an inactive command eases to neutral through the same `boat_net_neutral_command` the
+authority now uses. Remote slots repeat their last used rates for 24 ticks (200 ms) past the
+authoritative state, then use zero rates (which hold the throttle). The prediction never runs
+more than 32 ticks past the authority, so a replay is at most 32 ticks; past that it holds and
+counts held ticks. No protocol change: v1 already carries every field this needs.
+
+**Client and view.** `BoatNetClientConfig.predict` turns it on (`boat_study` on, `boat_bot`
+off). A snapshot, a birth batch that changed the pool, or a resync marks the prediction for one
+correction before the next commands; each command then advances it. `boat_net_client_view()`
+returns the fleet to draw. `boat_study --connect` shows the own boat, the nearest other boat and
+the water at the predicted tick. Corrections move the physical state at once; the drawn pose
+adds the accumulated error (position, heading, height, pitch, roll), decaying with a 40 ms time
+constant (about 95% gone in 120 ms). Errors over 2 m or 30 degrees, a new life, or a correction
+that could not reach the same tick snap instead. On exit it prints a `prediction:` summary line.
+
+**Deviations from the design above, for review.**
+- Every speculative boat, remote ones included, emits provisional wake births into the
+  speculative pool; each correction drops them and the replay re-emits them. The design keeps
+  remote speculative boats from publishing wakes and keeps own births in a separate overlay;
+  that is step 2.
+- A mirror missing a birth that a snapshot already counts replays without it until the birth
+  batch arrives (the next correction includes it). Late records are not yet inserted at their
+  publication tick during the replay.
+- Remote hulls keep moving on zero rates after 200 ms instead of stopping; the 32-tick hold
+  bounds how far. The prediction does not yet stop at 250 ms without usable state, apart from
+  that hold, and does not show a reconnecting state.
+- The other boat is drawn from the predicted fleet, not interpolated 100 ms behind; remote
+  interpolation and the proximity blend are step 3.
+- Authority lifecycle events (spawn, reset) appear only through corrections.
+
+**Automated verification.** Apple M1 Max/macOS 26.6.2, Apple clang 21.0.0, Debug common recipe
+with `PROTEUS_GPU_TESTS=ON`. The build is warning-free and the **101 active CTests pass** (21
+GPU), with 15 retired cases disabled; `validate_boat_net` now takes about 2 s. It adds:
+- **Replay exactness** in wave water, four bot-driven slots: remote slots hold one command per
+  32-tick block and the own slot changes command every tick. For 232 of 240 windows, a
+  prediction reset from the tick-8 checkpoint, advanced 16 ticks, corrected from the tick-16
+  checkpoint (8 replayed ticks) and advanced again matched the authority's `boat_fleet_hash`
+  at ticks 24 and 32, with zero recorded error. The base checkpoints included 94 airborne, 44
+  landing and 61 capsized boats. The other 8 windows contained a bot reset request, an
+  authority lifecycle event a client cannot predict, and are skipped by design.
+- **One player, steady 30 ms each way**, calm water, 20 s: 598 corrections replaying 11.0 ticks
+  on average (max 13), own error max 0.000 m, no snaps or held ticks.
+- **Two players, profile F both ways**, waves, 60 s: about 1810 corrections per client
+  replaying 12.3 ticks (max 17); own error max 0.002 m; remote error mean 0.001 m, max 0.023 m;
+  no snaps, no held ticks, at most 3 resyncs. With keyboard-style bots (rates rounded to −1, 0
+  or 1) the numbers are the same within a few millimetres (max replay 21, remote max 0.026 m).
+  Client service cost, including the replay, was 0.17 ms per correction (Debug validator,
+  processor time).
+
+**Manual observation (agent).** `boat_server --waves`, one `boat_bot` and a windowed
+`boat_study --connect --frames 1200` (GPU) on loopback: 2922 server ticks, 0 late and 0 future
+commands, 5408 of 5524 integrated ticks used received commands (79 neutralized while the window
+lacked focus), no faults, clean exit. The view itself was not inspected and there was no
+keyboard driving.
+
+**Limits.**
+- Bots steer smoothly and rarely collide on these routes, so the measured correction sizes
+  say little about contacts, wake jumps near another boat or human key timing. The M4 gates
+  (contact gap, two humans, LAN and profile F play) remain open.
+- The user's play was one human beside a bot on one machine (macOS loopback); no two-human,
+  two-machine or Windows/Linux/browser run.
+- The replay cost was measured in the Debug validator only; no Instruments capture.
 
 ## Exact first implementation task
 

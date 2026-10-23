@@ -4,19 +4,21 @@
 #include "boat_net_enet.h"
 #include "boat_session.h"
 
-// boat_study --connect (multiplayer M3 diagnostic): a server-driven view with no prediction.
-// The session's boat, clock and water show the authoritative mirror, interpolated between the
-// two newest snapshots (about one snapshot behind). The nearest other boat is drawn through
-// the ghost path until M4 adds a fleet renderer.
+// boat_study --connect (multiplayer M4 in progress): the session's boat, clock and water show
+// the client's predicted fleet, so the own boat answers the keys at once. Corrections move the
+// physical state immediately; the drawn poses blend small ones away over about 120 ms. The
+// nearest other boat is drawn from the same predicted fleet through the ghost path until the
+// remote interpolation and fleet renderer steps.
 typedef struct {
     BoatNetEnet *enet;
     BoatNetClient client;
     BoatPresentation other_presentation;
-    Boat other; // Interpolated pose of the nearest other boat.
+    Boat other; // Drawn pose of the nearest other boat.
     bool own_visible, other_visible;
     unsigned other_slot;
     uint32_t own_life, other_life;
-    double display_tick; // Shown authoritative time in ticks, fractional.
+    BoatPredictionError offset[BOAT_FLEET_SLOTS]; // Visual correction still being blended.
+    uint32_t correction; // Prediction correction serial already folded into the offsets.
     uint64_t presented_tick; // Last tick the presentations were stepped for.
 } NetStudy;
 

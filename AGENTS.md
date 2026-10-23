@@ -18,7 +18,8 @@ iterating on effects, timing, audio, and presentation.
   queries, wakes, course crossing, contacts and geometry data) must not draw, read input, open
   windows or audio, or touch files; `tools/check_core_boundary.py` enforces this in CTest. See
   `docs/TESTING.md` for the libraries and test labels.
-- `src/boat_net_*.[ch]`: multiplayer protocol codec, authority/client sessions and transports.
+- `src/boat_net_*.[ch]`, `src/boat_prediction.[ch]`: multiplayer protocol codec, authority/client
+  sessions, client prediction and transports.
   `proteus_boat_net` obeys the core boundary (`boat_net_boundary`); only `boat_net_enet.c` uses
   ENet and sockets. `tools/boat_server.c` and `tools/boat_bot.c` are the server and scripted
   client; `docs/MULTIPLAYER_PROTOCOL.md` owns the byte layout.

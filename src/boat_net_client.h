@@ -2,6 +2,7 @@
 #define PROTEUS_BOAT_NET_CLIENT_H
 
 #include "boat_net_transport.h"
+#include "boat_prediction.h"
 
 #define BOAT_NET_PENDING_BIRTHS 64 // Births held until their tick's snapshot or the baseline.
 #define BOAT_NET_STALE 0.25 // Seconds without a snapshot before the view is marked stale.
@@ -10,6 +11,7 @@
 typedef struct {
     const char *name, *token, *build;
     uint32_t first_sequence; // First outgoing sequence on every channel (wrap tests).
+    bool predict; // Run a speculative fleet ahead of the mirror with the own commands.
 } BoatNetClientConfig;
 
 typedef enum {
@@ -30,13 +32,15 @@ typedef struct {
     double max_mismatch; // Longest repaired mismatch, seconds.
 } BoatNetClientStats;
 
-// M3 client: no prediction yet. The mirror fleet holds the newest authoritative snapshot,
-// rebuilt from a complete checkpoint plus births; the caller only draws it.
+// The mirror fleet holds the newest authoritative snapshot, rebuilt from a complete checkpoint
+// plus births. With prediction, every snapshot or applied birth batch corrects the speculative
+// fleet, which each command advances to its target tick; the caller draws that instead.
 typedef struct {
     BoatNetTransport transport;
     char name[BOAT_NET_NAME_BYTES + 1], token[BOAT_NET_TOKEN_BYTES + 1];
     char build[BOAT_NET_BUILD_BYTES + 1];
     uint32_t first_sequence;
+    bool predict, predict_dirty;
     BoatNetClientPhase phase;
     double started_at;
     BoatNetReject reject; // Valid when REJECTED.
@@ -77,6 +81,7 @@ typedef struct {
     BoatNetCommand history[BOAT_NET_MAX_COMMANDS]; // Newest last.
     uint32_t reset_request, requests; // Pending reset request ID, and IDs issued.
     BoatNetClientStats stats;
+    BoatPrediction prediction; // Valid once PLAYING when predicting.
 } BoatNetClient;
 
 void boat_net_client_init(BoatNetClient *client, BoatNetTransport transport,
@@ -91,6 +96,8 @@ void boat_net_client_leave(BoatNetClient *client);
 bool boat_net_client_stale(const BoatNetClient *client, double now);
 // The client's own slot, or NULL before the baseline or while it has no boat.
 const BoatFleetSlot *boat_net_client_own(const BoatNetClient *client);
+// The fleet to draw: the speculative one when predicting, else the mirror.
+const BoatFleet *boat_net_client_view(const BoatNetClient *client);
 // Text for a rejection or close, for the console.
 const char *boat_net_client_failure(const BoatNetClient *client);
 

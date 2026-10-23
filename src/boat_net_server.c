@@ -412,13 +412,8 @@ static BoatInput select_input(BoatNetServer *s, unsigned i, uint64_t tick)
     }
     if (command.flags & BOAT_NET_COMMAND_INACTIVE)
         record->state = BOAT_NET_INPUT_NEUTRAL;
-    if (record->state == BOAT_NET_INPUT_NEUTRAL) {
-        // Zero steering springs the wheel back; throttle moves toward idle at the ordinary
-        // adjustment rate, so the engine response decays. The boat stays physical.
-        float throttle = slot->boat.throttle / (.5f * BOAT_STEP);
-        command
-            = boat_net_command((BoatInput) { 0, fmaxf(-1, fminf(1, -throttle)) }, command.flags);
-    }
+    if (record->state == BOAT_NET_INPUT_NEUTRAL)
+        command = boat_net_neutral_command(&slot->boat, command.flags);
     record->used = command;
     ++s->stats.input_states[record->state];
     return boat_net_command_input(command);

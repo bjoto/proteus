@@ -52,9 +52,9 @@ static void usage(void)
         "CPU screenshots need no window; GPU screenshots require a graphics context.\n"
         "--time is screenshot-only (0..60, or 0..600 with --replay); --frames limits a smoke run.\n"
         "--demo drives the screenshot example in a window; R restarts it.\n"
-        "--connect HOST:PORT: join a boat_server room (native multiplayer M3 diagnostic: the\n"
-        "  view is server-driven and about one round trip late, no prediction; R asks for a\n"
-        "  new life; the nearest other boat is drawn) | --name TEXT | --token TEXT");
+        "--connect HOST:PORT: join a boat_server room (native multiplayer, in progress: the own\n"
+        "  boat is predicted and answers at once; R asks for a new life; the nearest other boat\n"
+        "  is drawn) | --name TEXT | --token TEXT");
 }
 
 static BoatWater study_water(

@@ -245,6 +245,8 @@ bool boat_net_sequence_newer(uint32_t a, uint32_t b);
 // Rates to the wire and back. Non-finite rates encode as zero.
 BoatNetCommand boat_net_command(BoatInput input, uint8_t flags);
 BoatInput boat_net_command_input(BoatNetCommand command);
+// The command an inactive or silent slot integrates: controls easing toward neutral.
+BoatNetCommand boat_net_neutral_command(const Boat *boat, uint8_t flags);
 
 // Compatibility digest of the compiled definition and the fleet/wake contract constants.
 uint64_t boat_net_content_digest(const BoatWorldDefinition *definition);

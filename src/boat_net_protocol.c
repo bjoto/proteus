@@ -797,6 +797,14 @@ BoatInput boat_net_command_input(BoatNetCommand command)
     return (BoatInput) { command.steering / 127.0f, command.throttle / 127.0f };
 }
 
+BoatNetCommand boat_net_neutral_command(const Boat *boat, uint8_t flags)
+{
+    // Zero steering springs the wheel back; throttle moves toward idle at the ordinary
+    // adjustment rate, so the engine response decays. The boat stays physical.
+    float throttle = boat->throttle / (.5f * BOAT_STEP);
+    return boat_net_command((BoatInput) { 0, fmaxf(-1, fminf(1, -throttle)) }, flags);
+}
+
 typedef struct {
     uint64_t value;
 } Digest;

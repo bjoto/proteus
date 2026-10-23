@@ -1,9 +1,11 @@
-/* Multiplayer M3: protocol codec, authority/client sessions and the in-memory impairment
- * transport. Links only proteus_boat_net (and through it the core); no sockets or devices.
- * Golden bytes pin the wire layout; every truncation and the invalid-field cases must be
- * rejected; checkpoints decode to bit-identical fleets; and seeded virtual networks check
+/* Multiplayer M3/M4: protocol codec, authority/client sessions, client prediction and the
+ * in-memory impairment transport. Links only proteus_boat_net (and through it the core); no sockets
+ * or devices. Golden bytes pin the wire layout; every truncation and the invalid-field cases must
+ * be rejected; checkpoints decode to bit-identical fleets; and seeded virtual networks check
  * handshake rejection, bounded queues, input policy, idempotence, sequence wrap, impairment,
- * timeouts and that a client mirror reproduces the authority's state hash. */
+ * timeouts and that a client mirror reproduces the authority's state hash. Prediction replays
+ * from mid-flight and capsized checkpoints reproduce the authority bit for bit, and predicting
+ * clients on virtual links report their correction sizes and replay cost. */
 #include "boat_fleet_bots.h"
 #include "boat_net_client.h"
 #include "boat_net_server.h"
@@ -13,6 +15,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #define CHECK(test)                                                                                \
     do {                                                                                           \
@@ -395,6 +398,9 @@ typedef struct {
     unsigned link[ROOM_CLIENTS];
     bool live[ROOM_CLIENTS]; // Serviced each step.
     bool inactive[ROOM_CLIENTS];
+    bool predict; // Clients joining from now on predict.
+    bool keyboard; // Bots press keys: each rate rounded to -1, 0 or 1.
+    double service_seconds[ROOM_CLIENTS]; // Processor time in client service calls.
     BoatFleetBots bots[ROOM_CLIENTS];
     unsigned count;
     double now;
@@ -423,7 +429,8 @@ static unsigned room_join(Room *room, const char *name, const char *token, uint3
     unsigned i = room->count++;
     BoatNetTransport transport;
     boat_net_memory_client(room->network, &room->link[i], &transport);
-    BoatNetClientConfig config = { name, token ? token : "room", "validate", sequence };
+    BoatNetClientConfig config
+        = { name, token ? token : "room", "validate", sequence, room->predict };
     boat_net_client_init(&room->clients[i], transport, &config, room->now);
     room->live[i] = true;
     return i;
@@ -443,8 +450,16 @@ static void room_step(Room *room, double dt)
             continue;
         BoatInput input = { 0 };
         if (boat_net_client_own(c))
-            input = boat_fleet_bot_input(&room->bots[i], &c->fleet, c->slot);
+            input = boat_fleet_bot_input(&room->bots[i], boat_net_client_view(c), c->slot);
+        if (room->keyboard) {
+            input.steering_rate
+                = fabsf(input.steering_rate) < .3f ? 0 : copysignf(1, input.steering_rate);
+            input.throttle_rate
+                = fabsf(input.throttle_rate) < .3f ? 0 : copysignf(1, input.throttle_rate);
+        }
+        clock_t started = clock();
         room->live[i] = boat_net_client_service(c, room->now, input, room->inactive[i]);
+        room->service_seconds[i] += (double)(clock() - started) / CLOCKS_PER_SEC;
         // At birth-batch ticks a lossless link has delivered every birth the snapshot names.
         uint64_t mirror = c->fleet.state.tick;
         if (c->phase == BOAT_NET_CLIENT_PLAYING && mirror != room->checked[i]
@@ -880,6 +895,154 @@ static int resync(void)
     return 0;
 }
 
+// Checkpoint/input replay: the authority's remote slots hold one bot command per 32-tick block
+// and its own slot changes command every tick, so a prediction holding the remote rates and
+// replaying the recorded own commands must reproduce every authoritative tick bit for bit,
+// including restores from flights, landings and capsizes.
+#define REPLAY_BLOCK 32
+static int prediction_replay(void)
+{
+    static BoatFleet fleet, base;
+    static BoatFleetState at8, at16;
+    static BoatPrediction p;
+    const unsigned own = 1;
+    boat_fleet_init(&fleet, basin(), boat_world_test_water(basin(), true, false, false),
+        BOAT_OBJECT_LIFE_TICKS, 1.8f);
+    for (unsigned i = 0; i < BOAT_FLEET_SLOTS; ++i)
+        boat_fleet_request_spawn(&fleet, i);
+    BoatFleetBots bots = { 0 };
+    unsigned windows = 0, matches = 0, states[4] = { 0 };
+    float worst = 0;
+    BoatNetSlotInput inputs8[BOAT_FLEET_SLOTS], inputs16[BOAT_FLEET_SLOTS];
+    for (unsigned window = 0; window < 240; ++window) {
+        uint64_t a = fleet.state.tick;
+        BoatNetCommand held[BOAT_FLEET_SLOTS], own_command[REPLAY_BLOCK + 1];
+        uint32_t own_life[REPLAY_BLOCK + 1];
+        uint64_t hash24 = 0, hash32 = 0;
+        unsigned resets = 0;
+        for (unsigned t = 1; t <= REPLAY_BLOCK; ++t) {
+            if (t == 9)
+                resets = bots.resets;
+            BoatInput bot[BOAT_FLEET_SLOTS], inputs[BOAT_FLEET_SLOTS];
+            boat_fleet_bots_drive(&bots, &fleet, bot);
+            for (unsigned i = 0; i < BOAT_FLEET_SLOTS; ++i) {
+                if (t == 1)
+                    held[i] = boat_net_command(bot[i], 0);
+                BoatNetCommand command = i == own ? boat_net_command(bot[i], 0) : held[i];
+                inputs[i] = boat_net_command_input(command);
+            }
+            own_command[t] = boat_net_command(bot[own], 0);
+            own_life[t] = fleet.state.slots[own].life;
+            boat_fleet_step(&fleet, inputs);
+            BoatNetSlotInput *record = t == 8 ? inputs8 : t == 16 ? inputs16 : NULL;
+            for (unsigned i = 0; record && i < BOAT_FLEET_SLOTS; ++i)
+                record[i] = (BoatNetSlotInput) { .used = i == own ? own_command[t] : held[i] };
+            if (t == 8)
+                boat_fleet_save(&fleet, &at8);
+            if (t == 16)
+                boat_fleet_save(&fleet, &at16);
+            if (t == 24)
+                hash24 = boat_fleet_hash(&fleet.state);
+            if (t == 32)
+                hash32 = boat_fleet_hash(&fleet.state);
+        }
+        ++windows;
+        // A reset request is an authority lifecycle event the replay cannot know about.
+        if (bots.resets != resets)
+            continue;
+        for (unsigned i = 0; i < BOAT_FLEET_SLOTS; ++i)
+            if (at8.slots[i].active)
+                ++states[at8.slots[i].boat.motion_state];
+        base = fleet;
+        boat_fleet_restore(&base, &at8);
+        boat_prediction_reset(&p, &base, inputs8, own);
+        for (unsigned t = 9; t <= REPLAY_BLOCK; ++t)
+            boat_prediction_record(&p, a + t, own_life[t], own_command[t]);
+        CHECK(boat_prediction_advance(&p, a + 24) == 16);
+        CHECK(boat_fleet_hash(&p.fleet.state) == hash24);
+        boat_fleet_restore(&base, &at16);
+        boat_prediction_correct(&p, &base, inputs16);
+        CHECK(p.fleet.state.tick == a + 24 && p.stats.max_replay == 8);
+        CHECK(boat_fleet_hash(&p.fleet.state) == hash24);
+        for (unsigned i = 0; i < BOAT_FLEET_SLOTS; ++i) {
+            const BoatPredictionError *e = &p.error[i];
+            if (!p.fleet.state.slots[i].active)
+                continue;
+            float size = Vector2Length(e->position) + fabsf(e->heading) + fabsf(e->height);
+            worst = fmaxf(worst, size);
+            CHECK(!e->snap && size == 0);
+        }
+        CHECK(boat_prediction_advance(&p, a + 32) == 8);
+        CHECK(boat_fleet_hash(&p.fleet.state) == hash32);
+        ++matches;
+    }
+    CHECK(matches * 10 > windows * 9 && states[BOAT_AIRBORNE] > 0 && states[BOAT_LANDING] > 0
+        && states[BOAT_CAPSIZED] > 0);
+    printf("prediction replay: %u/%u windows (the rest held a bot reset request) bit-identical "
+           "after advance, correction and replay; base states %u waterborne, %u airborne, %u "
+           "landing, %u capsized; "
+           "%u bot resets\n",
+        matches, windows, states[BOAT_WATERBORNE], states[BOAT_AIRBORNE], states[BOAT_LANDING],
+        states[BOAT_CAPSIZED], bots.resets);
+    return 0;
+}
+
+static void report_prediction(const char *label, const Room *room, unsigned i)
+{
+    const BoatNetClient *c = &room->clients[i];
+    const BoatPredictionStats *p = &c->prediction.stats;
+    printf("%s: client %u rtt %.0f ms lead %u, %" PRIu64 " corrections replaying %.1f ticks "
+           "(max %u), own error mean %.3f m max %.3f m, remote mean %.3f m max %.3f m, %" PRIu64
+           " snaps, %" PRIu64 " held ticks, service %.3f ms per correction\n",
+        label, i, c->rtt * 1000, c->lead, p->corrections,
+        (double)p->replayed_ticks / (double)p->corrections, p->max_replay,
+        p->total_error / (double)p->corrections, p->max_error,
+        p->remote_errors ? p->total_remote_error / (double)p->remote_errors : 0,
+        p->max_remote_error, p->snaps, p->held_ticks,
+        room->service_seconds[i] * 1000 / (double)p->corrections);
+}
+
+static int prediction_network(void)
+{
+    static Room room;
+    // One player on a steady 30 ms link: no remote guesses, so corrections come only from
+    // births the mirror has not received yet.
+    CHECK(room_open(&room, 7, (BoatNetServerConfig) { 0 }));
+    room.predict = true;
+    unsigned a = room_join(&room, "steady", NULL, 0);
+    BoatNetImpairment steady = { .delay = .03 };
+    boat_net_memory_impair(room.network, room.link[a], steady, steady);
+    room_run(&room, 20);
+    const BoatNetClient *c = &room.clients[a];
+    CHECK(c->phase == BOAT_NET_CLIENT_PLAYING && boat_net_client_own(c));
+    CHECK(c->prediction.stats.corrections > 500 && c->prediction.stats.max_replay <= 32);
+    CHECK(c->prediction.fleet.state.tick > c->fleet.state.tick + 4);
+    report_prediction("prediction steady", &room, a);
+    room_close(&room);
+
+    // Profile F both ways, two players in waves, steering smoothly and then with keys.
+    for (unsigned keys = 0; keys < 2; ++keys) {
+        CHECK(room_open(&room, 8, (BoatNetServerConfig) { .waves = true }));
+        room.predict = true;
+        room.keyboard = keys;
+        BoatNetImpairment f = { .04, .01, .01, .002, .01, .02 };
+        for (unsigned i = 0; i < 2; ++i) {
+            unsigned k = room_join(&room, i ? "f-two" : "f-one", NULL, 0);
+            boat_net_memory_impair(room.network, room.link[k], f, f);
+        }
+        room_run(&room, 60);
+        for (unsigned i = 0; i < 2; ++i) {
+            c = &room.clients[i];
+            CHECK(c->phase == BOAT_NET_CLIENT_PLAYING && c->stats.resyncs <= 3);
+            CHECK(c->prediction.stats.max_replay <= BOAT_PREDICTION_MAX_AHEAD);
+            report_prediction(keys ? "prediction F keys" : "prediction F", &room, i);
+        }
+        CHECK(room.server.stats.emission_failures == 0 && room.server.stats.output_faults == 0);
+        room_close(&room);
+    }
+    return 0;
+}
+
 int main(void)
 {
     RUN(golden());
@@ -891,6 +1054,8 @@ int main(void)
     RUN(wrap_and_flood());
     RUN(impaired());
     RUN(resync());
+    RUN(prediction_replay());
+    RUN(prediction_network());
     printf("boat_net=ok\n");
     return 0;
 }

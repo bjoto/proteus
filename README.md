@@ -13,8 +13,8 @@ next tasks, and the [Gothenburg boating design](docs/BOATING_PLAN.md).
 [Multiplayer is in progress](docs/MULTIPLAYER_PLAN.md): a native-first, four-player shared
 boating world, starting with two players colliding and jumping each other's wakes. Native
 builds can now join a [diagnostic room](#multiplayer-diagnostic-room) on one machine or a LAN.
-It has no prediction yet, so your boat responds a round trip late; it is not the finished
-multiplayer game. Packaged and browser builds remain single-player.
+Your boat is now predicted and answers the keys at once, but the other boat, wakes and
+rendering are still diagnostic; it is not the finished multiplayer game. Packaged and browser builds remain single-player.
 
 ## Generate the original sample pack and starter XM (archived sketch)
 
@@ -149,15 +149,17 @@ The server runs until Ctrl+C, `--seconds` or `--ticks`. `--waves` gives the room
 other machines, bind a LAN address (`--bind 192.168.1.20`) and allow the UDP port through the
 firewall. Internet hosting, NAT traversal, encryption and authentication are not provided.
 
-In `--connect` mode the room decides water, wakes and spawns. The view shows the server's
-state about one snapshot plus one round trip late (no prediction), and draws your boat plus the
-nearest other boat. `R` asks the server for a new life at a safe spawn. Help and focus loss make
+In `--connect` mode the room decides water, wakes and spawns. Your boat is predicted: it runs
+ahead of the server with your own keys and is corrected when snapshots arrive, with small
+corrections blended over about a tenth of a second. The nearest other boat is drawn from the
+same prediction. On exit a `prediction:` line reports the corrections. `R` asks the server for a new life at a safe spawn. Help and focus loss make
 the server ease your controls to neutral, but the room keeps running. Course, replay, wake, water,
 location, demo and screenshot options are refused with `--connect`. Wrong tokens, version or
 handling mismatches and full rooms are refused with a message. The
 [protocol](docs/MULTIPLAYER_PROTOCOL.md) and the
-[M3 handoff](docs/MULTIPLAYER_PLAN.md#m3-protocol-and-transport-handoff--2026-10-23) describe
-the details and limits.
+[M3](docs/MULTIPLAYER_PLAN.md#m3-protocol-and-transport-handoff--2026-10-23) and
+[M4 prediction](docs/MULTIPLAYER_PLAN.md#m4-step-1-client-prediction-handoff--2026-10-23)
+handoffs describe the details and limits.
 
 T5 tuning lets the bank ease out sooner as turning load fades. Deterministic presentation/
 replay fixtures cover banked poses, straightening and paused seeking. The

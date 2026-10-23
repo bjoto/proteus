@@ -9,7 +9,7 @@ Both default to GPU rendering; the CPU reference supports display-free captures.
 
 | Area and owning document | Implemented | Remaining / next task |
 | --- | --- | --- |
-| [Multiplayer](MULTIPLAYER_PLAN.md) | Native-first authoritative four-player design, protocol/wake strategy and verification gates; M2 local four-boat authority (`boat_fleet`, scripted `boat_server`) implemented and user-played; M3 [protocol v1](MULTIPLAYER_PROTOCOL.md), ENet transport, `boat_server` rooms, `boat_bot` and diagnostic `boat_study --connect` implemented (server-driven view, no prediction) | M3 automated and agent-run loopback checks pass on macOS; not yet user-played; Windows/Linux/web builds unchecked; next: M4 checkpoint/input replay (prediction) toward the first playable |
+| [Multiplayer](MULTIPLAYER_PLAN.md) | Native-first authoritative four-player design, protocol/wake strategy and verification gates; M2 local four-boat authority (`boat_fleet`, scripted `boat_server`) implemented and user-played; M3 [protocol v1](MULTIPLAYER_PROTOCOL.md), ENet transport, `boat_server` rooms, `boat_bot` and diagnostic `boat_study --connect` implemented; M4 step 1 client prediction (`boat_prediction`, checkpoint/input replay) implemented | M3 and M4 step 1 automated and agent-run loopback checks pass on macOS; M4 step 1 user-played beside `boat_bot` (2026-10-24); Windows/Linux/web builds unchecked; next: M4 step 2 wake births/repair and provisional-own reconciliation |
 | [Boating foundations](BOATING_FOUNDATIONS_PLAN.md) | P1 instrumentation, P2a benchmark, P3a arcade baseline, C1 integer clock/replay revision C2 double-time water/traffic/shader consumers, and C3 long-session gate/replacement baseline implemented and played; basin W1/W3 slice (location definitions, explicit world/session) implemented and played; basin S1/S2 slice (shared pose math, cosmetic presentation split) implemented; basin S3 slice (session-owned course/runs, replay view state, finish saves outside the tick) implemented; basin S4 slice (static core library, core validator, boundary check, test labels) and S3 `BoatInput` type implemented; [report contract/evidence](BOATING_PERFORMANCE.md) | Mapped W1–W4, shared CPU/GPU scene frame, validator splitting, S5 and full P2/P3 workload/renderer matrix remain pending |
 | [Boating design](BOATING_PLAN.md) | Basin, Eriksberg, and river locations; timed S course, recordings, persistent bests, ghosts, replays, full-window presentation with modal `?` help, quiet engine/water audio with a joyful repeating XM, and a user-accepted wind-driven Swedish ensign | [Boat visual improvement](BOATING_PLAN.md#boat-visual-improvement--saved-2026-10-20) saved for later: cabin/hull shapes and palette; optional closer-camera comparison, score-loop, and archipelago remain proposals |
 | [Boat physics](BOAT_PHYSICS_PLAN.md) | A–D3 plus accepted H1/H2 countersteering and speed view; T1–T5 load-driven banking and quicker recovery; user-accepted H3 firmer planing hull grip; arcade flight/contact rules used revision 5; C1 clock/replay migration advances compatibility to revision 6 | [H3 carving pass](BOAT_PHYSICS_PLAN.md#h3--stern-led-carving-feel-2026-10-20): feel accepted on 2026-10-20; exhaustive hands-on/platform checks unverified; optional trim/loading not started |
@@ -52,6 +52,13 @@ does not authorize advancing every plan. Use the requested track's scope and acc
   to the current owners above. Dated progress entries retain results for their original revisions.
 
 ## Verification baseline
+
+Multiplayer M4 step 1, 2026-10-23, M1 Max/macOS 26.6.2: Debug build warning-free and all 101
+active CTests (21 GPU) pass; `boat_net` adds bit-identical prediction replays (including
+airborne, landing and capsized restores) and predicting rooms with own corrections of at most
+2 mm on profile F. An agent-run windowed `boat_study --connect` played beside a bot. On
+2026-10-24 the user drove it beside `boat_bot` and its wakes ("Works really well!"); no
+two-human or two-machine session is claimed. [M4 evidence](MULTIPLAYER_PLAN.md#m4-step-1-client-prediction-handoff--2026-10-23).
 
 Multiplayer M3, 2026-10-23, M1 Max/macOS 26.6.2: Debug build warning-free and all 101 active
 CTests (21 GPU) pass, including the protocol/session validator, a real ENet loopback process

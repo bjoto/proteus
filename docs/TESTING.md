@@ -65,13 +65,16 @@ off has less coverage; report that omission.
 ## Network checks
 
 `boat_net` runs `validate_boat_net`, which links only the core and net libraries and takes
-under a second. It covers:
+about two seconds. It covers:
 - golden bytes and pinned snapshot layout, all truncations, invalid fields, and checkpoint
   round trips that resume bit-identically;
 - seeded in-memory rooms: handshake rejections, the input-loss policy, command idempotence,
   sequence wrap, a flood against the bounded queue, profile F one way for 60 s, blackouts and
   timeouts, and wake resync;
-- client mirrors that reproduce the authority's `boat_fleet_hash`.
+- client mirrors that reproduce the authority's `boat_fleet_hash`;
+- client prediction: replays from mid-flight, landing and capsized checkpoints that match the
+  authority bit for bit, and predicting rooms (steady 30 ms, profile F both ways with smooth
+  and keyboard-style bots) that print correction sizes and replay cost.
 
 `boat_net_loopback` runs `tools/boat_net_smoke.py`, which starts real `boat_server` and
 `boat_bot` processes on a free 127.0.0.1 UDP port for about 10 s. Two bots drive and a
