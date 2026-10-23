@@ -57,15 +57,6 @@ static BoatWater study_water(
     return water;
 }
 
-// R and startup share one path: fresh session clock, spawn and water history.
-static void study_reset(
-    BoatSession *session, const BoatWorldDefinition *location, bool course, BoatWater water)
-{
-    boat_session_init(session, location, water);
-    if (course)
-        boat_reset_course(&session->boat);
-}
-
 static void draw_help(bool course, bool mapped)
 {
     int width = GetScreenWidth(), height = GetScreenHeight();
@@ -113,17 +104,17 @@ static Rectangle replay_timeline(int width)
 }
 
 static void course_runs_hud(
-    const BoatReplayRuns *runs, const Boat *boat, const Boat *ghost, int width)
+    const BoatReplayRuns *runs, const BoatViewState *view, const BoatViewState *ghost, int width)
 {
     DrawRectangle(8, 72, width > 460 ? 440 : width - 16, runs->playing ? 120 : 84,
         (Color) { 14, 23, 32, 245 });
     if (runs->best.complete)
         DrawText(TextFormat("BEST %.2fs", runs->best.splits[BOAT_COURSE_GATES - 1]), 16, 76, 16,
             (Color) { 90, 240, 255, 255 });
-    if (!runs->playing && runs->opponent.complete && boat->course.next_gate > 1) {
-        int gate = boat->course.next_gate - 1;
+    if (!runs->playing && runs->opponent.complete && view->course.next_gate > 1) {
+        int gate = view->course.next_gate - 1;
         DrawText(
-            TextFormat("Split %+.2fs", boat->course.splits[gate] - runs->opponent.splits[gate]), 16,
+            TextFormat("Split %+.2fs", view->course.splits[gate] - runs->opponent.splits[gate]), 16,
             96, 16, RAYWHITE);
     }
     if (runs->playing) {
@@ -151,8 +142,8 @@ static void course_runs_hud(
     }
     if (ghost && width >= 368) {
         int left = width - 128;
-        int x = left + 60 + (int)fmaxf(-54, fminf(54, ghost->position.x));
-        int y = 38 + (int)fmaxf(0, fminf(112, ghost->position.y + 60));
+        int x = left + 60 + (int)fmaxf(-54, fminf(54, ghost->boat.position.x));
+        int y = 38 + (int)fmaxf(0, fminf(112, ghost->boat.position.y + 60));
         DrawCircleLines(x, y, 4, (Color) { 90, 240, 255, 255 });
     }
 }
@@ -384,15 +375,18 @@ int main(int argc, char **argv)
     Music music = { 0 };
     bool music_ready = false;
     BoatSession session;
-    study_reset(&session, location, course,
-        study_water(location, waves, current, crossing_wake, player_wake));
+    boat_session_init(
+        &session, location, study_water(location, waves, current, crossing_wake, player_wake));
+    if (course)
+        boat_session_start_course(&session);
+    session.runs.ghost_visible = true;
+    session.runs.export_path = export_path;
     BoatWakePlayer *wake = NULL;
     ObjectStudy object_world = { 0 };
     ObjectStudy *objects = wake_objects ? &object_world : NULL;
     if (objects)
         object_study_reset(objects, &session, object_crossing, object_life, object_height);
     int result = 1;
-    BoatReplayRuns runs = { .ghost_visible = true, .export_path = export_path };
     BoatReplayFlag playback_flag = { 0 }, ghost_flag = { 0 };
     if (wake_field) {
         wake = boat_wake_player_create(1.0 / 120);
@@ -403,52 +397,56 @@ int main(int argc, char **argv)
         session.world.wake_field = boat_wake_player_field(wake);
     }
     if (replay_path) {
-        if (!boat_replay_load(&runs.last, replay_path) || (waves && !runs.last.waves)) {
+        if (!boat_replay_load(&session.runs.last, replay_path)
+            || (waves && !session.runs.last.waves)) {
             fprintf(stderr, "Invalid or incompatible course replay: %s\n", replay_path);
             goto cleanup;
         }
-        waves = runs.last.waves;
+        waves = session.runs.last.waves;
         session.world.water = study_water(location, waves, current, crossing_wake, player_wake);
     }
     if (course) {
         char directory[1800];
         if (data_dir || boat_replay_data_directory(directory, sizeof(directory))) {
-            int n = snprintf(runs.best_path, sizeof(runs.best_path), "%s/course-%s-physics%d.run",
-                data_dir ? data_dir : directory, waves ? "waves" : "calm", BOAT_PHYSICS_REVISION);
-            if (n < 0 || (size_t)n >= sizeof(runs.best_path))
-                runs.best_path[0] = 0;
+            int n = snprintf(session.runs.best_path, sizeof(session.runs.best_path),
+                "%s/course-%s-physics%d.run", data_dir ? data_dir : directory,
+                waves ? "waves" : "calm", BOAT_PHYSICS_REVISION);
+            if (n < 0 || (size_t)n >= sizeof(session.runs.best_path))
+                session.runs.best_path[0] = 0;
         }
-        if (runs.best_path[0] && FileExists(runs.best_path)
-            && (!boat_replay_load(&runs.best, runs.best_path) || runs.best.waves != waves)) {
-            boat_replay_destroy(&runs.best);
-            runs.notice = "Saved best is incompatible or damaged; ignored";
-            fprintf(stderr, "%s: %s\n", runs.notice, runs.best_path);
+        if (session.runs.best_path[0] && FileExists(session.runs.best_path)
+            && (!boat_replay_load(&session.runs.best, session.runs.best_path)
+                || session.runs.best.waves != waves)) {
+            boat_replay_destroy(&session.runs.best);
+            session.runs.notice = "Saved best is incompatible or damaged; ignored";
+            fprintf(stderr, "%s: %s\n", session.runs.notice, session.runs.best_path);
         }
         if (ghost_path
-            && (!boat_replay_load(&runs.reference, ghost_path) || runs.reference.waves != waves)) {
+            && (!boat_replay_load(&session.runs.reference, ghost_path)
+                || session.runs.reference.waves != waves)) {
             fprintf(stderr, "Invalid or incompatible course ghost: %s\n", ghost_path);
             goto cleanup;
         }
-        boat_replay_runs_reset(&runs);
+        boat_replay_runs_reset(&session.runs);
         if (replay_path)
-            boat_replay_play(&runs, &runs.last);
+            boat_replay_play(&session.runs, &session.runs.last);
     }
     if (location->mapped && !boat_map_water(session.boat.position, 2.5f)) {
         fprintf(stderr, "Eriksberg spawn is not navigable.\n");
         goto cleanup;
     }
     // A replay is viewed in its own recorded water, never by writing into the live session.
-    Boat playback;
+    BoatViewState live_view, playback;
     BoatPresentation playback_presentation;
     BoatWorld playback_world;
-    const Boat *view = &session.boat;
+    const BoatViewState *view = &live_view;
     const BoatPresentation *view_presentation = &session.presentation;
     const BoatWorld *view_world = &session.world;
-    if (screenshot && runs.playing) {
-        boat_replay_sample(runs.playing, time, &playback, &playback_presentation);
+    if (screenshot && session.runs.playing) {
+        boat_replay_sample(session.runs.playing, time, &playback, &playback_presentation);
         boat_replay_animate_flag(
-            runs.playing, &playback, &playback_flag, &playback_presentation.flag);
-        boat_world_init(&playback_world, location, boat_replay_water(runs.playing));
+            session.runs.playing, &playback, &playback_flag, &playback_presentation.flag);
+        boat_world_init(&playback_world, location, boat_replay_water(session.runs.playing));
         view = &playback;
         view_presentation = &playback_presentation;
         view_world = &playback_world;
@@ -456,19 +454,23 @@ int main(int argc, char **argv)
         for (int tick = 0; tick < (int)round(time / BOAT_TICK_SECONDS); ++tick)
             demo_step(&session, tick, NULL, wake, objects);
     }
-    Boat ghost;
+    live_view = boat_session_view(&session);
+    // Course attempts record from here on; screenshots above never save a run.
+    session.record_runs = course;
+    BoatViewState ghost, other_view;
     BoatFlag ghost_cloth;
-    const Boat *ghost_view = NULL;
+    const BoatViewState *ghost_view = NULL;
     const BoatFlag *ghost_view_flag = NULL;
     float ghost_opacity = 0;
     if (objects && objects->crossing) {
-        ghost_view = &objects->other;
+        other_view = (BoatViewState) { .boat = objects->other, .time = live_view.time };
+        ghost_view = &other_view;
         ghost_view_flag = &objects->other_presentation.flag;
         ghost_opacity = 1;
     }
-    if (course && !runs.playing && runs.opponent.complete
-        && boat_replay_sample(&runs.opponent, view->course.elapsed, &ghost, NULL)) {
-        boat_replay_animate_flag(&runs.opponent, &ghost, &ghost_flag, &ghost_cloth);
+    if (course && !session.runs.playing && session.runs.opponent.complete
+        && boat_replay_sample(&session.runs.opponent, view->course.elapsed, &ghost, NULL)) {
+        boat_replay_animate_flag(&session.runs.opponent, &ghost, &ghost_flag, &ghost_cloth);
         ghost_view = &ghost;
         ghost_view_flag = &ghost_cloth;
         ghost_opacity = .5f;
@@ -596,43 +598,44 @@ int main(int argc, char **argv)
         double course_input_started_at = boat_profile_time(true);
         if (course && active) {
             if (IsKeyPressed(KEY_G))
-                runs.ghost_visible = !runs.ghost_visible;
-            if (session.boat.course.next_gate == 0
-                || session.boat.course.next_gate == BOAT_COURSE_GATES || runs.playing) {
-                const BoatReplay *selected = IsKeyPressed(KEY_P) ? &runs.last
-                    : IsKeyPressed(KEY_B)                        ? &runs.best
+                session.runs.ghost_visible = !session.runs.ghost_visible;
+            if (session.course.next_gate == 0 || session.course.next_gate == BOAT_COURSE_GATES
+                || session.runs.playing) {
+                const BoatReplay *selected = IsKeyPressed(KEY_P) ? &session.runs.last
+                    : IsKeyPressed(KEY_B)                        ? &session.runs.best
                                                                  : NULL;
-                if (selected && boat_replay_play(&runs, selected)) {
+                if (selected && boat_replay_play(&session.runs, selected)) {
                     accumulator = 0;
                     replay_dragging = false;
                     replay_adjusted = true;
                 }
             }
-            if (runs.playing) {
-                double duration = runs.playing->splits[BOAT_COURSE_GATES - 1];
+            if (session.runs.playing) {
+                double duration = session.runs.playing->splits[BOAT_COURSE_GATES - 1];
                 if (IsKeyPressed(KEY_SPACE)) {
-                    if (runs.replay_time == duration)
-                        boat_replay_seek(&runs, 0);
-                    runs.paused = !runs.paused;
+                    if (session.runs.replay_time == duration)
+                        boat_replay_seek(&session.runs, 0);
+                    session.runs.paused = !session.runs.paused;
                 }
                 if (IsKeyPressed(KEY_ENTER)) {
-                    boat_replay_seek(&runs, 0);
-                    runs.paused = false;
+                    boat_replay_seek(&session.runs, 0);
+                    session.runs.paused = false;
                     replay_adjusted = true;
                 }
                 if (IsKeyPressed(KEY_LEFT_BRACKET))
-                    boat_replay_speed_step(&runs, -1);
+                    boat_replay_speed_step(&session.runs, -1);
                 if (IsKeyPressed(KEY_RIGHT_BRACKET))
-                    boat_replay_speed_step(&runs, 1);
+                    boat_replay_speed_step(&session.runs, 1);
                 int seek = (IsKeyPressed(KEY_RIGHT) || IsKeyPressedRepeat(KEY_RIGHT))
                     - (IsKeyPressed(KEY_LEFT) || IsKeyPressedRepeat(KEY_LEFT));
                 bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
                 if (seek) {
-                    boat_replay_seek(&runs, runs.replay_time + seek * (shift ? 5 : 1));
+                    boat_replay_seek(
+                        &session.runs, session.runs.replay_time + seek * (shift ? 5 : 1));
                     replay_adjusted = true;
                 }
                 if (IsKeyPressed(KEY_HOME) || IsKeyPressed(KEY_END)) {
-                    boat_replay_seek(&runs, IsKeyPressed(KEY_END) ? duration : 0);
+                    boat_replay_seek(&session.runs, IsKeyPressed(KEY_END) ? duration : 0);
                     replay_adjusted = true;
                 }
                 Rectangle bar = replay_timeline(GetScreenWidth());
@@ -641,8 +644,8 @@ int main(int argc, char **argv)
                     && CheckCollisionPointRec(GetMousePosition(), hit))
                     replay_dragging = true;
                 if (replay_dragging) {
-                    boat_replay_seek(&runs, (GetMouseX() - bar.x) / bar.width * duration);
-                    runs.paused = true;
+                    boat_replay_seek(&session.runs, (GetMouseX() - bar.x) / bar.width * duration);
+                    session.runs.paused = true;
                     replay_adjusted = true;
                     if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT))
                         replay_dragging = false;
@@ -653,23 +656,21 @@ int main(int argc, char **argv)
             += (float)((boat_profile_time(true) - course_input_started_at) * 1000.0);
         double simulation_started_at = boat_profile_time(true);
         if (active && IsKeyPressed(KEY_R)) {
-            study_reset(&session, location, course,
-                study_water(location, waves, current, crossing_wake, player_wake));
+            boat_session_restart(
+                &session, study_water(location, waves, current, crossing_wake, player_wake));
             if (wake) {
                 boat_wake_player_reset(wake);
                 session.world.wake_field = boat_wake_player_field(wake);
             }
             if (objects)
                 object_study_reset(objects, &session, object_crossing, object_life, object_height);
-            if (course)
-                boat_replay_runs_reset(&runs);
             accumulator = 0;
             demo_tick = 0;
             replay_dragging = false;
-        } else if (runs.playing) {
+        } else if (session.runs.playing) {
             accumulator = 0;
             double course_started_at = boat_profile_time(true);
-            boat_replay_advance(&runs, replay_adjusted ? 0 : GetFrameTime(), active);
+            boat_replay_advance(&session.runs, replay_adjusted ? 0 : GetFrameTime(), active);
             metrics.course_replay_ms
                 += (float)((boat_profile_time(true) - course_started_at) * 1000.0);
         } else if (active) {
@@ -684,50 +685,44 @@ int main(int argc, char **argv)
             while (accumulator >= BOAT_TICK_SECONDS) {
                 if (demo)
                     demo_step(&session, demo_tick++, &metrics, wake, objects);
-                else {
-                    double course_started_at = boat_profile_time(true);
-                    BoatReplaySample before
-                        = boat_replay_pose(&session.boat, &session.presentation);
-                    metrics.course_replay_ms
-                        += (float)((boat_profile_time(true) - course_started_at) * 1000.0);
+                else
                     timed_boat_step(&session, steering, throttle_change, &metrics, wake, objects);
-                    course_started_at = boat_profile_time(true);
-                    if (course)
-                        boat_replay_runs_step(
-                            &runs, before, &session.boat, &session.presentation, &session.world);
-                    metrics.course_replay_ms
-                        += (float)((boat_profile_time(true) - course_started_at) * 1000.0);
-                }
                 accumulator -= BOAT_TICK_SECONDS;
             }
         } else {
             accumulator = 0;
         }
-        metrics.paused = !active || (runs.playing && runs.paused);
+        metrics.paused = !active || (session.runs.playing && session.runs.paused);
         metrics.simulation_ms = (float)((boat_profile_time(true) - simulation_started_at) * 1000.0);
+        // Course saves wait until the frame's ticks are done.
+        double flush_started_at = boat_profile_time(true);
+        boat_session_flush(&session);
+        metrics.course_replay_ms += (float)((boat_profile_time(true) - flush_started_at) * 1000.0);
         double audio_started_at = boat_profile_time(true);
-        view = &session.boat;
+        live_view = boat_session_view(&session);
+        view = &live_view;
         view_presentation = &session.presentation;
         view_world = &session.world;
-        if (runs.playing
-            && boat_replay_sample(
-                runs.playing, runs.replay_time, &playback, &playback_presentation)) {
+        if (session.runs.playing
+            && boat_replay_sample(session.runs.playing, session.runs.replay_time, &playback,
+                &playback_presentation)) {
             boat_replay_animate_flag(
-                runs.playing, &playback, &playback_flag, &playback_presentation.flag);
-            boat_world_init(&playback_world, location, boat_replay_water(runs.playing));
+                session.runs.playing, &playback, &playback_flag, &playback_presentation.flag);
+            boat_world_init(&playback_world, location, boat_replay_water(session.runs.playing));
             view = &playback;
             view_presentation = &playback_presentation;
             view_world = &playback_world;
         }
-        Vector2 flow = boat_water_current(view_world->water, view->position);
-        float water_speed = hypotf(view->velocity.x - flow.x, view->velocity.y - flow.y);
-        BoatAudioInput audio_input = { .thrust = view->engine_response,
+        Vector2 flow = boat_water_current(view_world->water, view->boat.position);
+        float water_speed = hypotf(view->boat.velocity.x - flow.x, view->boat.velocity.y - flow.y);
+        BoatAudioInput audio_input = { .thrust = view->boat.engine_response,
             .speed = water_speed,
-            .planing = view->planing,
-            .wave_entry = view->wave_spray };
-        boat_audio_update(&audio, audio_input, active && (!runs.playing || !runs.paused));
+            .planing = view->boat.planing,
+            .wave_entry = view->boat.wave_spray };
+        boat_audio_update(
+            &audio, audio_input, active && (!session.runs.playing || !session.runs.paused));
         if (music_ready) {
-            if (active && (!runs.playing || !runs.paused))
+            if (active && (!session.runs.playing || !session.runs.paused))
                 ResumeMusicStream(music);
             else
                 PauseMusicStream(music);
@@ -739,17 +734,20 @@ int main(int argc, char **argv)
         ghost_view_flag = NULL;
         ghost_opacity = 0;
         if (objects && objects->crossing) {
-            ghost_view = &objects->other;
+            other_view = (BoatViewState) { .boat = objects->other, .time = live_view.time };
+            ghost_view = &other_view;
             ghost_view_flag = &objects->other_presentation.flag;
             ghost_opacity = 1;
         }
-        if (course && !runs.playing && runs.ghost_visible && runs.opponent.complete) {
+        if (course && !session.runs.playing && session.runs.ghost_visible
+            && session.runs.opponent.complete) {
             double fade = 1
-                - fmax(
-                    0, session.boat.course.elapsed - runs.opponent.splits[BOAT_COURSE_GATES - 1]);
+                - fmax(0,
+                    session.course.elapsed - session.runs.opponent.splits[BOAT_COURSE_GATES - 1]);
             if (fade > 0
-                && boat_replay_sample(&runs.opponent, session.boat.course.elapsed, &ghost, NULL)) {
-                boat_replay_animate_flag(&runs.opponent, &ghost, &ghost_flag, &ghost_cloth);
+                && boat_replay_sample(
+                    &session.runs.opponent, session.course.elapsed, &ghost, NULL)) {
+                boat_replay_animate_flag(&session.runs.opponent, &ghost, &ghost_flag, &ghost_cloth);
                 ghost_view = &ghost;
                 ghost_view_flag = &ghost_cloth;
                 ghost_opacity = .5f * (float)fade;
@@ -780,8 +778,8 @@ int main(int argc, char **argv)
         Rectangle destination = { (GetScreenWidth() - WIDTH * scale) / 2,
             (GetScreenHeight() - HEIGHT * scale) / 2, WIDTH * scale, HEIGHT * scale };
         if (profiler_visible && current_frame_started_at >= next_snapshot_time) {
-            snapshot = profiler_snapshot(&profiler, (SceneFrame) { .time = session.boat.time },
-                session.boat.time, size, destination, false, (Music) { 0 }, (AudioSpectrum) { 0 });
+            snapshot = profiler_snapshot(&profiler, (SceneFrame) { .time = live_view.time },
+                live_view.time, size, destination, false, (Music) { 0 }, (AudioSpectrum) { 0 });
             boat_snapshot = boat_profile_snapshot(&boat_profile);
             snapshot.scene_label = location->name;
             snapshot.renderer_label = gpu_enabled ? (gpu_aa ? "GPU 4x SSAA" : "GPU") : "CPU";
@@ -797,12 +795,12 @@ int main(int argc, char **argv)
         DrawTexturePro(texture,
             (Rectangle) { 0, 0, gpu_enabled ? -WIDTH : WIDTH, gpu_enabled ? -HEIGHT : HEIGHT },
             destination, (Vector2) { 0 }, 0, WHITE);
-        boat_course_hud(&view->course, view->position, GetScreenWidth());
-        if (view->motion_state == BOAT_CAPSIZED)
+        boat_course_hud(&view->course, view->boat.position, GetScreenWidth());
+        if (view->boat.motion_state == BOAT_CAPSIZED)
             DrawText("CAPSIZED / R TO RESTART", 12, 36, 20, ORANGE);
-        else if (view->motion_state == BOAT_AIRBORNE)
+        else if (view->boat.motion_state == BOAT_AIRBORNE)
             DrawText("AIRBORNE", 12, 36, 16, SKYBLUE);
-        else if (view->motion_state == BOAT_LANDING)
+        else if (view->boat.motion_state == BOAT_LANDING)
             DrawText("LANDING", 12, 36, 16, SKYBLUE);
         if (wake)
             DrawText(TextFormat("WAKE FIELD / REVIEW %d", BOAT_WAKE_SOURCE_REVISION), 12,
@@ -812,7 +810,7 @@ int main(int argc, char **argv)
                          object_height, object_life),
                 12, GetScreenHeight() - 24, 12, SKYBLUE);
         if (course)
-            course_runs_hud(&runs, view, ghost_view, GetScreenWidth());
+            course_runs_hud(&session.runs, view, ghost_view, GetScreenWidth());
         if (!IsWindowFocused())
             DrawText("PAUSED", 12, 12, 20, RAYWHITE);
         if (profiler_visible)
@@ -859,7 +857,8 @@ cleanup:
             stdout, "Wake nodal peaks: height %.6g m, slope %.6g\n", r.peak_height, r.peak_slope);
     }
     boat_wake_player_destroy(wake);
-    boat_replay_runs_destroy(&runs);
+    boat_session_flush(&session);
+    boat_session_destroy(&session);
     if (window_ready) {
         if (gpu_enabled)
             boat_gpu_destroy(&gpu);

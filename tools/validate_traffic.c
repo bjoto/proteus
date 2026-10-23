@@ -1,5 +1,5 @@
 #include "boat_map.h"
-#include "boat_session.h"
+#include "boat_test_session.h"
 #include "boat_view.h"
 #include "waterfront_harbor.h"
 #include "waterfront_traffic.h"
@@ -79,14 +79,14 @@ static bool footprints_overlap(
     return true;
 }
 
-static bool hulls_clear(const Boat *boat)
+static bool hulls_clear(const Boat *boat, double time)
 {
     // Player geometry is offset 0.2 m toward its 2.0 m bow / 1.6 m stern.
     Vector2 center = { -boat->position.x - .2f * sinf(boat->heading),
         boat->position.y - .2f * cosf(boat->heading) };
     for (int i = 0; i < WATERFRONT_TRAFFIC_VESSELS; ++i) {
         BoatModelSpec s = waterfront_traffic_spec(i);
-        WaterfrontVesselMotion m = waterfront_traffic_motion(i, boat->time);
+        WaterfrontVesselMotion m = waterfront_traffic_motion(i, time);
         if (footprints_overlap(center, boat->heading, 3.6f, 1.5f,
                 (Vector2) { m.position.x, m.position.z }, m.heading, s.length, s.beam))
             return false;
@@ -191,13 +191,15 @@ static int check_gulls(void)
     CHECK(sought.gulls[0][0].position.y > idle_height + 1);
     BoatSession boat;
     boat_session_init(&boat, boat_location(BOAT_LOCATION_ERIKSBERG), (BoatWater) { 0 });
-    boat_scene_frame(&boat.boat, &boat.presentation, &boat.world, BOAT_CAMERA_DEFAULT, &frame);
-    waterfront_boating_gulls(boat.boat.time, frame.player.hull.position,
+    boat_scene_frame(
+        SESSION_VIEW(&boat), &boat.presentation, &boat.world, BOAT_CAMERA_DEFAULT, &frame);
+    waterfront_boating_gulls(boat_session_time(&boat), frame.player.hull.position,
         (Vector3) { -boat.boat.velocity.x, 0, boat.boat.velocity.y }, &sought);
     CHECK(frame.gull_count == WATERFRONT_HARBOR_GULLS);
     CHECK(!memcmp(frame.gulls, sought.gulls, sizeof(frame.gulls)));
     boat_session_init(&boat, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
-    boat_scene_frame(&boat.boat, &boat.presentation, &boat.world, BOAT_CAMERA_DEFAULT, &frame);
+    boat_scene_frame(
+        SESSION_VIEW(&boat), &boat.presentation, &boat.world, BOAT_CAMERA_DEFAULT, &frame);
     CHECK(frame.gull_count == 0);
     puts("harbor_gulls=ok birds=32 continuity=120s seeks=ok player_stimuli=ok snapshot=ok");
     return 0;
@@ -307,14 +309,14 @@ int main(void)
         Vector2 initial = boat.boat.position;
         for (int tick = 0; tick < 120 * 8; ++tick) {
             boat_session_step(&boat, 0, 0);
-            CHECK(hulls_clear(&boat.boat));
+            CHECK(hulls_clear(&boat.boat, boat_session_time(&boat)));
             CHECK(Vector2Length(boat.boat.velocity) < 12 && fabsf(boat.boat.yaw_velocity) < 5);
         }
         CHECK(Vector2Distance(initial, boat.boat.position) > .5f);
         boat.boat.throttle = 1;
         for (int tick = 0; tick < 120 * 6; ++tick) {
             boat_session_step(&boat, 0, 0);
-            CHECK(hulls_clear(&boat.boat));
+            CHECK(hulls_clear(&boat.boat, boat_session_time(&boat)));
         }
         // A deliberate beam-on crossing checks the full SAT hull and moving contact torque.
         ship = waterfront_traffic_motion(i, 40);
@@ -329,7 +331,7 @@ int main(void)
             = (Vector2) { sinf(boat.boat.heading) * 8, -cosf(boat.boat.heading) * 8 };
         for (int tick = 0; tick < 120 * 5; ++tick) {
             boat_session_step(&boat, 0, 0);
-            CHECK(hulls_clear(&boat.boat));
+            CHECK(hulls_clear(&boat.boat, boat_session_time(&boat)));
             CHECK(Vector2Length(boat.boat.velocity) < 16 && fabsf(boat.boat.yaw_velocity) < 6);
         }
     }

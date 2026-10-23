@@ -2,6 +2,7 @@
 #define PROTEUS_BOAT_VIEW_H
 
 #include "boat_presentation.h"
+#include "boat_view_state.h"
 #include "renderer3d.h"
 #include "waterfront_scene.h"
 
@@ -13,17 +14,20 @@ typedef struct {
     bool fixed_fov; // Disable the modest speed lens for a constant 55-degree vertical view.
 } BoatCamera;
 
-// Views draw BOAT at its cached time in WORLD with its PRESENTATION (particles, cloth and
-// camera follow). Drawing reads only; a ghost contributes its pose and optional cloth.
+// Views draw a VIEW (live session, replay sample or ghost) at its time in WORLD with its
+// PRESENTATION (particles, cloth and camera follow). Drawing reads only; a ghost contributes
+// its pose and optional cloth.
 
 // FLAG may be NULL or uninitialized; the cloth then starts at rest on the hoist.
-void boat_player_pose(const Boat *boat, const BoatFlag *flag, WaterfrontPlayerState *player);
-void boat_scene_frame(const Boat *boat, const BoatPresentation *presentation,
+void boat_player_pose(
+    const BoatViewState *view, const BoatFlag *flag, WaterfrontPlayerState *player);
+void boat_scene_frame(const BoatViewState *view, const BoatPresentation *presentation,
     const BoatWorld *world, BoatCamera camera, WaterfrontSceneFrame *frame);
-bool boat_draw(Renderer3D *renderer, Color *pixels, int width, int height, const Boat *boat,
-    const BoatPresentation *presentation, const BoatWorld *world, BoatCamera camera_settings);
+bool boat_draw(Renderer3D *renderer, Color *pixels, int width, int height,
+    const BoatViewState *view, const BoatPresentation *presentation, const BoatWorld *world,
+    BoatCamera camera_settings);
 bool boat_draw_with_ghost(Renderer3D *renderer, Color *pixels, int width, int height,
-    const Boat *boat, const BoatPresentation *presentation, const BoatWorld *world,
-    BoatCamera camera, const Boat *ghost, const BoatFlag *ghost_flag, float opacity);
+    const BoatViewState *view, const BoatPresentation *presentation, const BoatWorld *world,
+    BoatCamera camera, const BoatViewState *ghost, const BoatFlag *ghost_flag, float opacity);
 
 #endif

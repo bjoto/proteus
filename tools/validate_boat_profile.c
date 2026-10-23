@@ -1,6 +1,6 @@
 #include "boat.h"
 #include "boat_profile.h"
-#include "boat_session.h"
+#include "boat_test_session.h"
 #include "boat_view.h"
 
 #include <math.h>
@@ -83,17 +83,18 @@ static int check_drive(void)
     CHECK(plain_boat->turn_roll_load == measured_boat->turn_roll_load
         && plain_boat->roll == measured_boat->roll
         && plain_boat->roll_velocity == measured_boat->roll_velocity);
-    CHECK(plain_boat->heading == measured_boat->heading && plain_boat->time == measured_boat->time);
+    CHECK(plain_boat->heading == measured_boat->heading
+        && plain_session.tick == measured_session.tick);
     CHECK(plain_session.world.water.player_wake_count
         == measured_session.world.water.player_wake_count);
     Color *left = calloc(320 * 200, sizeof(Color));
     Color *right = calloc(320 * 200, sizeof(Color));
     CHECK(left && right);
     Renderer3D renderer_left = { 0 }, renderer_right = { 0 };
-    CHECK(boat_draw(&renderer_left, left, 320, 200, plain_boat, &plain_session.presentation,
-        &plain_session.world, BOAT_CAMERA_DEFAULT));
-    CHECK(boat_draw(&renderer_right, right, 320, 200, measured_boat, &measured_session.presentation,
-        &measured_session.world, BOAT_CAMERA_DEFAULT));
+    CHECK(boat_draw(&renderer_left, left, 320, 200, SESSION_VIEW(&plain_session),
+        &plain_session.presentation, &plain_session.world, BOAT_CAMERA_DEFAULT));
+    CHECK(boat_draw(&renderer_right, right, 320, 200, SESSION_VIEW(&measured_session),
+        &measured_session.presentation, &measured_session.world, BOAT_CAMERA_DEFAULT));
     CHECK(memcmp(left, right, 320 * 200 * sizeof(Color)) == 0);
     free(left);
     free(right);

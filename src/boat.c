@@ -73,13 +73,6 @@ void boat_reset_location(Boat *boat, const BoatWorldDefinition *definition)
     boat->position = definition->spawn;
 }
 
-void boat_reset_course(Boat *boat)
-{
-    boat_reset(boat);
-    boat->position = (Vector2) { 0, 50 };
-    boat->course.enabled = true;
-}
-
 typedef struct {
     Vector2 local, normal, velocity;
 } HullContact;
@@ -410,9 +403,6 @@ static void buoyancy_step(Boat *boat, const BoatWorld *world, double time, float
 
 void boat_step(Boat *boat, BoatWorld *world, double now, float wheel_change, float throttle_change)
 {
-    if (boat->replay_view)
-        return;
-    boat->time = now;
     double time = now;
     float wet = hull_wet(boat, world, time) > 0 ? 1 : 0;
     motion_step(boat, wet);
@@ -549,5 +539,4 @@ void boat_step(Boat *boat, BoatWorld *world, double now, float wheel_change, flo
             boat->physical_wake_time = 0;
         }
     }
-    boat_course_step(&boat->course, previous, boat->position, BOAT_TICK_SECONDS);
 }

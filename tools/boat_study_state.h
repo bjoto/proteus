@@ -4,5 +4,7 @@
 /* FNV-1a over named %a numerical values, excluding pointers and cosmetic state.
  * Fold once per nominal frame; same-build evidence, not a replay/network format. */
 #define BOAT_STUDY_HASH_SEED UINT64_C(14695981039346656037)
-uint64_t boat_study_state_hash(uint64_t hash, const Boat *boat, const ObjectStudy *objects);
+// TIME is the session's world time, hashed in the boat's former cached-time position.
+uint64_t boat_study_state_hash(
+    uint64_t hash, const Boat *boat, double time, const ObjectStudy *objects);
 #endif

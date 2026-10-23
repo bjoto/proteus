@@ -1,6 +1,7 @@
 // Deterministic banking presentation audit, sharing free-drive inputs with the dynamics validator.
 #include "boat_banking_fixture.h"
 #include "boat_gpu.h"
+#include "boat_test_session.h"
 #include "raymath.h"
 
 #include <math.h>
@@ -39,7 +40,7 @@ static int pose_check(const BoatSession *session)
     const Boat *b = &session->boat;
     const BoatPresentation *view = &session->presentation;
     WaterfrontPlayerState p = { 0 };
-    boat_player_pose(b, &view->flag, &p);
+    boat_player_pose(SESSION_VIEW(session), &view->flag, &p);
     Vector3 base = { -b->position.x, b->height, b->position.y };
     const Vector3 probes[] = { { 0, 0, 0 }, { 1, .3f, -.7f }, { -.8f, 1, 1 } };
     for (int i = 0; i < 3; ++i) {
@@ -70,7 +71,9 @@ static int pose_check(const BoatSession *session)
             Vector3 origin = Vector3Add(base, rotate(local, b));
             if (Vector2Distance(w->position, (Vector2) { -origin.x, origin.z }) > .00003f)
                 continue;
-            float surface = boat_water_query(session->world.water, w->position, b->time).height;
+            float surface
+                = boat_water_query(session->world.water, w->position, boat_session_time(session))
+                      .height;
             CHECK(fabsf(w->height - fmaxf(surface + .03f, origin.y)) < .00003f);
             Boat plus = *b, minus = *b;
             const float epsilon = .001f;
@@ -90,7 +93,7 @@ static int pose_check(const BoatSession *session)
         CHECK(matched);
     }
     WaterfrontSceneFrame frame;
-    boat_scene_frame(b, view, &session->world, BOAT_CAMERA_DEFAULT, &frame);
+    boat_scene_frame(SESSION_VIEW(session), view, &session->world, BOAT_CAMERA_DEFAULT, &frame);
     CHECK(Vector3Distance(frame.camera.up, (Vector3) { 0, 1, 0 }) < .000001f);
     CHECK(Vector3Distance(frame.player.engine.position, p.engine.position) < .000001f);
     return 0;
@@ -101,11 +104,11 @@ static int capture(BoatGpu *gpu, Renderer3D *cpu, const BoatSession *session, bo
 {
     const Boat *b = &session->boat;
     Color pixels[320 * 200];
-    Boat opponent = *b;
-    opponent.position.x += 7 * sinf(b->heading) + 3 * cosf(b->heading);
-    opponent.position.y += -7 * cosf(b->heading) + 3 * sinf(b->heading);
-    Vector3 cloth_shift
-        = { -(opponent.position.x - b->position.x), 0, opponent.position.y - b->position.y };
+    BoatViewState view = boat_session_view(session), opponent = view;
+    opponent.boat.position.x += 7 * sinf(b->heading) + 3 * cosf(b->heading);
+    opponent.boat.position.y += -7 * cosf(b->heading) + 3 * sinf(b->heading);
+    Vector3 cloth_shift = { -(opponent.boat.position.x - b->position.x), 0,
+        opponent.boat.position.y - b->position.y };
     BoatFlag cloth = session->presentation.flag;
     for (int i = 0; i < BOAT_FLAG_POINTS; ++i) {
         cloth.surface.points[i] = Vector3Add(cloth.surface.points[i], cloth_shift);
@@ -113,14 +116,14 @@ static int capture(BoatGpu *gpu, Renderer3D *cpu, const BoatSession *session, bo
     }
     Image image;
     if (use_gpu) {
-        boat_gpu_draw_with_ghost(gpu, b, &session->presentation, &session->world, camera,
+        boat_gpu_draw_with_ghost(gpu, &view, &session->presentation, &session->world, camera,
             ghost ? &opponent : NULL, &cloth, .6f);
         image = LoadImageFromTexture(gpu->target.texture);
         CHECK(image.data);
         ImageFlipVertical(&image);
         ImageFlipHorizontal(&image);
     } else {
-        CHECK(boat_draw_with_ghost(cpu, pixels, 320, 200, b, &session->presentation,
+        CHECK(boat_draw_with_ghost(cpu, pixels, 320, 200, &view, &session->presentation,
             &session->world, camera, ghost ? &opponent : NULL, &cloth, .6f));
         image = (Image) { pixels, 320, 200, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 };
     }

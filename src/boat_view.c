@@ -13,9 +13,11 @@ static const float CAMERA_SPEED_FOV = 7 * DEG2RAD;
 static const float CAMERA_SPEED_START = 4.0f;
 static const float CAMERA_SPEED_FULL = 18.0f;
 
-void boat_player_pose(const Boat *boat, const BoatFlag *flag, WaterfrontPlayerState *player)
+void boat_player_pose(
+    const BoatViewState *view, const BoatFlag *flag, WaterfrontPlayerState *player)
 {
-    double time = boat->time;
+    const Boat *boat = &view->boat;
+    double time = view->time;
     if (flag && flag->initialized) {
         player->flag = flag->surface;
     } else {
@@ -84,9 +86,8 @@ static Color water_particle_color(
 }
 
 static Transform3D water_particle_pose(
-    const Boat *boat, const BoatWorld *world, const BoatWaterParticle *water, float size)
+    double time, const BoatWorld *world, const BoatWaterParticle *water, float size)
 {
-    double time = boat->time;
     Transform3D pose = { .position = { -water->position.x, water->height, water->position.y },
         .scale = { size, water->spray ? size : .015f, size } };
     if (!water->spray && boat_world_displaced(world)) {
@@ -101,9 +102,10 @@ static Transform3D water_particle_pose(
 
 // Shared authored current cues and scripted wake source for CPU/GPU views in all locations.
 static void environment_visit(
-    const Boat *boat, const BoatWorld *world, BoatCourseBoxDraw draw, void *context)
+    const BoatViewState *view, const BoatWorld *world, BoatCourseBoxDraw draw, void *context)
 {
-    double time = boat->time;
+    const Boat *boat = &view->boat;
+    double time = view->time;
     if (Vector2LengthSqr(world->water.current) > 0) {
         for (int x = -24; x <= 24; x += 8)
             for (int z = -48; z <= 48; z += 16) {
@@ -154,7 +156,8 @@ static void basin_box(void *context, Transform3D transform, Color color)
     frame->scenery[i].color = color;
 }
 
-static void basin_scenery(const Boat *boat, const BoatWorld *world, WaterfrontSceneFrame *frame)
+static void basin_scenery(
+    const BoatViewState *view, const BoatWorld *world, WaterfrontSceneFrame *frame)
 {
     Vector2 half = world->definition->half_extent;
     frame->boating_basin = true;
@@ -169,7 +172,7 @@ static void basin_scenery(const Boat *boat, const BoatWorld *world, WaterfrontSc
             (Transform3D) {
                 .position = { 0, 0, side * (half.y + 2) }, .scale = { 2 * half.x, 1.8f, 4 } },
             quay);
-        if (!boat->course.enabled) {
+        if (!view->course.enabled) {
             basin_box(frame,
                 (Transform3D) { .position = { side * 12, .4f, 0 }, .scale = { .8f, 1, .8f } },
                 (Color) { 232, 150, 65, 255 });
@@ -185,26 +188,27 @@ static void basin_scenery(const Boat *boat, const BoatWorld *world, WaterfrontSc
                     (Transform3D) {
                         .position = { x + (z % 4), .01f, z }, .scale = { 1.3f, .04f, .12f } },
                     (Color) { 62, 132, 142, 255 });
-    boat_course_visit(&boat->course, basin_box, frame);
-    environment_visit(boat, world, basin_box, frame);
+    boat_course_visit(&view->course, basin_box, frame);
+    environment_visit(view, world, basin_box, frame);
 }
 
-void boat_scene_frame(const Boat *boat, const BoatPresentation *presentation,
+void boat_scene_frame(const BoatViewState *view, const BoatPresentation *presentation,
     const BoatWorld *world, BoatCamera camera, WaterfrontSceneFrame *frame)
 {
-    double time = boat->time;
+    const Boat *boat = &view->boat;
+    double time = view->time;
     _Static_assert(BOAT_WATER_PARTICLES <= WATERFRONT_PLAYER_PARTICLES, "Player particle capacity");
     waterfront_scene_evaluate(0, true, frame);
     frame->camera = boat_camera(boat, presentation, world->definition, camera);
     waterfront_scene_evaluate_actors(time, world->water, frame);
     frame->player_active = true;
     if (!world->definition->mapped)
-        basin_scenery(boat, world, frame);
+        basin_scenery(view, world, frame);
     else
-        environment_visit(boat, world, basin_box, frame);
+        environment_visit(view, world, basin_box, frame);
     frame->player_water = world->water;
     WaterfrontPlayerState *p = &frame->player;
-    boat_player_pose(boat, &presentation->flag, p);
+    boat_player_pose(view, &presentation->flag, p);
     if (world->definition->mapped)
         waterfront_boating_gulls(
             time, p->hull.position, (Vector3) { -boat->velocity.x, 0, boat->velocity.y }, frame);
@@ -215,24 +219,27 @@ void boat_scene_frame(const Boat *boat, const BoatPresentation *presentation,
             continue;
         float size = water_particle_size(water);
         p->particles[p->particle_count++] = (WaterfrontPlayerParticle) { .transform
-            = water_particle_pose(boat, world, water, size),
+            = water_particle_pose(time, world, water, size),
             .color = water_particle_color(world->definition, water),
             .spray = water->spray };
     }
 }
 
-bool boat_draw(Renderer3D *renderer, Color *pixels, int width, int height, const Boat *boat,
-    const BoatPresentation *presentation, const BoatWorld *world, BoatCamera camera_settings)
+bool boat_draw(Renderer3D *renderer, Color *pixels, int width, int height,
+    const BoatViewState *view, const BoatPresentation *presentation, const BoatWorld *world,
+    BoatCamera camera_settings)
 {
     return boat_draw_with_ghost(
-        renderer, pixels, width, height, boat, presentation, world, camera_settings, NULL, NULL, 0);
+        renderer, pixels, width, height, view, presentation, world, camera_settings, NULL, NULL, 0);
 }
 
 bool boat_draw_with_ghost(Renderer3D *renderer, Color *pixels, int width, int height,
-    const Boat *boat, const BoatPresentation *presentation, const BoatWorld *world,
-    BoatCamera camera_settings, const Boat *ghost, const BoatFlag *ghost_flag, float opacity)
+    const BoatViewState *view, const BoatPresentation *presentation, const BoatWorld *world,
+    BoatCamera camera_settings, const BoatViewState *ghost, const BoatFlag *ghost_flag,
+    float opacity)
 {
-    double time = boat->time;
+    const Boat *boat = &view->boat;
+    double time = view->time;
     Vector2 half = world->definition->half_extent;
     for (int i = 0; i < width * height; ++i)
         pixels[i] = (Color) { 21, 36, 48, 255 };
@@ -285,7 +292,7 @@ bool boat_draw_with_ghost(Renderer3D *renderer, Color *pixels, int width, int he
             continue;
         if (world->definition->mapped && !boat_map_water(p->position, 0))
             continue;
-        renderer3d_draw_box(renderer, water_particle_pose(boat, world, p, water_particle_size(p)),
+        renderer3d_draw_box(renderer, water_particle_pose(time, world, p, water_particle_size(p)),
             water_particle_color(world->definition, p));
     }
     if (!world->definition->mapped) {
@@ -297,17 +304,17 @@ bool boat_draw_with_ghost(Renderer3D *renderer, Color *pixels, int width, int he
                 (Vector3) { 2 * half.x, 1.8f, 4 }, quay);
         }
         // Only the basin walls collide in this sketch; markers are visual turning references.
-        for (int side = -1; !boat->course.enabled && side <= 1; side += 2) {
+        for (int side = -1; !view->course.enabled && side <= 1; side += 2) {
             box(renderer, (Vector3) { side * 12, 0.4f, 0 }, (Vector3) { 0.8f, 1, 0.8f },
                 (Color) { 232, 150, 65, 255 });
             box(renderer, (Vector3) { side * 12, 1.1f, 0 }, (Vector3) { 0.25f, 0.5f, 0.25f },
                 (Color) { 248, 225, 175, 255 });
         }
     }
-    environment_visit(boat, world, environment_draw, renderer);
-    boat_course_draw(&boat->course, renderer);
+    environment_visit(view, world, environment_draw, renderer);
+    boat_course_draw(&view->course, renderer);
     WaterfrontPlayerState player = { 0 };
-    boat_player_pose(boat, &presentation->flag, &player);
+    boat_player_pose(view, &presentation->flag, &player);
     renderer3d_draw_mesh(renderer, waterfront_player_hull_mesh(), player.hull);
     renderer3d_draw_mesh(renderer, waterfront_player_cabin_mesh(), player.cabin);
     renderer3d_draw_mesh(renderer, waterfront_player_engine_mesh(), player.engine);

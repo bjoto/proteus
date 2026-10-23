@@ -232,7 +232,8 @@ static int validate_speed_view(void)
     float previous = 55 * DEG2RAD;
     for (int step = 0; step <= 240; ++step) {
         boat.boat.velocity.y = -(float)step * .1f;
-        boat_scene_frame(&boat.boat, &boat.presentation, &boat.world, BOAT_CAMERA_DEFAULT, &frame);
+        boat_scene_frame(
+            SESSION_VIEW(&boat), &boat.presentation, &boat.world, BOAT_CAMERA_DEFAULT, &frame);
         float fov = frame.camera.vertical_fov;
         CHECK(fov >= previous && fov <= 62 * DEG2RAD + .000001f);
         CHECK(fov - previous < .08f * DEG2RAD);
@@ -246,18 +247,21 @@ static int validate_speed_view(void)
     }
     BoatCamera fixed = BOAT_CAMERA_DEFAULT;
     fixed.fixed_fov = true;
-    boat_scene_frame(&boat.boat, &boat.presentation, &boat.world, fixed, &frame);
+    boat_scene_frame(SESSION_VIEW(&boat), &boat.presentation, &boat.world, fixed, &frame);
     CHECK(frame.camera.vertical_fov == 55 * DEG2RAD);
     // Reverse, sideways drift and rest do not open the lens; it uses ground travel, not flow.
     boat.boat.velocity = (Vector2) { 0, 20 };
-    boat_scene_frame(&boat.boat, &boat.presentation, &boat.world, BOAT_CAMERA_DEFAULT, &frame);
+    boat_scene_frame(
+        SESSION_VIEW(&boat), &boat.presentation, &boat.world, BOAT_CAMERA_DEFAULT, &frame);
     CHECK(frame.camera.vertical_fov == 55 * DEG2RAD);
     boat.boat.velocity = (Vector2) { 20, 0 };
-    boat_scene_frame(&boat.boat, &boat.presentation, &boat.world, BOAT_CAMERA_DEFAULT, &frame);
+    boat_scene_frame(
+        SESSION_VIEW(&boat), &boat.presentation, &boat.world, BOAT_CAMERA_DEFAULT, &frame);
     CHECK(frame.camera.vertical_fov == 55 * DEG2RAD);
     boat_session_init(&boat, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
     boat.world.water.current = (Vector2) { 0, -20 };
-    boat_scene_frame(&boat.boat, &boat.presentation, &boat.world, BOAT_CAMERA_DEFAULT, &frame);
+    boat_scene_frame(
+        SESSION_VIEW(&boat), &boat.presentation, &boat.world, BOAT_CAMERA_DEFAULT, &frame);
     CHECK(frame.camera.vertical_fov == 55 * DEG2RAD);
     return 0;
 }
@@ -453,7 +457,7 @@ static int validate_planing_attitude(void)
         for (int attitude = 0; attitude < 2; ++attitude) {
             boat.boat.pitch = attitude * .15f;
             boat_scene_frame(
-                &boat.boat, &boat.presentation, &boat.world, BOAT_CAMERA_DEFAULT, &frame);
+                SESSION_VIEW(&boat), &boat.presentation, &boat.world, BOAT_CAMERA_DEFAULT, &frame);
             Matrix hull = MatrixRotateXYZ(frame.player.hull.rotation);
             Matrix expected
                 = MatrixMultiply(MatrixRotateX(boat.boat.pitch), MatrixRotateY(boat.boat.heading));
@@ -623,13 +627,13 @@ static int validate_course(void)
 {
     BoatSession boat;
     boat_session_init(&boat, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
-    boat_reset_course(&boat.boat);
-    CHECK(boat.boat.course.enabled && boat.boat.course.next_gate == 0);
+    boat_session_start_course(&boat);
+    CHECK(boat.course.enabled && boat.course.next_gate == 0);
     CHECK(boat.boat.position.x == 0 && boat.boat.position.y > boat_course_gates[0].centre.y);
     for (int i = 0; i < 120; ++i)
         boat_session_step(&boat, 0, 0);
-    CHECK(boat.boat.course.elapsed == 0);
-    BoatCourse *course = &boat.boat.course;
+    CHECK(boat.course.elapsed == 0);
+    BoatCourse *course = &boat.course;
     // Wrong direction, outside the posts, and later gates cannot start the clock.
     boat_course_step(course, (Vector2) { 0, 34 }, (Vector2) { 0, 36 }, 1);
     boat_course_step(course, (Vector2) { 20, 36 }, (Vector2) { 20, 34 }, 1);
@@ -656,7 +660,7 @@ static int validate_course(void)
     boat_course_step(course, (Vector2) { 0, 50 }, (Vector2) { 0, -60 }, 10);
     CHECK(course->elapsed == finished);
     boat_session_init(&boat, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
-    boat_reset_course(&boat.boat);
+    boat_session_start_course(&boat);
     CHECK(course->elapsed == 0 && course->next_gate == 0);
     // Integration: powered movement starts the timer on the fixed simulation ticks.
     boat.boat.throttle = 1;
@@ -730,7 +734,8 @@ static int validate_buoyancy(void)
         boat.boat.roll = -.09f;
         boat.boat.engine_angle = .3f;
         WaterfrontSceneFrame frame;
-        boat_scene_frame(&boat.boat, &boat.presentation, &boat.world, BOAT_CAMERA_DEFAULT, &frame);
+        boat_scene_frame(
+            SESSION_VIEW(&boat), &boat.presentation, &boat.world, BOAT_CAMERA_DEFAULT, &frame);
         Matrix expected = MatrixMultiply(
             MatrixMultiply(MatrixRotateZ(boat.boat.roll), MatrixRotateX(boat.boat.pitch)),
             MatrixRotateY(boat.boat.heading));
@@ -774,7 +779,8 @@ static int validate_buoyancy(void)
                     if (p.lifetime <= 0)
                         continue;
                     float surface
-                        = boat_water_query(boat.world.water, p.position, boat.boat.time).height;
+                        = boat_water_query(boat.world.water, p.position, boat_session_time(&boat))
+                              .height;
                     if (!p.spray)
                         CHECK(fabsf(p.height - surface - .015f) < .00001f);
                     else
@@ -901,7 +907,7 @@ static int validate_gentle_encounters(void)
         CHECK(fast[angle].angular_motion < .4f && fast[angle].vertical_acceleration < 5);
         CHECK(fast[angle].spray_load < .4f);
         WaterfrontSceneFrame frame;
-        boat_scene_frame(&fast[angle].final.boat, &fast[angle].final.presentation,
+        boat_scene_frame(SESSION_VIEW(&fast[angle].final), &fast[angle].final.presentation,
             &fast[angle].final.world, BOAT_CAMERA_DEFAULT, &frame);
         CHECK(frame.camera.up.y == 1 && frame.camera.position.y == BOAT_CAMERA_DEFAULT.height);
         CHECK(frame.player.particle_count > 0);
@@ -910,7 +916,7 @@ static int validate_gentle_encounters(void)
             WaterfrontPlayerParticle p = frame.player.particles[i];
             Vector2 position = { -p.transform.position.x, p.transform.position.z };
             BoatWaterSample water = boat_water_query(
-                fast[angle].final.world.water, position, fast[angle].final.boat.time);
+                fast[angle].final.world.water, position, boat_session_time(&fast[angle].final));
             if (p.spray)
                 CHECK(p.transform.position.y >= water.height);
             else {
@@ -1070,7 +1076,7 @@ static int shared_water(void)
     CHECK(fabsf(flat.boat.pitch - waves.boat.pitch) + fabsf(flat.boat.height - waves.boat.height)
         > .001f);
     boat_session_init(&waves, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
-    CHECK(waves.world.water.amplitude == 0 && waves.boat.time == 0);
+    CHECK(waves.world.water.amplitude == 0 && boat_session_time(&waves) == 0);
     boat_water_destroy();
     return 0;
 }
@@ -1193,7 +1199,7 @@ int main(void)
     };
     WaterfrontSceneFrame frame;
     boat_scene_frame(
-        &player.boat, &player.presentation, &player.world, BOAT_CAMERA_DEFAULT, &frame);
+        SESSION_VIEW(&player), &player.presentation, &player.world, BOAT_CAMERA_DEFAULT, &frame);
     CHECK(frame.player_active && frame.time == 3);
     CHECK(frame.player.hull.position.x == -4 && frame.player.hull.position.z == 9);
     CHECK(fabsf(frame.player.engine.rotation.y - .5f) < .0001f);
@@ -1203,7 +1209,7 @@ int main(void)
     CHECK(frame.player.particles[1].transform.position.y == 1);
     boat_session_init(&player, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
     boat_scene_frame(
-        &player.boat, &player.presentation, &player.world, BOAT_CAMERA_DEFAULT, &frame);
+        SESSION_VIEW(&player), &player.presentation, &player.world, BOAT_CAMERA_DEFAULT, &frame);
     CHECK(frame.time == 0 && frame.player.particle_count == 0);
     waterfront_scene_evaluate(0, true, &frame);
     CHECK(!frame.player_active);

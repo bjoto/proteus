@@ -65,7 +65,6 @@ void timed_boat_step(BoatSession *session, float steering, float throttle,
                     boat_presentation_reset(&objects->other_presentation);
                     other->position = spawn;
                     other->heading = PI / 2;
-                    other->time = now;
                     objects->wakes.emitters[1]
                         = (BoatWakeObjectEmitter) { .next = objects->wakes.emitters[1].next };
                     objects->waypoint = 0;

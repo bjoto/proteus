@@ -336,3 +336,23 @@ benchmark and the captures for one tree; the hour soaks used
 Both trees' soaks ran concurrently, so CPU seconds are not a timing comparison. Artifacts:
 `build/bench/s2/{out-head,out-new,soak-head,soak-new,fixtures}`. No intended simulation or
 render behavior changed, so this slice adopts no new baseline; C3 remains the reference.
+
+## S3 basin comparison — 2026-10-23
+
+The [S3 basin slice](BOATING_FOUNDATIONS_PLAN.md#s3-basin-slice-handoff--2026-10-23) moves course
+and run orchestration into the session, adds `BoatViewState` and defers finish saves until after
+the tick loop. It was compared against a detached `65804ea` worktree with the same setup:
+MacBookPro18,2 (M1 Max, macOS 26.6.2), Release AppleClang 21.0.0.21000101 and
+`-DFETCHCONTENT_SOURCE_DIR_RAYLIB`. Both trees ran `build/bench/s3/compare.sh` (a copy of the S2
+script) concurrently. Afterwards, the hour soaks ran on the new tree.
+
+| Check | Result |
+| --- | --- |
+| Validators/review tools | 18 outputs exit 0 and match except the object-wake timing line and the replay validator's new S3 flush notices |
+| Benchmark trace | Byte-identical state CSV, hash `2c318477117e222e`; p50 0.069 ms vs 0.068 ms |
+| Hour soaks, calm/waves | Hashes `43dfc74ddac0055d` / `56e31ce5c3d7a7c4`, equal to C3 and S1/S2; the six frames match the S1/S2 soak frames byte for byte |
+| Captures | The same 54 CPU/GPU frames as S1/S2 are byte-identical to `65804ea` |
+
+The concurrent runs make the timings unsuitable for comparison. Artifacts are in
+`build/bench/s3/{out-head,out-new,soak-new,fixtures}`. No simulation or render behavior was
+intended to change, so C3 remains the reference baseline.

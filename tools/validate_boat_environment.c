@@ -1,6 +1,6 @@
 #include "boat_clock.h"
 #include "boat_map.h"
-#include "boat_session.h"
+#include "boat_test_session.h"
 #include "raymath.h"
 #include "rlgl.h"
 #include "waterfront_scene.h"
@@ -245,7 +245,8 @@ static int player_wake_checks(void)
         max_height = fmaxf(max_height, fabsf(a.boat.height));
         if (tick > 720 && tick < 1440)
             encounter = fmaxf(encounter,
-                fabsf(boat_water_query(a.world.water, a.boat.position, a.boat.time).height));
+                fabsf(boat_water_query(a.world.water, a.boat.position, boat_session_time(&a))
+                        .height));
     }
     CHECK(encounter > .05f && max_height > .1f);
     CHECK(

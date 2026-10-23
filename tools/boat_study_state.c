@@ -13,14 +13,14 @@ static void value(uint64_t *hash, const char *name, double number)
         *hash *= UINT64_C(1099511628211);
     }
 }
-uint64_t boat_study_state_hash(uint64_t hash, const Boat *b, const ObjectStudy *s)
+uint64_t boat_study_state_hash(uint64_t hash, const Boat *b, double time, const ObjectStudy *s)
 {
 #define B(f) value(&hash, #f, b->f)
     B(position.x);
     B(position.y);
     B(velocity.x);
     B(velocity.y);
-    B(time);
+    value(&hash, "time", time);
     B(heading);
     B(throttle);
     B(engine_response);

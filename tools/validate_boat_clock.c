@@ -66,9 +66,7 @@ static int reduction_checks(void)
 
 static uint64_t physical_hash(const Boat *boat, const ObjectStudy *study)
 {
-    Boat copy = *boat;
-    copy.time = 0;
-    return boat_study_state_hash(BOAT_STUDY_HASH_SEED, &copy, study);
+    return boat_study_state_hash(BOAT_STUDY_HASH_SEED, boat, 0, study);
 }
 
 // Calm-water handling and arcade wakes depend only on relative ticks: starting the fixed
@@ -88,7 +86,7 @@ static int calm_independence(void)
         for (int i = 0; i < 3; ++i) {
             demo_step(&sessions[i], tick, NULL, NULL, &studies[i]);
             CHECK(sessions[i].tick == starts[i] + (uint64_t)tick + 1);
-            CHECK(sessions[i].boat.time == boat_tick_seconds(sessions[i].tick));
+            CHECK(boat_session_view(&sessions[i]).time == boat_tick_seconds(sessions[i].tick));
             if (i)
                 CHECK(physical_hash(&sessions[i].boat, &studies[i])
                     == physical_hash(&sessions[0].boat, &studies[0]));
@@ -124,7 +122,7 @@ static bool boat_finite(const Boat *b)
     for (size_t i = 0; i < sizeof(values) / sizeof(values[0]); ++i)
         if (!isfinite(values[i]))
             return false;
-    return isfinite(b->time);
+    return true;
 }
 
 // Time-driven water, traffic and moored boats at one day and thirty days: cheap direct
@@ -149,7 +147,8 @@ static int large_time_locations(void)
                 boat_session_step(&session, Clamp((wheel - boat->wheel) / BOAT_STEP, -1, 1),
                     Clamp((throttle - boat->throttle) / (.5f * BOAT_STEP), -1, 1));
                 CHECK(boat_finite(boat) && fabsf(boat->height) < 1.5f);
-                CHECK(boat->time == boat_tick_seconds(starts[s] + (uint64_t)tick + 1));
+                CHECK(boat_session_time(&session)
+                    == boat_tick_seconds(starts[s] + (uint64_t)tick + 1));
                 if (location)
                     CHECK(boat_map_water(boat->position, 0));
                 else
@@ -159,9 +158,10 @@ static int large_time_locations(void)
             }
             CHECK(peak > .02f); // The hull actually rides the time-driven waves.
             WaterfrontSceneFrame frame;
+            BoatViewState view = boat_session_view(&session);
             boat_scene_frame(
-                boat, &session.presentation, &session.world, BOAT_CAMERA_DEFAULT, &frame);
-            CHECK(frame.time == boat->time);
+                &view, &session.presentation, &session.world, BOAT_CAMERA_DEFAULT, &frame);
+            CHECK(frame.time == boat_session_time(&session));
         }
         boat_map_destroy();
     }
@@ -175,31 +175,34 @@ static int replay_world_time(const char *path)
 {
     BoatSession session;
     boat_session_init(&session, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
-    boat_reset_course(&session.boat);
+    boat_session_start_course(&session);
     boat_session_set_tick(&session, 30 * DAY_TICKS + 17);
     Boat *boat = &session.boat;
     BoatReplay run = { 0 }, loaded = { 0 };
     const Vector2 points[] = { { 0, 37 }, { 22, 7 }, { -22, -23 }, { 0, -55 } };
     for (int leg = 0; leg < 3 && !run.complete; ++leg)
         for (int tick = 1; tick <= 480 && !run.complete; ++tick) {
-            BoatReplaySample before = boat_replay_pose(boat, &session.presentation);
+            BoatReplaySample before
+                = boat_replay_pose(boat, &session.presentation, boat_session_time(&session));
             float t = (float)tick / 480;
             boat->position = Vector2Lerp(points[leg], points[leg + 1], t);
             boat->velocity = Vector2Scale(Vector2Subtract(boat->position, before.position), 120);
             boat->heading = session.presentation.camera_heading
                 = atan2f(boat->velocity.x, -boat->velocity.y);
             boat_session_set_tick(&session, session.tick + 1);
-            boat_course_step(&boat->course, before.position, boat->position, BOAT_TICK_SECONDS);
-            boat_replay_record(&run, before, boat, &session.presentation, &session.world);
+            boat_course_step(&session.course, before.position, boat->position, BOAT_TICK_SECONDS);
+            boat_replay_record(&run, before,
+                boat_replay_pose(boat, &session.presentation, boat_session_time(&session)),
+                &session.course, session.world.water.amplitude != 0);
         }
     CHECK(run.complete && run.samples[0].world_time > 30 * 86400.0);
     CHECK(boat_replay_save(&run, path) && boat_replay_load(&loaded, path));
     CHECK(loaded.count == run.count);
     for (size_t i = 0; i < run.count; ++i)
         CHECK(loaded.samples[i].world_time == run.samples[i].world_time);
-    Boat view;
+    BoatViewState view;
     CHECK(boat_replay_sample(&loaded, loaded.samples[1].at, &view, NULL));
-    CHECK(view.replay_view && view.time == loaded.samples[1].world_time);
+    CHECK(view.time == loaded.samples[1].world_time);
     boat_replay_destroy(&run);
     boat_replay_destroy(&loaded);
     remove(path);
@@ -253,9 +256,7 @@ static int soak(double seconds, const char *directory, bool waves)
             ++recoveries;
         }
         CHECK(boat_finite(boat) && boat_finite(&study.other));
-        CHECK(session.tick == tick + 1 && study.other.time == boat_session_time(&session)
-            && study.wakes.tick == tick + 1);
-        CHECK(boat->time == boat_tick_seconds(session.tick));
+        CHECK(session.tick == tick + 1 && study.wakes.tick == tick + 1);
         CHECK(fabsf(boat->position.x) < BOAT_BASIN_HALF_X
             && fabsf(boat->position.y) < BOAT_BASIN_HALF_Z);
         CHECK(study.wakes.live <= BOAT_OBJECT_CAPACITY
@@ -264,7 +265,7 @@ static int soak(double seconds, const char *directory, bool waves)
         max_speed = fmaxf(max_speed, Vector2Length(boat->velocity));
         max_height = fmaxf(max_height, fabsf(boat->height));
         if ((tick + 1) % 2 == 0)
-            hash = boat_study_state_hash(hash, boat, &study);
+            hash = boat_study_state_hash(hash, boat, boat_session_time(&session), &study);
         if ((tick + 1) % (600 * 120) == 0)
             printf("soak minute=%" PRIu64 " emitted=%" PRIu64 " live=%u peak=%u landings=%" PRIu64
                    " "
@@ -277,8 +278,10 @@ static int soak(double seconds, const char *directory, bool waves)
                 CHECK(snprintf(path, sizeof(path), "%s/soak%s-%" PRIu64 "s.png", directory,
                           waves ? "-waves" : "", samples[s] / 120)
                     < (int)sizeof(path));
-                CHECK(boat_draw_with_ghost(&renderer, pixels, 320, 200, boat, &session.presentation,
-                    &session.world, BOAT_CAMERA_DEFAULT, &study.other,
+                BoatViewState view = boat_session_view(&session);
+                BoatViewState other = { .boat = study.other, .time = view.time };
+                CHECK(boat_draw_with_ghost(&renderer, pixels, 320, 200, &view,
+                    &session.presentation, &session.world, BOAT_CAMERA_DEFAULT, &other,
                     &study.other_presentation.flag, 1));
                 Image image = { pixels, 320, 200, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 };
                 CHECK(ExportImage(image, path));
@@ -289,9 +292,9 @@ static int soak(double seconds, const char *directory, bool waves)
     printf("soak=ok seconds=%.0f waves=%d ticks=%" PRIu64 " time=%.17g emitted=%" PRIu64
            " expired=%" PRIu64 " peak_live=%u/%d landings=%" PRIu64 " recoveries=%" PRIu64
            " max_speed=%.3f max_height=%.3f hash=%016" PRIx64 " cpu_s=%.2f\n",
-        seconds, waves, session.tick, boat->time, study.wakes.emitted, study.wakes.expired,
-        study.wakes.peak_live, BOAT_OBJECT_CAPACITY, landings + boat->landings, recoveries,
-        max_speed, max_height, hash, cpu);
+        seconds, waves, session.tick, boat_session_time(&session), study.wakes.emitted,
+        study.wakes.expired, study.wakes.peak_live, BOAT_OBJECT_CAPACITY, landings + boat->landings,
+        recoveries, max_speed, max_height, hash, cpu);
     renderer3d_destroy(&renderer);
     free(pixels);
     return 0;

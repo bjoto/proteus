@@ -19,9 +19,9 @@ static void baseline_reset(
 }
 
 static void baseline_track(
-    ObjectStudy *study, const Boat *boat, const BoatWorld *world, unsigned id)
+    ObjectStudy *study, const Boat *boat, const BoatWorld *world, double time, unsigned id)
 {
-    BoatWakeStern s = boat_wake_stern(boat, world, boat->time);
+    BoatWakeStern s = boat_wake_stern(boat, world, time);
     if (!boat_wake_objects_track(&study->wakes, id, (Vector2) { (float)s.x, (float)s.z },
             (float)hypot(s.vx, s.vz), (float)s.wet)) {
         fprintf(stderr, "Wake object emission contract failed.\n");
@@ -36,11 +36,12 @@ static void baseline_step(BoatSession *session, float steering, float throttle,
     double started = boat_profile_time(IsWindowReady());
     if (objects)
         boat_wake_objects_advance(&objects->wakes);
-    BoatWakeStern before
-        = wake ? boat_wake_stern(boat, &session->world, boat->time) : (BoatWakeStern) { 0 };
+    BoatWakeStern before = wake ? boat_wake_stern(boat, &session->world, boat_session_time(session))
+                                : (BoatWakeStern) { 0 };
     boat_session_step(session, steering, throttle);
+    double now = boat_session_time(session);
     if (objects) {
-        baseline_track(objects, boat, &session->world, 0);
+        baseline_track(objects, boat, &session->world, now, 0);
         if (objects->crossing) {
             const Vector2 route[] = { { 60, -12 }, { 0, -55 }, { -60, -12 }, { 0, 45 } };
             Boat *other = &objects->other;
@@ -50,7 +51,9 @@ static void baseline_step(BoatSession *session, float steering, float throttle,
             float target = atan2f(delta.x, -delta.y);
             float error = remainderf(target - other->heading, 2 * PI);
             float wheel = Clamp(2 * error - other->yaw_velocity, -1, 1);
-            boat_step(other, &objects->other_world, boat_session_time(session),
+            // Recovery once narrowed the crossing boat's cached time to float for this tick.
+            double other_time = now;
+            boat_step(other, &objects->other_world, now,
                 Clamp((wheel - other->wheel) / BOAT_STEP, -1, 1),
                 Clamp((.75f - other->throttle) / (.5f * BOAT_STEP), -1, 1));
             boat_collide_pair(boat, 1, other, 1.6f);
@@ -58,23 +61,20 @@ static void baseline_step(BoatSession *session, float steering, float throttle,
                 objects->recovery_time += BOAT_STEP;
                 Vector2 spawn = { -65, -12 };
                 if (objects->recovery_time >= 2 && Vector2Distance(boat->position, spawn) > 10) {
-                    float time = other->time;
+                    other_time = (float)other_time;
                     boat_reset(other);
                     other->position = spawn;
                     other->heading = PI / 2;
-                    other->time = time;
                     objects->wakes.emitters[1]
                         = (BoatWakeObjectEmitter) { .next = objects->wakes.emitters[1].next };
                     objects->waypoint = 0;
                     objects->recovery_time = 0;
                 }
             }
-            baseline_track(objects, other, &objects->other_world, 1);
+            baseline_track(objects, other, &objects->other_world, other_time, 1);
         }
     }
-    if (wake
-        && !boat_wake_player_step(
-            wake, before, boat_wake_stern(boat, &session->world, boat->time))) {
+    if (wake && !boat_wake_player_step(wake, before, boat_wake_stern(boat, &session->world, now))) {
         fprintf(stderr, "Wake field update failed.\n");
         exit(1);
     }

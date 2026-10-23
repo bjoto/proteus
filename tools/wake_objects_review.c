@@ -1,6 +1,6 @@
 /* Arcade wake contracts, actual hull jumps, bounded stress and complete GPU timing. */
 #include "boat_gpu.h"
-#include "boat_session.h"
+#include "boat_test_session.h"
 #include "external/glad.h"
 #include "raymath.h"
 #include "rlgl.h"
@@ -407,7 +407,7 @@ static void curved_captures(BoatGpu *gpu, bool visible)
             boat_wake_objects_advance(&world);
         }
         boat_session_set_tick(&boat, world.tick);
-        boat_gpu_draw(gpu, &boat.boat, &boat.presentation, &boat.world, camera);
+        boat_gpu_draw(gpu, SESSION_VIEW(&boat), &boat.presentation, &boat.world, camera);
         CHECK(!gpu->failed);
         if (frame == 0 || frame == 60 || frame == 120) {
             Image image = LoadImageFromTexture(gpu->target.texture);
@@ -538,7 +538,8 @@ static void runtime(bool graphics, bool visible)
             SetTargetFPS(60);
         CHECK(IsWindowReady() && boat_gpu_init(&gpu, false));
         double cold_begin = GetTime();
-        boat_gpu_draw(&gpu, &boat.boat, &boat.presentation, &boat.world, BOAT_CAMERA_DEFAULT);
+        boat_gpu_draw(
+            &gpu, SESSION_VIEW(&boat), &boat.presentation, &boat.world, BOAT_CAMERA_DEFAULT);
         glFinish();
         cold_draw_ms = (GetTime() - cold_begin) * 1000;
     }
@@ -560,7 +561,8 @@ static void runtime(bool graphics, bool visible)
         }
         double stepped = graphics ? GetTime() : (double)clock() / CLOCKS_PER_SEC;
         if (graphics) {
-            boat_gpu_draw(&gpu, &boat.boat, &boat.presentation, &boat.world, BOAT_CAMERA_DEFAULT);
+            boat_gpu_draw(
+                &gpu, SESSION_VIEW(&boat), &boat.presentation, &boat.world, BOAT_CAMERA_DEFAULT);
             CHECK(!gpu.failed);
             glFinish();
             if (visible) {

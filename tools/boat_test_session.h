@@ -2,6 +2,12 @@
 #define BOAT_TEST_SESSION_H
 #include "boat_session.h"
 
+// The live view of *SESSION for one draw or scene call (block-scoped compound literal).
+#define SESSION_VIEW(session)                                                                      \
+    (&(BoatViewState) { .boat = (session)->boat,                                                   \
+        .time = boat_session_time(session),                                                        \
+        .course = (session)->course })
+
 // Test fixture: BOAT, as authored, at tick zero in its own calm basin world.
 static inline BoatSession basin_session(Boat boat)
 {

@@ -42,10 +42,10 @@ static bool same_state(const BoatSession *x, const BoatSession *y)
     // Presentation particles do not feed physics; the camera follow is compared separately.
 #define SAME(member) (a->member == b->member)
     return SAME(position.x) && SAME(position.y) && SAME(velocity.x) && SAME(velocity.y)
-        && SAME(time) && SAME(heading) && SAME(yaw_velocity) && SAME(planing) && SAME(height)
-        && SAME(vertical_velocity) && SAME(pitch) && SAME(pitch_velocity) && SAME(roll)
-        && SAME(roll_velocity) && SAME(turn_roll_load) && SAME(throttle) && SAME(engine_response)
-        && SAME(wheel) && SAME(engine_angle) && SAME(wave_spray)
+        && x->tick == y->tick && SAME(heading) && SAME(yaw_velocity) && SAME(planing)
+        && SAME(height) && SAME(vertical_velocity) && SAME(pitch) && SAME(pitch_velocity)
+        && SAME(roll) && SAME(roll_velocity) && SAME(turn_roll_load) && SAME(throttle)
+        && SAME(engine_response) && SAME(wheel) && SAME(engine_angle) && SAME(wave_spray)
         && x->presentation.camera_heading == y->presentation.camera_heading;
 #undef SAME
 }
@@ -106,7 +106,7 @@ static int validate_core(void)
     CHECK(boat.boat.turn_roll_load == 0);
     boat.boat.turn_roll_load = 3;
     boat_session_init(&boat, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
-    boat_reset_course(&boat.boat);
+    boat_session_start_course(&boat);
     CHECK(boat.boat.turn_roll_load == 0);
     // Saturated demand is a bounded torque, integrated through angular velocity.
     for (int sign = -1; sign <= 1; sign += 2) {
@@ -166,7 +166,7 @@ static int validate_sides(void)
             boat.boat.heading = headings[i];
             boat.boat.roll = sign * .1f;
             WaterfrontPlayerState pose = { 0 };
-            boat_player_pose(&boat.boat, &boat.presentation.flag, &pose);
+            boat_player_pose(SESSION_VIEW(&boat), &boat.presentation.flag, &pose);
             Matrix rotation = MatrixRotateXYZ(pose.hull.rotation);
             // Simulation starboard is renderer local negative X at every heading.
             Vector3 starboard = Vector3Transform((Vector3) { -.65f, 0, 0 }, rotation);
@@ -435,9 +435,12 @@ static int validate_blend_flow(void)
             boat_session_init(&reference, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
             reference.boat.planing = still.boat.planing;
             float initial_wet
-                = boat_wake_stern(&reference.boat, &reference.world, reference.boat.time).wet > 0;
+                = boat_wake_stern(&reference.boat, &reference.world, boat_session_time(&reference))
+                      .wet
+                > 0;
             float current_wet
-                = boat_wake_stern(&contact.boat, &contact.world, contact.boat.time).wet > 0;
+                = boat_wake_stern(&contact.boat, &contact.world, boat_session_time(&contact)).wet
+                > 0;
             float stern_slip = slip - 1.6f * (8.0f / 30);
             float skeg_load = -.1f * hypotf(8, stern_slip) * stern_slip;
             float expected_load = target + skeg_load * (current_wet - initial_wet);
@@ -709,7 +712,7 @@ static bool footprint_clear(const BoatSession *session)
     WaterfrontTrafficContact contact;
     return !mapped
         || !waterfront_traffic_contact(
-            boat->position, boat->heading, 2, 1.6f, .75f, boat->time, &contact);
+            boat->position, boat->heading, 2, 1.6f, .75f, boat_session_time(session), &contact);
 }
 
 static int validate_long_transitions(void)

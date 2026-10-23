@@ -22,11 +22,11 @@ typedef struct {
 } BoatGpu;
 
 bool boat_gpu_init(BoatGpu *gpu, bool aa);
-void boat_gpu_draw(BoatGpu *gpu, const Boat *boat, const BoatPresentation *presentation,
+void boat_gpu_draw(BoatGpu *gpu, const BoatViewState *view, const BoatPresentation *presentation,
     const BoatWorld *world, BoatCamera camera);
 void boat_gpu_destroy(BoatGpu *gpu);
-void boat_gpu_draw_with_ghost(BoatGpu *gpu, const Boat *boat, const BoatPresentation *presentation,
-    const BoatWorld *world, BoatCamera camera, const Boat *ghost, const BoatFlag *ghost_flag,
-    float opacity);
+void boat_gpu_draw_with_ghost(BoatGpu *gpu, const BoatViewState *view,
+    const BoatPresentation *presentation, const BoatWorld *world, BoatCamera camera,
+    const BoatViewState *ghost, const BoatFlag *ghost_flag, float opacity);
 
 #endif

@@ -2,7 +2,6 @@
 #define PROTEUS_BOAT_H
 
 #include "boat_clock.h"
-#include "boat_course.h"
 #include "boat_wake_player.h"
 #include "boat_world.h"
 
@@ -12,14 +11,10 @@
 
 typedef enum { BOAT_WATERBORNE, BOAT_AIRBORNE, BOAT_LANDING, BOAT_CAPSIZED } BoatMotionState;
 
-// Physical boat state. Cosmetic particles, cloth and camera follow live in BoatPresentation.
+// Physical boat state. Cosmetic particles, cloth and camera follow live in BoatPresentation;
+// course progress and the clock live in BoatSession.
 typedef struct {
     Vector2 position; // Water-plane X/Z coordinates.
-    BoatCourse course;
-    // View cache of the last stepped world time (the session tick), or continuous recorded
-    // time for a replay view. Physics never reads it; S3 replaces it with a view state.
-    double time;
-    bool replay_view; // A sampled view never enters boat_step.
     Vector2 velocity;
     float heading; // Zero faces north (-Z); positive turns right.
     float throttle; // Signed thrust command, -1 (reverse) through 0 (idle) to 1 (forward).
@@ -46,8 +41,8 @@ typedef struct {
 // Basin spawn at time zero; boat_reset_location() uses a definition's spawn instead.
 void boat_reset(Boat *boat);
 void boat_reset_location(Boat *boat, const BoatWorldDefinition *definition);
-void boat_reset_course(Boat *boat);
 // Advance one fixed tick ending at world time NOW; the caller owns the clock (BoatSession).
+// Translation starts from the position given, so callers sweep gates from it.
 // Only WORLD's water history is written. Inputs are adjustment rates in -1..1; zero centres
 // the wheel and holds throttle. Opposite steering unwinds the wheel three times faster.
 void boat_step(Boat *boat, BoatWorld *world, double now, float wheel_change, float throttle_change);

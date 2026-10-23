@@ -95,11 +95,12 @@ int main(int argc, char **argv)
             demo_step(&session, (int)tick++, NULL, NULL, &objects);
         double elapsed = (boat_profile_time(false) - start) * 1000;
         /* Trace serialization is deliberately outside the measured simulation interval. */
-        hash = boat_study_state_hash(hash, boat, &objects);
-        trace[f] = (StateTrace) { hash, objects.wakes.emitted, boat->time, boat->position.x,
-            boat->position.y, boat->velocity.x, boat->velocity.y, boat->height,
-            boat->vertical_velocity, (unsigned)boat->motion_state, boat->landings,
-            objects.wakes.live };
+        double now = boat_session_time(&session);
+        hash = boat_study_state_hash(hash, boat, now, &objects);
+        trace[f]
+            = (StateTrace) { hash, objects.wakes.emitted, now, boat->position.x, boat->position.y,
+                  boat->velocity.x, boat->velocity.y, boat->height, boat->vertical_velocity,
+                  (unsigned)boat->motion_state, boat->landings, objects.wakes.live };
         if (f >= warmup)
             samples[f - warmup] = elapsed;
     }

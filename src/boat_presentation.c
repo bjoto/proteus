@@ -177,8 +177,6 @@ static void water_step(
 void boat_presentation_step(
     BoatPresentation *presentation, const Boat *boat, const BoatWorld *world, double now)
 {
-    if (boat->replay_view)
-        return;
     // Heading is final once contacts resolve; buoyancy and the cloth leave it unchanged.
     float camera_delta = remainderf(boat->heading - presentation->camera_heading, 2 * PI);
     presentation->camera_heading = remainderf(

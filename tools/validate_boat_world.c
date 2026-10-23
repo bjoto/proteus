@@ -3,6 +3,7 @@
  * lifecycle checks. */
 #include "boat_map.h"
 #include "boat_study_state.h"
+#include "boat_test_session.h"
 #include "boat_view.h"
 #include "raymath.h"
 
@@ -131,19 +132,19 @@ static int views(void)
     Color *again = malloc(320 * 200 * sizeof(*again));
     CHECK(pixels && again);
     boat_scene_frame(
-        &session.boat, &session.presentation, &session.world, BOAT_CAMERA_DEFAULT, &frame);
-    CHECK(boat_draw(&renderer, pixels, 320, 200, &session.boat, &session.presentation,
+        SESSION_VIEW(&session), &session.presentation, &session.world, BOAT_CAMERA_DEFAULT, &frame);
+    CHECK(boat_draw(&renderer, pixels, 320, 200, SESSION_VIEW(&session), &session.presentation,
         &session.world, BOAT_CAMERA_DEFAULT));
     boat_scene_frame(
-        &session.boat, &session.presentation, &session.world, BOAT_CAMERA_DEFAULT, &frame);
-    CHECK(boat_draw(&renderer, again, 320, 200, &session.boat, &session.presentation,
+        SESSION_VIEW(&session), &session.presentation, &session.world, BOAT_CAMERA_DEFAULT, &frame);
+    CHECK(boat_draw(&renderer, again, 320, 200, SESSION_VIEW(&session), &session.presentation,
         &session.world, BOAT_CAMERA_DEFAULT));
     CHECK(same(&session, &before));
     CHECK(memcmp(pixels, again, 320 * 200 * sizeof(*pixels)) == 0);
     CHECK(frame.time == boat_session_time(&session));
     CHECK(frame.player.particle_count == live_particles(&session.presentation));
     boat_session_respawn(&session);
-    CHECK(session.tick == before.tick && session.boat.time == before.boat.time);
+    CHECK(session.tick == before.tick && boat_session_time(&session) == boat_session_time(&before));
     CHECK(memcmp(&session.world.water, &before.world.water, sizeof(session.world.water)) == 0);
     CHECK(Vector2Equals(session.boat.position, session.world.definition->spawn));
     CHECK(memcmp(&session.presentation, &rest, sizeof(rest)) == 0);
@@ -185,8 +186,10 @@ static int presentation_toggle(void)
     for (int tick = 0; tick < 3840; ++tick) {
         demo_step(&on, tick, NULL, NULL, &objects_on);
         demo_step(&off, tick, NULL, NULL, &objects_off);
-        CHECK(boat_study_state_hash(BOAT_STUDY_HASH_SEED, &on.boat, &objects_on)
-            == boat_study_state_hash(BOAT_STUDY_HASH_SEED, &off.boat, &objects_off));
+        CHECK(boat_study_state_hash(
+                  BOAT_STUDY_HASH_SEED, &on.boat, boat_session_time(&on), &objects_on)
+            == boat_study_state_hash(
+                BOAT_STUDY_HASH_SEED, &off.boat, boat_session_time(&off), &objects_off));
         CHECK(memcmp(&objects_on.other, &objects_off.other, sizeof(Boat)) == 0);
     }
     CHECK(objects_on.wakes.emitted > 0 && objects_on.other_presentation.flag.initialized);
@@ -220,11 +223,11 @@ static int render_rates(void)
                 drive(&shown, (int)shown.tick);
                 accumulator -= BOAT_TICK_SECONDS;
             }
-            boat_scene_frame(
-                &shown.boat, &shown.presentation, &shown.world, BOAT_CAMERA_DEFAULT, &frame);
+            boat_scene_frame(SESSION_VIEW(&shown), &shown.presentation, &shown.world,
+                BOAT_CAMERA_DEFAULT, &frame);
             if (frames++ % rates[r] == 0)
-                CHECK(boat_draw(&renderer, pixels, 320, 200, &shown.boat, &shown.presentation,
-                    &shown.world, BOAT_CAMERA_DEFAULT));
+                CHECK(boat_draw(&renderer, pixels, 320, 200, SESSION_VIEW(&shown),
+                    &shown.presentation, &shown.world, BOAT_CAMERA_DEFAULT));
         }
         CHECK(same(&shown, &reference));
         printf("render_rate=%dHz frames=%d ok\n", rates[r], frames);

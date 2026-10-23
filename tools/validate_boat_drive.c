@@ -29,13 +29,14 @@ int main(void)
     for (int tick = 0; tick < 3840; ++tick) {
         baseline_demo(&a, tick, NULL, NULL, &wa);
         demo_step(&b, tick, NULL, NULL, &wb);
-        CHECK(boat_study_state_hash(BOAT_STUDY_HASH_SEED, &a.boat, &wa)
-            == boat_study_state_hash(BOAT_STUDY_HASH_SEED, &b.boat, &wb));
+        CHECK(boat_study_state_hash(BOAT_STUDY_HASH_SEED, &a.boat, boat_session_time(&a), &wa)
+            == boat_study_state_hash(BOAT_STUDY_HASH_SEED, &b.boat, boat_session_time(&b), &wb));
         if (tick == 1079 || tick == 2399) {
-            CHECK(boat_draw(
-                &ra, pa, 320, 200, &a.boat, &a.presentation, &a.world, BOAT_CAMERA_DEFAULT));
-            CHECK(boat_draw(
-                &rb, pb, 320, 200, &b.boat, &b.presentation, &b.world, BOAT_CAMERA_DEFAULT));
+            BoatViewState va = boat_session_view(&a), vb = boat_session_view(&b);
+            CHECK(
+                boat_draw(&ra, pa, 320, 200, &va, &a.presentation, &a.world, BOAT_CAMERA_DEFAULT));
+            CHECK(
+                boat_draw(&rb, pb, 320, 200, &vb, &b.presentation, &b.world, BOAT_CAMERA_DEFAULT));
             CHECK(memcmp(pa, pb, sizeof(pa)) == 0);
         }
     }

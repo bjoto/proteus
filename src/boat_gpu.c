@@ -58,10 +58,10 @@ failed:
     return false;
 }
 
-void boat_gpu_draw(BoatGpu *gpu, const Boat *boat, const BoatPresentation *presentation,
+void boat_gpu_draw(BoatGpu *gpu, const BoatViewState *view, const BoatPresentation *presentation,
     const BoatWorld *world, BoatCamera camera)
 {
-    boat_gpu_draw_with_ghost(gpu, boat, presentation, world, camera, NULL, NULL, 0);
+    boat_gpu_draw_with_ghost(gpu, view, presentation, world, camera, NULL, NULL, 0);
 }
 
 static bool candidate_strip(Mesh *m, int first, int rows)
@@ -98,14 +98,15 @@ static bool candidate_strip(Mesh *m, int first, int rows)
     return m->vaoId != 0;
 }
 
-void boat_gpu_draw_with_ghost(BoatGpu *gpu, const Boat *boat, const BoatPresentation *presentation,
-    const BoatWorld *world, BoatCamera camera, const Boat *ghost, const BoatFlag *ghost_flag,
-    float opacity)
+void boat_gpu_draw_with_ghost(BoatGpu *gpu, const BoatViewState *view,
+    const BoatPresentation *presentation, const BoatWorld *world, BoatCamera camera,
+    const BoatViewState *ghost, const BoatFlag *ghost_flag, float opacity)
 {
+    const Boat *boat = &view->boat;
     gpu->failed = false;
     bool mapped = world->definition->mapped;
     WaterfrontSceneFrame frame;
-    boat_scene_frame(boat, presentation, world, camera, &frame);
+    boat_scene_frame(view, presentation, world, camera, &frame);
     if (ghost && opacity > 0) {
         WaterfrontPlayerState pose = { 0 };
         boat_player_pose(ghost, ghost_flag, &pose);

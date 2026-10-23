@@ -4,11 +4,11 @@ Prepared 2026-10-19 against `f60ede8`, following the
 [architecture review](ARCHITECTURE_REVIEW.md). This document owns this technical sequence;
 [BOATING_PLAN.md](BOATING_PLAN.md) continues to own gameplay direction.
 
-Status: P1, P2a, P3a, phase C (C1–C3) and the basin W1/W3 and S1/S2 slices implemented; full
-P2/P3, mapped W1/W3, W2, W4 and the remaining S1 frame consolidation remain pending. Next for the
-[multiplayer prerequisite](MULTIPLAYER_PLAN.md): the basin S3 slice (session-owned course/replay
-orchestration, no file I/O in the physical tick); see the
-[S1/S2 basin handoff](#s1s2-basin-slice-handoff--2026-10-23).
+Status: P1, P2a, P3a, phase C (C1–C3) and the basin W1/W3, S1/S2 and S3 slices implemented;
+full P2/P3, mapped W1/W3, W2, W4, the remaining S1 frame consolidation and the S3 `BoatInput`
+type remain pending. Next for the [multiplayer prerequisite](MULTIPLAYER_PLAN.md): the basin S4
+slice (core-only build target and source-boundary check); see the
+[S3 basin handoff](#s3-basin-slice-handoff--2026-10-23).
 At preparation, the user requested a plan only. Implementation began with P1 on 2026-10-19;
 execute later requested tasks using the protocol below. No additional approval gates are created
 by this plan. Verification of the original planning work is recorded at the end.
@@ -74,7 +74,7 @@ All rows start **pending**. Replace the evidence column with actual dated result
 | W4 | Reload/isolation/resource-lifetime gate | W3 | Pending |
 | S1 | Extract pose, camera, scenery, and drawing | W4 | Basin slice implemented 2026-10-23 ahead of W4 (shared `boat_pose`, `boat_view`, `boat_course_view`); one shared CPU/GPU scene frame pending; [handoff](#s1s2-basin-slice-handoff--2026-10-23) |
 | S2 | Separate cosmetic state from boat simulation | S1 | Basin slice implemented 2026-10-23 (`BoatPresentation`, presentation on/off and 30/60/144 Hz gates); [handoff](#s1s2-basin-slice-handoff--2026-10-23) |
-| S3 | Session-owned course/replay orchestration and finish I/O | S2 | Pending |
+| S3 | Session-owned course/replay orchestration and finish I/O | S2 | Basin slice implemented 2026-10-23 (course and runs in `BoatSession`, `BoatViewState`, finish saves flushed after the tick loop); `BoatInput` type pending; [handoff](#s3-basin-slice-handoff--2026-10-23) |
 | S4 | Shared build targets and dependency checks | S3 | Pending |
 | S5 | Final comparison, playback, and handoff | S4 | Pending |
 
@@ -943,7 +943,8 @@ world/session extraction. No cross-platform bit identity or user acceptance is i
 - **Temporary adapters and their removal tasks:** `waterfront_scene_select_river()` plus the
   global `boat_map`/`boat_water` mapped caches keyed by `definition->mapped` (mapped W1/W2;
   river and Eriksberg still cannot coexist in one process); `BoatGpu.wave_mapped` patch cache
-  (W2); `Boat.time` as a derived view cache written by `boat_step` (S3); basin scenery/view
+  (W2); `Boat.time` as a derived view cache written by `boat_step` (S3; removed by the
+  [S3 basin slice](#s3-basin-slice-handoff--2026-10-23)); basin scenery/view
   geometry still uses the basin macros rather than the definition (S1 `boat_view`; resolved by
   the [S1/S2 basin slice](#s1s2-basin-slice-handoff--2026-10-23)). The
   scripted crossing boat keeps its original calm basin (`ObjectStudy.other_world`, sharing only
@@ -1041,3 +1042,68 @@ world/session extraction. No cross-platform bit identity or user acceptance is i
 - **Limits:** One machine; Windows/Linux/browser not built or run. The GPU basin plane is still
   cached without a world key (one basin definition exists). Sessions now carry presentation by
   value (about 18 KB) even when disabled; a core-only session layout belongs to S4.
+
+## S3 basin slice handoff — 2026-10-23
+
+- **Status / next:** The basin subset of S3 from the
+  [multiplayer prerequisite slices](#multiplayer-prerequisite-slices--2026-10-23) is
+  implemented, starting from `65804ea` (only the unrelated untracked `docs/TITLE_SCREEN_PLAN.md`
+  and its `docs/README.md` index row were dirty). Next: the basin S4 slice (core-only build
+  target and source-boundary check). Still pending from full S3: a `BoatInput` type
+  (`boat_session_step`/`boat_step` keep the two signed rate floats).
+- **Course in the session:** `BoatCourse` moved from `Boat` to `BoatSession.course`.
+  `boat_session_step` keeps the boat's position before `boat_step` (where translation starts)
+  and sweeps the gates after it, before presentation, which is the old order. `boat_step`
+  no longer touches course state. `boat_reset_course` became `boat_session_start_course`
+  with `BOAT_COURSE_START`.
+- **Runs in the session:** `BoatReplayRuns` lives in `BoatSession.runs`. With `record_runs`
+  set (`boat_study` sets it for course mode after any screenshot stepping), each course tick
+  records the before/after `boat_replay_pose(boat, presentation, time)`.
+  `boat_replay_record`/`boat_replay_runs_step` now take poses, the course and the waves flag
+  rather than a live boat and world. `boat_session_restart` (R) flushes, re-inits clock, water,
+  boat and presentation, restarts the course and pins the opponent; the runs survive. Session
+  assignment still clones a session without recordings; `boat_session_destroy` frees them.
+- **Finish persistence:** a finish only settles last/best in memory and sets one pending
+  request (`save_best`, `export_last`, `report_finish`). `boat_replay_runs_flush`
+  (`boat_session_flush`) writes the best (with directory creation) and the export, sets the
+  same failure notices as before and prints the notice. `boat_study` flushes after each frame's
+  catch-up tick loop and at shutdown, and reset flushes first. Only a reset replaces last/best,
+  so a pending request cannot lose its run. Saves stay synchronous; no queue beyond one finish.
+- **View state:** `src/boat_view_state.h` holds `BoatViewState { Boat boat; double time;
+  BoatCourse course; }`. `boat_session_view`, `boat_replay_sample` and ghosts produce it. CPU,
+  GPU, scene-frame, player-pose and replay-flag APIs consume it. `Boat.time` and
+  `Boat.replay_view` are gone: physics/presentation have no view flag, and a sampled view
+  is a distinct type. Replay interpolation is unchanged and continuous. The crossing boat is
+  drawn as a view at session time. Tests use `SESSION_VIEW()` from `tools/boat_test_session.h`.
+- **Tools:** `boat_study_state_hash` takes the session time explicitly, in the position the
+  cached field used, so traces and hashes are unchanged. The frozen P2a oracle had only its
+  time sources ported; its float-narrowed crossing-boat recovery time is kept as a local.
+  Audio, input, focus/help, music and presentation stay in `boat_study`. Course recording time
+  is now counted in the tick's physics timing instead of `course_replay_ms`. That metric also
+  covers the flush.
+- **Automated verification:** Apple M1 Max/macOS 26.6.2, Debug common recipe: 88 active CTests
+  pass in 114.2 s; fifteen retired field cases stay disabled. `git diff --check` and
+  `clang-format` pass. `validate_boat_replay` adds checks for the following:
+  - The session-owned recording equals the manually recorded banked course sample for sample.
+  - Neither the best file nor the export exists until the flush.
+  - Ticks after a finish neither record nor save.
+  - Restart keeps last/best, pins the opponent and returns to the course start.
+  - Reset flushes a pending best.
+  - The save-failure notice appears at the flush.
+- **Baseline comparison:** see the
+  [S3 comparison](BOATING_PERFORMANCE.md#s3-basin-comparison--2026-10-23). Release outputs
+  match a detached `65804ea` worktree:
+  - The benchmark state trace (hash `2c318477117e222e`) and 54 CPU/GPU captures are byte for byte.
+  - Both hour soaks keep the C3 hashes; their frames match the S1/S2 run byte for byte.
+  - The validators match apart from the object-wake timing line and the replay validator's new
+    notices.
+  - Representative frames were inspected.
+- **Manual playback:** windowed scripted runs exited 0 and wrote no files: `--course` on GPU and
+  CPU, `--demo`, crossing with waves, Eriksberg waves with the D3 trail, `--replay` and `--ghost`.
+  On 2026-10-23 the user then played the slice on their macOS machine and reported that it
+  seems to work well; which modes and controls were tried was not reported.
+- **Limits:** One machine; Windows/Linux/browser not built or run (browser bests use IDBFS
+  auto-persist, unaffected by save timing). The Release comparison binaries predate a final
+  restart edit (keeping fields instead of a 23 KB session copy); restart has no capture and is
+  covered by the Debug validators. `BoatViewState` still embeds a full `Boat` for pose math;
+  a smaller pose type and the core-only session layout belong to S4.

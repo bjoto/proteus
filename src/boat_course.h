@@ -4,6 +4,8 @@
 #include "raylib.h"
 
 #define BOAT_COURSE_GATES 4
+// Boat position at the start of each attempt, facing the first gate.
+#define BOAT_COURSE_START ((Vector2) { 0, 50 })
 
 typedef struct {
     Vector2 centre;
