@@ -2,6 +2,7 @@
 #include "boat_gpu.h"
 #include "boat_map.h"
 #include "boat_test_session.h"
+#include "boat_water_mesh.h"
 #include "raymath.h"
 #include "rlgl.h"
 
@@ -195,7 +196,7 @@ static int check_gpu_water(void)
 cleanup:
     boat_gpu_destroy(&gpu);
     CloseWindow();
-    boat_water_destroy();
+    boat_water_mesh_destroy();
     return result;
 }
 
@@ -248,7 +249,7 @@ int main(int argc, char **argv)
     if (!check && !output)
         return 2;
     SetTraceLogLevel(LOG_WARNING);
-    waterfront_scene_select_river(river);
+    waterfront_city_select_river(river);
     if (river) {
         stops = river_stops;
         stop_count = sizeof(river_stops) / sizeof(*river_stops);
@@ -436,7 +437,7 @@ int main(int argc, char **argv)
             timing_count ? timings[(timing_count - 1) * 95 / 100] : 0,
             timing_count ? timings[timing_count - 1] : 0);
         const Mesh3D *surface = use_gpu ? NULL : boat_water_surface((BoatWater) { 0 }, 0, true);
-        const Mesh3D *city = waterfront_scene_city_mesh();
+        const Mesh3D *city = waterfront_city_mesh();
         size_t water_count = 0;
         while (water_count < city->triangle_count) {
             const Triangle3D *t = &city->triangles[water_count];
@@ -464,7 +465,7 @@ cleanup:
         boat_gpu_destroy(&gpu);
         CloseWindow();
     }
-    boat_water_destroy();
+    boat_water_mesh_destroy();
     boat_map_destroy();
     return result;
 }

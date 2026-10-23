@@ -6,18 +6,6 @@
 #include <math.h>
 #include <stdint.h>
 
-#include "../assets/geometry/eriksberg/geometry.h"
-#include "../assets/geometry/river/geometry.h"
-
-static bool river_enabled;
-
-void waterfront_scene_select_river(bool enabled) { river_enabled = enabled; }
-
-bool waterfront_scene_is_bridge_triangle(size_t index)
-{
-    return river_enabled && index >= river_bridge_first_triangle;
-}
-
 // Tiny, flat-coloured meshes keep the toy-boat details identical in both renderers.
 static void player_box(Vector3 *vertices, Triangle3D *triangles, int *count, Vector3 position,
     Vector3 size, Color color)
@@ -395,15 +383,6 @@ void waterfront_scene_evaluate(float time, bool short_route, WaterfrontSceneFram
     };
     frame->bridge_color = (Color) { 119, 128, 145, 255 };
     waterfront_scene_evaluate_actors(time, (BoatWater) { 0 }, frame);
-}
-
-const Mesh3D *waterfront_scene_city_mesh(void)
-{
-    static const Mesh3D mesh = { waterfront_vertices, waterfront_triangles,
-        sizeof(waterfront_triangles) / sizeof(waterfront_triangles[0]) };
-    static const Mesh3D river
-        = { river_vertices, river_triangles, sizeof(river_triangles) / sizeof(river_triangles[0]) };
-    return river_enabled ? &river : &mesh;
 }
 
 WaterfrontStreet waterfront_scene_street(int index)

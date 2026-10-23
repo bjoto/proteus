@@ -119,9 +119,9 @@ static void windows(Renderer3D *r)
 {
     // Each imported wall starts with a triangle a,c,b (two ground vertices).
     // Derive inset windows from that edge, preserving arbitrary facade orientation.
-    const Mesh3D *city = waterfront_scene_city_mesh();
+    const Mesh3D *city = waterfront_city_mesh();
     for (size_t i = 0; i < city->triangle_count; ++i) {
-        if (waterfront_scene_is_bridge_triangle(i))
+        if (waterfront_city_is_bridge_triangle(i))
             continue;
         const Triangle3D *t = &city->triangles[i];
         Vector3 a = city->vertices[t->vertices[0]];
@@ -246,7 +246,7 @@ bool waterfront_draw_frame(
     waterfront_sky_draw(pixels, width, height, frame->camera);
     if (!renderer3d_begin(r, pixels, width, height, frame->camera, waterfront_sun_direction()))
         return false;
-    renderer3d_draw_mesh(r, waterfront_scene_city_mesh(), (Transform3D) { .scale = { 1, 1, 1 } });
+    renderer3d_draw_mesh(r, waterfront_city_mesh(), (Transform3D) { .scale = { 1, 1, 1 } });
     // Dockbron: approximate mapped endpoints and assumed deck elevation, for composition.
     renderer3d_draw_box(r, frame->bridge, frame->bridge_color);
     waterline_details(r);
@@ -267,7 +267,7 @@ bool waterfront_draw_boating(
     waterfront_sky_draw(pixels, width, height, camera);
     if (!renderer3d_begin(r, pixels, width, height, camera, waterfront_sun_direction()))
         return false;
-    Mesh3D city = *waterfront_scene_city_mesh();
+    Mesh3D city = *waterfront_city_mesh();
     if (omit_water) {
         while (city.triangle_count) {
             const Triangle3D *t = city.triangles;
@@ -318,7 +318,7 @@ static float triangle_distance_squared(Vector3 p, Vector3 a, Vector3 b, Vector3 
 
 bool waterfront_check_routes(void)
 {
-    const Mesh3D *city = waterfront_scene_city_mesh();
+    const Mesh3D *city = waterfront_city_mesh();
     for (int route = 0; route < 3; ++route) {
         bool short_route = route != 0;
         float duration = route == 2 ? WATERFRONT_DEMO_DURATION : waterfront_duration(short_route);

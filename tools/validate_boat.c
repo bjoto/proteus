@@ -1,6 +1,7 @@
 #include "boat_map.h"
 #include "boat_test_session.h"
 #include "boat_view.h"
+#include "boat_water_mesh.h"
 #include "raymath.h"
 
 #include <math.h>
@@ -1077,7 +1078,7 @@ static int shared_water(void)
         > .001f);
     boat_session_init(&waves, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
     CHECK(waves.world.water.amplitude == 0 && boat_session_time(&waves) == 0);
-    boat_water_destroy();
+    boat_water_mesh_destroy();
     return 0;
 }
 
@@ -1174,7 +1175,7 @@ static int validate_water_patch(void)
     mesh = boat_water_patch((Vector2) { 6.01f, -250 }, true);
     CHECK(mesh && before == patch_overlap(mesh));
     // Recentring changes only cells beyond the rendered disk, not overlapping world geometry.
-    boat_water_destroy();
+    boat_water_mesh_destroy();
     return 0;
 }
 

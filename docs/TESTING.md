@@ -21,15 +21,25 @@ ctest --test-dir build -j 4 --output-on-failure
 disabled, covering the owned field, refinement, cadence, candidate sources/boats/GPU,
 compact packets and Python prototypes. CTest lists them as disabled, not failed. Their
 sources, targets and manual diagnostic commands remain available. All arcade-object tests
-stay enabled. With `PROTEUS_GPU_TESTS=ON`, the normal suite runs 88 checks as of 2026-10-23,
-including 20 graphics checks. GPU cases retain serial scheduling while independent CPU
-checks may run concurrently; fixture dependencies still govern capture/replay comparisons.
+stay enabled. With `PROTEUS_GPU_TESTS=ON`, the normal suite runs 90 checks as of 2026-10-23
+(counted from the generated CTest file). GPU cases retain serial scheduling while independent
+CPU checks may run concurrently; fixture dependencies still govern capture/replay comparisons.
 
-`PROTEUS_OPTIMIZE_TESTS=ON` compiles the long numerical validators at `-O2` even in
-Clang/GCC Debug builds: boat handling, banking, turn entry, environment, replay, clock, world
-isolation, water routes and object-wake review. Debug symbols and assertions remain enabled; there is no
-fast-math, reduced simulation duration or sampled-down scenario coverage. Application
-executables keep their selected build type. For stepping through these validators:
+Every active test carries one of three labels: `cpu` (46, display-free), `render` (23, CPU
+captures and checksums) or `gpu` (21, graphics context). The two `core` checks are also `cpu`:
+`boat_core` runs `validate_boat_core`, which links only the boating core library, and
+`boat_core_boundary` runs `tools/check_core_boundary.py` over the core sources and archive.
+Select a group with `-L`, for example `ctest --test-dir build -L core`; CTest adds fixture
+setup tests that a selected test requires, whatever their label.
+
+`PROTEUS_OPTIMIZE_TESTS=ON` compiles the long numerical validators and the shared boating
+libraries (core, render, session and drive) at `-O2` even in Clang/GCC Debug builds. The
+validators are boat handling, banking, turn entry, environment, replay, clock, world isolation,
+core, water routes and object-wake review. Debug symbols and assertions remain enabled; there
+is no fast-math, reduced simulation duration or sampled-down scenario coverage. Because
+validators and applications link one copy of each library, Debug `boat_study` also runs this
+optimized boat code; the GPU library and application sources keep the selected build type. For
+stepping through these validators or library code:
 
 ```sh
 cmake -S . -B build -DPROTEUS_OPTIMIZE_TESTS=OFF
@@ -40,6 +50,25 @@ The optimization override currently applies to Clang/GCC only. MSVC keeps its se
 configuration; Windows timings have not been measured. GPU checks are opt-in through
 `PROTEUS_GPU_TESTS=ON` and need a desktop context. A display-free suite with GPU checks
 off has less coverage; report that omission.
+
+## Core boundary gate
+
+`proteus_boat_core` holds physics, pose, locations, world and shoreline queries, water queries,
+wakes, course crossing, harbor/traffic contacts and boat/city geometry data. The boundary check
+rejects any core include outside the core headers, `raylib.h`, `raymath.h`, compiled map
+geometry and a short system-header list without `<stdio.h>`. It also rejects raylib calls
+other than raymath and C library console, file and process calls. When `nm` is available
+(not MSVC), every undefined symbol in the core archive must be defined in core or be raymath,
+libm, libc memory/sort/assert, `clock()` or the Accelerate DFT backend. The script first runs
+a self-test that each rule rejects a known violation:
+
+```sh
+python3 tools/check_core_boundary.py --self-test
+```
+
+Add a new core source and its header to `PROTEUS_BOAT_CORE_SOURCES` in `CMakeLists.txt`.
+Presentation, GPU, session/replay and the boat_study drive/profile code live in the
+`proteus_render`, `proteus_gpu`, `proteus_boat_session` and `proteus_boat_drive` libraries.
 
 ## Long-session clock gate
 

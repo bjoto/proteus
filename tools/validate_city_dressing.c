@@ -8,7 +8,7 @@
 // including the submerged ladder ends. A relaxed global Y bound alone misses floating props.
 static bool near_quay(Vector3 p)
 {
-    const Mesh3D *city = waterfront_scene_city_mesh();
+    const Mesh3D *city = waterfront_city_mesh();
     for (size_t i = 0; i < city->triangle_count; ++i) {
         const Triangle3D *t = &city->triangles[i];
         Vector3 a = city->vertices[t->vertices[0]], c = city->vertices[t->vertices[1]];

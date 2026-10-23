@@ -4,11 +4,11 @@ Prepared 2026-10-19 against `f60ede8`, following the
 [architecture review](ARCHITECTURE_REVIEW.md). This document owns this technical sequence;
 [BOATING_PLAN.md](BOATING_PLAN.md) continues to own gameplay direction.
 
-Status: P1, P2a, P3a, phase C (C1–C3) and the basin W1/W3, S1/S2 and S3 slices implemented;
-full P2/P3, mapped W1/W3, W2, W4, the remaining S1 frame consolidation and the S3 `BoatInput`
-type remain pending. Next for the [multiplayer prerequisite](MULTIPLAYER_PLAN.md): the basin S4
-slice (core-only build target and source-boundary check); see the
-[S3 basin handoff](#s3-basin-slice-handoff--2026-10-23).
+Status: P1, P2a, P3a, phase C (C1–C3) and the basin W1/W3, S1/S2, S3 and S4 slices
+implemented; full P2/P3, mapped W1/W3, W2, W4, the remaining S1 frame consolidation, full S4
+validator splitting and S5 remain pending. Next for the
+[multiplayer prerequisite](MULTIPLAYER_PLAN.md): the S3 `BoatInput` type, the last minimum core
+prerequisite before multiplayer M2; see the [S4 basin handoff](#s4-basin-slice-handoff--2026-10-23).
 At preparation, the user requested a plan only. Implementation began with P1 on 2026-10-19;
 execute later requested tasks using the protocol below. No additional approval gates are created
 by this plan. Verification of the original planning work is recorded at the end.
@@ -75,7 +75,7 @@ All rows start **pending**. Replace the evidence column with actual dated result
 | S1 | Extract pose, camera, scenery, and drawing | W4 | Basin slice implemented 2026-10-23 ahead of W4 (shared `boat_pose`, `boat_view`, `boat_course_view`); one shared CPU/GPU scene frame pending; [handoff](#s1s2-basin-slice-handoff--2026-10-23) |
 | S2 | Separate cosmetic state from boat simulation | S1 | Basin slice implemented 2026-10-23 (`BoatPresentation`, presentation on/off and 30/60/144 Hz gates); [handoff](#s1s2-basin-slice-handoff--2026-10-23) |
 | S3 | Session-owned course/replay orchestration and finish I/O | S2 | Basin slice implemented 2026-10-23 (course and runs in `BoatSession`, `BoatViewState`, finish saves flushed after the tick loop); `BoatInput` type pending; [handoff](#s3-basin-slice-handoff--2026-10-23) |
-| S4 | Shared build targets and dependency checks | S3 | Pending |
+| S4 | Shared build targets and dependency checks | S3 | Basin slice implemented 2026-10-23 (static core/render/GPU/session/drive libraries, display-free core validator, source/symbol boundary check, test labels); splitting mixed validators pending; [handoff](#s4-basin-slice-handoff--2026-10-23) |
 | S5 | Final comparison, playback, and handoff | S4 | Pending |
 
 ## Multiplayer prerequisite slices — 2026-10-23
@@ -1107,3 +1107,93 @@ world/session extraction. No cross-platform bit identity or user acceptance is i
   restart edit (keeping fields instead of a 23 KB session copy); restart has no capture and is
   covered by the Debug validators. `BoatViewState` still embeds a full `Boat` for pose math;
   a smaller pose type and the core-only session layout belong to S4.
+
+## S4 basin slice handoff — 2026-10-23
+
+- **Status / next:** The basin subset of S4 from the
+  [multiplayer prerequisite slices](#multiplayer-prerequisite-slices--2026-10-23) is
+  implemented, starting from `d65d469`. Only the unrelated untracked `docs/TITLE_SCREEN_PLAN.md`
+  and its `docs/README.md` index row were dirty. Next: the S3 `BoatInput` type, then multiplayer
+  M2. Still pending from full S4: splitting the mixed validators by responsibility.
+- **Libraries:** `CMakeLists.txt` builds five static libraries, each linked once per
+  executable with no cycles: core ← render ← GPU, and render ← session ← drive. The repeated
+  `PROTEUS_BOAT_SOURCES`/`PROTEUS_BOAT_WORLD_SOURCES`/`PROTEUS_HARBOR_SOURCES` lists and
+  per-target source additions are gone.
+  - `proteus_boat_core`: `boat`, `boat_pose`, `boat_course`, `boat_location`, `boat_world`,
+    `boat_map`, `boat_water` (queries), `boat_wake`, `boat_wake_player`, `boat_wake_objects`,
+    `boat_model`, `waterfront_city`, `waterfront_harbor` and `waterfront_traffic`, plus the
+    header-only `boat_clock.h`, `boat_view_state.h` and `geometry3d.h`. It links raylib for
+    types and raymath's out-of-line Debug definitions.
+  - `proteus_render`: presentation, flag, CPU renderer, boat/course views, `boat_water_mesh` and
+    the waterfront scene/corner/drawing modules.
+  - `proteus_gpu`: `boat_gpu` and `renderer_gpu`.
+  - `proteus_boat_session`: `boat_session` and `boat_replay`.
+  - `proteus_boat_drive`: `tools/boat_study_drive.c`, `tools/boat_study_state.c` and
+    `boat_profile`.
+  - Audio, music, profiler and asset paths stay as executable sources. `cmake/Web.cmake`
+    applies its `-Os` and POSIX definition to the executable and each library.
+- **Source cuts needed for core:**
+  - `geometry3d.h` holds `Triangle3D`, `Mesh3D` and `Transform3D`, as W1 proposed; renderer3d
+    includes it, and core headers include it instead.
+  - `waterfront_city.[ch]` takes the compiled crops, river selector and bridge test from
+    `waterfront_scene.c` and is renamed `waterfront_city_*`. The selector is still a global
+    pending mapped W1.
+  - Water tessellation and the surface/patch caches moved to `boat_water_mesh.[ch]`
+    (`boat_water_destroy` became `boat_water_mesh_destroy`), which W2 names. They use the new
+    `boat_water_query_borrowed`, the same query without copying the settings.
+  - `boat.c` includes the harbor/traffic contact headers rather than `waterfront.h`.
+  - No formulas changed, and no transitional wrappers or forwarding headers exist.
+- **Boundary check:** `boat_core_boundary` runs `tools/check_core_boundary.py`.
+  - Includes: core may include only core headers, `raylib.h`/`raymath.h`, compiled map geometry
+    and a system-header allowlist without `<stdio.h>`.
+  - Calls: PascalCase calls must be raymath. C library console/file/process calls, `rl*` and
+    the standard streams are rejected.
+  - Symbols: with `nm` (not MSVC), undefined archive symbols must be core, raymath, libm,
+    libc memory/sort/assert, `clock()` (the retired field's timing report), the Accelerate DFT
+    or compiler helpers.
+  - A self-test proves each rule rejects a known violation. Run on presentation/replay
+    sources and the render archive, it reported their includes, `fopen`/`fscanf`,
+    `<stdio.h>` and `Draw*` symbols.
+- **Core validator:** `validate_boat_core` links only `proteus_boat_core` and creates no
+  window, audio or files. It checks the following:
+  - Three worlds (basin calm, basin waves with current, Eriksberg waves) stepped through
+    `boat_step` plus the course sweep for 2400 ticks match their solo runs when interleaved.
+  - Swept course crossings occur at exact fractions, in order, with splits and the finish.
+  - The borrowed water query matches the by-value query, and flat water is level and still.
+  - Mapped spawns are open water in their own crops, a far point is not, and a berth envelope
+    blocks.
+  - `validate_boat_world` adds `core_order`: a course session with presentation off equals
+    that core-only stepping on every tick for 2400 ticks.
+- **Labels and build:** active tests are labelled `cpu`, `render`, `gpu`, and the two core
+  checks also `core`. The Debug `-O2` override now also covers the core/render/session/drive
+  libraries, so Debug `boat_study` runs optimized boat code unless
+  `PROTEUS_OPTIMIZE_TESTS=OFF`. After touching `boat_gpu.c` and `renderer_gpu.c`, the Debug
+  build recompiled only those two objects.
+- **Automated verification:** Apple M1 Max/macOS 26.6.2, Debug common recipe with
+  `PROTEUS_GPU_TESTS=ON`: the 90 active CTests (46 `cpu`, 23 `render`, 21 `gpu`) pass in 80.0 s,
+and fifteen retired field cases stay disabled. A separate `PROTEUS_OPTIMIZE_TESTS=OFF` build
+of core passes both core checks; its archive references raymath out of line. `git diff --check`
+and `clang-format` pass.
+- **Baseline comparison:** see the
+  [S4 comparison](BOATING_PERFORMANCE.md#s4-basin-comparison--2026-10-23). Release outputs
+  match a detached `d65d469` worktree:
+  - The benchmark state trace (hash `2c318477117e222e`) and the 54 CPU/GPU captures match byte
+    for byte.
+  - The 18 validator/review outputs exit 0 and match apart from the object-wake timing line.
+  - Both hour soaks keep the C3 hashes (`43dfc74ddac0055d`, `56e31ce5c3d7a7c4`), and their six
+    frames match the S3 soak frames byte for byte. The soaks ran on the Release build from
+    before the final `geometry3d.h` rename and formatting pass. The rebuilt Release tree
+    then matched the trace, captures and validators again.
+- **Manual playback:** windowed scripted runs of 600 frames exited 0 and wrote no profile
+  files: `--course` on GPU and CPU, `--demo`, crossing with waves, Eriksberg waves with the D3
+  trail, river, `--replay` and `--ghost --course`. The user has not played this slice.
+- **Limits:**
+  - One machine; Windows (MSVC, where the symbol check is skipped), Linux and the browser
+    build were not built or run.
+  - Mixed validators still link session and presentation. Only `validate_boat_core` is
+    core-only.
+  - `BoatSession` still holds presentation and runs by value; a physical-only session
+    layout is left to M2's `boat_world_step`.
+  - Core links the raylib library (raymath's Debug definitions). The source and symbol checks,
+    not the link line, keep core free of raylib drawing, input, window, audio and file calls.
+  - Map selection and the map/water-mesh caches remain process globals pending mapped W1/W2.

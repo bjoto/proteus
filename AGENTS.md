@@ -13,6 +13,11 @@ iterating on effects, timing, audio, and presentation.
 - `src/boat_model.[ch]`: parameterized visual boat recipes and caller-owned generated meshes.
 - `src/waterfront_harbor.[ch]`: moored fleet, berth geometry, shared wave poses, and contact envelopes.
 - `src/waterfront_traffic.[ch]`: travelling craft, ferry routes, visual wakes, and moving contacts.
+- `src/waterfront_city.[ch]`: compiled Eriksberg/river map crops shared by shoreline queries and renderers.
+- Boating code builds as static libraries in `CMakeLists.txt`. `proteus_boat_core` (physics, water
+  queries, wakes, course crossing, contacts and geometry data) must not draw, read input, open
+  windows or audio, or touch files; `tools/check_core_boundary.py` enforces this in CTest. See
+  `docs/TESTING.md` for the libraries and test labels.
 - `src/profiler.c`: runtime profiling statistics, reports, and overlay.
 - `src/audio_spectrum.c`: PCM capture, FFT analysis, and smoothed frequency-band levels.
 - `src/xm_audio.c`: XM-specific playback helpers layered over raylib's bundled decoder.

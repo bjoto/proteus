@@ -1,4 +1,4 @@
-# The same boat_study sources and raylib target are used by native and web builds.
+# The same boat_study libraries and raylib target are used by native and web builds.
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 # raylib's EM_ASM calls require GNU extensions; the game itself remains strict C17.
 set_target_properties(raylib PROPERTIES C_EXTENSIONS ON)
@@ -43,8 +43,11 @@ configure_file(assets/music/a-little-boat.xm "${WEB_ASSETS}/music/a-little-boat.
 set_target_properties(boat_study PROPERTIES SUFFIX ".js")
 # Asyncify is raylib's supported way to yield from its existing synchronous loop.
 # Keep optimization enabled for Asyncify even in a development build.
-target_compile_options(boat_study PRIVATE -Os)
-target_compile_definitions(boat_study PRIVATE _POSIX_C_SOURCE=200809L)
+foreach(target boat_study proteus_boat_core proteus_render proteus_gpu proteus_boat_session
+    proteus_boat_drive)
+  target_compile_options(${target} PRIVATE -Os)
+  target_compile_definitions(${target} PRIVATE _POSIX_C_SOURCE=200809L)
+endforeach()
 target_compile_options(raylib PRIVATE -Os)
 target_link_options(boat_study PRIVATE
   -Os -sASYNCIFY -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=1048576

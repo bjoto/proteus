@@ -356,3 +356,24 @@ script) concurrently. Afterwards, the hour soaks ran on the new tree.
 The concurrent runs make the timings unsuitable for comparison. Artifacts are in
 `build/bench/s3/{out-head,out-new,soak-new,fixtures}`. No simulation or render behavior was
 intended to change, so C3 remains the reference baseline.
+
+## S4 basin comparison — 2026-10-23
+
+The [S4 basin slice](BOATING_FOUNDATIONS_PLAN.md#s4-basin-slice-handoff--2026-10-23) moves
+boating code into static libraries and splits water meshes and city geometry out of
+simulation files, without formula changes. It was compared against a detached `d65d469`
+worktree with the same setup: MacBookPro18,2 (M1 Max, macOS 26.6.2), Release AppleClang
+21.0.0.21000101 and `-DFETCHCONTENT_SOURCE_DIR_RAYLIB`. Both trees ran
+`build/bench/s4/compare.sh` (a copy of the S3 script). The new tree was rerun after its
+final header rename/formatting pass, and the hour soaks ran on the new tree.
+
+| Check | Result |
+| --- | --- |
+| Validators/review tools | 18 outputs exit 0 and match except the object-wake timing line |
+| Benchmark trace | Byte-identical state CSV, hash `2c318477117e222e`; p50 0.067 ms vs 0.068 ms |
+| Hour soaks, calm/waves | Hashes `43dfc74ddac0055d` / `56e31ce5c3d7a7c4`, equal to C3; the six frames match the S3 soak frames byte for byte; 92.6 s / 96.5 s CPU |
+| Captures | The same 54 CPU/GPU frames are byte-identical to `d65d469` |
+
+The `d65d469` outputs came from a concurrent run, so the timings are not comparable.
+Artifacts are in `build/bench/s4/{out-head,out-new,soak-new,fixtures}`. No simulation or
+render behavior was intended to change, so C3 remains the reference baseline.

@@ -14,8 +14,8 @@ typedef enum {
 } BoatLocationId;
 
 // Immutable, process-lifetime location record. Worlds borrow it; nothing stores an active one.
-// Mapped records still share the compiled crop chosen by waterfront_scene_select_river() and
-// the boat_map/boat_water caches until mapped W1/W2 give them owned map data.
+// Mapped records still share the compiled crop chosen by waterfront_city_select_river() and
+// the boat_map/boat_water_mesh caches until mapped W1/W2 give them owned map data.
 typedef struct {
     BoatLocationId id;
     const char *name; // Command-line spelling.

@@ -132,7 +132,7 @@ static int large_time_locations(void)
     const uint64_t starts[] = { DAY_TICKS, 30 * DAY_TICKS };
     for (int location = 0; location < 3; ++location) {
         const BoatWorldDefinition *definition = boat_location((BoatLocationId)location);
-        waterfront_scene_select_river(definition->id == BOAT_LOCATION_RIVER);
+        waterfront_city_select_river(definition->id == BOAT_LOCATION_RIVER);
         for (int s = 0; s < 2; ++s) {
             BoatSession session;
             BoatWater water = boat_water_gentle();
@@ -165,7 +165,7 @@ static int large_time_locations(void)
         }
         boat_map_destroy();
     }
-    waterfront_scene_select_river(false);
+    waterfront_city_select_river(false);
     puts("large_time_locations=ok basin,eriksberg,river starts=1d,30d waves+d3");
     return 0;
 }

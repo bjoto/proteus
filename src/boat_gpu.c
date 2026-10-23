@@ -1,5 +1,6 @@
 #include "boat_gpu.h"
 #include "boat_assets.h"
+#include "boat_water_mesh.h"
 #include "raymath.h"
 #include "rlgl.h"
 

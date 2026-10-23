@@ -1,5 +1,6 @@
 #include "renderer_gpu.h"
 #include "boat_clock.h"
+#include "boat_water_mesh.h"
 #include "waterfront_corner.h"
 
 #include "raymath.h"
@@ -305,7 +306,7 @@ static bool builder_facade_triangle(
 static bool build_city(Mesh *city_mesh, Mesh *facades, Mesh *roofs, Mesh *quay, Mesh *water,
     Mesh *corner, Mesh *corner_emissive)
 {
-    const Mesh3D *city = waterfront_scene_city_mesh();
+    const Mesh3D *city = waterfront_city_mesh();
     MeshBuilder builders[] = { { 0 }, { 0 }, { 0 }, { 0 } };
     MeshBuilder water_builder = { 0 };
     for (size_t i = 0; i < city->triangle_count; ++i) {
@@ -321,7 +322,7 @@ static bool build_city(Mesh *city_mesh, Mesh *facades, Mesh *roofs, Mesh *quay, 
         bool planting = (triangle->color.r == 72 && triangle->color.g == 105)
             || (triangle->color.r == 61 && triangle->color.g == 91);
         // Authored bridge beams retain their flat steel/concrete colors.
-        bool bridge = waterfront_scene_is_bridge_triangle(i);
+        bool bridge = waterfront_city_is_bridge_triangle(i);
         CitySurface surface = planting || bridge ? CITY_SURFACE_FLAT : city_surface(a, b, c);
         Vector3 normal
             = Vector3Normalize(Vector3CrossProduct(Vector3Subtract(b, a), Vector3Subtract(c, a)));
@@ -364,10 +365,10 @@ failed:
 
 static bool build_windows(Mesh *mesh)
 {
-    const Mesh3D *city = waterfront_scene_city_mesh();
+    const Mesh3D *city = waterfront_city_mesh();
     MeshBuilder builder = { 0 };
     for (size_t i = 0; i < city->triangle_count; ++i) {
-        if (waterfront_scene_is_bridge_triangle(i))
+        if (waterfront_city_is_bridge_triangle(i))
             continue;
         const Triangle3D *triangle = &city->triangles[i];
         Vector3 a = city->vertices[triangle->vertices[0]];

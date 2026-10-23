@@ -1,30 +1,12 @@
 #ifndef PROTEUS_RENDERER3D_H
 #define PROTEUS_RENDERER3D_H
 
-#include "raylib.h"
+#include "geometry3d.h"
 
 #include <stdbool.h>
 #include <stddef.h>
 
-// World and model coordinates are Y-up. The camera looks toward target, with +Z forward
-// in view space. Mesh triangles wind counterclockwise when viewed from outside.
-typedef struct {
-    unsigned int vertices[3];
-    Color color;
-} Triangle3D;
-
-typedef struct {
-    const Vector3 *vertices;
-    const Triangle3D *triangles;
-    size_t triangle_count;
-} Mesh3D;
-
-typedef struct {
-    Vector3 position;
-    Vector3 rotation; // Radians: local X, then Y, then Z.
-    Vector3 scale; // Positive components; zero or mirrored scales are unsupported.
-} Transform3D;
-
+// The camera looks toward target, with +Z forward in view space.
 typedef struct {
     Vector3 position;
     Vector3 target;

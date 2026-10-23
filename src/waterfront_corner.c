@@ -579,7 +579,7 @@ static void build_quays(const Mesh3D *city)
 
 static void build(void)
 {
-    const Mesh3D *city = waterfront_scene_city_mesh();
+    const Mesh3D *city = waterfront_city_mesh();
     surfaces = calloc(city->triangle_count, sizeof(*surfaces));
     if (!surfaces) {
         overflow = true;

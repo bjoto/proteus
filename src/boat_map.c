@@ -1,6 +1,6 @@
 #include "boat_map.h"
 #include "raymath.h"
-#include "waterfront_scene.h"
+#include "waterfront_city.h"
 
 #include <stdlib.h>
 
@@ -22,7 +22,7 @@ static bool init(void)
 {
     if (shore)
         return true;
-    const Mesh3D *mesh = waterfront_scene_city_mesh();
+    const Mesh3D *mesh = waterfront_city_mesh();
     // The importer emits the triangulated water surface first, followed by raised land.
     water_count = 0;
     while (water_count < mesh->triangle_count) {
@@ -70,7 +70,7 @@ bool boat_map_water_contact(Vector2 position, float clearance, Vector2 *water_no
     if (!init())
         return false;
     Vector2 p = { -position.x, position.y };
-    const Mesh3D *mesh = waterfront_scene_city_mesh();
+    const Mesh3D *mesh = waterfront_city_mesh();
     bool inside = false;
     for (size_t i = 0; i < water_count; ++i) {
         const Triangle3D *t = &mesh->triangles[i];

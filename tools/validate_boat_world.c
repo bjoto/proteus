@@ -1,10 +1,12 @@
 /* W3 basin slice: explicit worlds and sessions stay independent. S2 basin slice: presentation
- * follows physics without feeding it, at any display rate. W4 extends this file with map/cache
- * lifecycle checks. */
+ * follows physics without feeding it, at any display rate. S4 basin slice: the session's
+ * physical step is the core-only order validate_boat_core uses. W4 extends this file with
+ * map/cache lifecycle checks. */
 #include "boat_map.h"
 #include "boat_study_state.h"
 #include "boat_test_session.h"
 #include "boat_view.h"
+#include "boat_water_mesh.h"
 #include "raymath.h"
 
 #include <math.h>
@@ -22,14 +24,20 @@
 
 enum { TICKS = 2400, SESSIONS = 3 };
 
-// Powered loop through the session's own wake; the same inputs for every world.
-static void drive(BoatSession *session, int tick)
+// Powered loop through the boat's own wake; the same inputs for every world.
+static void loop_inputs(const Boat *boat, int tick, float *wheel_change, float *throttle_change)
 {
-    const Boat *boat = &session->boat;
     float throttle = tick < 1440 ? 1 : 0;
     float wheel = tick >= 420 && tick < 1440 ? 1 : 0;
-    boat_session_step(session, Clamp((wheel - boat->wheel) / BOAT_STEP, -1, 1),
-        Clamp((throttle - boat->throttle) / (.5f * BOAT_STEP), -1, 1));
+    *wheel_change = Clamp((wheel - boat->wheel) / BOAT_STEP, -1, 1);
+    *throttle_change = Clamp((throttle - boat->throttle) / (.5f * BOAT_STEP), -1, 1);
+}
+
+static void drive(BoatSession *session, int tick)
+{
+    float wheel, throttle;
+    loop_inputs(&session->boat, tick, &wheel, &throttle);
+    boat_session_step(session, wheel, throttle);
 }
 
 static void start(BoatSession *session, int index)
@@ -200,6 +208,35 @@ static int presentation_toggle(void)
     return 0;
 }
 
+// With presentation off, a course session steps exactly as the core-only order: boat_step at
+// the new tick, then the gate sweep from the pre-step position.
+static int core_order(void)
+{
+    static BoatSession session;
+    start(&session, 1);
+    boat_session_start_course(&session);
+    session.presentation_enabled = false;
+    BoatWorld world = session.world;
+    Boat boat = session.boat;
+    BoatCourse course = session.course;
+    uint64_t tick = 0;
+    for (int i = 0; i < TICKS; ++i) {
+        float wheel, throttle;
+        loop_inputs(&boat, i, &wheel, &throttle);
+        Vector2 previous = boat.position;
+        boat_step(&boat, &world, boat_tick_seconds(++tick), wheel, throttle);
+        boat_course_step(&course, previous, boat.position, BOAT_TICK_SECONDS);
+        drive(&session, i);
+        CHECK(session.tick == tick && memcmp(&session.boat, &boat, sizeof(boat)) == 0);
+        CHECK(memcmp(&session.world.water, &world.water, sizeof(world.water)) == 0);
+        CHECK(memcmp(&session.course, &course, sizeof(course)) == 0);
+    }
+    CHECK(course.next_gate > 0 && world.water.player_wake_count > 0);
+    CHECK(memcmp(&session.presentation, &rest, sizeof(rest)) == 0);
+    printf("core_order=ok ticks=%d gates=%d\n", TICKS, course.next_gate);
+    return 0;
+}
+
 // Fixed ticks indexed by tick number give the same session at 30, 60 and 144 Hz display rates;
 // frames between ticks only read. Wall-clock keyboard sampling is outside this check.
 static int render_rates(void)
@@ -248,7 +285,8 @@ int main(void)
     CHECK(views() == 0);
     CHECK(presentation_toggle() == 0);
     CHECK(render_rates() == 0);
-    boat_water_destroy();
+    CHECK(core_order() == 0);
+    boat_water_mesh_destroy();
     boat_map_destroy();
     puts("boat_world=ok");
     return 0;

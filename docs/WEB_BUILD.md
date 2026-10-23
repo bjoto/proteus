@@ -47,9 +47,10 @@ environment must permit **Tag** refs matching `v*` (and **Branch** `main` for ma
 deployments), as described in GitHub's
 [environment setup guide](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments).
 
-[CMakeLists.txt](../CMakeLists.txt) defines the same boat executable and source list for
-both platforms. Emscripten selects raylib 6.0's `PLATFORM=Web`, OpenGL ES 3.0, and a static
-library, then [cmake/Web.cmake](../cmake/Web.cmake) configures the web-only output. Native
+[CMakeLists.txt](../CMakeLists.txt) defines the same boat executable and static boating
+libraries for both platforms. Emscripten selects raylib 6.0's `PLATFORM=Web`, OpenGL ES 3.0,
+and a static library, then [cmake/Web.cmake](../cmake/Web.cmake) configures the web-only
+output and applies its size optimization to the executable and each boating library. Native
 validators, studies, and the four-minute demo are excluded from web configuration.
 No CTest executables are run as web programs.
 

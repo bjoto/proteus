@@ -1,4 +1,5 @@
 #include "boat_banking_fixture.h"
+#include "boat_water_mesh.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -125,6 +126,6 @@ int main(int argc, char **argv)
         if (failed)
             result = 1;
     }
-    boat_water_destroy();
+    boat_water_mesh_destroy();
     return result;
 }

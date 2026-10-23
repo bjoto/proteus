@@ -3,7 +3,8 @@
 #include "boat_model.h"
 #include "boat_pose.h"
 #include "raymath.h"
-#include "waterfront.h"
+#include "waterfront_harbor.h"
+#include "waterfront_traffic.h"
 
 #include <assert.h>
 #include <math.h>

@@ -212,7 +212,7 @@ int main(void)
         return 1;
     for (int river = 0; river < 2; ++river) {
         boat_map_destroy();
-        waterfront_scene_select_river(river != 0);
+        waterfront_city_select_river(river != 0);
         for (int i = 0; i < WATERFRONT_TRAFFIC_VESSELS; ++i) {
             BoatModelSpec spec = waterfront_traffic_spec(i);
             const Mesh3D *mesh = waterfront_traffic_mesh(i);
@@ -238,7 +238,7 @@ int main(void)
         }
     }
     boat_map_destroy();
-    waterfront_scene_select_river(false);
+    waterfront_city_select_river(false);
     for (int i = 0; i < WATERFRONT_TRAFFIC_VESSELS; ++i) {
         float period = waterfront_traffic_period(i);
         WaterfrontVesselMotion start = waterfront_traffic_motion(i, 0);

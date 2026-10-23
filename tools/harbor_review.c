@@ -1,4 +1,5 @@
 // Repeatable CPU/GPU berth views; all poses come from the same shared snapshot as playback.
+#include "boat_water_mesh.h"
 #include "renderer_gpu.h"
 #include "waterfront.h"
 
@@ -292,7 +293,7 @@ cleanup:
         UnloadShader(downsample);
     renderer3d_destroy(&cpu);
     free(pixels);
-    boat_water_destroy();
+    boat_water_mesh_destroy();
     if (window)
         CloseWindow();
     return result;

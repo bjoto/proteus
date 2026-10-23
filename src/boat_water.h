@@ -3,7 +3,7 @@
 
 #include "boat_wake.h"
 #include "boat_wake_objects.h"
-#include "renderer3d.h"
+#include "geometry3d.h"
 
 typedef struct {
     // Zero initialization selects perfectly flat, still water. Direction is simulation X/Z.
@@ -64,22 +64,13 @@ Vector2 boat_water_current(BoatWater water, Vector2 position);
 // One source travels X=-24..24 at Z=-8 plus wake_offset over the first 12 seconds.
 bool boat_water_wake_source(BoatWater water, double time, Vector2 *position);
 BoatWaterSample boat_water_query(BoatWater water, Vector2 position, double time);
+// The same query reading WATER in place, for per-vertex loops over one settings value.
+BoatWaterSample boat_water_query_borrowed(const BoatWater *water, Vector2 position, double time);
 BoatWaterSample boat_water_query_field(
     BoatWater water, const BoatWake *field, Vector2 position, double time);
 // Dissipative normal resistance in simulation coordinates. Positive support is the local upward
 // spring force; it caps exit damping so the combined support never pulls the hull underwater.
 Vector3 boat_water_resistance(
     BoatWaterSample water, Vector3 point_velocity, float damping, float support);
-// Borrowed, tessellated surface; renderer X is reflected from simulation X. NULL on allocation
-// failure. CPU reference draws the colors and full displaced surface. Each call updates storage.
-const Mesh3D *boat_water_surface(BoatWater water, double time, bool eriksberg);
-const Mesh3D *boat_water_surface_field(BoatWater water, const BoatWake *field, double time);
-// GPU-only rest topology, clipped to the original shoreline. World X/Z, not simulation X.
-// Cached on a fixed 1.5 m grid; shifts by 12 m outside the visible displacement radius.
-#define BOAT_WATER_PATCH_FULL 48.0f
-#define BOAT_WATER_PATCH_RADIUS 80.0f
-const Mesh3D *boat_water_patch(Vector2 world_center, bool eriksberg);
-const Mesh3D *boat_water_patch_arcade(Vector2 world_center, bool eriksberg);
-void boat_water_destroy(void);
 
 #endif

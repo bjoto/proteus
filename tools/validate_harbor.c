@@ -102,7 +102,7 @@ int main(void)
     const WaterfrontBerth *berths = waterfront_harbor_berths();
     for (int river = 0; river < 2; ++river) {
         boat_map_destroy();
-        waterfront_scene_select_river(river != 0);
+        waterfront_city_select_river(river != 0);
         for (int i = 0; i < WATERFRONT_HARBOR_BOATS; ++i) {
             const Mesh3D *mesh = waterfront_harbor_boat_mesh(i);
             CHECK(valid_mesh(mesh));
@@ -124,7 +124,7 @@ int main(void)
         }
     }
     boat_map_destroy();
-    waterfront_scene_select_river(false);
+    waterfront_city_select_river(false);
     WaterfrontHarborFrame flat, waves, again;
     waterfront_harbor_evaluate((BoatWater) { 0 }, 0, &flat);
     waterfront_harbor_evaluate((BoatWater) { 0 }, 87, &again);

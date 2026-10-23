@@ -4,6 +4,7 @@
 #include "boat_flag.h"
 #include "boat_water.h"
 #include "renderer3d.h"
+#include "waterfront_city.h"
 #include "waterfront_harbor.h"
 #include "waterfront_traffic.h"
 
@@ -97,12 +98,6 @@ const Mesh3D *waterfront_player_engine_mesh(void);
 
 float waterfront_scene_duration(bool short_route);
 void waterfront_scene_evaluate(float time, bool short_route, WaterfrontSceneFrame *frame);
-const Mesh3D *waterfront_scene_city_mesh(void);
-// Select once before initializing boat map/water caches or GPU resources.
-// The default remains the original Eriksberg crop used by the main demo.
-void waterfront_scene_select_river(bool enabled);
-// Authored bridge/approach triangles use flat materials and have no facade windows.
-bool waterfront_scene_is_bridge_triangle(size_t index);
 WaterfrontStreet waterfront_scene_street(int index);
 Vector3 waterfront_scene_street_position(
     WaterfrontStreet street, float distance, Vector3 *direction);

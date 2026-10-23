@@ -7,6 +7,7 @@
 #include "boat_replay.h"
 #include "boat_session.h"
 #include "boat_study_drive.h"
+#include "boat_water_mesh.h"
 #include "profiler.h"
 #include "raymath.h"
 #include "xm_audio.h"
@@ -362,7 +363,7 @@ int main(int argc, char **argv)
 
     SetTraceLogLevel(LOG_WARNING);
     // Legacy mapped-crop selector; mapped W1 passes the definition to map/scene queries.
-    waterfront_scene_select_river(location->id == BOAT_LOCATION_RIVER);
+    waterfront_city_select_river(location->id == BOAT_LOCATION_RIVER);
     enum { WIDTH = 320, HEIGHT = 200 };
     Color *pixels = malloc(WIDTH * HEIGHT * sizeof(*pixels));
     if (!pixels)
@@ -866,7 +867,7 @@ cleanup:
             UnloadTexture(texture);
         CloseWindow();
     }
-    boat_water_destroy();
+    boat_water_mesh_destroy();
     boat_map_destroy();
     renderer3d_destroy(&renderer);
     free(pixels);

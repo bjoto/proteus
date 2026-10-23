@@ -2,6 +2,7 @@
 #include "boat_course_view.h"
 #include "boat_map.h"
 #include "boat_pose.h"
+#include "boat_water_mesh.h"
 #include "raymath.h"
 #include "waterfront.h"
 

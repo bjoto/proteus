@@ -2,6 +2,7 @@
 #include "boat_banking_fixture.h"
 #include "boat_gpu.h"
 #include "boat_test_session.h"
+#include "boat_water_mesh.h"
 #include "raymath.h"
 
 #include <math.h>
@@ -290,6 +291,6 @@ int main(int argc, char **argv)
         boat_gpu_destroy(&gpu);
         CloseWindow();
     }
-    boat_water_destroy();
+    boat_water_mesh_destroy();
     return 0;
 }

@@ -1,6 +1,7 @@
 /* Complete opt-in workload: real boat/stern queries, field, audit, upload and GL completion. */
 #include "boat_gpu.h"
 #include "boat_test_session.h"
+#include "boat_water_mesh.h"
 #include "external/glad.h"
 #include "rlgl.h"
 #include <math.h>
@@ -101,7 +102,7 @@ static void crossing(void)
         && fabs(receiver.boat.vertical_velocity) < .3);
     boat_wake_player_destroy(flat);
     boat_wake_player_destroy(world);
-    boat_water_destroy();
+    boat_water_mesh_destroy();
 }
 
 static void step(BoatSession *session, BoatWakePlayer *world, unsigned tick)
@@ -336,6 +337,6 @@ int main(int argc, char **argv)
     boat_wake_player_reset(world);
     CHECK(boat_wake_player_report(world).energy.retired == retained);
     boat_wake_player_destroy(world);
-    boat_water_destroy();
+    boat_water_mesh_destroy();
     return 0;
 }
