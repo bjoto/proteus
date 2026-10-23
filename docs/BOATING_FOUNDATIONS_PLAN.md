@@ -630,3 +630,13 @@ raylib. Applied the repository's existing `WIN32_LEAN_AND_MEAN`/`NOGDI`/`NOUSER`
 defines in both profiling translation units. This changes no timing logic. The local host
 has no MSVC/Windows SDK; the fix awaits the next Windows Actions run before claiming Windows
 support passes. P2 remains next.
+
+## P2a extraction progress — 2026-10-23
+
+Starting revision `2994e0d`; README and thirteen existing documentation edits plus the new
+multiplayer plan were present before implementation and are preserved. The driver extraction
+is implemented; P2a remains in progress until its benchmark and full verification land.
+The [performance record](BOATING_PERFORMANCE.md#shared-driver-extraction--2026-10-23)
+records the frozen-driver checks, identical inspected CPU captures and scripted desktop run.
+Next: benchmark schema/error/deterministic-state checks and common verification. No handling,
+clock, wake-emission or asset changes are intended; no user acceptance is inferred.

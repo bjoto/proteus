@@ -35,7 +35,7 @@ set(PROTEUS_BOAT_WORLD_SOURCES
   src/waterfront.c src/waterfront_scene.c src/waterfront_corner.c)
 set(PROTEUS_HARBOR_SOURCES
   src/boat_flag.c src/boat_model.c src/waterfront_harbor.c src/waterfront_traffic.c)
-add_executable(boat_study tools/boat_study.c src/boat.c src/renderer3d.c src/profiler.c
+add_executable(boat_study tools/boat_study.c tools/boat_study_drive.c src/boat.c src/renderer3d.c src/profiler.c
   src/boat_profile.c src/boat_audio.c src/xm_audio.c src/boat_gpu.c src/renderer_gpu.c
   ${PROTEUS_BOAT_WORLD_SOURCES} ${PROTEUS_HARBOR_SOURCES})
 target_include_directories(boat_study PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -196,6 +196,15 @@ target_link_libraries(wake_play_review PRIVATE raylib)
 target_compile_options(wake_play_review PRIVATE
   $<$<C_COMPILER_ID:AppleClang,Clang,GNU>:-Wall;-Wextra;-Wpedantic>)
 add_dependencies(wake_play_review proteus_assets)
+add_executable(validate_boat_drive tools/validate_boat_drive.c tools/boat_study_state.c tools/boat_study_drive.c
+  src/boat.c src/renderer3d.c src/boat_profile.c
+  ${PROTEUS_BOAT_WORLD_SOURCES} ${PROTEUS_HARBOR_SOURCES})
+target_include_directories(validate_boat_drive PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(validate_boat_drive PRIVATE raylib)
+target_compile_options(validate_boat_drive PRIVATE
+  $<$<C_COMPILER_ID:AppleClang,Clang,GNU>:-Wall;-Wextra;-Wpedantic>)
+add_test(NAME boat_drive_extraction COMMAND validate_boat_drive)
+
 add_executable(wake_objects_review tools/wake_objects_review.c src/boat.c src/renderer3d.c
   src/boat_gpu.c src/renderer_gpu.c ${PROTEUS_BOAT_WORLD_SOURCES} ${PROTEUS_HARBOR_SOURCES})
 target_include_directories(wake_objects_review PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${raylib_SOURCE_DIR}/src)
