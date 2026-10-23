@@ -79,7 +79,7 @@ Apple Silicon/macOS, Debug, `PROTEUS_GPU_TESTS=ON`, default retired field tests 
   0.282/0.567/0.586/0.673 ms. These are smoke measurements, partly concurrent with verification,
   not a controlled P3a performance baseline.
 
-P2a is implemented. Next is P3a: capture the current arcade baseline under controlled conditions,
+At the P2a handoff, P3a was next: capture the current arcade baseline under controlled conditions,
 with the required representative CPU/GPU evidence before clock migration. Full P2/P3 remain
 pending. No new physics tolerance, pixel baseline, handling change or user acceptance is claimed.
 Windows/Linux/browser qualification and human motion/audio review were not performed.
@@ -98,4 +98,75 @@ The contract test checks trace row counts, finite values, end ticks, report agre
 repeat traces, plus failure to open a trace output. `boat_benchmark_baseline.py` captures three
 sequential 120-warmup/7200-measured runs and requires matching traces and the fixture's actual
 17 births/peak, one landing, flight/landing states and eventual complete expiry.
-P3a remains in progress until controlled measurements and CPU/GPU evidence are recorded below.
+This was an intermediate checkpoint; the controlled result is recorded below.
+
+## P3a current arcade baseline — 2026-10-23
+
+P3a is implemented for the finite `wake-loop` simulation fixture. Reproduce the controlled
+measurement from the repository root after other test/build jobs finish:
+
+```sh
+cmake -S . -B build/p3a-release -DCMAKE_BUILD_TYPE=Release \
+  -DFETCHCONTENT_SOURCE_DIR_RAYLIB="$PWD/build/_deps/raylib-src"
+cmake --build build/p3a-release --target boat_benchmark boat_study -j
+python3 tools/boat_benchmark_baseline.py build/p3a-release/boat_benchmark build/bench/p3a
+```
+
+This was run sequentially on a MacBookPro18,2 (Apple M1 Max, 64 GiB), macOS 26.6.2
+(build 25G83), connected to AC with `pmset` AC `powermode=2`. The Release build uses
+AppleClang 21.0.0.21000101, `-O3 -DNDEBUG`; configure-time identifier is
+`e0440b2-dirty` because tracked documentation edits existed before the task. No benchmark
+runs overlapped the build or CTest. Other system background activity and thermal state were
+not measured. Times are development-machine observations, not hardware certification.
+
+Each run has 120 warmup plus 7200 measured nominal frames: 14,640 ticks total, with
+14,400 measured ticks. All 7,320 trace rows match across three sequential runs, as do the
+final hash `c29e5d3d13d462c3`, 17 births, peak 17 live objects, one landing and eventual
+zero live objects. The trace records airborne at tick 1118, landing at 1328, capsize at 1450
+and wake expiry after tick 3468. At tick 14,640, accumulated `Boat.time` is 121.992271 s;
+the nominal 122.0 s illustrates the float clock drift that C1/C2 must address.
+
+| Run | Simulation p50 | p95 | p99 | max | Units |
+| --- | ---: | ---: | ---: | ---: | --- |
+| 1 | 0.065 | 0.136 | 0.158 | 0.250 | ms per two-tick frame |
+| 2 | 0.065 | 0.136 | 0.156 | 0.249 | ms per two-tick frame |
+| 3 | 0.065 | 0.136 | 0.155 | 0.189 | ms per two-tick frame |
+
+The fixture stops powered turns at tick 1440, capsizes soon afterward and has no live wakes
+after tick 3468. Thus 5585 of 7200 measured frames (77.6%) are after wake expiry. From
+run 1, the 1615 measured frames through tick 3470 have p50/p95/p99/max
+0.070/0.157/0.164/0.250 ms; the 5585 later frames have
+0.064/0.067/0.075/0.154 ms. This baseline represents the specified finite return,
+not sustained full-pool simulation. It does not establish the complete P3 workload matrix or
+render/GPU timing; those fields remain `null` in the benchmark JSON.
+
+Raw reports and trace are `build/bench/p3a/run-{1,2,3}.{json,csv,state.csv}`. The runner's
+comparison output is `build/bench/p3a-runs.log`; `build/bench/p3a/sha256.json` records hashes
+of those files and the images below. These ignored build artifacts are retained locally;
+reproduction commands and the final state hash provide the durable baseline contract.
+
+Representative Release captures were inspected at 320x200:
+
+| Local artifact | Evidence |
+| --- | --- |
+| `build/bench/p3a/views/{cpu,gpu,gpu-aa}-t9.png` | Wake approach and visible return path; GPU AA smooths edges |
+| `build/bench/p3a/views/{cpu,gpu,gpu-aa}-t11.png` | Airborne hull and wake encounter |
+| `build/bench/p3a/views/{cpu,gpu,gpu-aa}-t20.png` | Capsized/settled hull and remaining wake |
+| `build/bench/p3a/views/cpu-t60.png` | Wake-free later state |
+
+CPU and GPU use different water/presentation paths, so these images are representative views,
+not pixel-equality baselines. The capsize and long settled portion are observed fixture behavior;
+there is no new visual or handling acceptance claim. A scripted Release
+`./build/p3a-release/boat_study --demo --frames 180` desktop run completed 376 ticks. No
+independent human control/audio review was performed.
+
+Debug `cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug` and `cmake --build build -j` pass.
+`ctest --test-dir build -j 4 --output-on-failure` passes all 85 active cases, including
+20 GPU cases, in 114.10 s with desktop access (`build/bench/p3a-ctest.log`); fifteen retired
+physical-field cases remain disabled. The focused trace/schema and frozen-driver checks also
+pass. Release raylib compilation emitted one bundled `stb_vorbis.c` tautological-comparison
+warning; project sources remained warning-clean. Windows/Linux/browser results were not
+collected for P3a.
+
+The multiplayer prerequisite track proceeds to C1, followed by C2/C3 before world/session
+extraction. Full P2 renderer counters and remaining P3 scenarios stay pending.
