@@ -14,6 +14,37 @@
         }                                                                                          \
     } while (0)
 
+static int clock_contracts(void)
+{
+    const uint64_t ticks[] = { 0, 1, 28800, 72000, 432000 };
+    Boat boat;
+    boat_reset(&boat);
+    for (size_t i = 0; i < sizeof(ticks) / sizeof(ticks[0]); ++i) {
+        boat_set_tick(&boat, ticks[i]);
+        CHECK(boat.tick == ticks[i] && boat.time == boat_tick_seconds(ticks[i]));
+    }
+    boat_set_tick(&boat, 432000);
+    boat_step(&boat, 0, 0);
+    CHECK(boat.tick == 432001 && boat.time == boat_tick_seconds(432001));
+    boat_reset(&boat);
+    CHECK(boat.tick == 0 && boat.time == 0);
+    BoatCourse course = { .enabled = true };
+    boat_course_step(&course, (Vector2) { 0, 36 }, (Vector2) { 0, 32 }, BOAT_TICK_SECONDS);
+    CHECK(course.next_gate == 1 && course.splits[0] == 0);
+    CHECK(course.elapsed == .75 * BOAT_TICK_SECONDS);
+    boat_course_step(&course, (Vector2) { 22, 8 }, (Vector2) { 22, 6 }, BOAT_TICK_SECONDS);
+    CHECK(course.next_gate == 2 && course.crossing[1] == .5);
+    CHECK(course.splits[1] == .75 * BOAT_TICK_SECONDS + .5 * BOAT_TICK_SECONDS);
+    course.next_gate = 3;
+    course.elapsed = 10 * BOAT_TICK_SECONDS;
+    boat_course_step(&course, (Vector2) { 0, -52 }, (Vector2) { 0, -54 }, BOAT_TICK_SECONDS);
+    CHECK(course.next_gate == 4 && course.crossing[3] == .5);
+    CHECK(course.splits[3] == 10.5 * BOAT_TICK_SECONDS);
+    CHECK(course.elapsed == course.splits[3]);
+    puts("integer clock, reset and exact fractional course crossings pass");
+    return 0;
+}
+
 // Prescribed route exercises the real swept gate timer and recorder without input/window timing.
 static int flag_playback(void)
 {
@@ -32,10 +63,10 @@ static int flag_playback(void)
     BoatReplayFlag fine = { 0 }, coarse = { 0 };
     Boat a, b;
     for (int tick = 0; tick < 240; ++tick) {
-        CHECK(boat_replay_sample(&run, tick * (double)BOAT_STEP, &a));
+        CHECK(boat_replay_sample(&run, tick * BOAT_TICK_SECONDS, &a));
         boat_replay_animate_flag(&run, &a, &fine);
         if (tick % 2 == 0) {
-            CHECK(boat_replay_sample(&run, tick * (double)BOAT_STEP, &b));
+            CHECK(boat_replay_sample(&run, tick * BOAT_TICK_SECONDS, &b));
             boat_replay_animate_flag(&run, &b, &coarse);
             CHECK(memcmp(&fine.flag, &coarse.flag, sizeof(BoatFlag)) == 0);
         }
@@ -79,8 +110,8 @@ static int route(BoatReplay *recording, BoatReplayRuns *runs, int ticks, bool wa
                 (boat.position.y - before.position.y) / BOAT_STEP };
             boat.heading = atan2f(boat.velocity.x, -boat.velocity.y);
             boat.camera_heading = boat.heading;
-            boat.time += BOAT_STEP;
-            boat_course_step(&boat.course, before.position, boat.position, BOAT_STEP);
+            boat_set_tick(&boat, boat.tick + 1);
+            boat_course_step(&boat.course, before.position, boat.position, BOAT_TICK_SECONDS);
             if (recording)
                 boat_replay_record(recording, before, &boat);
             if (runs)
@@ -313,6 +344,7 @@ static int banked_course(const char *directory)
 
 int main(int argc, char **argv)
 {
+    CHECK(clock_contracts() == 0);
     CHECK(flag_playback() == 0);
     CHECK(argc == 2);
     CHECK(ghost_rendering() == 0);
@@ -348,6 +380,26 @@ int main(int argc, char **argv)
         CHECK(loaded.samples[i].heading == run.samples[i].heading);
         CHECK(loaded.samples[i].world_time == run.samples[i].world_time);
     }
+    // A version-2 recording retains world times finer than float precision at one hour.
+    BoatReplay precise = { 0 };
+    CHECK(boat_replay_copy(&precise, &run));
+    for (size_t i = 0; i < precise.count; ++i)
+        precise.samples[i].world_time = 3600.123456789 + (double)i * BOAT_TICK_SECONDS;
+    CHECK(boat_replay_save(&precise, invalid));
+    CHECK(boat_replay_load(&loaded, invalid));
+    for (size_t i = 0; i < precise.count; ++i)
+        CHECK(loaded.samples[i].world_time == precise.samples[i].world_time);
+    Boat view;
+    CHECK(boat_replay_sample(&loaded, loaded.samples[0].at, &view));
+    CHECK(view.replay_view && view.time == precise.samples[0].world_time);
+    double view_time = view.time;
+    boat_step(&view, 1, 1);
+    CHECK(view.replay_view && view.time == view_time && view.tick == 0);
+    double halfway = (loaded.samples[0].at + loaded.samples[1].at) * .5;
+    CHECK(boat_replay_sample(&loaded, halfway, &view));
+    CHECK(view.time > precise.samples[0].world_time && view.time < precise.samples[1].world_time);
+    boat_replay_destroy(&precise);
+    CHECK(boat_replay_load(&loaded, fixture));
     Boat playback;
     CHECK(boat_replay_sample(&loaded, -5, &playback));
     CHECK(playback.position.y == 35 && playback.course.next_gate == 1);
@@ -375,6 +427,17 @@ int main(int argc, char **argv)
     CHECK(malformed(&loaded, invalid, "PROTEUS_RUN 1 1 2 0.0083333337679505348 0 99999999\n") == 0);
     CHECK(malformed(&loaded, invalid, "PROTEUS_RUN 1 1 2 0.0083333337679505348 0 2\n0 1 2 nan\n")
         == 0);
+    // A version-1 file with otherwise current metadata is rejected without replacing a run.
+    CHECK(boat_replay_save(&run, invalid));
+    FILE *old_version_file = fopen(invalid, "r+");
+    CHECK(old_version_file && fseek(old_version_file, 12, SEEK_SET) == 0
+        && fputc('1', old_version_file) != EOF && fclose(old_version_file) == 0);
+    BoatReplaySample *kept = loaded.samples;
+    CHECK(!boat_replay_load(&loaded, invalid) && loaded.samples == kept);
+    old_version_file = fopen(invalid, "r");
+    int legacy_version;
+    CHECK(old_version_file && fscanf(old_version_file, "PROTEUS_RUN %d", &legacy_version) == 1);
+    CHECK(legacy_version == 1 && fclose(old_version_file) == 0);
     // An otherwise valid previous-handling run cannot become an opponent or personal best.
     CHECK(boat_replay_save(&run, invalid));
     FILE *old = fopen(invalid, "r+");
@@ -408,15 +471,15 @@ int main(int argc, char **argv)
     boat.position = (Vector2) { 0, 36 };
     BoatReplaySample before = boat_replay_pose(&boat);
     boat.position.y = 35;
-    boat_course_step(&boat.course, before.position, boat.position, BOAT_STEP);
+    boat_course_step(&boat.course, before.position, boat.position, BOAT_TICK_SECONDS);
     BoatReplay boundary = { 0 };
     boat_replay_record(&boundary, before, &boat);
     CHECK(boundary.count == 1 && boundary.samples[0].at == 0);
     before = boat_replay_pose(&boat);
     boat.position.y = 34;
-    boat_course_step(&boat.course, before.position, boat.position, BOAT_STEP);
+    boat_course_step(&boat.course, before.position, boat.position, BOAT_TICK_SECONDS);
     boat_replay_record(&boundary, before, &boat);
-    CHECK(boundary.count == 2 && boundary.samples[1].at == BOAT_STEP);
+    CHECK(boundary.count == 2 && boundary.samples[1].at == BOAT_TICK_SECONDS);
     // A stalled/overlong attempt stops recording and leaves existing completed runs alone.
     boat.course.elapsed = BOAT_REPLAY_MAX_SECONDS + 1;
     boat_replay_record(&boundary, before, &boat);
@@ -455,7 +518,7 @@ int main(int argc, char **argv)
     boat.position = (Vector2) { 0, 36 };
     before = boat_replay_pose(&boat);
     boat.position.y = 34;
-    boat_course_step(&boat.course, before.position, boat.position, BOAT_STEP);
+    boat_course_step(&boat.course, before.position, boat.position, BOAT_TICK_SECONDS);
     boat_replay_runs_step(&session, before, &boat);
     CHECK(session.recording.count > 0);
     double retained = session.best.splits[3];

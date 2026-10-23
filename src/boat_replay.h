@@ -4,14 +4,15 @@
 #include "boat.h"
 
 #define BOAT_REPLAY_MAX_SECONDS 600
-#define BOAT_PHYSICS_REVISION 5
-#define BOAT_REPLAY_MAX_SAMPLES (BOAT_REPLAY_MAX_SECONDS * 120 + 2)
+#define BOAT_PHYSICS_REVISION 6
+#define BOAT_REPLAY_MAX_SAMPLES (BOAT_REPLAY_MAX_SECONDS * BOAT_TICK_HZ + 2)
 
 typedef struct {
     double at;
     Vector2 position, velocity;
     float heading, height, pitch, roll, engine_angle;
-    float wheel, throttle, engine_response, camera_heading, world_time;
+    float wheel, throttle, engine_response, camera_heading;
+    double world_time;
 } BoatReplaySample;
 
 // Zero-initialize; owns samples. A recording contains only START through FINISH.

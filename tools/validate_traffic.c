@@ -251,7 +251,7 @@ int main(void)
         BoatModelSpec spec = waterfront_traffic_spec(i);
         Boat boat;
         boat_reset_location(&boat, true);
-        boat.time = 60;
+        boat_set_tick(&boat, 7200);
         boat.heading = boat.camera_heading = ship.heading;
         Vector3 p = Vector3Add(
             ship.position, Vector3Scale(Vector3Normalize(ship.velocity), spec.length * .5f + 2.7f));
@@ -272,7 +272,7 @@ int main(void)
         ship = waterfront_traffic_motion(i, 40);
         Vector2 right = { cosf(ship.heading), sinf(ship.heading) };
         boat_reset_location(&boat, true);
-        boat.time = 40;
+        boat_set_tick(&boat, 4800);
         boat.position = Vector2Add((Vector2) { -ship.position.x, ship.position.z },
             Vector2Scale(right, spec.beam * .5f + 3));
         boat.heading = ship.heading - PI / 2;

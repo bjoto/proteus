@@ -76,6 +76,12 @@ static Vector2 thrust_direction(const Boat *boat)
 
 void boat_reset(Boat *boat) { *boat = (Boat) { .position = { 0, 10 } }; }
 
+void boat_set_tick(Boat *boat, uint64_t tick)
+{
+    boat->tick = tick;
+    boat->time = boat_tick_seconds(tick);
+}
+
 void boat_reset_location(Boat *boat, bool eriksberg)
 {
     boat_reset(boat);
@@ -670,7 +676,9 @@ static void water_step(Boat *boat)
 
 void boat_step(Boat *boat, float wheel_change, float throttle_change)
 {
-    boat->time += BOAT_STEP;
+    if (boat->replay_view || boat->tick == UINT64_MAX)
+        return;
+    boat_set_tick(boat, boat->tick + 1);
     float wet = hull_wet(boat) > 0 ? 1 : 0;
     motion_step(boat, wet);
     if (boat->motion_state == BOAT_CAPSIZED)
@@ -812,7 +820,7 @@ void boat_step(Boat *boat, float wheel_change, float throttle_change)
     }
     boat_update_flag(boat);
     water_step(boat);
-    boat_course_step(&boat->course, previous, boat->position, BOAT_STEP);
+    boat_course_step(&boat->course, previous, boat->position, BOAT_TICK_SECONDS);
 }
 
 static void box(Renderer3D *renderer, Vector3 position, Vector3 scale, Color color)

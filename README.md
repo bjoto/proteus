@@ -176,10 +176,10 @@ Personal bests persist between launches, with separate files for calm water and 
 The browser version stores these in IndexedDB for the current site; clearing site data removes them.
 On macOS they live in `~/Library/Application Support/Proteus/`; Windows uses `%LOCALAPPDATA%/Proteus/`,
 and Linux uses `$XDG_DATA_HOME/proteus/` (or `~/.local/share/proteus/`). The files are
-`course-calm-physics5.run` and `course-waves-physics5.run`. Use `--data-dir DIR` to select another
-directory. Handling revision 5 starts a separate set of bests; revision-4, revision-3, revision-2 and original best
-files remain on disk and are not loaded or overwritten automatically.
-Old handling recordings are rejected as replays/ghosts by this version.
+`course-calm-physics6.run` and `course-waves-physics6.run`. Use `--data-dir DIR` to select another
+directory. Clock/replay revision 6 starts a separate set of bests; revision-5, revision-4,
+revision-3, revision-2 and original best files remain on disk and are not loaded or overwritten
+automatically. Version-1/revision-5 recordings are rejected as replays/ghosts by this version.
 Incompatible or damaged saved bests are ignored with a message. Failed saves preserve the best in
 memory. Recording is limited to ten minutes per attempt; longer attempts can still finish, but
 cannot replace your recorded best.
@@ -195,9 +195,10 @@ cannot replace your recorded best.
 `--replay FILE` and `--ghost FILE` imply course mode. Replay selects the recording's water preset;
 an imported ghost must match your selected water preset (`--waves` for a wave run).
 An imported ghost stays selected across retries while your personal best is tracked separately.
-Recordings store poses at the 120 Hz simulation rate, with exact START/FINISH boundary samples and
-gate splits, so playback does not rerun physics. File, course, and physics revisions are checked when
-loading; bump `BOAT_PHYSICS_REVISION` in `src/boat_replay.h` when changing handling or wave presets,
+Live simulation time now comes from an integer 120 Hz tick; the float physics step is unchanged.
+Version-2 recordings store double-precision world time alongside poses at the 120 Hz simulation
+rate, with exact START/FINISH boundary samples and gate splits, so playback does not rerun
+physics. File, course, and physics revisions are checked when loading; bump `BOAT_PHYSICS_REVISION` in `src/boat_replay.h` when changing handling or wave presets,
 and the course revision in `src/boat_replay.c` when changing gates.
 Screenshot `--time` accepts up to 600 seconds with `--replay` and clamps to the recorded finish;
 other screenshot modes retain the 60 second limit.

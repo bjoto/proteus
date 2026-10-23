@@ -12,6 +12,9 @@ countersteering and a modest speed view, accepted by the user on 2026-10-19.
 A [Swedish ensign](#swedish-ensign--2026-10-20) now responds to a light breeze and boat-relative air flow.
 The score-loop arcade mode and archipelago remain proposals.
 
+Current clock/replay compatibility is revision 6 after foundations C1; revision-5
+personal best files remain on disk and are not loaded into current play.
+
 This document owns gameplay direction. Detailed next tasks belong to the
 [physics plan](BOAT_PHYSICS_PLAN.md), [living-city plan](LIVING_CITY_PLAN.md), and
 [river expansion record](eriksberg/bridge/README.md). See the [plan index](README.md)

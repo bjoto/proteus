@@ -1,13 +1,14 @@
 #ifndef PROTEUS_BOAT_H
 #define PROTEUS_BOAT_H
 
+#include "boat_clock.h"
 #include "boat_course.h"
 #include "boat_wake_player.h"
 #include "boat_water.h"
 #include "renderer3d.h"
 #include "waterfront_scene.h"
 
-#define BOAT_STEP (1.0f / 120.0f)
+#define BOAT_STEP (1.0f / BOAT_TICK_HZ)
 #define BOAT_BASIN_HALF_X 120.0f
 #define BOAT_BASIN_HALF_Z 80.0f
 #define BOAT_LIMIT_X (BOAT_BASIN_HALF_X - 2.5f)
@@ -38,7 +39,9 @@ typedef struct {
     BoatWater water_settings;
     const BoatWake *wake_surface; // Borrowed app-owned endpoint; never an owning BoatWater pointer.
     BoatCourse course;
-    float time;
+    uint64_t tick; // Authoritative live clock. A replay view never enters boat_step.
+    double time; // Derived from tick for live boats; continuous recorded time for replay views.
+    bool replay_view;
     Vector2 velocity;
     float heading; // Zero faces north (-Z); positive turns right.
     float throttle; // Signed thrust command, -1 (reverse) through 0 (idle) to 1 (forward).
@@ -66,6 +69,8 @@ typedef struct {
 } Boat;
 
 void boat_reset(Boat *boat);
+// Set a fixture/live boat to an exact tick. Replay samples retain continuous view time instead.
+void boat_set_tick(Boat *boat, uint64_t tick);
 void boat_reset_location(Boat *boat, bool eriksberg);
 void boat_reset_course(Boat *boat);
 void boat_update_flag(Boat *boat);

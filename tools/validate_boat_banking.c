@@ -731,7 +731,7 @@ static int validate_contacts(void)
             int vessel = trial - 4;
             WaterfrontVesselMotion ship = waterfront_traffic_motion(vessel, 40);
             BoatModelSpec spec = waterfront_traffic_spec(vessel);
-            boat.time = 40;
+            boat_set_tick(&boat, 4800);
             boat.position = Vector2Add((Vector2) { -ship.position.x, ship.position.z },
                 Vector2Scale(right(ship.heading), spec.beam * .5f + 3));
             boat.heading = ship.heading - PI / 2;

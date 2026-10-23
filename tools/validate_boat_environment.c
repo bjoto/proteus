@@ -135,7 +135,7 @@ static int wake_checks(void)
             a.position = (Vector2) { 0, 1.6f };
             a.heading = ai * PI / 4;
             a.camera_heading = a.heading;
-            a.time = 10;
+            boat_set_tick(&a, 1200);
             a.velocity = (Vector2) { sinf(a.heading) * speeds[si], -cosf(a.heading) * speeds[si] };
             a.water_settings = wake;
             b = a;

@@ -440,7 +440,7 @@ int main(int argc, char **argv)
         boat_replay_sample(runs.playing, time, &boat);
         boat_replay_animate_flag(runs.playing, &boat, &playback_flag);
     } else if (screenshot) {
-        for (int tick = 0; tick < (int)roundf(time / BOAT_STEP); ++tick)
+        for (int tick = 0; tick < (int)round(time / BOAT_TICK_SECONDS); ++tick)
             demo_step(&boat, tick, NULL, wake, objects);
     }
     Boat ghost;
@@ -667,7 +667,7 @@ int main(int argc, char **argv)
             metrics.discarded_active_ms
                 = boat_profile_discarded_seconds(raw_active_delta, true) * 1000.0f;
             accumulator += fmin(raw_active_delta, 0.1);
-            while (accumulator >= BOAT_STEP) {
+            while (accumulator >= BOAT_TICK_SECONDS) {
                 if (demo)
                     demo_step(&boat, demo_tick++, &metrics, wake, objects);
                 else {
@@ -682,7 +682,7 @@ int main(int argc, char **argv)
                     metrics.course_replay_ms
                         += (float)((boat_profile_time(true) - course_started_at) * 1000.0);
                 }
-                accumulator -= BOAT_STEP;
+                accumulator -= BOAT_TICK_SECONDS;
             }
         } else {
             accumulator = 0;

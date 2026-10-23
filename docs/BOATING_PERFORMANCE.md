@@ -170,3 +170,32 @@ collected for P3a.
 
 The multiplayer prerequisite track proceeds to C1, followed by C2/C3 before world/session
 extraction. Full P2 renderer counters and remaining P3 scenarios stay pending.
+
+## C1 clock comparison — 2026-10-23
+
+The C1 Release smoke command below uses the same 120-warmup/7200-measured finite arcade fixture
+as P3a, after building the changed sources. It is a behavior comparison; C3 will establish the
+replacement performance baseline after the remaining time consumers migrate.
+
+```sh
+cmake -S . -B build/p3a-release -DCMAKE_BUILD_TYPE=Release \
+  -DFETCHCONTENT_SOURCE_DIR_RAYLIB="$PWD/build/_deps/raylib-src"
+cmake --build build/p3a-release --target boat_benchmark boat_study -j
+mkdir -p build/bench/c1
+./build/p3a-release/boat_benchmark --scenario wake-loop --mode simulation --renderer none \
+  --warmup 120 --frames 7200 --output build/bench/c1/wake-loop
+```
+
+The C1 trace at `build/bench/c1/wake-loop.state.csv` has the same 7320 rows, births 17,
+peak 17, one landing, motion transitions at ticks 1118/1328/1370/1450 and last live wake
+at tick 3468 as P3a. Every CSV physical/wake column except `time` and the rolling hash matches
+P3a at every row. C1 ends at exactly 122 s versus P3a's accumulated 121.992271 s; its
+rolling hash is `24d582aae45971b4`. The one-run p50/p95/p99/max of
+0.063/0.140/0.152/0.243 ms are diagnostic only, collected on the same M1 Max/AC development
+machine, not a controlled replacement baseline.
+
+Release CPU and GPU captures at 9, 11 and 20 s in `build/bench/c1/` match the corresponding
+P3a PNG files byte for byte and were inspected. A scripted Release windowed demo and basin
+course run of 180 frames each completed (379 and 376 ticks respectively). No human handling,
+focus, pause or audio listening acceptance is inferred. The current water/traffic and shader
+time consumers still narrow to float; C2 must migrate them before long-session acceptance.

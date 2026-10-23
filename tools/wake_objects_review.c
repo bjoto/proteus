@@ -400,7 +400,7 @@ static void curved_captures(BoatGpu *gpu, bool visible)
             boat_wake_objects_advance(&world);
             boat_wake_objects_advance(&world);
         }
-        boat.time = world.tick * BOAT_STEP;
+        boat_set_tick(&boat, world.tick);
         boat_gpu_draw(gpu, &boat, camera);
         CHECK(!gpu->failed);
         if (frame == 0 || frame == 60 || frame == 120) {

@@ -4,8 +4,8 @@ Prepared 2026-10-19 against `f60ede8`, following the
 [architecture review](ARCHITECTURE_REVIEW.md). This document owns this technical sequence;
 [BOATING_PLAN.md](BOATING_PLAN.md) continues to own gameplay direction.
 
-Status: P1, P2a and P3a implemented; full P2/P3 remain pending. Next task for the
-[multiplayer prerequisite](MULTIPLAYER_PLAN.md): C1 integer tick authority and replay revision.
+Status: P1, P2a, P3a and C1 implemented; full P2/P3 remain pending. Next task for the
+[multiplayer prerequisite](MULTIPLAYER_PLAN.md): C2 precise water/traffic and shader time.
 At preparation, the user requested a plan only. Implementation began with P1 on 2026-10-19;
 execute later requested tasks using the protocol below. No additional approval gates are created
 by this plan. Verification of the original planning work is recorded at the end.
@@ -62,7 +62,7 @@ All rows start **pending**. Replace the evidence column with actual dated result
 | P2a | Existing arcade-loop simulation benchmark; subset of P2 | P1 | Implemented 2026-10-23; [report contract and verification](BOATING_PERFORMANCE.md) |
 | P3a | Current arcade-loop baseline; subset of P3 | P2a | Implemented 2026-10-23; [three-run trace, timings and captures](BOATING_PERFORMANCE.md#p3a-current-arcade-baseline--2026-10-23); full P3 matrix pending |
 | P3 | Baseline report and workload fixtures | P2 | Pending |
-| C1 | Integer tick authority and replay revision | P3 | Pending |
+| C1 | Integer tick authority and replay revision | P3 | Implemented 2026-10-23 after P3a slice; [clock handoff below](#c1-handoff--2026-10-23) |
 | C2 | Precise CPU/GPU time consumers | C1 | Pending |
 | C3 | Long-session/compatibility gate and new baseline | C2 | Pending |
 | W1 | Explicit immutable location definitions | C3 | Pending |
@@ -689,3 +689,34 @@ C1 is next on the multiplayer prerequisite track: integer tick authority and exp
 compatibility. The current 14,640-tick float time differs from nominal 122 s by about 7.7 ms.
 C1/C2/C3 must record their intended clock/phase differences against this baseline before
 world/session extraction. No cross-platform bit identity or user acceptance is inferred.
+
+## C1 handoff — 2026-10-23
+
+- **Status / next:** C1 implemented on the multiplayer prerequisite track after P3a.
+  C2 precise water/traffic/shader time is next; C1 alone does not complete long-session
+  phase/wake precision. Full P2/P3 remain pending. Starting revision was `5c7ef7a`; the
+  existing README and documentation edits and untracked multiplayer plan were preserved.
+- **Clock / compatibility:** `Boat.tick` is the temporary live authority until W3, with
+  `Boat.time` a derived double cache; S3 removes the cache from physical state.
+  `boat_set_tick` sets exact fixture/live ticks. The unchanged float `BOAT_STEP` still drives
+  forces; app accumulation and course timestamps use exact `1.0/120`. Replay samples are
+  continuous-time views guarded against live stepping. Replay format 2 stores double
+  `world_time` with `%.17g`; physics revision 6 uses new personal-best filenames. Version-1
+  and revision-5 imports fail without replacing in-memory runs or old files. No legacy reader
+  or default-world singleton was added.
+- **Automated verification:** Apple M1 Max/macOS 26.6.2, Debug,
+  `cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug`, `cmake --build build -j`, and
+  `ctest --test-dir build -j 4 --output-on-failure` pass 85 active cases (20 GPU) in
+  112.36 s with desktop access; fifteen retired field cases stay disabled.
+  `boat_replay` covers ticks 0/1/28,800/72,000/432,000, reset, exact fractional gate
+  crossings, version-2 double round trips, continuous replay viewing and version-1
+  rejection without loss of the destination or disk file. Focused replay/benchmark checks
+  and the CPU suite also pass; `git diff --check` passes.
+- **Baseline difference:** The [C1 comparison](BOATING_PERFORMANCE.md#c1-clock-comparison--2026-10-23)
+  retains every recorded physical/wake CSV field at all 7320 rows except derived time/hash;
+  14,640 ticks end at exactly 122 s instead of 121.992271 s. Release CPU/GPU captures at
+  9/11/20 s match P3a byte for byte and were inspected. Scripted 180-frame desktop demo
+  and course runs completed. No human handling/focus/audio acceptance is claimed.
+- **Limits:** Water/traffic/scene/shader APIs still narrow time to float; C2 owns their
+  precision and phase contract. C3 owns the long-session gate and replacement baseline.
+  Windows/Linux/browser execution and manual pause/focus/replay playback were not checked.

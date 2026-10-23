@@ -15,7 +15,7 @@
 
 // Bump these when the file format or course changes. Handling/water revision lives in the header
 // so automatic best filenames and recording compatibility use the same value.
-#define REPLAY_VERSION 1
+#define REPLAY_VERSION 2
 #define COURSE_REVISION 1
 
 BoatReplaySample boat_replay_pose(const Boat *b)
@@ -131,6 +131,7 @@ bool boat_replay_sample(const BoatReplay *run, double at, Boat *boat)
         .engine_response = s.engine_response,
         .camera_heading = s.camera_heading,
         .time = s.world_time,
+        .replay_view = true,
         .water_settings = run->waves ? boat_water_gentle() : (BoatWater) { 0 },
         .course = { .enabled = true, .elapsed = at, .next_gate = 1 } };
     memcpy(boat->course.splits, run->splits, sizeof(run->splits));
@@ -145,7 +146,7 @@ void boat_replay_animate_flag(const BoatReplay *run, Boat *boat, BoatReplayFlag 
     if (!run->count)
         return;
     double end = boat->course.elapsed;
-    int last = (int)floor(end / (double)BOAT_STEP);
+    int last = (int)floor(end / BOAT_TICK_SECONDS);
     bool restart = cache->run != run || cache->samples != run->samples
         || cache->start_time != run->samples[0].world_time || last < cache->tick
         || last - cache->tick > 24 || !cache->flag.initialized;
@@ -156,7 +157,7 @@ void boat_replay_animate_flag(const BoatReplay *run, Boat *boat, BoatReplayFlag 
     }
     Boat historical;
     for (int tick = first; tick <= last; ++tick) {
-        boat_replay_sample(run, tick * (double)BOAT_STEP, &historical);
+        boat_replay_sample(run, tick * BOAT_TICK_SECONDS, &historical);
         historical.flag = cache->flag;
         boat_update_flag(&historical);
         cache->flag = historical.flag;
@@ -218,7 +219,9 @@ static bool valid(const BoatReplay *run)
         BoatReplaySample s = run->samples[i];
         const float values[] = { s.position.x, s.position.y, s.velocity.x, s.velocity.y, s.heading,
             s.height, s.pitch, s.roll, s.engine_angle, s.wheel, s.throttle, s.engine_response,
-            s.camera_heading, s.world_time };
+            s.camera_heading };
+        if (!isfinite(s.world_time) || fabs(s.world_time) > 100000)
+            return false;
         for (size_t j = 0; j < sizeof(values) / sizeof(values[0]); ++j)
             if (!isfinite(values[j]) || fabsf(values[j]) > 100000)
                 return false;
@@ -228,7 +231,7 @@ static bool valid(const BoatReplay *run)
         if (!isfinite(s.at)
             || (i
                 && (s.at <= run->samples[i - 1].at
-                    || s.at - run->samples[i - 1].at > (double)BOAT_STEP * 1.01)))
+                    || s.at - run->samples[i - 1].at > BOAT_TICK_SECONDS * 1.01)))
             return false;
     }
     return true;
@@ -247,7 +250,7 @@ bool boat_replay_load(BoatReplay *run, const char *path)
                   &waves, &count)
             == 6
         && version == REPLAY_VERSION && course == COURSE_REVISION
-        && physics == BOAT_PHYSICS_REVISION && step == (double)BOAT_STEP
+        && physics == BOAT_PHYSICS_REVISION && step == BOAT_TICK_SECONDS
         && (waves == 0 || waves == 1) && count >= 2 && count <= BOAT_REPLAY_MAX_SAMPLES;
     if (ok) {
         loaded.waves = waves != 0;
@@ -258,7 +261,7 @@ bool boat_replay_load(BoatReplay *run, const char *path)
     }
     for (size_t i = 0; ok && i < count; ++i) {
         BoatReplaySample s = { 0 };
-        ok = fscanf(file, "%lf %f %f %f %f %f %f %f %f %f %f %f %f %f %f", &s.at, &s.position.x,
+        ok = fscanf(file, "%lf %f %f %f %f %f %f %f %f %f %f %f %f %f %lf", &s.at, &s.position.x,
                  &s.position.y, &s.velocity.x, &s.velocity.y, &s.heading, &s.height, &s.pitch,
                  &s.roll, &s.engine_angle, &s.wheel, &s.throttle, &s.engine_response,
                  &s.camera_heading, &s.world_time)
@@ -292,7 +295,7 @@ bool boat_replay_save(const BoatReplay *run, const char *path)
     bool ok = file != NULL;
     if (file) {
         ok = fprintf(file, "PROTEUS_RUN %d %d %d %.17g %d %zu\n", REPLAY_VERSION, COURSE_REVISION,
-                 BOAT_PHYSICS_REVISION, (double)BOAT_STEP, run->waves, run->count)
+                 BOAT_PHYSICS_REVISION, BOAT_TICK_SECONDS, run->waves, run->count)
             > 0;
         for (int i = 0; i < BOAT_COURSE_GATES; ++i)
             if (fprintf(file, "%.17g%c", run->splits[i], i == BOAT_COURSE_GATES - 1 ? '\n' : ' ')
@@ -302,7 +305,7 @@ bool boat_replay_save(const BoatReplay *run, const char *path)
             BoatReplaySample s = run->samples[i];
             ok = fprintf(file,
                      "%.17g %.9g %.9g %.9g %.9g %.9g %.9g %.9g %.9g %.9g %.9g %.9g %.9g %.9g "
-                     "%.9g\n",
+                     "%.17g\n",
                      s.at, s.position.x, s.position.y, s.velocity.x, s.velocity.y, s.heading,
                      s.height, s.pitch, s.roll, s.engine_angle, s.wheel, s.throttle,
                      s.engine_response, s.camera_heading, s.world_time)

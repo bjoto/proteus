@@ -1156,7 +1156,8 @@ int main(void)
     CHECK(validate_gentle_encounters() == 0);
     CHECK(validate_calm_reference() == 0);
     // The GPU consumes the same held engine angle and mirrored world coordinates as CPU.
-    Boat player = { .position = { 4, 9 }, .heading = .7f, .engine_angle = .2f, .time = 3 };
+    Boat player = { .position = { 4, 9 }, .heading = .7f, .engine_angle = .2f };
+    boat_set_tick(&player, 360);
     player.water[0]
         = (BoatWaterParticle) { .position = { 2, 8 }, .height = .1f, .lifetime = 2, .size = .4f };
     player.water[1] = (BoatWaterParticle) {

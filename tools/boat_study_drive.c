@@ -50,11 +50,11 @@ void timed_boat_step(Boat *boat, float steering, float throttle, BoatFrameMetric
                 objects->recovery_time += BOAT_STEP;
                 Vector2 spawn = { -65, -12 };
                 if (objects->recovery_time >= 2 && Vector2Distance(boat->position, spawn) > 10) {
-                    float time = other->time;
+                    uint64_t tick = other->tick;
                     boat_reset(other);
                     other->position = spawn;
                     other->heading = PI / 2;
-                    other->time = time;
+                    boat_set_tick(other, tick);
                     other->water_settings.objects = &objects->world;
                     objects->world.emitters[1]
                         = (BoatWakeObjectEmitter) { .next = objects->world.emitters[1].next };
