@@ -224,6 +224,18 @@ target_link_libraries(validate_boat_drive PRIVATE raylib)
 target_compile_options(validate_boat_drive PRIVATE
   $<$<C_COMPILER_ID:AppleClang,Clang,GNU>:-Wall;-Wextra;-Wpedantic>)
 add_test(NAME boat_drive_extraction COMMAND validate_boat_drive)
+add_executable(validate_boat_clock tools/validate_boat_clock.c tools/boat_study_state.c
+  tools/boat_study_drive.c src/boat.c src/renderer3d.c src/boat_profile.c
+  ${PROTEUS_BOAT_WORLD_SOURCES} ${PROTEUS_HARBOR_SOURCES})
+target_include_directories(validate_boat_clock PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(validate_boat_clock PRIVATE raylib)
+target_compile_options(validate_boat_clock PRIVATE
+  $<$<C_COMPILER_ID:AppleClang,Clang,GNU>:-Wall;-Wextra;-Wpedantic>)
+set(BOAT_CLOCK_TEST_DIR "${CMAKE_CURRENT_BINARY_DIR}/boat-clock-test")
+file(MAKE_DIRECTORY "${BOAT_CLOCK_TEST_DIR}")
+add_test(NAME boat_clock COMMAND validate_boat_clock ${BOAT_CLOCK_TEST_DIR})
+add_test(NAME boat_clock_soak_smoke
+  COMMAND validate_boat_clock --soak 60 ${BOAT_CLOCK_TEST_DIR} --waves)
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 add_test(NAME boat_benchmark_contract COMMAND ${Python3_EXECUTABLE}
   ${CMAKE_CURRENT_SOURCE_DIR}/tools/validate_boat_benchmark.py $<TARGET_FILE:boat_benchmark>)
@@ -641,7 +653,8 @@ endforeach()
 # Turn this off for instruction-by-instruction debugging of these executables.
 if(PROTEUS_OPTIMIZE_TESTS)
   foreach(target validate_boat validate_boat_banking validate_boat_turn_entry
-      validate_boat_environment validate_boat_replay boat_water_review wake_objects_review)
+      validate_boat_environment validate_boat_replay boat_water_review wake_objects_review
+      validate_boat_clock)
     target_compile_options(${target} PRIVATE
       $<$<AND:$<CONFIG:Debug>,$<C_COMPILER_ID:AppleClang,Clang,GNU>>:-O2>)
   endforeach()

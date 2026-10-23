@@ -220,7 +220,8 @@ static bool valid(const BoatReplay *run)
         const float values[] = { s.position.x, s.position.y, s.velocity.x, s.velocity.y, s.heading,
             s.height, s.pitch, s.roll, s.engine_angle, s.wheel, s.throttle, s.engine_response,
             s.camera_heading };
-        if (!isfinite(s.world_time) || fabs(s.world_time) > 100000)
+        if (!isfinite(s.world_time) || s.world_time < 0
+            || s.world_time > BOAT_REPLAY_MAX_WORLD_SECONDS)
             return false;
         for (size_t j = 0; j < sizeof(values) / sizeof(values[0]); ++j)
             if (!isfinite(values[j]) || fabsf(values[j]) > 100000)
