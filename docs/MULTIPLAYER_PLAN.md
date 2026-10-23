@@ -1,6 +1,7 @@
 # Multiplayer: shared boating implementation plan
 
-Prepared 2026-10-23 against `2994e0d`. **Planning only; multiplayer is not implemented.**
+Prepared 2026-10-23 against `2994e0d`. **M2, the local four-boat authority, is implemented;
+there is no networking yet.**
 This document owns multiplayer decisions, milestones, verification and acceptance.
 The [foundations plan](BOATING_FOUNDATIONS_PLAN.md) owns prerequisite extractions;
 the [physics](BOAT_PHYSICS_PLAN.md) and [wake](WAKE_REWRITE_PLAN.md) plans own handling.
@@ -15,7 +16,12 @@ user-played), the basin S3 slice (session-owned course/runs, replay view state, 
 outside the physical tick; user-played) and the basin S4 slice (static core library,
 display-free core validator, source/symbol boundary check; not yet user-played) and the S3
 `BoatInput` type (not yet user-played) are implemented, completing the minimum core
-prerequisites. Next: M2. All M1–M8 work is pending. Numerical budgets below are proposed gates, not measured multiplayer results.
+prerequisites. M2 (fleet step, simultaneous contacts, spawn/life rules, checkpoints and the
+scripted `boat_server`) is implemented and automatically verified. The user played its crossing
+rival on 2026-10-23 ("seems to work great"). See the
+[M2 handoff](#m2-local-authority-handoff--2026-10-23). Next: M3 (protocol, transport and
+process boundary). M3–M8 are pending.
+Numerical budgets below are proposed gates, not measured multiplayer results.
 The final evidence section distinguishes checks performed for this document from future checks.
 
 ## Recommendation and product boundary
@@ -68,7 +74,7 @@ Only three product questions materially remain open; the plan proceeds with thes
 | --- | --- |
 | [`src/main.c`](../src/main.c): `main`, `run_screenshot`, `run_profile`; [`tools/boat_study.c`](../tools/boat_study.c): `timed_boat_step`, `demo_step`, `ObjectStudy` | The game loop is in `boat_study`, not `src/main.c`. Keep the four-minute demo/music clock separate. The study is the integration point for joining, input and rendering. |
 | [`src/boat.h`](../src/boat.h): `Boat`, `BOAT_STEP`; [`src/boat.c`](../src/boat.c): `boat_step`, `buoyancy_step`, `motion_step`, `boat_wake_stern` | Reuse the 120 Hz force recipe, steering/throttle **rates**, engine response, six support points, air yaw, landing and inversion timers. `Boat` also owns flag, particles, camera, course, location, water copies and borrowed wake pointers. It is not a packet or prediction checkpoint. |
-| `boat_collide_pair`, `hull_vertical_bounds`, `resolve_hull_contact`, `resolve_traffic` in `boat.c` | Reuse OBB/SAT geometry, mutual planar/yaw impulses and mass-weighted separation. Vertical intervals reject clear jumps. This is not a full 3D solver: no vertical boat-on-boat impulse or deck landing, and pair response does not itself perform a final shoreline check. Sequential pair mutation is insufficient as the fleet scheduler. |
+| `boat_collide_pair`, `hull_vertical_bounds`, `resolve_hull_contact`, `resolve_traffic` in `boat.c` | Reuse OBB/SAT geometry, mutual planar/yaw impulses and mass-weighted separation. Vertical intervals reject clear jumps. This is not a full 3D solver: no vertical boat-on-boat impulse or deck landing, and pair response does not itself perform a final shoreline check. Sequential pair mutation is insufficient as the fleet scheduler. M2 (2026-10-23): `boat_collide_pair` now composes pure `boat_pair_contact`/`_speed`/`_impulse`/`_apply` helpers with unchanged arithmetic; `boat_fleet_solve` uses them simultaneously and holds separations at the shore. |
 | [`src/boat_water.c`](../src/boat_water.c): `boat_water_query`, `boat_water_query_field`, `boat_water_resistance` | Arcade contributions add signed height, gradient and vertical surface velocity; current contributes slope-relative vertical motion before normal construction. Preserve this common physical surface and the CPU/GPU recipe. |
 | [`src/boat_wake_objects.[ch]`](../src/boat_wake_objects.h): `BoatWakeObjects`, `boat_wake_objects_advance`, `boat_wake_objects_track`, `boat_wake_objects_query`, `boat_wake_objects_pack` | Caller-owned world already exists. Four emitters ×32 objects; cadence 60 ticks, maximum lifetime 1920 ticks, default crest 1.8 m; propagation 2.4 m/s. Immutable records evolve analytically with age. Emission is conditional on wetness/speed/span, not simply one event every 60 ticks. Emitter filters/start/cursor are future-affecting state. |
 | `timed_boat_step` and [`tools/wake_objects_review.c`](../tools/wake_objects_review.c): `local_fleet`, `gameplay_envelope` | Rival and four-boat tests share a world. The app tracks player emission before stepping the rival; the fleet test tracks inside its boat loop and solves pairs afterward. Neither is the new authoritative schedule. Current births have a zero birth envelope on that tick, mitigating immediate surface-order effects; do not claim an observed order bug from inspection alone. |
@@ -621,6 +627,11 @@ Acceptance: six pair candidates max/pass, <=128 live objects, four solver passes
 no lost wake histories on one-boat reset, full checkpoint <=8 KiB and no allocations per tick.
 Record CPU against the proposed budget; network and multi-view presentation are non-goals.
 
+Status, 2026-10-23: implemented as `BoatFleet`/`boat_fleet_step` in `src/boat_fleet.[ch]`,
+`tools/validate_boat_fleet.c` and `tools/boat_server.c`; automated checks pass and the user
+played the fleet crossing rival on 2026-10-23. Details, deviations and evidence are in the
+[M2 handoff](#m2-local-authority-handoff--2026-10-23).
+
 ### M3 — protocol, transport and process boundary
 
 Depends on M2. Likely new `src/boat_net_protocol.[ch]`, `boat_net_transport.[ch]`,
@@ -865,6 +876,116 @@ Before each handoff search README/docs/asset guides for superseded defaults, own
 capacity, pause/reset and compatibility claims; check changed links/anchors and command examples.
 State the exact commit, platform, compiler/options, fixture/profile/seed and evidence paths.
 No runtime command is documented as available until its parser/build/package exists.
+
+## M2 local authority handoff — 2026-10-23
+
+Started from `1ed6b70`; only the unrelated untracked `docs/TITLE_SCREEN_PLAN.md` was dirty.
+
+| Implemented | Automated verification | Manual observation | User acceptance |
+| --- | --- | --- | --- |
+| Fleet step, simultaneous contacts, spawn/life, checkpoints, scripted server, crossing rival on the fleet | `boat_fleet`, `boat_server_scripted`, full suite and HEAD comparison below | Scripted CPU captures and windowed runs | User played the crossing rival, 2026-10-23: "Seems to work great!" |
+
+**API.** `src/boat_fleet.[ch]` is part of `proteus_boat_core`. `BoatFleet` holds the immutable
+world (definition and water settings), a pointer-free `BoatFleetState` and per-step
+diagnostics. The state holds the tick, four `BoatFleetSlot`s (boat, life generation, active
+and pending flags, request order and tick) and the shared `BoatWakeObjects` pool by value.
+`boat_fleet_step(fleet, inputs[4])` runs the staged order above: queued spawns at the
+boundary, one wake advance, every active boat integrated from S[n] against the same frozen
+water, then `boat_fleet_solve`, then all wet sterns sampled before any emitter is tracked.
+`boat_fleet_save`/`boat_fleet_restore` copy the state, and the world rebinds its borrowed
+`objects` pointer on restore and on every step, so a by-value clone is independent.
+`boat_fleet_hash` is a field-wise digest that ignores padding. Slot index is the stable player
+ID and the emitter, and every hull has normalized mass 1.
+
+**Solver.** Each pass reads one candidate array and visits pairs in slot order. A pair's first
+touch fixes its restitution target, and accumulated impulses stay non-negative, so repeated
+passes never bounce twice. A hull in several contacts shares each correction (`1/max` contact
+count, a Jacobi relaxation), and deltas are applied together. A separation that would put a
+hull on the shore keeps its previous position. The solver stops after four applied passes and
+reports any residual contact. With one active boat the step is byte-identical to the study's
+object-wake order. For an isolated pair it is byte-identical to `boat_collide_pair` at mass 1,
+because the first pass uses the same expression and the separated pair no longer touches.
+
+**Spawns and lives.** `boat_fleet_request_spawn` queues a join or a reset. Requests are
+idempotent while pending and are served in request order, each against the hulls already
+placed in that batch. A blocked request retries at 10 Hz. A candidate must be 10 m from every
+other hull's centre over a 0.5 s straight-line approach, clear of the basin wall, and calm at
+all six supports now and 0.5 s ahead. Calm means |height| ≤ 0.25 m, gradient ≤ 0.2 and
+vertical speed ≤ 0.5 m/s. A placement increments the life and restarts that emitter's span
+while keeping its cursor and every live record. `boat_fleet_leave` removes a hull between
+ticks, and its wakes expire naturally.
+
+**Deviations from the text above, for review.**
+- The names are `BoatFleet`/`boat_fleet_step`, because `BoatWorld` already names the
+  environment that `boat_step` reads.
+- The calm check covers only the arcade wake contribution. Ambient waves are a uniform room
+  setting, and absolute 0.25 m would block every spawn in wave rooms.
+- There are eight authored basin candidates, and each slot starts its search at a different one.
+- Mapped definitions and the legacy D3 trail are rejected until M7, since D3 history is not
+  checkpointed.
+- Commands for inactive slots are ignored, and non-finite commands integrate as zero.
+- "No allocation per tick" holds by construction (fixed arrays), not by instrumentation.
+- Recent remote inputs for prediction are not in the checkpoint yet (M4).
+
+**`boat_study`.** `--wake-objects-crossing` now steps the player (slot 0) and the scripted rival
+(slot 1) through one fleet. Single-boat modes keep their existing path. Behavior changes in
+crossing mode only:
+- equal masses (previously 1/1.6);
+- the rival shares the player's water, waves included (it previously kept a calm world);
+- simultaneous contact;
+- a capsized rival asks for a reset after 2 s and returns at a safe candidate, instead of
+  respawning at its fixed spawn.
+
+The frozen P2a driver keeps its own copy of the old study state, and the C3 soak, which uses
+crossing mode, now produces new hashes.
+
+**Automated verification.** Apple M1 Max/macOS 26.6.2, Debug common recipe with
+`PROTEUS_GPU_TESTS=ON`. The build is warning-free and the 93 active CTests pass (three new:
+`boat_fleet`, `boat_server_scripted` and `boat_server_unscripted_rejected`; all three carry the
+`core` label); fifteen retired field cases stay disabled. After the last two edits (the
+tunneling fixture and a help-text line) the rerun passed all 72 non-GPU cases. The 21 GPU cases
+then failed to create a window (GLFW could not find a monitor; the display had become
+unavailable), so the final GPU rerun is outstanding. `validate_boat_fleet`, which links
+core only, checks:
+- one-boat byte equivalence in calm water and waves over 2400 ticks;
+- head-on and side-swipe pair equivalence with `boat_collide_pair`;
+- slot permutations and role swaps for two and four boats within 1e-3 after 240 ticks
+  (worst 7.9e-7);
+- 144 full-speed head-on and crossing encounters, none tunneling;
+- 8000 passive solver fixtures: momentum error ≤ 7.8e-6, no energy gain, overlap never
+  grows, and every hull stays inside the wall (317 shore holds). Random deep overlaps leave
+  residual contact in 1926 of 4000 cases, the deepest 1.53 m. Realistic swept contacts leave
+  residual contact in 40 of 4000, the deepest 0.023 m, within the 0.05 m gate;
+- checkpoints taken mid-flight, mid-contact, mid-span, at capsize, at pool wrap and with a
+  reset pending resume 600 ticks bit-identically, in a fresh fleet and in a by-value clone;
+  a checkpoint is 5848 bytes;
+- reset churn: 81 resets, all placed on their first attempt, spawns clear by more than 9 m,
+  no live record lost, every hull inside the wall;
+- a pool filled to all 128 records at the exact cadence survives resets, a leave and a rejoin
+  at the wrap without a capacity failure;
+- queue order, idempotent requests, 10 Hz retries while every candidate is blocked, and the
+  rejected configurations.
+
+**Comparison and CPU.** Comparison with a Release `1ed6b70` worktree showed the 18
+validator/review outputs matching apart from timing. The benchmark trace hash
+`2c318477117e222e` is unchanged. 52 of 54 captures are byte-identical; only the two
+crossing-with-waves frames differ, as intended. A one-hour four-boat scripted run measured a
+fleet tick of p95 0.031 ms and p99 0.034 ms, against the proposed 1/2 ms budget. Details are in
+[the M2 comparison](BOATING_PERFORMANCE.md#m2-fleet-comparison--2026-10-23).
+**Manual playback:** CPU captures of the crossing mode at 5, 12 and 30 s look correct.
+Windowed 1200-frame `--wake-objects-crossing --demo` runs on GPU, and with `--waves`, exited
+0. The CPU-renderer windowed run then failed to create a window (GLFW platform
+initialization), and the unchanged default `--demo` failed the same way, so CPU windowed
+playback was not checked. There was no keyboard play.
+
+**Limits.**
+- One machine; Windows, Linux and the browser build were not built or run.
+- The user's play is one informal session; no structured head-on/side-swipe/jump/recovery
+  sweep or calibration of the safe-spawn candidates was recorded.
+- `wake_objects_review`'s `local_fleet` still uses its old sequential schedule as a historical
+  review.
+- No network, wire encoding, prediction or multi-boat renderer exists. The rival is still
+  drawn through the ghost path.
 
 ## Exact first implementation task
 

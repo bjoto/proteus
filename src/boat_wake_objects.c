@@ -99,8 +99,13 @@ static float bump(float q, float width, float *slope)
  * Pieces are independent: there is no connected ribbon inversion at tight turns. */
 BoatWakeObjectSample boat_wake_objects_query(const BoatWakeObjects *w, Vector2 p)
 {
+    return boat_wake_objects_query_at(w, p, w ? w->tick : 0);
+}
+
+BoatWakeObjectSample boat_wake_objects_query_at(const BoatWakeObjects *w, Vector2 p, uint64_t tick)
+{
     BoatWakeObjectSample s = { 0 };
-    if (!w)
+    if (!w || tick < w->tick)
         return s;
     float life = w->life_ticks / 120.0f;
     for (unsigned i = 0; i < BOAT_OBJECT_CAPACITY; ++i) {
@@ -113,7 +118,7 @@ BoatWakeObjectSample boat_wake_objects_query(const BoatWakeObjects *w, Vector2 p
             continue;
         Vector2 normal = { -o->direction.y, o->direction.x };
         float v = Vector2DotProduct(delta, normal), radius = sqrtf(v * v + .25f);
-        float clock = (float)(w->tick - o->born) / 120;
+        float clock = (float)(tick - o->born) / 120;
         float age = clock - u * o->inverse_speed;
         float q = radius - .9f - 2.4f * age;
         if (q <= -7 || q >= 2)

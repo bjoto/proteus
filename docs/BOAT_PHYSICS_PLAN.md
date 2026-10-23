@@ -2,7 +2,10 @@
 
 2026-10-23: the user enjoys the current jumping, landing and capsizing. Preserve this
 arcade handling baseline in the [multiplayer plan](MULTIPLAYER_PLAN.md), which owns shared
-authority, prediction and fleet contact scheduling. Networking is planning only. Future
+authority, prediction and fleet contact scheduling. Networking is not implemented. Multiplayer
+M2 (2026-10-23) adds a simultaneous fleet contact solver used only by fleet worlds (the
+`--wake-objects-crossing` rival and `boat_server`). Single-player handling, `boat_collide_pair`
+arithmetic and replays are unchanged, so `BOAT_PHYSICS_REVISION` stays 6. Future
 clock/contact changes must record their physical effects and compatibility revision here;
 successful network tests will not substitute for human handling acceptance.
 

@@ -27,7 +27,8 @@ static void usage(void)
         "+/-: closer/farther | PageUp/PageDown: raise/lower camera | C: reset view\n"
         "--wake-field: opt-in coherent CPU field, native basin only\n"
         "--wake-objects: bounded arcade jump wakes (default in free boating)\n"
-        "--wake-objects-crossing: add a scripted boat sharing the arcade wakes (basin only)\n"
+        "--wake-objects-crossing: a scripted second fleet boat sharing wakes and contacts "
+        "(basin only)\n"
         "--wake-life-ticks 240..1920 (default 1920) | --wake-height 0.1..3 (default 1.8 m)\n"
         "--player-wake: legacy D3 trail | --no-player-wake: visual-only player trail\n"
         "--current / --crossing-wake: opt-in authored tests in all locations; R restarts passage\n"
@@ -464,7 +465,8 @@ int main(int argc, char **argv)
     const BoatFlag *ghost_view_flag = NULL;
     float ghost_opacity = 0;
     if (objects && objects->crossing) {
-        other_view = (BoatViewState) { .boat = objects->other, .time = live_view.time };
+        other_view
+            = (BoatViewState) { .boat = *object_study_other(objects), .time = live_view.time };
         ghost_view = &other_view;
         ghost_view_flag = &objects->other_presentation.flag;
         ghost_opacity = 1;
@@ -737,7 +739,8 @@ int main(int argc, char **argv)
         ghost_view_flag = NULL;
         ghost_opacity = 0;
         if (objects && objects->crossing) {
-            other_view = (BoatViewState) { .boat = objects->other, .time = live_view.time };
+            other_view
+                = (BoatViewState) { .boat = *object_study_other(objects), .time = live_view.time };
             ghost_view = &other_view;
             ghost_view_flag = &objects->other_presentation.flag;
             ghost_opacity = 1;
@@ -809,8 +812,8 @@ int main(int argc, char **argv)
             DrawText(TextFormat("WAKE FIELD / REVIEW %d", BOAT_WAKE_SOURCE_REVISION), 12,
                 GetScreenHeight() - 24, 12, SKYBLUE);
         if (objects)
-            DrawText(TextFormat("WAKE OBJECTS / %u LIVE / %.1f m / %u TICKS", objects->wakes.live,
-                         object_height, object_life),
+            DrawText(TextFormat("WAKE OBJECTS / %u LIVE / %.1f m / %u TICKS",
+                         object_study_wakes(objects)->live, object_height, object_life),
                 12, GetScreenHeight() - 24, 12, SKYBLUE);
         if (course)
             course_runs_hud(&session.runs, view, ghost_view, GetScreenWidth());
@@ -830,14 +833,15 @@ int main(int argc, char **argv)
         ++frames;
     }
 cleanup:
-    if (objects)
+    if (objects) {
+        const BoatWakeObjects *pool = object_study_wakes(objects);
         fprintf(stdout,
             "Wake objects: %llu ticks; %u live (peak %u / %d); %llu emitted, "
             "%llu expired; %zu bytes; lifetime %u ticks, crest %.2f m\n",
-            (unsigned long long)objects->wakes.tick, objects->wakes.live, objects->wakes.peak_live,
-            BOAT_OBJECT_CAPACITY, (unsigned long long)objects->wakes.emitted,
-            (unsigned long long)objects->wakes.expired, sizeof(objects->wakes), object_life,
-            object_height);
+            (unsigned long long)pool->tick, pool->live, pool->peak_live, BOAT_OBJECT_CAPACITY,
+            (unsigned long long)pool->emitted, (unsigned long long)pool->expired, sizeof(*pool),
+            object_life, object_height);
+    }
     if (music_ready)
         UnloadMusicStream(music);
     boat_audio_destroy(&audio);

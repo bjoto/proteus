@@ -124,8 +124,10 @@ hull grip, skeg and automatic banking need water contact. Brief inverted flight 
 0.6 seconds of inverted water contact capsizes the boat and stops propulsion. Press `R` to
 restart. The HUD reports flight, landing and capsize. Traffic and berth obstacles require
 vertical overlap, so jumps can clear low craft while tall masts/quays remain solid.
-The optional `--wake-objects-crossing` basin rival responds to waves and mutual hull impacts;
-after capsizing it restarts after two seconds when its spawn is clear. See the
+The optional `--wake-objects-crossing` basin rival is a second boat in the multiplayer M2 fleet:
+both boats step together, share the waves and wakes, and meet with simultaneous equal-mass hull
+impacts. Two seconds after capsizing it asks for a reset and returns at a basin spawn point that
+is calm and clear of both boats. See the
 [arcade review implementation](docs/WAKE_ARCADE_IMPLEMENTATION.md) for rules and limits.
 
 T5 tuning lets the bank ease out sooner as turning load fades. Deterministic presentation/

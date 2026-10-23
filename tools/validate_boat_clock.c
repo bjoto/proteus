@@ -66,7 +66,7 @@ static int reduction_checks(void)
 
 static uint64_t physical_hash(const Boat *boat, const ObjectStudy *study)
 {
-    return boat_study_state_hash(BOAT_STUDY_HASH_SEED, boat, 0, study);
+    return boat_study_state_hash(BOAT_STUDY_HASH_SEED, boat, 0, object_study_wakes(study));
 }
 
 // Calm-water handling and arcade wakes depend only on relative ticks: starting the fixed
@@ -217,12 +217,12 @@ static int soak(double seconds, const char *directory, bool waves)
 {
     static BoatSession session;
     static ObjectStudy study;
-    boat_session_init(&session, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
+    // Since M2 the crossing boat shares the player's fleet world, waves included.
+    boat_session_init(&session, boat_location(BOAT_LOCATION_BASIN),
+        waves ? boat_water_gentle() : (BoatWater) { 0 });
     object_study_reset(&study, &session, true, BOAT_OBJECT_LIFE_TICKS, 1.8f);
-    if (waves) {
-        session.world.water = boat_water_gentle();
-        session.world.water.objects = &study.wakes;
-    }
+    const BoatWakeObjects *pool = object_study_wakes(&study);
+    const Boat *other_boat = object_study_other(&study);
     Boat *boat = &session.boat;
     uint64_t total = (uint64_t)llround(seconds * BOAT_TICK_HZ);
     const uint64_t samples[] = { 120 * 60, total / 2, total };
@@ -258,22 +258,21 @@ static int soak(double seconds, const char *directory, bool waves)
             stuck_ticks = 0;
             ++recoveries;
         }
-        CHECK(boat_finite(boat) && boat_finite(&study.other));
-        CHECK(session.tick == tick + 1 && study.wakes.tick == tick + 1);
+        CHECK(boat_finite(boat) && boat_finite(other_boat));
+        CHECK(session.tick == tick + 1 && pool->tick == tick + 1);
         CHECK(fabsf(boat->position.x) < BOAT_BASIN_HALF_X
             && fabsf(boat->position.y) < BOAT_BASIN_HALF_Z);
-        CHECK(study.wakes.live <= BOAT_OBJECT_CAPACITY
-            && study.wakes.peak_live <= BOAT_OBJECT_CAPACITY);
-        CHECK(study.wakes.emitted == study.wakes.expired + study.wakes.live);
+        CHECK(pool->live <= BOAT_OBJECT_CAPACITY && pool->peak_live <= BOAT_OBJECT_CAPACITY);
+        CHECK(pool->emitted == pool->expired + pool->live);
         max_speed = fmaxf(max_speed, Vector2Length(boat->velocity));
         max_height = fmaxf(max_height, fabsf(boat->height));
         if ((tick + 1) % 2 == 0)
-            hash = boat_study_state_hash(hash, boat, boat_session_time(&session), &study);
+            hash = boat_study_state_hash(hash, boat, boat_session_time(&session), pool);
         if ((tick + 1) % (600 * 120) == 0)
             printf("soak minute=%" PRIu64 " emitted=%" PRIu64 " live=%u peak=%u landings=%" PRIu64
                    " "
                    "recoveries=%" PRIu64 " position=%.2f,%.2f\n",
-                (tick + 1) / 7200, study.wakes.emitted, study.wakes.live, study.wakes.peak_live,
+                (tick + 1) / 7200, pool->emitted, pool->live, pool->peak_live,
                 landings + boat->landings, recoveries, boat->position.x, boat->position.y);
         for (int s = 0; s < 3; ++s)
             if (tick + 1 == samples[s] && (s == 0 || samples[s] != samples[s - 1])) {
@@ -282,7 +281,7 @@ static int soak(double seconds, const char *directory, bool waves)
                           waves ? "-waves" : "", samples[s] / 120)
                     < (int)sizeof(path));
                 BoatViewState view = boat_session_view(&session);
-                BoatViewState other = { .boat = study.other, .time = view.time };
+                BoatViewState other = { .boat = *other_boat, .time = view.time };
                 CHECK(boat_draw_with_ghost(&renderer, pixels, 320, 200, &view,
                     &session.presentation, &session.world, BOAT_CAMERA_DEFAULT, &other,
                     &study.other_presentation.flag, 1));
@@ -291,13 +290,13 @@ static int soak(double seconds, const char *directory, bool waves)
             }
     }
     double cpu = (double)(clock() - started) / CLOCKS_PER_SEC;
-    CHECK(study.wakes.emitted > total / 2400); // Emission continued throughout the session.
+    CHECK(pool->emitted > total / 2400); // Emission continued throughout the session.
     printf("soak=ok seconds=%.0f waves=%d ticks=%" PRIu64 " time=%.17g emitted=%" PRIu64
            " expired=%" PRIu64 " peak_live=%u/%d landings=%" PRIu64 " recoveries=%" PRIu64
            " max_speed=%.3f max_height=%.3f hash=%016" PRIx64 " cpu_s=%.2f\n",
-        seconds, waves, session.tick, boat_session_time(&session), study.wakes.emitted,
-        study.wakes.expired, study.wakes.peak_live, BOAT_OBJECT_CAPACITY, landings + boat->landings,
-        recoveries, max_speed, max_height, hash, cpu);
+        seconds, waves, session.tick, boat_session_time(&session), pool->emitted, pool->expired,
+        pool->peak_live, BOAT_OBJECT_CAPACITY, landings + boat->landings, recoveries, max_speed,
+        max_height, hash, cpu);
     renderer3d_destroy(&renderer);
     free(pixels);
     return 0;

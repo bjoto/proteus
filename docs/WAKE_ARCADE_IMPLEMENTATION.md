@@ -38,11 +38,13 @@ claim user acceptance; later feedback is recorded above. Documentation link targ
    there is no full 3D impact solver, walkable deck or vertical landing-on-boat response.
 4. **One dynamic rival.** `--wake-objects-crossing` retains the basin craft's real `Boat`
    buoyancy, inertia and shared wake emission, adding mutual SAT separation and contact
-   impulses. Player/rival normalized impact masses are 1/1.6, with corresponding yaw
-   inertia; buoyancy/handling coefficients remain the same recipe. Neither craft is
-   immune to the other's wake. A capsized rival restarts after 2 s when its original
-   spawn is at least 10 m from the player. Its emitter starts a new span while retaining
-   live old wakes and ring position. Ordinary harbor/traffic vessels remain kinematic.
+   impulses. As implemented here, player/rival normalized impact masses were 1/1.6 and a
+   capsized rival restarted at its fixed spawn. Since multiplayer M2 (2026-10-23) both craft
+   are slots of one [fleet](MULTIPLAYER_PLAN.md#m2-local-authority-handoff--2026-10-23): equal
+   masses, simultaneous contacts, the player's water for both, and a safe-spawn reset 2 s
+   after a capsize. Neither craft is immune to the other's wake. Its emitter starts a new
+   span while retaining live old wakes and ring position. Ordinary harbor/traffic vessels
+   remain kinematic.
 5. **Outcome envelope.** A permanent 108-case sweep covers speeds 6/12/18 m/s, angles
    0/45/90°, ages 1/4/8 s and 1–4 local source slots. Each case runs 35 s and must finish
    upright/waterborne or explicitly capsized, with settled vertical motion and expired

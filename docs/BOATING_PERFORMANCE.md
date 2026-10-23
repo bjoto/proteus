@@ -394,3 +394,33 @@ S4 comparison script one after the other.
 
 The hour soaks were not rerun. Artifacts are in `build/bench/input/{out-head,out-new}`. No
 simulation or render behavior was intended to change, so C3 remains the reference baseline.
+
+## M2 fleet comparison — 2026-10-23
+
+The [multiplayer M2 handoff](MULTIPLAYER_PLAN.md#m2-local-authority-handoff--2026-10-23) adds
+the local fleet authority. Only `--wake-objects-crossing` was meant to change. Same setup as
+the `BoatInput` comparison: MacBookPro18,2 (M1 Max, macOS 26.6.2), Release AppleClang,
+`-DFETCHCONTENT_SOURCE_DIR_RAYLIB`, a detached `1ed6b70` worktree, and the S4 comparison
+script run on both trees one after the other.
+
+| Check | Result |
+| --- | --- |
+| Validators/review tools | 18 outputs exit 0 and match except the object-wake timing line |
+| Benchmark trace | Byte-identical state CSV, hash `2c318477117e222e` |
+| Captures | 52 of 54 CPU/GPU frames byte-identical; the CPU and GPU `--wake-objects-crossing --waves --time 9` frames differ as intended (the rival now shares the player's waves). Calm crossing at 12 s is identical (no contact or recovery yet) |
+
+Scripted authority, Release `boat_server --scripted --ticks 432000` (one simulated hour, run
+as fast as possible, timing only `boat_fleet_step`):
+
+| Boats | Mean / p50 / p95 / p99 / max tick (ms) | Contact pairs | Max passes / pair tests | Residual ticks | Peak live wakes | Resets |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | 0.0049 / 0.0050 / 0.0060 / 0.0069 / 0.061 | 0 | 0 / 0 | 0 | 32 | 0 |
+| 2 | 0.0111 / 0.0110 / 0.0131 / 0.0150 / 0.124 | 932 | 1 / 2 | 0 | 64 | 258 |
+| 4 | 0.0268 / 0.0269 / 0.0310 / 0.0341 / 0.378 | 5126 | 4 / 30 | 53 | 109 | 727 (22 blocked retries) |
+
+Four boats stay far inside the proposed 1 ms p95 / 2 ms p99 authority budget, with no
+emission failures and at most six pair tests per pass. Thirty is five detection rounds of six
+pairs (four applied passes plus the residual check). The bots capsize often, so resets are
+frequent. These are same-machine engineering measurements with no networking, encoding or
+snapshots. Artifacts: `build/bench/m2/{out-head,out-new,server-release.txt}`. The hour soaks
+were not rerun; the C3 soak hashes no longer apply because the soak drives crossing mode.

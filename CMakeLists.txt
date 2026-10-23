@@ -39,7 +39,8 @@ set(PROTEUS_WARNINGS $<$<C_COMPILER_ID:AppleClang,Clang,GNU>:-Wall;-Wextra;-Wped
 # windows or audio, or touch files; boat_core_boundary checks its sources and symbols.
 set(PROTEUS_BOAT_CORE_SOURCES
   src/boat.c src/boat.h src/boat_clock.h src/boat_course.c src/boat_course.h
-  src/boat_location.c src/boat_location.h src/boat_map.c src/boat_map.h
+  src/boat_fleet.c src/boat_fleet.h src/boat_location.c src/boat_location.h src/boat_map.c
+  src/boat_map.h
   src/boat_model.c src/boat_model.h src/boat_pose.c src/boat_pose.h
   src/boat_input.h src/boat_view_state.h src/boat_wake.c src/boat_wake.h src/boat_wake_objects.c
   src/boat_wake_objects.h src/boat_wake_player.c src/boat_wake_player.h src/boat_water.c
@@ -324,6 +325,20 @@ add_executable(validate_boat_core tools/validate_boat_core.c)
 target_link_libraries(validate_boat_core PRIVATE proteus_boat_core)
 target_compile_options(validate_boat_core PRIVATE ${PROTEUS_WARNINGS})
 add_test(NAME boat_core COMMAND validate_boat_core)
+# Multiplayer M2: the local four-boat authority and its scripted server, also core-only.
+add_executable(validate_boat_fleet tools/validate_boat_fleet.c)
+add_executable(boat_server tools/boat_server.c)
+foreach(target validate_boat_fleet boat_server)
+  target_link_libraries(${target} PRIVATE proteus_boat_core)
+  target_compile_options(${target} PRIVATE ${PROTEUS_WARNINGS})
+endforeach()
+add_test(NAME boat_fleet COMMAND validate_boat_fleet)
+set_tests_properties(boat_fleet PROPERTIES PASS_REGULAR_EXPRESSION "boat_fleet=ok")
+add_test(NAME boat_server_scripted COMMAND boat_server --scripted --ticks 2400)
+set_tests_properties(boat_server_scripted PROPERTIES
+  PASS_REGULAR_EXPRESSION "boat_server scripted: boats=4 ticks=2400")
+add_test(NAME boat_server_unscripted_rejected COMMAND boat_server)
+set_tests_properties(boat_server_unscripted_rejected PROPERTIES WILL_FAIL TRUE)
 set(BOAT_CORE_BOUNDARY_NM)
 if(CMAKE_NM AND NOT MSVC)
   set(BOAT_CORE_BOUNDARY_NM --nm ${CMAKE_NM} --archive $<TARGET_FILE:proteus_boat_core>)
@@ -648,12 +663,12 @@ foreach(test IN LISTS PROTEUS_WAKE_FIELD_CASES)
   endif()
 endforeach()
 
-# Labels: core (display-free core library gates), render (CPU captures), gpu (graphics context)
+# Labels: core (display-free core library gates, fleet and scripted server), render (CPU captures), gpu (graphics context)
 # and cpu (everything else that runs without a display).
 get_property(PROTEUS_TESTS DIRECTORY PROPERTY TESTS)
 foreach(test IN LISTS PROTEUS_TESTS)
   get_test_property(${test} LABELS labels)
-  if(test MATCHES "^boat_core")
+  if(test MATCHES "^boat_core|^boat_fleet|^boat_server")
     set_property(TEST ${test} APPEND PROPERTY LABELS core cpu)
   elseif(labels MATCHES "gpu")
   elseif(test MATCHES "screenshot|checksum|_cpu$")
@@ -672,7 +687,7 @@ if(PROTEUS_OPTIMIZE_TESTS)
   foreach(target proteus_boat_core proteus_render proteus_boat_session proteus_boat_drive
       validate_boat validate_boat_banking validate_boat_turn_entry
       validate_boat_environment validate_boat_replay boat_water_review wake_objects_review
-      validate_boat_clock validate_boat_world validate_boat_core)
+      validate_boat_clock validate_boat_world validate_boat_core validate_boat_fleet boat_server)
     target_compile_options(${target} PRIVATE
       $<$<AND:$<CONFIG:Debug>,$<C_COMPILER_ID:AppleClang,Clang,GNU>>:-O2>)
   endforeach()

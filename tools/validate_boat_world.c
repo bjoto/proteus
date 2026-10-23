@@ -194,17 +194,20 @@ static int presentation_toggle(void)
     for (int tick = 0; tick < 3840; ++tick) {
         demo_step(&on, tick, NULL, NULL, &objects_on);
         demo_step(&off, tick, NULL, NULL, &objects_off);
-        CHECK(boat_study_state_hash(
-                  BOAT_STUDY_HASH_SEED, &on.boat, boat_session_time(&on), &objects_on)
-            == boat_study_state_hash(
-                BOAT_STUDY_HASH_SEED, &off.boat, boat_session_time(&off), &objects_off));
-        CHECK(memcmp(&objects_on.other, &objects_off.other, sizeof(Boat)) == 0);
+        CHECK(boat_study_state_hash(BOAT_STUDY_HASH_SEED, &on.boat, boat_session_time(&on),
+                  object_study_wakes(&objects_on))
+            == boat_study_state_hash(BOAT_STUDY_HASH_SEED, &off.boat, boat_session_time(&off),
+                object_study_wakes(&objects_off)));
+        CHECK(
+            memcmp(object_study_other(&objects_on), object_study_other(&objects_off), sizeof(Boat))
+            == 0);
     }
-    CHECK(objects_on.wakes.emitted > 0 && objects_on.other_presentation.flag.initialized);
+    CHECK(object_study_wakes(&objects_on)->emitted > 0
+        && objects_on.other_presentation.flag.initialized);
     CHECK(memcmp(&off.presentation, &rest, sizeof(rest)) == 0);
     CHECK(memcmp(&objects_off.other_presentation, &rest, sizeof(rest)) == 0);
     printf("presentation_toggle=ok sessions=%d+crossing ticks=%d,3840 births=%llu\n", SESSIONS,
-        TICKS, (unsigned long long)objects_on.wakes.emitted);
+        TICKS, (unsigned long long)object_study_wakes(&objects_on)->emitted);
     return 0;
 }
 

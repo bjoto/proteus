@@ -19,7 +19,8 @@ int main(void)
 {
     const BoatWorldDefinition *basin = boat_location(BOAT_LOCATION_BASIN);
     BoatSession a, b;
-    ObjectStudy wa, wb;
+    BaselineStudy wa;
+    ObjectStudy wb;
     boat_session_init(&a, basin, boat_water_test(false, false, false));
     boat_session_init(&b, basin, boat_water_test(false, false, false));
     baseline_reset(&wa, &a, false, BOAT_OBJECT_LIFE_TICKS, 1.8f);
@@ -29,8 +30,9 @@ int main(void)
     for (int tick = 0; tick < 3840; ++tick) {
         baseline_demo(&a, tick, NULL, NULL, &wa);
         demo_step(&b, tick, NULL, NULL, &wb);
-        CHECK(boat_study_state_hash(BOAT_STUDY_HASH_SEED, &a.boat, boat_session_time(&a), &wa)
-            == boat_study_state_hash(BOAT_STUDY_HASH_SEED, &b.boat, boat_session_time(&b), &wb));
+        CHECK(boat_study_state_hash(BOAT_STUDY_HASH_SEED, &a.boat, boat_session_time(&a), &wa.wakes)
+            == boat_study_state_hash(
+                BOAT_STUDY_HASH_SEED, &b.boat, boat_session_time(&b), object_study_wakes(&wb)));
         if (tick == 1079 || tick == 2399) {
             BoatViewState va = boat_session_view(&a), vb = boat_session_view(&b);
             CHECK(

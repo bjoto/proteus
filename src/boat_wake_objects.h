@@ -43,6 +43,10 @@ void boat_wake_objects_advance(BoatWakeObjects *world);
 bool boat_wake_objects_track(
     BoatWakeObjects *world, unsigned boat, Vector2 stern, float speed, float wet);
 BoatWakeObjectSample boat_wake_objects_query(const BoatWakeObjects *world, Vector2 position);
+/* The same records evaluated TICK >= world->tick, before any later births: records that would
+ * expire by then have already faded to zero. Earlier ticks return a flat sample. */
+BoatWakeObjectSample boat_wake_objects_query_at(
+    const BoatWakeObjects *world, Vector2 position, uint64_t tick);
 /* Pack CAPACITY vec4 slots per output array. Age replaces absolute birth time;
  * the renderer stores these two arrays as rows of a compact object-record texture. */
 int boat_wake_objects_pack(const BoatWakeObjects *world, float *origins, float *parameters);

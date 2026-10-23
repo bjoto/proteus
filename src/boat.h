@@ -9,6 +9,7 @@
 #define BOAT_STEP (1.0f / BOAT_TICK_HZ)
 #define BOAT_LIMIT_X (BOAT_BASIN_HALF_X - 2.5f)
 #define BOAT_LIMIT_Z (BOAT_BASIN_HALF_Z - 2.5f)
+#define BOAT_CONTACT_RESTITUTION 0.12f
 
 typedef enum { BOAT_WATERBORNE, BOAT_AIRBORNE, BOAT_LANDING, BOAT_CAPSIZED } BoatMotionState;
 
@@ -46,9 +47,28 @@ void boat_reset_location(Boat *boat, const BoatWorldDefinition *definition);
 // Translation starts from the position given, so callers sweep gates from it.
 // Only WORLD's water history is written. Opposite steering unwinds the wheel three times faster.
 void boat_step(Boat *boat, BoatWorld *world, double now, BoatInput input);
-// Mutual planar impulse/separation for two dynamic hulls with vertical overlap.
-// Positive normalized masses also scale yaw inertia; no allocation or route ownership.
+// Planar contact between two dynamic hulls whose transformed vertical intervals overlap:
+// the separating-axis normal pushing A away from B, its penetration depth and both lever arms
+// to the shared contact point.
+typedef struct {
+    Vector2 normal, arm_a, arm_b;
+    float depth;
+} BoatPairContact;
+bool boat_pair_contact(const Boat *a, const Boat *b, BoatPairContact *contact);
+// Relative normal speed of the two contact points; negative while approaching.
+float boat_pair_speed(const Boat *a, const Boat *b, BoatPairContact contact);
+// Normal impulse that changes the relative contact speed by CHANGE. Positive normalized masses
+// also scale yaw inertia.
+float boat_pair_impulse(BoatPairContact contact, float mass_a, float mass_b, float change);
+// Apply IMPULSE (A along the normal, B opposite) and SEPARATION times the depth-plus-margin
+// shift, split by inverse mass. The arms stay those of the contact.
+void boat_pair_apply(Boat *a, float mass_a, Boat *b, float mass_b, BoatPairContact contact,
+    float impulse, float separation);
+// One-shot mutual planar impulse/separation for two dynamic hulls with vertical overlap.
+// No allocation or route ownership. BoatFleet uses the helpers above in a simultaneous solver.
 bool boat_collide_pair(Boat *a, float mass_a, Boat *b, float mass_b);
+// True when no hull sample touches the world's shoreline or basin wall at TIME.
+bool boat_hull_clear(const Boat *boat, const BoatWorld *world, double time);
 BoatWakeStern boat_wake_stern(const Boat *boat, const BoatWorld *world, double time);
 
 #endif

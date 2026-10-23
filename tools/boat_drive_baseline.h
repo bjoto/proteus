@@ -4,11 +4,22 @@
 #include <stdio.h>
 #include <stdlib.h>
 /* Frozen pre-extraction driver from 2994e0d, P2a regression oracle. W3 ported only its calls
- * to the explicit session/world API; order, expressions and the crossing recovery are unchanged. */
+ * to the explicit session/world API; order, expressions and the crossing recovery are unchanged.
+ * M2 moved the production crossing boat into a fleet, so the oracle keeps its own copy of the
+ * old study state; validate_boat_drive compares the single-boat path only. */
+typedef struct {
+    BoatWakeObjects wakes;
+    BoatWorld other_world;
+    Boat other;
+    bool crossing;
+    unsigned waypoint;
+    float recovery_time;
+} BaselineStudy;
+
 static void baseline_reset(
-    ObjectStudy *study, BoatSession *session, bool crossing, unsigned life, float height)
+    BaselineStudy *study, BoatSession *session, bool crossing, unsigned life, float height)
 {
-    *study = (ObjectStudy) { .crossing = crossing };
+    *study = (BaselineStudy) { .crossing = crossing };
     boat_wake_objects_init(&study->wakes, life, height);
     session->world.water.objects = &study->wakes;
     boat_reset(&study->other);
@@ -19,7 +30,7 @@ static void baseline_reset(
 }
 
 static void baseline_track(
-    ObjectStudy *study, const Boat *boat, const BoatWorld *world, double time, unsigned id)
+    BaselineStudy *study, const Boat *boat, const BoatWorld *world, double time, unsigned id)
 {
     BoatWakeStern s = boat_wake_stern(boat, world, time);
     if (!boat_wake_objects_track(&study->wakes, id, (Vector2) { (float)s.x, (float)s.z },
@@ -30,7 +41,7 @@ static void baseline_track(
 }
 
 static void baseline_step(BoatSession *session, float steering, float throttle,
-    BoatFrameMetrics *metrics, BoatWakePlayer *wake, ObjectStudy *objects)
+    BoatFrameMetrics *metrics, BoatWakePlayer *wake, BaselineStudy *objects)
 {
     Boat *boat = &session->boat;
     double started = boat_profile_time(IsWindowReady());
@@ -87,7 +98,7 @@ static void baseline_step(BoatSession *session, float steering, float throttle,
 }
 
 static void baseline_demo(BoatSession *session, int tick, BoatFrameMetrics *metrics,
-    BoatWakePlayer *wake, ObjectStudy *objects)
+    BoatWakePlayer *wake, BaselineStudy *objects)
 {
     const Boat *boat = &session->boat;
     if (wake || objects || session->world.water.player_wake_enabled) {

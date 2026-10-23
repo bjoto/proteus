@@ -96,7 +96,7 @@ int main(int argc, char **argv)
         double elapsed = (boat_profile_time(false) - start) * 1000;
         /* Trace serialization is deliberately outside the measured simulation interval. */
         double now = boat_session_time(&session);
-        hash = boat_study_state_hash(hash, boat, now, &objects);
+        hash = boat_study_state_hash(hash, boat, now, object_study_wakes(&objects));
         trace[f]
             = (StateTrace) { hash, objects.wakes.emitted, now, boat->position.x, boat->position.y,
                   boat->velocity.x, boat->velocity.y, boat->height, boat->vertical_velocity,

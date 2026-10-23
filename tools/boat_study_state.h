@@ -6,5 +6,5 @@
 #define BOAT_STUDY_HASH_SEED UINT64_C(14695981039346656037)
 // TIME is the session's world time, hashed in the boat's former cached-time position.
 uint64_t boat_study_state_hash(
-    uint64_t hash, const Boat *boat, double time, const ObjectStudy *objects);
+    uint64_t hash, const Boat *boat, double time, const BoatWakeObjects *wakes);
 #endif

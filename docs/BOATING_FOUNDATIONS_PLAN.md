@@ -7,8 +7,10 @@ Prepared 2026-10-19 against `f60ede8`, following the
 Status: P1, P2a, P3a, phase C (C1–C3), the basin W1/W3, S1/S2, S3 and S4 slices and the S3
 `BoatInput` type implemented; full P2/P3, mapped W1/W3, W2, W4, the remaining S1 frame
 consolidation, full S4 validator splitting and S5 remain pending. The minimum core
-[multiplayer prerequisites](MULTIPLAYER_PLAN.md) are complete; next is multiplayer M2. See the
-[`BoatInput` handoff](#s3-boatinput-handoff--2026-10-23).
+[multiplayer prerequisites](MULTIPLAYER_PLAN.md) are complete, and multiplayer M2 (the local
+fleet authority) is implemented in that plan's
+[M2 handoff](MULTIPLAYER_PLAN.md#m2-local-authority-handoff--2026-10-23). The last foundations
+handoff is the [`BoatInput` handoff](#s3-boatinput-handoff--2026-10-23).
 At preparation, the user requested a plan only. Implementation began with P1 on 2026-10-19;
 execute later requested tasks using the protocol below. No additional approval gates are created
 by this plan. Verification of the original planning work is recorded at the end.

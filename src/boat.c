@@ -63,7 +63,6 @@ static const float HULL_BOW = 2.0f;
 static const float HULL_STERN = 1.6f;
 static const float HULL_HALF_BEAM = .75f;
 static const float HULL_SHORE_CLEARANCE = .35f;
-static const float CONTACT_RESTITUTION = .12f;
 static const float CONTACT_FRICTION = .15f;
 
 void boat_reset(Boat *boat) { *boat = (Boat) { .position = { 0, 10 } }; }
@@ -148,7 +147,7 @@ static void resolve_hull_contact(Boat *boat, Vector2 safe_position, HullContact 
         = Vector2DotProduct(Vector2Subtract(point_velocity, contact.velocity), contact.normal);
     if (normal_speed < 0) {
         float arm_cross_normal = arm.x * contact.normal.y - arm.y * contact.normal.x;
-        float impulse = -(1 + CONTACT_RESTITUTION) * normal_speed
+        float impulse = -(1 + BOAT_CONTACT_RESTITUTION) * normal_speed
             / (1 + arm_cross_normal * arm_cross_normal / YAW_INERTIA);
         boat->velocity = Vector2Add(boat->velocity, Vector2Scale(contact.normal, impulse));
         boat->yaw_velocity += arm_cross_normal * impulse / YAW_INERTIA;
@@ -187,9 +186,8 @@ static void resolve_traffic(Boat *boat, const BoatWorld *world, double time)
     }
 }
 
-bool boat_collide_pair(Boat *a, float mass_a, Boat *b, float mass_b)
+bool boat_pair_contact(const Boat *a, const Boat *b, BoatPairContact *contact)
 {
-    assert(mass_a > 0 && mass_b > 0);
     float low_a, high_a, low_b, high_b;
     hull_vertical_bounds(a, &low_a, &high_a);
     hull_vertical_bounds(b, &low_b, &high_b);
@@ -219,31 +217,78 @@ bool boat_collide_pair(Boat *a, float mass_a, Boat *b, float mass_b)
             normal = Vector2Scale(n, distance < 0 ? -1 : 1);
         }
     }
-    float inverse_a = 1 / mass_a, inverse_b = 1 / mass_b;
-    float inverse_sum = inverse_a + inverse_b;
     Vector2 point = Vector2Scale(Vector2Add(center[0], center[1]), .5f);
-    Vector2 arm_a = Vector2Subtract(point, a->position);
-    Vector2 arm_b = Vector2Subtract(point, b->position);
+    *contact = (BoatPairContact) { .normal = normal,
+        .arm_a = Vector2Subtract(point, a->position),
+        .arm_b = Vector2Subtract(point, b->position),
+        .depth = depth };
+    return true;
+}
+
+float boat_pair_speed(const Boat *a, const Boat *b, BoatPairContact contact)
+{
+    Vector2 arm_a = contact.arm_a, arm_b = contact.arm_b;
     Vector2 va = Vector2Add(
         a->velocity, (Vector2) { -a->yaw_velocity * arm_a.y, a->yaw_velocity * arm_a.x });
     Vector2 vb = Vector2Add(
         b->velocity, (Vector2) { -b->yaw_velocity * arm_b.y, b->yaw_velocity * arm_b.x });
-    float speed = Vector2DotProduct(Vector2Subtract(va, vb), normal);
-    if (speed < 0) {
+    return Vector2DotProduct(Vector2Subtract(va, vb), contact.normal);
+}
+
+float boat_pair_impulse(BoatPairContact contact, float mass_a, float mass_b, float change)
+{
+    assert(mass_a > 0 && mass_b > 0);
+    float inverse_a = 1 / mass_a, inverse_b = 1 / mass_b;
+    float inverse_sum = inverse_a + inverse_b;
+    Vector2 normal = contact.normal, arm_a = contact.arm_a, arm_b = contact.arm_b;
+    float ca = arm_a.x * normal.y - arm_a.y * normal.x;
+    float cb = arm_b.x * normal.y - arm_b.y * normal.x;
+    return change
+        / (inverse_sum + ca * ca * inverse_a / YAW_INERTIA + cb * cb * inverse_b / YAW_INERTIA);
+}
+
+void boat_pair_apply(Boat *a, float mass_a, Boat *b, float mass_b, BoatPairContact contact,
+    float impulse, float separation)
+{
+    assert(mass_a > 0 && mass_b > 0);
+    float inverse_a = 1 / mass_a, inverse_b = 1 / mass_b;
+    float inverse_sum = inverse_a + inverse_b;
+    Vector2 normal = contact.normal, arm_a = contact.arm_a, arm_b = contact.arm_b;
+    if (impulse != 0) {
         float ca = arm_a.x * normal.y - arm_a.y * normal.x;
         float cb = arm_b.x * normal.y - arm_b.y * normal.x;
-        float impulse = -(1 + CONTACT_RESTITUTION) * speed
-            / (inverse_sum + ca * ca * inverse_a / YAW_INERTIA + cb * cb * inverse_b / YAW_INERTIA);
         a->velocity = Vector2Add(a->velocity, Vector2Scale(normal, impulse * inverse_a));
         b->velocity = Vector2Subtract(b->velocity, Vector2Scale(normal, impulse * inverse_b));
         a->yaw_velocity += ca * impulse * inverse_a / YAW_INERTIA;
         b->yaw_velocity -= cb * impulse * inverse_b / YAW_INERTIA;
     }
-    a->position
-        = Vector2Add(a->position, Vector2Scale(normal, (depth + .002f) * inverse_a / inverse_sum));
-    b->position = Vector2Subtract(
-        b->position, Vector2Scale(normal, (depth + .002f) * inverse_b / inverse_sum));
+    if (separation != 0) {
+        float shift = (contact.depth + .002f) * separation;
+        a->position
+            = Vector2Add(a->position, Vector2Scale(normal, shift * inverse_a / inverse_sum));
+        b->position
+            = Vector2Subtract(b->position, Vector2Scale(normal, shift * inverse_b / inverse_sum));
+    }
+}
+
+bool boat_collide_pair(Boat *a, float mass_a, Boat *b, float mass_b)
+{
+    assert(mass_a > 0 && mass_b > 0);
+    BoatPairContact contact;
+    if (!boat_pair_contact(a, b, &contact))
+        return false;
+    float speed = boat_pair_speed(a, b, contact);
+    float impulse = speed < 0
+        ? boat_pair_impulse(contact, mass_a, mass_b, -(1 + BOAT_CONTACT_RESTITUTION) * speed)
+        : 0;
+    boat_pair_apply(a, mass_a, b, mass_b, contact, impulse, 1);
     return true;
+}
+
+bool boat_hull_clear(const Boat *boat, const BoatWorld *world, double time)
+{
+    HullContact contact;
+    return !hull_contact(boat, world, time, &contact);
 }
 
 BoatWakeStern boat_wake_stern(const Boat *boat, const BoatWorld *world, double time)
