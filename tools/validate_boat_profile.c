@@ -1,5 +1,6 @@
 #include "boat.h"
 #include "boat_profile.h"
+#include "boat_session.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -53,17 +54,20 @@ static int check_records(void)
 
 static int check_drive(void)
 {
-    Boat plain, measured;
-    boat_reset(&plain);
-    boat_reset(&measured);
+    const BoatWorldDefinition *basin = boat_location(BOAT_LOCATION_BASIN);
+    BoatSession plain_session, measured_session;
+    boat_session_init(&plain_session, basin, (BoatWater) { 0 });
+    boat_session_init(&measured_session, basin, (BoatWater) { 0 });
+    const Boat *const plain_boat = &plain_session.boat,
+                      *const measured_boat = &measured_session.boat;
     BoatProfile profile = { 0 };
     for (int tick = 0; tick < 360; ++tick) {
         float steering = tick > 80 && tick < 250 ? .4f : 0;
         float throttle = tick < 180 ? 1 : 0;
-        boat_step(&plain, steering, throttle);
+        boat_session_step(&plain_session, steering, throttle);
         BoatFrameMetrics frame = { 0 };
         double started = boat_profile_time(false);
-        boat_step(&measured, steering, throttle);
+        boat_session_step(&measured_session, steering, throttle);
         frame.physics_ms = (float)((boat_profile_time(false) - started) * 1000.0);
         frame.physics_max_ms = frame.physics_ms;
         frame.simulation_ms = frame.physics_ms;
@@ -71,18 +75,24 @@ static int check_drive(void)
         boat_profile_add(&profile, frame);
     }
     CHECK(profile.count == BOAT_PROFILE_HISTORY);
-    CHECK(plain.position.x == measured.position.x && plain.position.y == measured.position.y);
-    CHECK(plain.velocity.x == measured.velocity.x && plain.velocity.y == measured.velocity.y);
-    CHECK(plain.turn_roll_load == measured.turn_roll_load && plain.roll == measured.roll
-        && plain.roll_velocity == measured.roll_velocity);
-    CHECK(plain.heading == measured.heading && plain.time == measured.time);
-    CHECK(plain.water_settings.player_wake_count == measured.water_settings.player_wake_count);
+    CHECK(plain_boat->position.x == measured_boat->position.x
+        && plain_boat->position.y == measured_boat->position.y);
+    CHECK(plain_boat->velocity.x == measured_boat->velocity.x
+        && plain_boat->velocity.y == measured_boat->velocity.y);
+    CHECK(plain_boat->turn_roll_load == measured_boat->turn_roll_load
+        && plain_boat->roll == measured_boat->roll
+        && plain_boat->roll_velocity == measured_boat->roll_velocity);
+    CHECK(plain_boat->heading == measured_boat->heading && plain_boat->time == measured_boat->time);
+    CHECK(plain_session.world.water.player_wake_count
+        == measured_session.world.water.player_wake_count);
     Color *left = calloc(320 * 200, sizeof(Color));
     Color *right = calloc(320 * 200, sizeof(Color));
     CHECK(left && right);
     Renderer3D renderer_left = { 0 }, renderer_right = { 0 };
-    CHECK(boat_draw(&renderer_left, left, 320, 200, &plain, BOAT_CAMERA_DEFAULT));
-    CHECK(boat_draw(&renderer_right, right, 320, 200, &measured, BOAT_CAMERA_DEFAULT));
+    CHECK(boat_draw(
+        &renderer_left, left, 320, 200, plain_boat, &plain_session.world, BOAT_CAMERA_DEFAULT));
+    CHECK(boat_draw(&renderer_right, right, 320, 200, measured_boat, &measured_session.world,
+        BOAT_CAMERA_DEFAULT));
     CHECK(memcmp(left, right, 320 * 200 * sizeof(Color)) == 0);
     free(left);
     free(right);

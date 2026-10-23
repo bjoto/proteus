@@ -27,7 +27,10 @@ typedef struct {
 
 BoatReplaySample boat_replay_pose(const Boat *boat);
 // Called after each physics tick, with the pose immediately before that tick.
-void boat_replay_record(BoatReplay *run, BoatReplaySample before, const Boat *boat);
+void boat_replay_record(
+    BoatReplay *run, BoatReplaySample before, const Boat *boat, const BoatWorld *world);
+// Water a recording was made in. View a sample in its own world, never the live one.
+BoatWater boat_replay_water(const BoatReplay *run);
 bool boat_replay_sample(const BoatReplay *run, double at, Boat *boat);
 // Caller-owned visual history, separate for playback and ghost. Zero-initialize.
 // Continuous playback advances at fixed ticks; jumps reconstruct at most one second.
@@ -67,6 +70,7 @@ void boat_replay_speed_step(BoatReplayRuns *runs, int direction);
 void boat_replay_advance(BoatReplayRuns *runs, double seconds, bool focused);
 void boat_replay_runs_destroy(BoatReplayRuns *runs);
 void boat_replay_runs_reset(BoatReplayRuns *runs);
-void boat_replay_runs_step(BoatReplayRuns *runs, BoatReplaySample before, const Boat *boat);
+void boat_replay_runs_step(
+    BoatReplayRuns *runs, BoatReplaySample before, const Boat *boat, const BoatWorld *world);
 
 #endif

@@ -1,6 +1,6 @@
-#include "boat.h"
 #include "boat_banking_fixture.h"
 #include "boat_map.h"
+#include "boat_test_session.h"
 #include "raymath.h"
 #include "waterfront_harbor.h"
 #include "waterfront_traffic.h"
@@ -51,13 +51,14 @@ static bool same_state(const Boat *a, const Boat *b)
 // projected on its PRE-tick right vector. This is a force probe only in calm, contact-free
 // water: no waves, impacts or post-tick heading projection may contaminate this estimate.
 // Spatial-wave rows use NAN for unmeasured acceleration/residual, never a fabricated zero.
-static void row(FILE *report, const char *name, int tick, const Boat *before, float acceleration,
-    float radius, float residual)
+static void row(FILE *report, const char *name, int tick, const BoatSession *session,
+    float acceleration, float radius, float residual)
 {
     if (!report)
         return;
+    const Boat *before = &session->boat;
     float u = Vector2DotProduct(Vector2Subtract(before->velocity,
-                                    boat_water_current(before->water_settings, before->position)),
+                                    boat_water_current(session->world.water, before->position)),
         forward(before->heading));
     fprintf(report,
         "%s,%d,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g\n",
@@ -82,67 +83,71 @@ static int check_filter(const Boat *before, const Boat *after, float measured_lo
 
 static int validate_core(void)
 {
-    Boat boat;
-    boat_reset(&boat);
+    BoatSession boat;
+    boat_session_init(&boat, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
     for (int tick = 0; tick < 240; ++tick) {
-        boat_step(&boat, 1, 0);
-        CHECK(boat.turn_roll_load == 0 && fabsf(boat.roll) < .000001f
-            && fabsf(boat.roll_velocity) < .000001f);
+        boat_session_step(&boat, 1, 0);
+        CHECK(boat.boat.turn_roll_load == 0 && fabsf(boat.boat.roll) < .000001f
+            && fabsf(boat.boat.roll_velocity) < .000001f);
     }
     // A no-force residual decays exactly; the filter is still active in neutral.
-    boat.turn_roll_load = 2;
-    float previous = boat.turn_roll_load;
-    boat_step(&boat, 0, 0);
-    CHECK(fabsf(boat.turn_roll_load - previous * expf(-BOAT_STEP / 0.06f)) < .000001f);
-    CHECK(boat.roll > 0 && boat.roll_velocity > 0);
-    boat_reset(&boat);
-    CHECK(boat.turn_roll_load == 0 && boat.roll == 0 && boat.roll_velocity == 0);
-    boat.turn_roll_load = 3;
-    boat_reset_location(&boat, true);
-    CHECK(boat.turn_roll_load == 0);
-    boat.turn_roll_load = 3;
-    boat_reset_course(&boat);
-    CHECK(boat.turn_roll_load == 0);
+    boat.boat.turn_roll_load = 2;
+    float previous = boat.boat.turn_roll_load;
+    boat_session_step(&boat, 0, 0);
+    CHECK(fabsf(boat.boat.turn_roll_load - previous * expf(-BOAT_STEP / 0.06f)) < .000001f);
+    CHECK(boat.boat.roll > 0 && boat.boat.roll_velocity > 0);
+    boat_session_init(&boat, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
+    CHECK(boat.boat.turn_roll_load == 0 && boat.boat.roll == 0 && boat.boat.roll_velocity == 0);
+    boat.boat.turn_roll_load = 3;
+    boat_session_init(&boat, boat_location(BOAT_LOCATION_ERIKSBERG), (BoatWater) { 0 });
+    CHECK(boat.boat.turn_roll_load == 0);
+    boat.boat.turn_roll_load = 3;
+    boat_session_init(&boat, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
+    boat_reset_course(&boat.boat);
+    CHECK(boat.boat.turn_roll_load == 0);
     // Saturated demand is a bounded torque, integrated through angular velocity.
     for (int sign = -1; sign <= 1; sign += 2) {
-        boat_reset(&boat);
-        boat.turn_roll_load = sign * 10000;
-        boat_step(&boat, 0, 0);
-        float moment = .45f * boat.roll_velocity / BOAT_STEP;
+        boat_session_init(&boat, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
+        boat.boat.turn_roll_load = sign * 10000;
+        boat_session_step(&boat, 0, 0);
+        float moment = .45f * boat.boat.roll_velocity / BOAT_STEP;
         CHECK(fabsf(moment - sign * 27.04f * 12 * DEG2RAD) < .00001f);
-        CHECK(fabsf(boat.roll - boat.roll_velocity * BOAT_STEP) < .000001f);
+        CHECK(fabsf(boat.boat.roll - boat.boat.roll_velocity * BOAT_STEP) < .000001f);
     }
     // Reverse keeps the low gain, even with stale planing state.
-    boat_reset(&boat);
-    boat.velocity = (Vector2) { .8f, 3 };
-    boat.yaw_velocity = .4f;
-    boat.planing = 1;
-    Boat before = boat;
-    boat_step(&boat, 0, 0);
-    CHECK(check_filter(&before, &boat, (boat.velocity.x - before.velocity.x) / BOAT_STEP) == 0);
-    CHECK(fabsf(boat.turn_roll_load) < .1f);
+    boat_session_init(&boat, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
+    boat.boat.velocity = (Vector2) { .8f, 3 };
+    boat.boat.yaw_velocity = .4f;
+    boat.boat.planing = 1;
+    BoatSession before = boat;
+    boat_session_step(&boat, 0, 0);
+    CHECK(check_filter(
+              &before.boat, &boat.boat, (boat.boat.velocity.x - before.boat.velocity.x) / BOAT_STEP)
+        == 0);
+    CHECK(fabsf(boat.boat.turn_roll_load) < .1f);
     float reverse_peak = 0;
     for (int tick = 0; tick < 960; ++tick) {
         // External tow at fixed reverse water-relative motion; vertical state evolves.
-        boat.position = (Vector2) { 0 };
-        boat.velocity = Vector2Add(
-            Vector2Scale(forward(boat.heading), -3), Vector2Scale(right(boat.heading), .8f));
-        boat.yaw_velocity = .4f;
-        boat_step(&boat, 0, 0);
-        reverse_peak = fmaxf(reverse_peak, fabsf(boat.roll));
+        boat.boat.position = (Vector2) { 0 };
+        boat.boat.velocity = Vector2Add(Vector2Scale(forward(boat.boat.heading), -3),
+            Vector2Scale(right(boat.boat.heading), .8f));
+        boat.boat.yaw_velocity = .4f;
+        boat_session_step(&boat, 0, 0);
+        reverse_peak = fmaxf(reverse_peak, fabsf(boat.boat.roll));
         CHECK(reverse_peak < 3 * DEG2RAD);
     }
     printf(
         "reverse_external_work u=-3 yaw=.4 slip=.8 peak_roll_deg=%.6f\n", reverse_peak * RAD2DEG);
     // Guard recovery does not clamp angle/rate or discard the disturbed state.
     for (int sign = -1; sign <= 1; sign += 2) {
-        boat_reset(&boat);
-        boat.roll = sign * 32 * DEG2RAD;
-        boat_step(&boat, 0, 0);
-        CHECK(sign * boat.roll > 30 * DEG2RAD && sign * boat.roll_velocity < 0);
+        boat_session_init(&boat, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
+        boat.boat.roll = sign * 32 * DEG2RAD;
+        boat_session_step(&boat, 0, 0);
+        CHECK(sign * boat.boat.roll > 30 * DEG2RAD && sign * boat.boat.roll_velocity < 0);
         for (int tick = 0; tick < 360; ++tick)
-            boat_step(&boat, 0, 0);
-        CHECK(fabsf(boat.roll) < .5f * DEG2RAD && fabsf(boat.roll_velocity) < .5f * DEG2RAD);
+            boat_session_step(&boat, 0, 0);
+        CHECK(fabsf(boat.boat.roll) < .5f * DEG2RAD
+            && fabsf(boat.boat.roll_velocity) < .5f * DEG2RAD);
     }
     puts("core=ok rest_lock,neutral_filter,reset,moment_limit,reverse_gain,guard_recovery");
     return 0;
@@ -153,20 +158,20 @@ static int validate_sides(void)
     const float headings[] = { 0, PI / 2, -PI / 2, PI - .001f, -PI + .001f };
     for (size_t i = 0; i < sizeof(headings) / sizeof(*headings); ++i) {
         for (int sign = -1; sign <= 1; sign += 2) {
-            Boat boat;
-            boat_reset(&boat);
-            boat.heading = headings[i];
-            boat.roll = sign * .1f;
+            BoatSession boat;
+            boat_session_init(&boat, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
+            boat.boat.heading = headings[i];
+            boat.boat.roll = sign * .1f;
             WaterfrontPlayerState pose = { 0 };
-            boat_player_pose(&boat, &pose);
+            boat_player_pose(&boat.boat, &pose);
             Matrix rotation = MatrixRotateXYZ(pose.hull.rotation);
             // Simulation starboard is renderer local negative X at every heading.
             Vector3 starboard = Vector3Transform((Vector3) { -.65f, 0, 0 }, rotation);
             Vector3 port = Vector3Transform((Vector3) { .65f, 0, 0 }, rotation);
-            Vector2 rendered_right = { -cosf(boat.heading), sinf(boat.heading) };
+            Vector2 rendered_right = { -cosf(boat.boat.heading), sinf(boat.boat.heading) };
             CHECK(Vector2DotProduct((Vector2) { starboard.x, starboard.z }, rendered_right) > .64f);
             CHECK(sign * (port.y - starboard.y) > .12f);
-            CHECK(fabsf(starboard.y + .65f * sinf(boat.roll)) < .000001f);
+            CHECK(fabsf(starboard.y + .65f * sinf(boat.boat.roll)) < .000001f);
         }
     }
     puts("side_height_signs=ok headings=0,+/-pi/2,near+/-pi positive_roll_lowers_starboard");
@@ -175,24 +180,25 @@ static int validate_sides(void)
 
 static int validate_restoring(FILE *report)
 {
-    Boat boat;
-    boat_reset(&boat);
-    boat.roll = .0001f;
-    boat_step(&boat, 0, 0);
-    float stiffness = -(.45f * boat.roll_velocity / BOAT_STEP) / .0001f;
+    BoatSession boat;
+    boat_session_init(&boat, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
+    boat.boat.roll = .0001f;
+    boat_session_step(&boat, 0, 0);
+    float stiffness = -(.45f * boat.boat.roll_velocity / BOAT_STEP) / .0001f;
     CHECK(fabsf(stiffness - 64 * .65f * .65f) < .002f);
-    boat_reset(&boat);
-    boat.roll = 10 * DEG2RAD;
+    boat_session_init(&boat, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
+    boat.boat.roll = 10 * DEG2RAD;
     int last_unsettled = 0;
     for (int tick = 0; tick < 360; ++tick) {
-        Boat before = boat;
-        boat_step(&boat, 0, 0);
+        BoatSession before = boat;
+        boat_session_step(&boat, 0, 0);
         row(report, "free_decay", tick, &before, 0, 0, 0);
-        CHECK(isfinite(boat.roll) && isfinite(boat.roll_velocity));
-        if (fabsf(boat.roll) >= .5f * DEG2RAD || fabsf(boat.roll_velocity) >= .5f * DEG2RAD)
+        CHECK(isfinite(boat.boat.roll) && isfinite(boat.boat.roll_velocity));
+        if (fabsf(boat.boat.roll) >= .5f * DEG2RAD
+            || fabsf(boat.boat.roll_velocity) >= .5f * DEG2RAD)
             last_unsettled = tick + 1;
     }
-    CHECK(fabsf(boat.roll) < .5f * DEG2RAD && fabsf(boat.roll_velocity) < .5f * DEG2RAD);
+    CHECK(fabsf(boat.boat.roll) < .5f * DEG2RAD && fabsf(boat.boat.roll_velocity) < .5f * DEG2RAD);
     printf(
         "restoring_stiffness=%.6f recovery_10deg_seconds=%.6f threshold_deg=0.5 rate_deg_s=0.5\n",
         stiffness, (last_unsettled + 1) * BOAT_STEP);
@@ -204,37 +210,38 @@ static int validate_free(FILE *report)
     const char *names[]
         = { "straight", "left", "right", "countersteer", "coast", "reverse", "stop" };
     for (int scenario = 0; scenario < 7; ++scenario) {
-        Boat boat;
+        BoatSession boat;
         banking_fixture_reset(&boat, scenario);
-        Boat repeat = boat;
+        BoatSession repeat = boat;
         float peak_roll = 0, peak_rate = 0, peak_load = 0, sum_roll = 0;
         int ticks = banking_fixture_ticks(scenario);
         for (int tick = 0; tick < ticks; ++tick) {
-            float wheel = banking_fixture_input(&boat, scenario, tick);
-            banking_fixture_input(&repeat, scenario, tick);
-            CHECK(open_water(&boat));
-            Boat before = boat;
-            boat_step(&boat, wheel, 0);
-            boat_step(&repeat, wheel, 0);
-            CHECK(same_state(&boat, &repeat));
-            CHECK(open_water(&boat));
-            float load = Vector2DotProduct(
-                             Vector2Subtract(boat.velocity, before.velocity), right(before.heading))
+            float wheel = banking_fixture_input(&boat.boat, scenario, tick);
+            banking_fixture_input(&repeat.boat, scenario, tick);
+            CHECK(open_water(&boat.boat));
+            BoatSession before = boat;
+            boat_session_step(&boat, wheel, 0);
+            boat_session_step(&repeat, wheel, 0);
+            CHECK(same_state(&boat.boat, &repeat.boat));
+            CHECK(open_water(&boat.boat));
+            float load
+                = Vector2DotProduct(Vector2Subtract(boat.boat.velocity, before.boat.velocity),
+                      right(before.boat.heading))
                 / BOAT_STEP;
-            CHECK(check_filter(&before, &boat, load) == 0);
+            CHECK(check_filter(&before.boat, &boat.boat, load) == 0);
             if (scenario == 4)
-                CHECK(energy(&boat) <= energy(&before) + .00001f);
+                CHECK(energy(&boat.boat) <= energy(&before.boat) + .00001f);
             row(report, names[scenario], tick, &before, load, 0, 0);
-            CHECK(isfinite(load) && isfinite(boat.roll) && isfinite(energy(&boat)));
+            CHECK(isfinite(load) && isfinite(boat.boat.roll) && isfinite(energy(&boat.boat)));
             if (scenario == 0 || scenario == 5 || scenario == 6)
-                CHECK(fabsf(boat.roll) < .000001f);
-            peak_roll = fmaxf(peak_roll, fabsf(boat.roll));
-            peak_rate = fmaxf(peak_rate, fabsf(boat.roll_velocity));
+                CHECK(fabsf(boat.boat.roll) < .000001f);
+            peak_roll = fmaxf(peak_roll, fabsf(boat.boat.roll));
+            peak_rate = fmaxf(peak_rate, fabsf(boat.boat.roll_velocity));
             peak_load = fmaxf(peak_load, fabsf(load));
-            sum_roll += boat.roll;
+            sum_roll += boat.boat.roll;
         }
         if (scenario == 1 || scenario == 2)
-            CHECK((scenario == 1 ? -1 : 1) * boat.roll > .01f);
+            CHECK((scenario == 1 ? -1 : 1) * boat.boat.roll > .01f);
         if (scenario == 4)
             CHECK(peak_roll > DEG2RAD); // Neutral coasting still produces a bank.
         printf(
@@ -258,13 +265,13 @@ static void prescribe(Boat *boat, float speed, float slip, float yaw)
 
 static float probe_planing(float speed, float slip, float yaw, float planing)
 {
-    Boat boat;
-    boat_reset(&boat);
-    prescribe(&boat, speed, slip, yaw);
-    boat.planing = planing;
-    Vector2 velocity = boat.velocity;
-    boat_step(&boat, 0, 0);
-    return (boat.velocity.x - velocity.x) / BOAT_STEP;
+    BoatSession boat;
+    boat_session_init(&boat, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
+    prescribe(&boat.boat, speed, slip, yaw);
+    boat.boat.planing = planing;
+    Vector2 velocity = boat.boat.velocity;
+    boat_session_step(&boat, 0, 0);
+    return (boat.boat.velocity.x - velocity.x) / BOAT_STEP;
 }
 
 static float probe(float speed, float slip, float yaw)
@@ -298,27 +305,28 @@ static int validate_tow(FILE *report)
             }
             float slip = (lo + hi) / 2;
             CHECK(fabsf(probe(speed, slip, yaw) - target) < .0002f);
-            Boat boat;
-            boat_reset(&boat);
+            BoatSession boat;
+            boat_session_init(&boat, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
             float peak_residual = 0, mean_roll = 0, peak_roll = 0;
             char name[64];
             snprintf(name, sizeof(name), "tow_u%.0f_r%.0f_sign%d", speed, radius, sign);
             for (int tick = 0; tick < 960; ++tick) {
-                prescribe(&boat, speed, slip, yaw);
-                CHECK(open_water(&boat));
-                Boat before = boat;
-                boat_step(&boat, 0, 0);
-                CHECK(open_water(&boat));
-                float load = Vector2DotProduct(Vector2Subtract(boat.velocity, before.velocity),
-                                 right(before.heading))
+                prescribe(&boat.boat, speed, slip, yaw);
+                CHECK(open_water(&boat.boat));
+                BoatSession before = boat;
+                boat_session_step(&boat, 0, 0);
+                CHECK(open_water(&boat.boat));
+                float load
+                    = Vector2DotProduct(Vector2Subtract(boat.boat.velocity, before.boat.velocity),
+                          right(before.boat.heading))
                     / BOAT_STEP;
-                CHECK(check_filter(&before, &boat, load) == 0);
+                CHECK(check_filter(&before.boat, &boat.boat, load) == 0);
                 float residual = load - target;
                 CHECK(fabsf(residual) < .0003f);
                 peak_residual = fmaxf(peak_residual, fabsf(residual));
-                peak_roll = fmaxf(peak_roll, fabsf(boat.roll));
+                peak_roll = fmaxf(peak_roll, fabsf(boat.boat.roll));
                 if (tick >= 720)
-                    mean_roll += boat.roll / 240;
+                    mean_roll += boat.boat.roll / 240;
                 row(report, name, tick, &before, load, sign * radius, residual);
             }
             means[trial][(sign + 1) / 2] = mean_roll;
@@ -360,19 +368,20 @@ static int validate_release(void)
 {
     const float angles[] = { -32, -10, 10, 32 };
     for (int trial = 0; trial < 4; ++trial) {
-        Boat boat;
-        boat_reset(&boat);
-        boat.roll = angles[trial] * DEG2RAD;
-        float previous = floating_energy(&boat), peak_gain = 0;
+        BoatSession boat;
+        boat_session_init(&boat, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
+        boat.boat.roll = angles[trial] * DEG2RAD;
+        float previous = floating_energy(&boat.boat), peak_gain = 0;
         int last_unsettled = 0;
         for (int tick = 0; tick < 1200; ++tick) {
-            boat_step(&boat, 0, 0);
-            float next = floating_energy(&boat);
+            boat_session_step(&boat, 0, 0);
+            float next = floating_energy(&boat.boat);
             peak_gain = fmaxf(peak_gain, next - previous);
             CHECK(next <= previous + .000002f);
-            CHECK(boat.turn_roll_load == 0);
+            CHECK(boat.boat.turn_roll_load == 0);
             previous = next;
-            if (fabsf(boat.roll) >= .5f * DEG2RAD || fabsf(boat.roll_velocity) >= .5f * DEG2RAD)
+            if (fabsf(boat.boat.roll) >= .5f * DEG2RAD
+                || fabsf(boat.boat.roll_velocity) >= .5f * DEG2RAD)
                 last_unsettled = tick + 1;
         }
         CHECK(last_unsettled < 360 && fabsf(previous) < .000002f);
@@ -386,10 +395,10 @@ static int validate_blend_flow(void)
 {
     float means[3] = { 0 };
     for (int trial = 0; trial < 3; ++trial) {
-        Boat still, flow;
-        boat_reset(&still);
+        BoatSession still, flow;
+        boat_session_init(&still, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
         flow = still;
-        flow.water_settings.current = (Vector2) { 1.7f, -.8f };
+        flow.world.water.current = (Vector2) { 1.7f, -.8f };
         float lo = -4, hi = 4, target = 64.0f / 30;
         CHECK(probe_planing(8, lo, 8.0f / 30, trial * .5f) > target);
         CHECK(probe_planing(8, hi, 8.0f / 30, trial * .5f) < target);
@@ -402,36 +411,40 @@ static int validate_blend_flow(void)
         }
         float slip = (lo + hi) / 2;
         for (int tick = 0; tick < 960; ++tick) {
-            prescribe(&still, 8, slip, 8.0f / 30);
-            prescribe(&flow, 8, slip, 8.0f / 30);
-            still.planing = flow.planing = trial * .5f;
-            flow.velocity = Vector2Add(flow.velocity, flow.water_settings.current);
+            prescribe(&still.boat, 8, slip, 8.0f / 30);
+            prescribe(&flow.boat, 8, slip, 8.0f / 30);
+            still.boat.planing = flow.boat.planing = trial * .5f;
+            flow.boat.velocity = Vector2Add(flow.boat.velocity, flow.world.water.current);
             // Flat, spatially uniform flow: recentering is legitimate external tow work.
-            Boat before = still;
-            boat_step(&still, 0, 0);
-            boat_step(&flow, 0, 0);
-            float load = Vector2DotProduct(Vector2Subtract(still.velocity, before.velocity),
-                             right(before.heading))
+            BoatSession before = still;
+            boat_session_step(&still, 0, 0);
+            boat_session_step(&flow, 0, 0);
+            float load
+                = Vector2DotProduct(Vector2Subtract(still.boat.velocity, before.boat.velocity),
+                      right(before.boat.heading))
                 / BOAT_STEP;
             // The tow preserves evolving heave/pitch. A temporarily dry stern now loses
             // skeg resistance; predict that missing force independently from local flow.
-            Boat contact = before;
-            contact.planing = still.planing; // Propeller check follows this tick's trim update.
-            Boat reference;
-            boat_reset(&reference);
-            reference.planing = still.planing;
-            float initial_wet = boat_wake_stern(&reference).wet > 0;
-            float current_wet = boat_wake_stern(&contact).wet > 0;
+            BoatSession contact = before;
+            contact.boat.planing
+                = still.boat.planing; // Propeller check follows this tick's trim update.
+            BoatSession reference;
+            boat_session_init(&reference, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
+            reference.boat.planing = still.boat.planing;
+            float initial_wet
+                = boat_wake_stern(&reference.boat, &reference.world, reference.boat.time).wet > 0;
+            float current_wet
+                = boat_wake_stern(&contact.boat, &contact.world, contact.boat.time).wet > 0;
             float stern_slip = slip - 1.6f * (8.0f / 30);
             float skeg_load = -.1f * hypotf(8, stern_slip) * stern_slip;
             float expected_load = target + skeg_load * (current_wet - initial_wet);
             CHECK(fabsf(load - expected_load) < .0003f);
-            CHECK(check_filter(&before, &still, load) == 0);
-            CHECK(fabsf(still.roll - flow.roll) < .00001f);
-            CHECK(fabsf(still.roll_velocity - flow.roll_velocity) < .00001f);
-            CHECK(fabsf(still.turn_roll_load - flow.turn_roll_load) < .00002f);
+            CHECK(check_filter(&before.boat, &still.boat, load) == 0);
+            CHECK(fabsf(still.boat.roll - flow.boat.roll) < .00001f);
+            CHECK(fabsf(still.boat.roll_velocity - flow.boat.roll_velocity) < .00001f);
+            CHECK(fabsf(still.boat.turn_roll_load - flow.boat.turn_roll_load) < .00002f);
             if (tick >= 720)
-                means[trial] += still.roll / 240;
+                means[trial] += still.boat.roll / 240;
         }
         printf("blend_external_work planing=%g load=2.133333 mean_roll_deg=%.6f "
                "uniform_flow=matched\n",
@@ -439,31 +452,31 @@ static int validate_blend_flow(void)
     }
     CHECK(means[0] > 0 && means[0] < means[1] && means[1] < means[2]);
     // Continuity of the blend: neighboring imposed planing values cannot jump the demand.
-    Boat a, b;
-    boat_reset(&a);
-    prescribe(&a, 8, -.55f, 8.0f / 30);
-    a.planing = .5f;
+    BoatSession a, b;
+    boat_session_init(&a, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
+    prescribe(&a.boat, 8, -.55f, 8.0f / 30);
+    a.boat.planing = .5f;
     b = a;
-    b.planing += .0001f;
-    boat_step(&a, 0, 0);
-    boat_step(&b, 0, 0);
-    CHECK(fabsf(a.turn_roll_load - b.turn_roll_load) < .0001f);
+    b.boat.planing += .0001f;
+    boat_session_step(&a, 0, 0);
+    boat_session_step(&b, 0, 0);
+    CHECK(fabsf(a.boat.turn_roll_load - b.boat.turn_roll_load) < .0001f);
     const float speeds[] = { 0, 4, 12, 18 };
     for (int si = 0; si < 4; ++si) {
-        boat_reset(&a);
+        boat_session_init(&a, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
         for (int tick = 0; tick < 960; ++tick) {
-            prescribe(&a, speeds[si], 0, 0);
-            boat_step(&a, 0, 0);
-            CHECK(fabsf(a.turn_roll_load) < .000001f && fabsf(a.roll) < .000001f);
+            prescribe(&a.boat, speeds[si], 0, 0);
+            boat_session_step(&a, 0, 0);
+            CHECK(fabsf(a.boat.turn_roll_load) < .000001f && fabsf(a.boat.roll) < .000001f);
         }
     }
     // Docking: prescribed 1 unit/s with a substantial .4 rad/s yaw and .2 slip.
-    boat_reset(&a);
+    boat_session_init(&a, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
     float docking_peak = 0;
     for (int tick = 0; tick < 960; ++tick) {
-        prescribe(&a, 1, .2f, .4f);
-        boat_step(&a, 0, 0);
-        docking_peak = fmaxf(docking_peak, fabsf(a.roll));
+        prescribe(&a.boat, 1, .2f, .4f);
+        boat_session_step(&a, 0, 0);
+        docking_peak = fmaxf(docking_peak, fabsf(a.boat.roll));
     }
     CHECK(docking_peak < 2 * DEG2RAD);
     printf("docking_external_work u=1 yaw=.4 slip=.2 peak_roll_deg=%.6f\n", docking_peak * RAD2DEG);
@@ -472,60 +485,61 @@ static int validate_blend_flow(void)
 
 static int validate_transitions(FILE *report)
 {
-    Boat a, b;
-    boat_reset(&a);
-    a.position = (Vector2) { 0, 40 };
-    a.velocity.y = -12;
-    a.throttle = 1;
+    BoatSession a, b;
+    boat_session_init(&a, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
+    a.boat.position = (Vector2) { 0, 40 };
+    a.boat.velocity.y = -12;
+    a.boat.throttle = 1;
     b = a;
     bool crossed = false;
     int crossing_tick = -1;
     float peak = 0;
     for (int tick = 0; tick < 960; ++tick) {
         float wheel = tick < 480 ? 1 : -1;
-        Boat before = a;
-        CHECK(open_water(&a) && open_water(&b));
-        boat_step(&a, wheel, 0);
-        boat_step(&b, -wheel, 0);
-        CHECK(open_water(&a) && open_water(&b));
-        CHECK(fabsf(a.roll + b.roll) < .00002f);
-        CHECK(fabsf(a.roll_velocity + b.roll_velocity) < .00005f);
-        CHECK(fabsf(a.height - b.height) < .00001f && fabsf(a.pitch - b.pitch) < .00001f);
-        CHECK(fabsf(Vector2Length(a.velocity) - Vector2Length(b.velocity)) < .00005f);
-        CHECK(fabsf(a.roll - before.roll - a.roll_velocity * BOAT_STEP) < .000001f);
+        BoatSession before = a;
+        CHECK(open_water(&a.boat) && open_water(&b.boat));
+        boat_session_step(&a, wheel, 0);
+        boat_session_step(&b, -wheel, 0);
+        CHECK(open_water(&a.boat) && open_water(&b.boat));
+        CHECK(fabsf(a.boat.roll + b.boat.roll) < .00002f);
+        CHECK(fabsf(a.boat.roll_velocity + b.boat.roll_velocity) < .00005f);
+        CHECK(fabsf(a.boat.height - b.boat.height) < .00001f
+            && fabsf(a.boat.pitch - b.boat.pitch) < .00001f);
+        CHECK(fabsf(Vector2Length(a.boat.velocity) - Vector2Length(b.boat.velocity)) < .00005f);
+        CHECK(fabsf(a.boat.roll - before.boat.roll - a.boat.roll_velocity * BOAT_STEP) < .000001f);
         if (tick == 480)
-            CHECK(a.roll > DEG2RAD); // Existing bank survives opposite wheel command.
-        if (tick >= 480 && !crossed && a.roll < 0) {
+            CHECK(a.boat.roll > DEG2RAD); // Existing bank survives opposite wheel command.
+        if (tick >= 480 && !crossed && a.boat.roll < 0) {
             crossed = true;
             crossing_tick = tick;
         }
-        peak = fmaxf(peak, fabsf(a.roll));
-        float load
-            = Vector2DotProduct(Vector2Subtract(a.velocity, before.velocity), right(before.heading))
+        peak = fmaxf(peak, fabsf(a.boat.roll));
+        float load = Vector2DotProduct(Vector2Subtract(a.boat.velocity, before.boat.velocity),
+                         right(before.boat.heading))
             / BOAT_STEP;
         row(report, "mirror_transition", tick, &before, load, 0, 0);
     }
-    CHECK(crossed && crossing_tick > 481 && a.roll < -DEG2RAD && a.yaw_velocity < 0);
+    CHECK(crossed && crossing_tick > 481 && a.boat.roll < -DEG2RAD && a.boat.yaw_velocity < 0);
     printf("countersteer roll_zero_delay_seconds=%.6f peak_roll_deg=%.6f mirror=ok\n",
         (crossing_tick - 480 + 1) * BOAT_STEP, peak * RAD2DEG);
     // Release from a driven turn, with residual load preserved; this is not a passive
     // floating-energy test. Horizontal kinetic energy must still decrease in calm water.
-    a.throttle = 0;
+    a.boat.throttle = 0;
     float release_peak = 0;
     for (int tick = 0; tick < 2400; ++tick) {
-        Boat before = a;
-        CHECK(open_water(&a));
-        boat_step(&a, 0, 0);
-        CHECK(open_water(&a));
-        CHECK(energy(&a) <= energy(&before) + .00002f);
-        float load
-            = Vector2DotProduct(Vector2Subtract(a.velocity, before.velocity), right(before.heading))
+        BoatSession before = a;
+        CHECK(open_water(&a.boat));
+        boat_session_step(&a, 0, 0);
+        CHECK(open_water(&a.boat));
+        CHECK(energy(&a.boat) <= energy(&before.boat) + .00002f);
+        float load = Vector2DotProduct(Vector2Subtract(a.boat.velocity, before.boat.velocity),
+                         right(before.boat.heading))
             / BOAT_STEP;
-        CHECK(check_filter(&before, &a, load) == 0);
-        release_peak = fmaxf(release_peak, fabsf(a.roll));
+        CHECK(check_filter(&before.boat, &a.boat, load) == 0);
+        release_peak = fmaxf(release_peak, fabsf(a.boat.roll));
     }
-    CHECK(fabsf(a.roll) < .5f * DEG2RAD && fabsf(a.roll_velocity) < .5f * DEG2RAD);
-    CHECK(fabsf(a.turn_roll_load) < .0001f);
+    CHECK(fabsf(a.boat.roll) < .5f * DEG2RAD && fabsf(a.boat.roll_velocity) < .5f * DEG2RAD);
+    CHECK(fabsf(a.boat.turn_roll_load) < .0001f);
     printf("driven_release peak_roll_deg=%.6f settled_after_seconds=20\n", release_peak * RAD2DEG);
     return 0;
 }
@@ -534,7 +548,7 @@ static int validate_straightening(FILE *report)
 {
     const float wheels[] = { .25f, .55f, 1 };
     for (int trial = 0; trial < 3; ++trial) {
-        Boat a, b;
+        BoatSession a, b;
         banking_exit_reset(&a);
         b = a;
         int last_bank = -1, last_rate = -1, last_yaw = -1, last_load = -1;
@@ -542,36 +556,37 @@ static int validate_straightening(FILE *report)
         char name[64];
         snprintf(name, sizeof(name), "straightening_w%.2f", wheels[trial]);
         for (int tick = 0; tick < BANKING_EXIT_TICKS; ++tick) {
-            CHECK(open_water(&a) && open_water(&b));
-            Boat before = a;
+            CHECK(open_water(&a.boat) && open_water(&b.boat));
+            BoatSession before = a;
             banking_exit_step(&a, wheels[trial], tick);
             banking_exit_step(&b, -wheels[trial], tick);
-            CHECK(open_water(&a) && open_water(&b));
-            CHECK(fabsf(a.roll + b.roll) < .00002f
-                && fabsf(a.roll_velocity + b.roll_velocity) < .00005f);
-            CHECK(fabsf(a.roll - before.roll - a.roll_velocity * BOAT_STEP) < .000001f);
-            float load = Vector2DotProduct(
-                             Vector2Subtract(a.velocity, before.velocity), right(before.heading))
+            CHECK(open_water(&a.boat) && open_water(&b.boat));
+            CHECK(fabsf(a.boat.roll + b.boat.roll) < .00002f
+                && fabsf(a.boat.roll_velocity + b.boat.roll_velocity) < .00005f);
+            CHECK(fabsf(a.boat.roll - before.boat.roll - a.boat.roll_velocity * BOAT_STEP)
+                < .000001f);
+            float load = Vector2DotProduct(Vector2Subtract(a.boat.velocity, before.boat.velocity),
+                             right(before.boat.heading))
                 / BOAT_STEP;
-            CHECK(check_filter(&before, &a, load) == 0);
+            CHECK(check_filter(&before.boat, &a.boat, load) == 0);
             row(report, name, tick, &before, load, 0, 0);
-            peak = fmaxf(peak, fabsf(a.roll));
+            peak = fmaxf(peak, fabsf(a.boat.roll));
             if (tick >= BANKING_EXIT_HOLD_TICKS - 120 && tick < BANKING_EXIT_HOLD_TICKS)
-                steady += a.roll / 120;
+                steady += a.boat.roll / 120;
             if (tick >= BANKING_EXIT_HOLD_TICKS) {
                 int release = tick - BANKING_EXIT_HOLD_TICKS;
-                if (fabsf(a.roll) >= 2 * DEG2RAD)
+                if (fabsf(a.boat.roll) >= 2 * DEG2RAD)
                     last_bank = release;
-                if (fabsf(a.roll_velocity) >= 2 * DEG2RAD)
+                if (fabsf(a.boat.roll_velocity) >= 2 * DEG2RAD)
                     last_rate = release;
-                if (fabsf(a.yaw_velocity) >= .05f)
+                if (fabsf(a.boat.yaw_velocity) >= .05f)
                     last_yaw = release;
-                if (fabsf(a.turn_roll_load) >= .35f)
+                if (fabsf(a.boat.turn_roll_load) >= .35f)
                     last_load = release;
                 if (release == 59)
-                    roll_half = a.roll;
+                    roll_half = a.boat.roll;
                 if (release == 119)
-                    roll_one = a.roll;
+                    roll_one = a.boat.roll;
             }
         }
         const float bank_limits[] = { 1.10f, 1.35f, 1.50f };
@@ -604,44 +619,44 @@ static int validate_wave_turns(FILE *report)
 {
     const char *names[] = { "beam", "head", "following", "scripted_wake", "own_wake", "calm_long" };
     for (int trial = 0; trial < 6; ++trial) {
-        Boat boat;
-        boat_reset(&boat);
-        boat.position = (Vector2) { 0, 0 };
-        boat.velocity.y = -8;
-        boat.throttle = .55f;
+        BoatSession boat;
+        boat_session_init(&boat, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
+        boat.boat.position = (Vector2) { 0, 0 };
+        boat.boat.velocity.y = -8;
+        boat.boat.throttle = .55f;
         if (trial < 3) {
-            boat.water_settings = boat_water_gentle();
-            boat.heading = atan2f(.6f, .8f) + (trial == 0 ? PI / 2 : trial == 1 ? 0 : PI);
-            boat.velocity = Vector2Scale(forward(boat.heading), 8);
+            boat.world.water = boat_water_gentle();
+            boat.boat.heading = atan2f(.6f, .8f) + (trial == 0 ? PI / 2 : trial == 1 ? 0 : PI);
+            boat.boat.velocity = Vector2Scale(forward(boat.boat.heading), 8);
         } else if (trial == 3) {
-            boat.water_settings = boat_water_test(false, false, true);
-            boat.position.y = 1.6f;
+            boat.world.water = boat_water_test(false, false, true);
+            boat.boat.position.y = 1.6f;
         } else if (trial == 4)
-            boat.water_settings.player_wake_enabled = true;
-        Boat repeat = boat;
+            boat.world.water.player_wake_enabled = true;
+        BoatSession repeat = boat;
         float peak = 0, peak_rate = 0, peak_load = 0, sum = 0, late_peak = 0, early_peak = 0;
         float peak_height = 0, peak_pitch = 0;
         int drive_ticks = trial == 1 ? 43200 : 14400;
         for (int tick = 0; tick < drive_ticks; ++tick) {
             // Free constant-wheel circles; no imposed positions in spatial wave fields.
             float wheel = .55f;
-            Boat before = boat;
-            boat_step(&boat, wheel, 0);
-            boat_step(&repeat, wheel, 0);
-            CHECK(same_state(&boat, &repeat) && finite_state(&boat));
-            CHECK(open_water(&boat));
-            CHECK(fabsf(boat.roll) < 30 * DEG2RAD);
-            CHECK(fabsf(boat.height) < 1 && fabsf(boat.pitch) < .65f);
-            peak_height = fmaxf(peak_height, fabsf(boat.height));
-            peak_pitch = fmaxf(peak_pitch, fabsf(boat.pitch));
-            peak = fmaxf(peak, fabsf(boat.roll));
-            peak_rate = fmaxf(peak_rate, fabsf(boat.roll_velocity));
-            peak_load = fmaxf(peak_load, fabsf(boat.turn_roll_load));
-            sum += boat.roll;
+            BoatSession before = boat;
+            boat_session_step(&boat, wheel, 0);
+            boat_session_step(&repeat, wheel, 0);
+            CHECK(same_state(&boat.boat, &repeat.boat) && finite_state(&boat.boat));
+            CHECK(open_water(&boat.boat));
+            CHECK(fabsf(boat.boat.roll) < 30 * DEG2RAD);
+            CHECK(fabsf(boat.boat.height) < 1 && fabsf(boat.boat.pitch) < .65f);
+            peak_height = fmaxf(peak_height, fabsf(boat.boat.height));
+            peak_pitch = fmaxf(peak_pitch, fabsf(boat.boat.pitch));
+            peak = fmaxf(peak, fabsf(boat.boat.roll));
+            peak_rate = fmaxf(peak_rate, fabsf(boat.boat.roll_velocity));
+            peak_load = fmaxf(peak_load, fabsf(boat.boat.turn_roll_load));
+            sum += boat.boat.roll;
             if (tick >= drive_ticks / 2)
-                late_peak = fmaxf(late_peak, fabsf(boat.roll));
+                late_peak = fmaxf(late_peak, fabsf(boat.boat.roll));
             else
-                early_peak = fmaxf(early_peak, fabsf(boat.roll));
+                early_peak = fmaxf(early_peak, fabsf(boat.boat.roll));
             row(report, names[trial], tick, &before, NAN, 0, NAN);
         }
         // Wave encounter phase changes as the free circle evolves. Sub-guard peaks
@@ -654,59 +669,62 @@ static int validate_wave_turns(FILE *report)
             names[trial], drive_ticks / 120, sum / drive_ticks * RAD2DEG, peak * RAD2DEG,
             late_peak * RAD2DEG, peak_rate * RAD2DEG, peak_load, peak_height, peak_pitch * RAD2DEG);
         // Remove external forcing, preserve momentum/filter and recover without a reset.
-        boat.water_settings = (BoatWater) { 0 };
-        boat.throttle = 0;
+        boat.world.water = (BoatWater) { 0 };
+        boat.boat.throttle = 0;
         for (int tick = 0; tick < 14400; ++tick) {
-            boat_step(&boat, 0, 0);
-            CHECK(finite_state(&boat) && fabsf(boat.roll) < 30 * DEG2RAD);
+            boat_session_step(&boat, 0, 0);
+            CHECK(finite_state(&boat.boat) && fabsf(boat.boat.roll) < 30 * DEG2RAD);
         }
-        CHECK(fabsf(boat.roll) < .0001f && fabsf(boat.roll_velocity) < .0001f);
-        Vector2 rest = boat.position;
+        CHECK(fabsf(boat.boat.roll) < .0001f && fabsf(boat.boat.roll_velocity) < .0001f);
+        Vector2 rest = boat.boat.position;
         for (int tick = 0; tick < 14400; ++tick)
-            boat_step(&boat, 0, 0);
-        printf("rest_drift=%g speed=%g\n", Vector2Distance(rest, boat.position),
-            Vector2Length(boat.velocity));
-        CHECK(Vector2Distance(rest, boat.position) < .001f && fabsf(boat.roll) < .000001f);
+            boat_session_step(&boat, 0, 0);
+        printf("rest_drift=%g speed=%g\n", Vector2Distance(rest, boat.boat.position),
+            Vector2Length(boat.boat.velocity));
+        CHECK(
+            Vector2Distance(rest, boat.boat.position) < .001f && fabsf(boat.boat.roll) < .000001f);
     }
     return 0;
 }
 
-static bool footprint_clear(const Boat *boat)
+static bool footprint_clear(const BoatSession *session)
 {
+    const Boat *boat = &session->boat;
+    bool mapped = session->world.definition->mapped;
     const Vector2 samples[]
         = { { 0, 2 }, { -.75f, 2 }, { .75f, 2 }, { 0, -1.6f }, { -.75f, -1.6f }, { .75f, -1.6f } };
     for (size_t i = 0; i < sizeof(samples) / sizeof(*samples); ++i) {
         Vector2 p = Vector2Add(boat->position,
             Vector2Add(Vector2Scale(right(boat->heading), samples[i].x),
                 Vector2Scale(forward(boat->heading), samples[i].y)));
-        if (boat->eriksberg) {
+        if (mapped) {
             if (!boat_map_water(p, .35f) || waterfront_harbor_contact(p, .35f, NULL))
                 return false;
         } else if (fabsf(p.x) > BOAT_BASIN_HALF_X - .35f || fabsf(p.y) > BOAT_BASIN_HALF_Z - .35f)
             return false;
     }
     WaterfrontTrafficContact contact;
-    return !boat->eriksberg
+    return !mapped
         || !waterfront_traffic_contact(
             boat->position, boat->heading, 2, 1.6f, .75f, boat->time, &contact);
 }
 
 static int validate_long_transitions(void)
 {
-    Boat boat;
-    boat_reset(&boat);
-    boat.water_settings = boat_water_gentle();
-    Boat repeat = boat;
+    BoatSession boat;
+    boat_session_init(&boat, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
+    boat.world.water = boat_water_gentle();
+    BoatSession repeat = boat;
     float peak = 0, peak_rate = 0;
     for (int tick = 0; tick < 14400; ++tick) {
         float wheel = sinf(tick * .005f), throttle_change = sinf(tick * .001f);
-        boat_step(&boat, wheel, throttle_change);
-        boat_step(&repeat, wheel, throttle_change);
-        CHECK(same_state(&boat, &repeat) && finite_state(&boat));
+        boat_session_step(&boat, wheel, throttle_change);
+        boat_session_step(&repeat, wheel, throttle_change);
+        CHECK(same_state(&boat.boat, &repeat.boat) && finite_state(&boat.boat));
         CHECK(footprint_clear(&boat));
-        CHECK(fabsf(boat.roll) < 30 * DEG2RAD);
-        peak = fmaxf(peak, fabsf(boat.roll));
-        peak_rate = fmaxf(peak_rate, fabsf(boat.roll_velocity));
+        CHECK(fabsf(boat.boat.roll) < 30 * DEG2RAD);
+        peak = fmaxf(peak, fabsf(boat.boat.roll));
+        peak_rate = fmaxf(peak_rate, fabsf(boat.boat.roll_velocity));
     }
     printf("long_transitions seconds=120 peak_roll_deg=%.6f peak_rate_deg_s=%.6f repeat=exact\n",
         peak * RAD2DEG, peak_rate * RAD2DEG);
@@ -716,50 +734,51 @@ static int validate_long_transitions(void)
 static int validate_contacts(void)
 {
     for (int trial = 0; trial < 8; ++trial) {
-        Boat boat;
-        boat_reset_location(&boat, trial >= 2);
-        boat.water_settings = (BoatWater) { 0 };
+        BoatSession boat;
+        boat_session_init(&boat,
+            boat_location(trial >= 2 ? BOAT_LOCATION_ERIKSBERG : BOAT_LOCATION_BASIN),
+            (BoatWater) { 0 });
         if (trial < 2) {
-            boat.position = (Vector2) { 116, trial == 0 ? 0 : 76 };
-            boat.velocity = (Vector2) { 8, trial == 0 ? 0 : 8 };
-            boat.heading = .2f;
+            boat.boat.position = (Vector2) { 116, trial == 0 ? 0 : 76 };
+            boat.boat.velocity = (Vector2) { 8, trial == 0 ? 0 : 8 };
+            boat.boat.heading = .2f;
         } else if (trial == 2 || trial == 3) {
-            boat.position = trial == 2 ? (Vector2) { -34, 35 } : (Vector2) { 0, 182 };
-            boat.heading = trial == 2 ? -PI / 2 : PI / 2;
-            boat.velocity = Vector2Scale(forward(boat.heading), 8);
+            boat.boat.position = trial == 2 ? (Vector2) { -34, 35 } : (Vector2) { 0, 182 };
+            boat.boat.heading = trial == 2 ? -PI / 2 : PI / 2;
+            boat.boat.velocity = Vector2Scale(forward(boat.boat.heading), 8);
         } else {
             int vessel = trial - 4;
             WaterfrontVesselMotion ship = waterfront_traffic_motion(vessel, 40);
             BoatModelSpec spec = waterfront_traffic_spec(vessel);
-            boat_set_tick(&boat, 4800);
-            boat.position = Vector2Add((Vector2) { -ship.position.x, ship.position.z },
+            boat_session_set_tick(&boat, 4800);
+            boat.boat.position = Vector2Add((Vector2) { -ship.position.x, ship.position.z },
                 Vector2Scale(right(ship.heading), spec.beam * .5f + 3));
-            boat.heading = ship.heading - PI / 2;
-            boat.velocity = Vector2Scale(forward(boat.heading), 8);
+            boat.boat.heading = ship.heading - PI / 2;
+            boat.boat.velocity = Vector2Scale(forward(boat.boat.heading), 8);
         }
         int impacts = 0;
         float peak = 0, max_load_error = 0;
         for (int tick = 0; tick < 1200; ++tick) {
             // Same PRE-contact hydrodynamics at a safe basin origin. Flat water has no
             // spatial forcing; no impact delta may enter the filter or physical roll.
-            Boat probe_boat = boat;
-            probe_boat.eriksberg = false;
-            probe_boat.position = (Vector2) { 0 };
-            boat_step(&probe_boat, 0, 0);
-            boat_step(&boat, 0, 0);
-            float error = fabsf(boat.turn_roll_load - probe_boat.turn_roll_load);
+            BoatSession probe_boat = boat;
+            probe_boat.world.definition = boat_location(BOAT_LOCATION_BASIN);
+            probe_boat.boat.position = (Vector2) { 0 };
+            boat_session_step(&probe_boat, 0, 0);
+            boat_session_step(&boat, 0, 0);
+            float error = fabsf(boat.boat.turn_roll_load - probe_boat.boat.turn_roll_load);
             max_load_error = fmaxf(max_load_error, error);
             CHECK(error < .000001f);
-            CHECK(fabsf(boat.roll - probe_boat.roll) < .000001f
-                && fabsf(boat.roll_velocity - probe_boat.roll_velocity) < .000001f);
-            if (Vector2Distance(boat.velocity, probe_boat.velocity) > .001f)
+            CHECK(fabsf(boat.boat.roll - probe_boat.boat.roll) < .000001f
+                && fabsf(boat.boat.roll_velocity - probe_boat.boat.roll_velocity) < .000001f);
+            if (Vector2Distance(boat.boat.velocity, probe_boat.boat.velocity) > .001f)
                 ++impacts;
-            CHECK(footprint_clear(&boat) && finite_state(&boat));
-            peak = fmaxf(peak, fabsf(boat.roll));
+            CHECK(footprint_clear(&boat) && finite_state(&boat.boat));
+            peak = fmaxf(peak, fabsf(boat.boat.roll));
             CHECK(peak < 30 * DEG2RAD);
         }
         CHECK(impacts > 0);
-        CHECK(fabsf(boat.roll) < .5f * DEG2RAD);
+        CHECK(fabsf(boat.boat.roll) < .5f * DEG2RAD);
         printf("contact=%d impact_ticks=%d peak_roll_deg=%.6f max_filter_error=%.9g\n", trial,
             impacts, peak * RAD2DEG, max_load_error);
     }

@@ -16,11 +16,11 @@
     } while (0)
 int main(void)
 {
-    Boat a, b;
+    const BoatWorldDefinition *basin = boat_location(BOAT_LOCATION_BASIN);
+    BoatSession a, b;
     ObjectStudy wa, wb;
-    boat_reset(&a);
-    boat_reset(&b);
-    a.water_settings = b.water_settings = boat_water_test(false, false, false);
+    boat_session_init(&a, basin, boat_water_test(false, false, false));
+    boat_session_init(&b, basin, boat_water_test(false, false, false));
     baseline_reset(&wa, &a, false, BOAT_OBJECT_LIFE_TICKS, 1.8f);
     object_study_reset(&wb, &b, false, BOAT_OBJECT_LIFE_TICKS, 1.8f);
     Renderer3D ra = { 0 }, rb = { 0 };
@@ -28,11 +28,11 @@ int main(void)
     for (int tick = 0; tick < 3840; ++tick) {
         baseline_demo(&a, tick, NULL, NULL, &wa);
         demo_step(&b, tick, NULL, NULL, &wb);
-        CHECK(boat_study_state_hash(BOAT_STUDY_HASH_SEED, &a, &wa)
-            == boat_study_state_hash(BOAT_STUDY_HASH_SEED, &b, &wb));
+        CHECK(boat_study_state_hash(BOAT_STUDY_HASH_SEED, &a.boat, &wa)
+            == boat_study_state_hash(BOAT_STUDY_HASH_SEED, &b.boat, &wb));
         if (tick == 1079 || tick == 2399) {
-            CHECK(boat_draw(&ra, pa, 320, 200, &a, BOAT_CAMERA_DEFAULT));
-            CHECK(boat_draw(&rb, pb, 320, 200, &b, BOAT_CAMERA_DEFAULT));
+            CHECK(boat_draw(&ra, pa, 320, 200, &a.boat, &a.world, BOAT_CAMERA_DEFAULT));
+            CHECK(boat_draw(&rb, pb, 320, 200, &b.boat, &b.world, BOAT_CAMERA_DEFAULT));
             CHECK(memcmp(pa, pb, sizeof(pa)) == 0);
         }
     }

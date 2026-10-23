@@ -44,7 +44,7 @@ uint64_t boat_study_state_hash(uint64_t hash, const Boat *b, const ObjectStudy *
     B(physical_wake_start.x);
     B(physical_wake_start.y);
 #undef B
-    const BoatWakeObjects *w = &s->world;
+    const BoatWakeObjects *w = &s->wakes;
 #define W(f) value(&hash, #f, w->f)
     W(tick);
     W(emitted);

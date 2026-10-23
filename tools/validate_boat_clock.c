@@ -2,6 +2,7 @@
 #include "boat_clock.h"
 #include "boat_map.h"
 #include "boat_replay.h"
+#include "boat_session.h"
 #include "boat_study_state.h"
 #include "raymath.h"
 
@@ -65,7 +66,6 @@ static int reduction_checks(void)
 static uint64_t physical_hash(const Boat *boat, const ObjectStudy *study)
 {
     Boat copy = *boat;
-    copy.tick = 0;
     copy.time = 0;
     return boat_study_state_hash(BOAT_STUDY_HASH_SEED, &copy, study);
 }
@@ -75,42 +75,42 @@ static uint64_t physical_hash(const Boat *boat, const ObjectStudy *study)
 static int calm_independence(void)
 {
     const uint64_t starts[] = { 0, DAY_TICKS, 30 * DAY_TICKS };
-    static Boat boats[3];
+    const BoatWorldDefinition *basin = boat_location(BOAT_LOCATION_BASIN);
+    static BoatSession sessions[3];
     static ObjectStudy studies[3];
     for (int i = 0; i < 3; ++i) {
-        boat_reset(&boats[i]);
-        object_study_reset(&studies[i], &boats[i], false, BOAT_OBJECT_LIFE_TICKS, 1.8f);
-        boat_set_tick(&boats[i], starts[i]);
+        boat_session_init(&sessions[i], basin, (BoatWater) { 0 });
+        object_study_reset(&studies[i], &sessions[i], false, BOAT_OBJECT_LIFE_TICKS, 1.8f);
+        boat_session_set_tick(&sessions[i], starts[i]);
     }
     for (int tick = 0; tick < 14640; ++tick)
         for (int i = 0; i < 3; ++i) {
-            demo_step(&boats[i], tick, NULL, NULL, &studies[i]);
-            CHECK(boats[i].tick == starts[i] + (uint64_t)tick + 1);
-            CHECK(boats[i].time == boat_tick_seconds(boats[i].tick));
+            demo_step(&sessions[i], tick, NULL, NULL, &studies[i]);
+            CHECK(sessions[i].tick == starts[i] + (uint64_t)tick + 1);
+            CHECK(sessions[i].boat.time == boat_tick_seconds(sessions[i].tick));
             if (i)
-                CHECK(
-                    physical_hash(&boats[i], &studies[i]) == physical_hash(&boats[0], &studies[0]));
+                CHECK(physical_hash(&sessions[i].boat, &studies[i])
+                    == physical_hash(&sessions[0].boat, &studies[0]));
         }
-    CHECK(studies[0].world.emitted == 17 && boats[0].landings == 1);
+    CHECK(studies[0].wakes.emitted == 17 && sessions[0].boat.landings == 1);
     // The legacy D3 trail stores double births; equal relative histories match closely.
     for (int i = 0; i < 3; ++i) {
-        boat_reset(&boats[i]);
-        boats[i].water_settings.player_wake_enabled = true;
-        boat_set_tick(&boats[i], starts[i]);
+        boat_session_init(&sessions[i], basin, (BoatWater) { .player_wake_enabled = true });
+        boat_session_set_tick(&sessions[i], starts[i]);
     }
     float divergence = 0;
     for (int tick = 0; tick < 2400; ++tick)
         for (int i = 0; i < 3; ++i) {
-            demo_step(&boats[i], tick, NULL, NULL, NULL);
+            demo_step(&sessions[i], tick, NULL, NULL, NULL);
             if (i) {
                 divergence = fmaxf(divergence,
-                    Vector2Distance(boats[i].position, boats[0].position)
-                        + fabsf(boats[i].height - boats[0].height));
-                CHECK(boats[i].water_settings.player_wake_count
-                    == boats[0].water_settings.player_wake_count);
+                    Vector2Distance(sessions[i].boat.position, sessions[0].boat.position)
+                        + fabsf(sessions[i].boat.height - sessions[0].boat.height));
+                CHECK(sessions[i].world.water.player_wake_count
+                    == sessions[0].world.water.player_wake_count);
             }
         }
-    CHECK(boats[0].water_settings.player_wake_count > 10 && divergence < 1e-3f);
+    CHECK(sessions[0].world.water.player_wake_count > 10 && divergence < 1e-3f);
     printf("calm_time_independence=ok arcade_ticks=14640 starts=0,1d,30d d3_divergence=%.3g\n",
         divergence);
     return 0;
@@ -132,32 +132,34 @@ static int large_time_locations(void)
 {
     const uint64_t starts[] = { DAY_TICKS, 30 * DAY_TICKS };
     for (int location = 0; location < 3; ++location) {
-        waterfront_scene_select_river(location == 2);
+        const BoatWorldDefinition *definition = boat_location((BoatLocationId)location);
+        waterfront_scene_select_river(definition->id == BOAT_LOCATION_RIVER);
         for (int s = 0; s < 2; ++s) {
-            Boat boat;
-            boat_reset_location(&boat, location != 0);
-            boat.water_settings = boat_water_gentle();
-            boat.water_settings.player_wake_enabled = true;
-            boat_set_tick(&boat, starts[s]);
+            BoatSession session;
+            BoatWater water = boat_water_gentle();
+            water.player_wake_enabled = true;
+            boat_session_init(&session, definition, water);
+            boat_session_set_tick(&session, starts[s]);
+            const Boat *boat = &session.boat;
             float peak = 0;
             for (int tick = 0; tick < 120 * 30; ++tick) {
                 float throttle = tick < 120 * 20 ? .8f : 0;
                 float wheel = tick > 240 && tick < 120 * 12 ? .5f : 0;
-                boat_step(&boat, Clamp((wheel - boat.wheel) / BOAT_STEP, -1, 1),
-                    Clamp((throttle - boat.throttle) / (.5f * BOAT_STEP), -1, 1));
-                CHECK(boat_finite(&boat) && fabsf(boat.height) < 1.5f);
-                CHECK(boat.time == boat_tick_seconds(starts[s] + (uint64_t)tick + 1));
+                boat_session_step(&session, Clamp((wheel - boat->wheel) / BOAT_STEP, -1, 1),
+                    Clamp((throttle - boat->throttle) / (.5f * BOAT_STEP), -1, 1));
+                CHECK(boat_finite(boat) && fabsf(boat->height) < 1.5f);
+                CHECK(boat->time == boat_tick_seconds(starts[s] + (uint64_t)tick + 1));
                 if (location)
-                    CHECK(boat_map_water(boat.position, 0));
+                    CHECK(boat_map_water(boat->position, 0));
                 else
-                    CHECK(fabsf(boat.position.x) < BOAT_BASIN_HALF_X
-                        && fabsf(boat.position.y) < BOAT_BASIN_HALF_Z);
-                peak = fmaxf(peak, fabsf(boat.height));
+                    CHECK(fabsf(boat->position.x) < BOAT_BASIN_HALF_X
+                        && fabsf(boat->position.y) < BOAT_BASIN_HALF_Z);
+                peak = fmaxf(peak, fabsf(boat->height));
             }
             CHECK(peak > .02f); // The hull actually rides the time-driven waves.
             WaterfrontSceneFrame frame;
-            boat_scene_frame(&boat, BOAT_CAMERA_DEFAULT, &frame);
-            CHECK(frame.time == boat.time);
+            boat_scene_frame(boat, &session.world, BOAT_CAMERA_DEFAULT, &frame);
+            CHECK(frame.time == boat->time);
         }
         boat_map_destroy();
     }
@@ -169,21 +171,23 @@ static int large_time_locations(void)
 // Course recordings keep world time as recorded; a run started late in a session must load.
 static int replay_world_time(const char *path)
 {
-    Boat boat;
-    boat_reset_course(&boat);
-    boat_set_tick(&boat, 30 * DAY_TICKS + 17);
+    BoatSession session;
+    boat_session_init(&session, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
+    boat_reset_course(&session.boat);
+    boat_session_set_tick(&session, 30 * DAY_TICKS + 17);
+    Boat *boat = &session.boat;
     BoatReplay run = { 0 }, loaded = { 0 };
     const Vector2 points[] = { { 0, 37 }, { 22, 7 }, { -22, -23 }, { 0, -55 } };
     for (int leg = 0; leg < 3 && !run.complete; ++leg)
         for (int tick = 1; tick <= 480 && !run.complete; ++tick) {
-            BoatReplaySample before = boat_replay_pose(&boat);
+            BoatReplaySample before = boat_replay_pose(boat);
             float t = (float)tick / 480;
-            boat.position = Vector2Lerp(points[leg], points[leg + 1], t);
-            boat.velocity = Vector2Scale(Vector2Subtract(boat.position, before.position), 120);
-            boat.heading = boat.camera_heading = atan2f(boat.velocity.x, -boat.velocity.y);
-            boat_set_tick(&boat, boat.tick + 1);
-            boat_course_step(&boat.course, before.position, boat.position, BOAT_TICK_SECONDS);
-            boat_replay_record(&run, before, &boat);
+            boat->position = Vector2Lerp(points[leg], points[leg + 1], t);
+            boat->velocity = Vector2Scale(Vector2Subtract(boat->position, before.position), 120);
+            boat->heading = boat->camera_heading = atan2f(boat->velocity.x, -boat->velocity.y);
+            boat_session_set_tick(&session, session.tick + 1);
+            boat_course_step(&boat->course, before.position, boat->position, BOAT_TICK_SECONDS);
+            boat_replay_record(&run, before, boat, &session.world);
         }
     CHECK(run.complete && run.samples[0].world_time > 30 * 86400.0);
     CHECK(boat_replay_save(&run, path) && boat_replay_load(&loaded, path));
@@ -204,14 +208,15 @@ static int replay_world_time(const char *path)
 // tick; renders only a few representative CPU frames.
 static int soak(double seconds, const char *directory, bool waves)
 {
-    static Boat boat;
+    static BoatSession session;
     static ObjectStudy study;
-    boat_reset(&boat);
-    object_study_reset(&study, &boat, true, BOAT_OBJECT_LIFE_TICKS, 1.8f);
+    boat_session_init(&session, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
+    object_study_reset(&study, &session, true, BOAT_OBJECT_LIFE_TICKS, 1.8f);
     if (waves) {
-        boat.water_settings = boat_water_gentle();
-        boat.water_settings.objects = &study.world;
+        session.world.water = boat_water_gentle();
+        session.world.water.objects = &study.wakes;
     }
+    Boat *boat = &session.boat;
     uint64_t total = (uint64_t)llround(seconds * BOAT_TICK_HZ);
     const uint64_t samples[] = { 120 * 60, total / 2, total };
     Renderer3D renderer = { 0 };
@@ -225,67 +230,63 @@ static int soak(double seconds, const char *directory, bool waves)
         // Steer a counter-rotating loop through the crossing boat's route and its wakes,
         // weaving on each leg; every fifth 40 s cycle coasts in neutral for ten seconds.
         static const Vector2 route[] = { { -70, 30 }, { 70, 30 }, { 70, -35 }, { -70, -35 } };
-        Vector2 delta = Vector2Subtract(route[waypoint], boat.position);
+        Vector2 delta = Vector2Subtract(route[waypoint], boat->position);
         if (Vector2Length(delta) < 18)
             waypoint = (waypoint + 1) % 4;
         float weave = .35f * sinf((float)(tick % 1080) / 1080 * 2 * PI);
-        float error = remainderf(atan2f(delta.x, -delta.y) + weave - boat.heading, 2 * PI);
-        float wheel = Clamp(1.5f * error - .3f * boat.yaw_velocity, -1, 1);
+        float error = remainderf(atan2f(delta.x, -delta.y) + weave - boat->heading, 2 * PI);
+        float wheel = Clamp(1.5f * error - .3f * boat->yaw_velocity, -1, 1);
         float throttle = tick % (200 * 120) < 190 * 120 ? 1 : 0;
-        timed_boat_step(&boat, Clamp((wheel - boat.wheel) / BOAT_STEP, -1, 1),
-            Clamp((throttle - boat.throttle) / (.5f * BOAT_STEP), -1, 1), NULL, NULL, &study);
+        timed_boat_step(&session, Clamp((wheel - boat->wheel) / BOAT_STEP, -1, 1),
+            Clamp((throttle - boat->throttle) / (.5f * BOAT_STEP), -1, 1), NULL, NULL, &study);
         // Recover pose only after a capsize or a shoreline stall: the world clock, water
         // settings and wake history continue.
-        bool stalled = throttle > 0 && Vector2Length(boat.velocity) < .5f;
-        stuck_ticks = boat.motion_state == BOAT_CAPSIZED || stalled ? stuck_ticks + 1 : 0;
+        bool stalled = throttle > 0 && Vector2Length(boat->velocity) < .5f;
+        stuck_ticks = boat->motion_state == BOAT_CAPSIZED || stalled ? stuck_ticks + 1 : 0;
         if (stuck_ticks >= 5 * 120) {
-            uint64_t now = boat.tick;
-            BoatWater water = boat.water_settings;
-            landings += boat.landings;
-            boat_reset(&boat);
-            boat.water_settings = water;
-            boat_set_tick(&boat, now);
+            landings += boat->landings;
+            boat_session_respawn(&session);
             stuck_ticks = 0;
             ++recoveries;
         }
-        CHECK(boat_finite(&boat) && boat_finite(&study.other));
-        CHECK(
-            boat.tick == tick + 1 && study.other.tick == tick + 1 && study.world.tick == tick + 1);
-        CHECK(boat.time == boat_tick_seconds(boat.tick));
-        CHECK(fabsf(boat.position.x) < BOAT_BASIN_HALF_X
-            && fabsf(boat.position.y) < BOAT_BASIN_HALF_Z);
-        CHECK(study.world.live <= BOAT_OBJECT_CAPACITY
-            && study.world.peak_live <= BOAT_OBJECT_CAPACITY);
-        CHECK(study.world.emitted == study.world.expired + study.world.live);
-        max_speed = fmaxf(max_speed, Vector2Length(boat.velocity));
-        max_height = fmaxf(max_height, fabsf(boat.height));
+        CHECK(boat_finite(boat) && boat_finite(&study.other));
+        CHECK(session.tick == tick + 1 && study.other.time == boat_session_time(&session)
+            && study.wakes.tick == tick + 1);
+        CHECK(boat->time == boat_tick_seconds(session.tick));
+        CHECK(fabsf(boat->position.x) < BOAT_BASIN_HALF_X
+            && fabsf(boat->position.y) < BOAT_BASIN_HALF_Z);
+        CHECK(study.wakes.live <= BOAT_OBJECT_CAPACITY
+            && study.wakes.peak_live <= BOAT_OBJECT_CAPACITY);
+        CHECK(study.wakes.emitted == study.wakes.expired + study.wakes.live);
+        max_speed = fmaxf(max_speed, Vector2Length(boat->velocity));
+        max_height = fmaxf(max_height, fabsf(boat->height));
         if ((tick + 1) % 2 == 0)
-            hash = boat_study_state_hash(hash, &boat, &study);
+            hash = boat_study_state_hash(hash, boat, &study);
         if ((tick + 1) % (600 * 120) == 0)
             printf("soak minute=%" PRIu64 " emitted=%" PRIu64 " live=%u peak=%u landings=%" PRIu64
                    " "
                    "recoveries=%" PRIu64 " position=%.2f,%.2f\n",
-                (tick + 1) / 7200, study.world.emitted, study.world.live, study.world.peak_live,
-                landings + boat.landings, recoveries, boat.position.x, boat.position.y);
+                (tick + 1) / 7200, study.wakes.emitted, study.wakes.live, study.wakes.peak_live,
+                landings + boat->landings, recoveries, boat->position.x, boat->position.y);
         for (int s = 0; s < 3; ++s)
             if (tick + 1 == samples[s] && (s == 0 || samples[s] != samples[s - 1])) {
                 char path[4096];
                 CHECK(snprintf(path, sizeof(path), "%s/soak%s-%" PRIu64 "s.png", directory,
                           waves ? "-waves" : "", samples[s] / 120)
                     < (int)sizeof(path));
-                CHECK(boat_draw_with_ghost(
-                    &renderer, pixels, 320, 200, &boat, BOAT_CAMERA_DEFAULT, &study.other, 1));
+                CHECK(boat_draw_with_ghost(&renderer, pixels, 320, 200, boat, &session.world,
+                    BOAT_CAMERA_DEFAULT, &study.other, 1));
                 Image image = { pixels, 320, 200, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 };
                 CHECK(ExportImage(image, path));
             }
     }
     double cpu = (double)(clock() - started) / CLOCKS_PER_SEC;
-    CHECK(study.world.emitted > total / 2400); // Emission continued throughout the session.
+    CHECK(study.wakes.emitted > total / 2400); // Emission continued throughout the session.
     printf("soak=ok seconds=%.0f waves=%d ticks=%" PRIu64 " time=%.17g emitted=%" PRIu64
            " expired=%" PRIu64 " peak_live=%u/%d landings=%" PRIu64 " recoveries=%" PRIu64
            " max_speed=%.3f max_height=%.3f hash=%016" PRIx64 " cpu_s=%.2f\n",
-        seconds, waves, boat.tick, boat.time, study.world.emitted, study.world.expired,
-        study.world.peak_live, BOAT_OBJECT_CAPACITY, landings + boat.landings, recoveries,
+        seconds, waves, session.tick, boat->time, study.wakes.emitted, study.wakes.expired,
+        study.wakes.peak_live, BOAT_OBJECT_CAPACITY, landings + boat->landings, recoveries,
         max_speed, max_height, hash, cpu);
     renderer3d_destroy(&renderer);
     free(pixels);

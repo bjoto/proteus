@@ -58,9 +58,9 @@ failed:
     return false;
 }
 
-void boat_gpu_draw(BoatGpu *gpu, const Boat *boat, BoatCamera camera)
+void boat_gpu_draw(BoatGpu *gpu, const Boat *boat, const BoatWorld *world, BoatCamera camera)
 {
-    boat_gpu_draw_with_ghost(gpu, boat, camera, NULL, 0);
+    boat_gpu_draw_with_ghost(gpu, boat, world, camera, NULL, 0);
 }
 
 static bool candidate_strip(Mesh *m, int first, int rows)
@@ -97,12 +97,13 @@ static bool candidate_strip(Mesh *m, int first, int rows)
     return m->vaoId != 0;
 }
 
-void boat_gpu_draw_with_ghost(
-    BoatGpu *gpu, const Boat *boat, BoatCamera camera, const Boat *ghost, float opacity)
+void boat_gpu_draw_with_ghost(BoatGpu *gpu, const Boat *boat, const BoatWorld *world,
+    BoatCamera camera, const Boat *ghost, float opacity)
 {
     gpu->failed = false;
+    bool mapped = world->definition->mapped;
     WaterfrontSceneFrame frame;
-    boat_scene_frame(boat, camera, &frame);
+    boat_scene_frame(boat, world, camera, &frame);
     if (ghost && opacity > 0) {
         WaterfrontPlayerState pose = { 0 };
         boat_player_pose(ghost, &pose);
@@ -114,27 +115,27 @@ void boat_gpu_draw_with_ghost(
     }
     RenderTexture2D target = gpu->supersampled.id ? gpu->supersampled : gpu->target;
     Mesh original_water = gpu->scene.water;
-    if (!boat->eriksberg) {
+    if (!mapped) {
         if (!gpu->basin_water.vaoId)
             gpu->basin_water = GenMeshPlane(2 * BOAT_BASIN_HALF_X, 2 * BOAT_BASIN_HALF_Z, 1, 1);
         gpu->scene.water = gpu->basin_water;
     }
     gpu->scene.wake_field = (Texture2D) { 0 };
-    if (boat->wake_surface) {
+    if (world->wake_field) {
         clock_t begin = clock();
-        BoatWakeConfig c = boat_wake_config(boat->wake_surface);
+        BoatWakeConfig c = boat_wake_config(world->wake_field);
         if (!gpu->wake_upload) {
             gpu->wake_upload = MemAlloc((unsigned int)(c.width * c.height * sizeof(float)));
             if (!gpu->wake_upload)
                 goto restore_water;
-            boat_wake_copy_heights(boat->wake_surface, gpu->wake_upload);
+            boat_wake_copy_heights(world->wake_field, gpu->wake_upload);
             Image image = { gpu->wake_upload, (int)c.width, (int)c.height, 1,
                 PIXELFORMAT_UNCOMPRESSED_R32 };
             gpu->wake_texture = LoadTextureFromImage(image);
             SetTextureFilter(gpu->wake_texture, TEXTURE_FILTER_POINT);
             SetTextureWrap(gpu->wake_texture, TEXTURE_WRAP_CLAMP);
         } else {
-            boat_wake_copy_heights(boat->wake_surface, gpu->wake_upload);
+            boat_wake_copy_heights(world->wake_field, gpu->wake_upload);
             UpdateTexture(gpu->wake_texture, gpu->wake_upload);
         }
         if (!gpu->wake_texture.id)
@@ -152,16 +153,16 @@ void boat_gpu_draw_with_ghost(
         gpu->scene.near_water_extra = gpu->wave_mesh_extra;
         gpu->wake_upload_seconds += (double)(clock() - begin) / CLOCKS_PER_SEC;
         ++gpu->wake_uploads;
-    } else if (boat_water_displaced(boat->water_settings)) {
+    } else if (boat_water_displaced(world->water)) {
         Vector2 center
             = { roundf(-boat->position.x / 12) * 12, roundf(boat->position.y / 12) * 12 };
         Mesh *mesh = &gpu->wave_mesh;
         if (!mesh->vaoId || !Vector2Equals(center, gpu->wave_center)
-            || boat->eriksberg != gpu->wave_eriksberg) {
+            || mapped != gpu->wave_mapped) {
             Vector2 world_center = { -boat->position.x, boat->position.y };
-            const Mesh3D *surface = boat->water_settings.objects
-                ? boat_water_patch_arcade(world_center, boat->eriksberg)
-                : boat_water_patch(world_center, boat->eriksberg);
+            const Mesh3D *surface = world->water.objects
+                ? boat_water_patch_arcade(world_center, mapped)
+                : boat_water_patch(world_center, mapped);
             if (!surface)
                 goto restore_water;
             int count = (int)surface->triangle_count * 3;
@@ -191,7 +192,7 @@ void boat_gpu_draw_with_ghost(
             mesh->vertexCount = count;
             mesh->triangleCount = count / 3;
             gpu->wave_center = center;
-            gpu->wave_eriksberg = boat->eriksberg;
+            gpu->wave_mapped = mapped;
             gpu->wave_peak_triangles
                 = count / 3 > gpu->wave_peak_triangles ? count / 3 : gpu->wave_peak_triangles;
             ++gpu->wave_rebuilds;
@@ -202,9 +203,9 @@ void boat_gpu_draw_with_ghost(
     waterfront_gpu_scene_draw(&gpu->scene, &frame, target.texture.width, target.texture.height);
     EndTextureMode();
 restore_water:
-    if (boat->water_settings.objects && !gpu->scene.object_wakes.id)
+    if (world->water.objects && !gpu->scene.object_wakes.id)
         gpu->failed = true;
-    if (boat->wake_surface
+    if (world->wake_field
         && (!gpu->wake_texture.id || !gpu->wave_mesh.vaoId || !gpu->wave_mesh_extra.vaoId))
         gpu->failed = true;
     gpu->scene.water = original_water;

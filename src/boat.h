@@ -4,13 +4,11 @@
 #include "boat_clock.h"
 #include "boat_course.h"
 #include "boat_wake_player.h"
-#include "boat_water.h"
+#include "boat_world.h"
 #include "renderer3d.h"
 #include "waterfront_scene.h"
 
 #define BOAT_STEP (1.0f / BOAT_TICK_HZ)
-#define BOAT_BASIN_HALF_X 120.0f
-#define BOAT_BASIN_HALF_Z 80.0f
 #define BOAT_LIMIT_X (BOAT_BASIN_HALF_X - 2.5f)
 #define BOAT_LIMIT_Z (BOAT_BASIN_HALF_Z - 2.5f)
 #define BOAT_WATER_PARTICLES 384
@@ -35,13 +33,11 @@ typedef enum { BOAT_WATERBORNE, BOAT_AIRBORNE, BOAT_LANDING, BOAT_CAPSIZED } Boa
 typedef struct {
     BoatFlag flag; // Visual cloth only; never contributes forces to the hull.
     Vector2 position; // Water-plane X/Z coordinates.
-    bool eriksberg;
-    BoatWater water_settings;
-    const BoatWake *wake_surface; // Borrowed app-owned endpoint; never an owning BoatWater pointer.
     BoatCourse course;
-    uint64_t tick; // Authoritative live clock. A replay view never enters boat_step.
-    double time; // Derived from tick for live boats; continuous recorded time for replay views.
-    bool replay_view;
+    // View cache of the last stepped world time (the session tick), or continuous recorded
+    // time for a replay view. Physics never reads it; S3 replaces it with a view state.
+    double time;
+    bool replay_view; // A sampled view never enters boat_step.
     Vector2 velocity;
     float heading; // Zero faces north (-Z); positive turns right.
     float throttle; // Signed thrust command, -1 (reverse) through 0 (idle) to 1 (forward).
@@ -68,25 +64,27 @@ typedef struct {
     Vector2 physical_wake_start;
 } Boat;
 
+// Basin spawn at time zero; boat_reset_location() uses a definition's spawn instead.
 void boat_reset(Boat *boat);
-// Set a fixture/live boat to an exact tick. Replay samples retain continuous view time instead.
-void boat_set_tick(Boat *boat, uint64_t tick);
-void boat_reset_location(Boat *boat, bool eriksberg);
+void boat_reset_location(Boat *boat, const BoatWorldDefinition *definition);
 void boat_reset_course(Boat *boat);
-void boat_update_flag(Boat *boat);
+void boat_update_flag(Boat *boat, double time);
 void boat_player_pose(const Boat *boat, WaterfrontPlayerState *player);
-void boat_scene_frame(const Boat *boat, BoatCamera camera, WaterfrontSceneFrame *frame);
-// Advance one fixed tick. Inputs are adjustment rates in -1..1; zero centres the wheel and holds
-// throttle. Opposite steering unwinds the existing wheel angle three times faster than turn-in.
-void boat_step(Boat *boat, float wheel_change, float throttle_change);
+void boat_scene_frame(
+    const Boat *boat, const BoatWorld *world, BoatCamera camera, WaterfrontSceneFrame *frame);
+// Advance one fixed tick ending at world time NOW; the caller owns the clock (BoatSession).
+// Only WORLD's water history is written. Inputs are adjustment rates in -1..1; zero centres
+// the wheel and holds throttle. Opposite steering unwinds the wheel three times faster.
+void boat_step(Boat *boat, BoatWorld *world, double now, float wheel_change, float throttle_change);
 // Mutual planar impulse/separation for two dynamic hulls with vertical overlap.
 // Positive normalized masses also scale yaw inertia; no allocation or route ownership.
 bool boat_collide_pair(Boat *a, float mass_a, Boat *b, float mass_b);
-BoatWakeStern boat_wake_stern(const Boat *boat);
+BoatWakeStern boat_wake_stern(const Boat *boat, const BoatWorld *world, double time);
+// Views draw BOAT at its cached time in WORLD; a ghost contributes only its pose.
 bool boat_draw(Renderer3D *renderer, Color *pixels, int width, int height, const Boat *boat,
-    BoatCamera camera_settings);
+    const BoatWorld *world, BoatCamera camera_settings);
 
 bool boat_draw_with_ghost(Renderer3D *renderer, Color *pixels, int width, int height,
-    const Boat *boat, BoatCamera camera, const Boat *ghost, float opacity);
+    const Boat *boat, const BoatWorld *world, BoatCamera camera, const Boat *ghost, float opacity);
 
 #endif

@@ -4,9 +4,10 @@ Prepared 2026-10-19 against `f60ede8`, following the
 [architecture review](ARCHITECTURE_REVIEW.md). This document owns this technical sequence;
 [BOATING_PLAN.md](BOATING_PLAN.md) continues to own gameplay direction.
 
-Status: P1, P2a, P3a and phase C (C1–C3) implemented; full P2/P3 remain pending. Next for the
-[multiplayer prerequisite](MULTIPLAYER_PLAN.md): the basin W1/W3 slice (immutable definition,
-explicit water/world/session).
+Status: P1, P2a, P3a, phase C (C1–C3) and the basin W1/W3 slice implemented; full P2/P3 and
+mapped W1/W3, W2 and W4 remain pending. Next for the
+[multiplayer prerequisite](MULTIPLAYER_PLAN.md): the basin S1/S2 slice (shared pure pose math,
+cosmetic/view separation); see the [W1/W3 basin handoff](#w1w3-basin-slice-handoff--2026-10-23).
 At preparation, the user requested a plan only. Implementation began with P1 on 2026-10-19;
 execute later requested tasks using the protocol below. No additional approval gates are created
 by this plan. Verification of the original planning work is recorded at the end.
@@ -66,9 +67,9 @@ All rows start **pending**. Replace the evidence column with actual dated result
 | C1 | Integer tick authority and replay revision | P3 | Implemented 2026-10-23 after P3a slice; [clock handoff below](#c1-handoff--2026-10-23) |
 | C2 | Precise CPU/GPU time consumers | C1 | Implemented 2026-10-23; [C2 handoff below](#c2-handoff--2026-10-23); 85 active CTests pass |
 | C3 | Long-session/compatibility gate and new baseline | C2 | Implemented 2026-10-23; automated gate, replacement baseline and user manual playback of all modes; [C3 handoff below](#c3-handoff--2026-10-23) |
-| W1 | Explicit immutable location definitions | C3 | Pending |
+| W1 | Explicit immutable location definitions | C3 | Basin slice implemented 2026-10-23 (definitions; no stored active location in boats); mapped selector/map-query migration pending; [handoff](#w1w3-basin-slice-handoff--2026-10-23) |
 | W2 | Caller-owned collision and water-mesh caches | W1 | Pending |
-| W3 | World/session owners and water migration | W2 | Pending |
+| W3 | World/session owners and water migration | W2 | Basin slice implemented 2026-10-23 ahead of W2 (explicit world, session clock, isolation gate); mapped caches/resources pending; [handoff](#w1w3-basin-slice-handoff--2026-10-23) |
 | W4 | Reload/isolation/resource-lifetime gate | W3 | Pending |
 | S1 | Extract pose, camera, scenery, and drawing | W4 | Pending |
 | S2 | Separate cosmetic state from boat simulation | S1 | Pending |
@@ -910,3 +911,65 @@ world/session extraction. No cross-platform bit identity or user acceptance is i
   crossing-boat recovery; production restores the tick. It remains an untouched oracle; the
   calm-independence check uses the production driver. The benchmark CSV/profiler display
   print `Boat.time` as float (diagnostic only).
+
+## W1/W3 basin slice handoff — 2026-10-23
+
+- **Status / next:** The basin subset of W1/W3 from the
+  [multiplayer prerequisite slices](#multiplayer-prerequisite-slices--2026-10-23) is
+  implemented, starting from `e83f545` with a clean tree. Next: the basin S1/S2 slice.
+  Mapped W1 (selector removal, definition-bound map/scene queries), W2, mapped W3 resources and
+  W4 remain pending, as do full P2/P3.
+- **Location definitions (W1 basin):** `src/boat_location.[ch]` holds immutable
+  `BoatWorldDefinition` records for basin, Eriksberg and river: `mapped`, basin half extents,
+  spawn, the authored current/crossing-source placement, and presentation companion values
+  (default camera, far plane, particle water colour). `boat_location_find` parses
+  `--location`. `Boat.eriksberg` is gone; physics reads `definition->mapped`/`half_extent`.
+  `BOAT_BASIN_HALF_X/Z` moved to `boat_location.h`.
+- **World and session (W3 basin):** `BoatWorld` (`src/boat_world.[ch]`) holds a borrowed
+  definition, the `BoatWater` settings and D3 history by value, and the optional borrowed legacy
+  `wake_field`. `BoatSession` (`src/boat_session.[ch]`) holds world, boat and the only live
+  clock (`tick`). `boat_session_step` advances once (refusing at `UINT64_MAX`) and calls
+  `boat_step(boat, world, now, wheel, throttle)`; every physics helper takes the world and
+  time explicitly, and D3 segments are published into `world->water` at the same point as
+  before. `Boat.tick`, `Boat.water_settings`, `Boat.wake_surface` and `boat_set_tick` were
+  removed; `boat_wake_stern`, `boat_update_flag`, scene/draw/GPU entry points and replay
+  recording take explicit world/time. Assignment clones a world/session; nothing owned is
+  shared. The arcade `BoatWakeObjects` stay app-owned and borrowed through `water.objects`.
+- **Reset / replay:** `boat_study` R re-initializes its session from the existing CLI water
+  (clock to zero, wakes cleared), as before. `boat_session_respawn` moves the boat to the spawn
+  without touching clock or water (soak recovery). Replay/ghost samples are drawn in their own
+  `BoatWorld` built from `boat_replay_water(run)`, never written into the live session.
+- **Temporary adapters and their removal tasks:** `waterfront_scene_select_river()` plus the
+  global `boat_map`/`boat_water` mapped caches keyed by `definition->mapped` (mapped W1/W2;
+  river and Eriksberg still cannot coexist in one process); `BoatGpu.wave_mapped` patch cache
+  (W2); `Boat.time` as a derived view cache written by `boat_step` (S3); basin scenery/view
+  geometry still uses the basin macros rather than the definition (S1 `boat_view`). The
+  scripted crossing boat keeps its original calm basin (`ObjectStudy.other_world`, sharing only
+  the arcade wakes) and steps at the session's time; the multi-boat schedule belongs to
+  multiplayer M2. Test-only `tools/boat_test_session.h` (`basin_session`) wraps authored
+  fixture boats in a fresh calm basin session. There is no default-world singleton. The frozen
+  P2a oracle `tools/boat_drive_baseline.h` had only its calls ported; its order is unchanged.
+- **Automated verification:** Apple M1 Max/macOS 26.6.2, Debug common recipe: 88 active CTests
+  pass (20 GPU) in 110.20 s; fifteen retired field cases stay disabled. New
+  `boat_world_isolation` (`tools/validate_boat_world.c`, 1.7 s) steps basin calm+D3,
+  basin waves+current+D3 and Eriksberg-waves sessions interleaved for 2400 ticks and requires
+  each to equal its solo run byte for byte; checks that cloned sessions diverge without
+  aliasing; and checks that scene/CPU draw leave the session unchanged and respawn keeps clock
+  and water. One earlier full run reported a single `wake_objects_gpu` failure whose output was
+  not captured; it passed in the immediate full rerun, three direct runs, a single-test CTest
+  run and the final suite. `git diff --check` and `clang-format` pass.
+- **Baseline comparison:** see the
+  [W1/W3 comparison](BOATING_PERFORMANCE.md#w1w3-basin-comparison--2026-10-23). Release
+  outputs match the `e83f545` worktree and C3: the three P3a traces (hash
+  `24d582aae45971b4`), both hour soaks (hashes `43dfc74ddac0055d`, `56e31ce5c3d7a7c4`)
+  and their six frames, 17 validator/review outputs (only a timing line differs), and 19 CPU/GPU
+  `boat_study` captures, replay/ghost/wave-replay captures and C3 `cpu-t{9,11,20,60}` views,
+  all byte for byte. Representative frames were inspected.
+- **Manual playback:** Windowed scripted runs (`--demo`, `--course`, Eriksberg waves with
+  D3, crossing with waves for 180 frames; river current for 120) exited normally. On
+  2026-10-23 the user then played the slice on their macOS machine, trying R restart, the
+  course and different locations, and reported that it seems to work fine. Replay transport,
+  ghost, focus/help and audio were not separately reported.
+- **Limits:** One machine; Windows/Linux/browser not built or run. Isolation is proven for basin
+  worlds and basin/Eriksberg interleaving, not river with Eriksberg. Mapped map/water caches
+  and GPU resources are still process-global.

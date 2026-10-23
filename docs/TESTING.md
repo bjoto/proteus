@@ -21,13 +21,13 @@ ctest --test-dir build -j 4 --output-on-failure
 disabled, covering the owned field, refinement, cadence, candidate sources/boats/GPU,
 compact packets and Python prototypes. CTest lists them as disabled, not failed. Their
 sources, targets and manual diagnostic commands remain available. All arcade-object tests
-stay enabled. With `PROTEUS_GPU_TESTS=ON`, the normal suite runs 87 checks as of 2026-10-23,
+stay enabled. With `PROTEUS_GPU_TESTS=ON`, the normal suite runs 88 checks as of 2026-10-23,
 including 20 graphics checks. GPU cases retain serial scheduling while independent CPU
 checks may run concurrently; fixture dependencies still govern capture/replay comparisons.
 
 `PROTEUS_OPTIMIZE_TESTS=ON` compiles the long numerical validators at `-O2` even in
-Clang/GCC Debug builds: boat handling, banking, turn entry, environment, replay, clock, water
-routes and object-wake review. Debug symbols and assertions remain enabled; there is no
+Clang/GCC Debug builds: boat handling, banking, turn entry, environment, replay, clock, world
+isolation, water routes and object-wake review. Debug symbols and assertions remain enabled; there is no
 fast-math, reduced simulation duration or sampled-down scenario coverage. Application
 executables keep their selected build type. For stepping through these validators:
 

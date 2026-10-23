@@ -282,3 +282,34 @@ Logs and CPU frames at 60/1800/3600 s are `build/bench/c3/soak{,-waves}.log` and
 `build/bench/c3/soak{,-waves}-{60,1800,3600}s.png`. Both hours ran concurrently on separate
 cores, so their CPU seconds are indicative only. The soak is a stability gate, not a timing
 baseline; full P2 render counters and the remaining P3 workloads are still pending.
+
+## W1/W3 basin comparison — 2026-10-23
+
+The [W1/W3 basin slice](BOATING_FOUNDATIONS_PLAN.md#w1w3-basin-slice-handoff--2026-10-23)
+is a structural change: location, water and clock moved from `Boat` into explicit
+`BoatWorld`/`BoatSession` owners. It is compared against the C3 baseline and against a
+detached `e83f545` worktree built the same way, on the same MacBookPro18,2 (M1 Max, macOS
+26.6.2), Release AppleClang 21.0.0.21000101, `-DFETCHCONTENT_SOURCE_DIR_RAYLIB` as for C3.
+
+```sh
+cmake -S . -B build/w3-release -DCMAKE_BUILD_TYPE=Release \
+  -DFETCHCONTENT_SOURCE_DIR_RAYLIB="$PWD/build/_deps/raylib-src"
+cmake --build build/w3-release -j
+python3 tools/boat_benchmark_baseline.py build/w3-release/boat_benchmark build/bench/w3/baseline
+./build/w3-release/validate_boat_clock --soak 3600 build/bench/w3/soak-new
+./build/w3-release/validate_boat_clock --soak 3600 build/bench/w3/soak-new --waves
+```
+
+| Check | Result |
+| --- | --- |
+| P3a traces, three runs | Byte-identical to `build/bench/c3/baseline/run-{1,2,3}.state.csv`; hash `24d582aae45971b4`; p50 0.064/0.063/0.064 ms (C3 0.063) |
+| Hour soaks, calm/waves | Identical to `e83f545` and C3: hashes `43dfc74ddac0055d` / `56e31ce5c3d7a7c4`, same births, landings, recoveries; all six frames byte-identical |
+| Validators/review tools | 17 outputs (handling, banking, turn entry, environment, replay, profile, drive, clock, harbor, traffic, banking review, four water routes, object wakes, flag) identical except one object-wake timing line |
+| `boat_study` captures | 19 CPU/GPU frames (basin, waves, crossing+waves, D3, current/crossing, Eriksberg waves+D3 and current, river waves, course, CPU wake field) byte-identical |
+| Replay views | Calm banked replay at 3/8 s, ghost and wave replay, CPU and GPU, byte-identical |
+| C3 views | `cpu-t{9,11,20,60}` byte-identical |
+
+The soaks for both trees ran concurrently on separate cores, so their CPU seconds are not a
+timing comparison. Artifacts: `build/bench/w3/{ref,new,replay,soak-head,soak-new,val-head,
+val-new,baseline}` and `build/bench/w3/baseline-runs.log`. No intended simulation or render
+behavior changed, so this slice adopts no new baseline; C3 remains the reference.

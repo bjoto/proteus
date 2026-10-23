@@ -1,5 +1,6 @@
 /* Complete opt-in workload: real boat/stern queries, field, audit, upload and GL completion. */
 #include "boat_gpu.h"
+#include "boat_session.h"
 #include "external/glad.h"
 #include "rlgl.h"
 #include <math.h>
@@ -26,93 +27,103 @@ static void crossing(void)
 {
     BoatWakePlayer *world = boat_wake_player_create(1.0 / 120);
     CHECK(world);
-    Boat emitter;
-    boat_reset(&emitter);
-    emitter.wake_surface = boat_wake_player_field(world);
-    emitter.position = (Vector2) { -95, 0 };
-    emitter.heading = 1.57079632679f;
+    BoatSession emitter;
+    boat_session_init(&emitter, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
+    emitter.world.wake_field = boat_wake_player_field(world);
+    emitter.boat.position = (Vector2) { -95, 0 };
+    emitter.boat.heading = 1.57079632679f;
     for (unsigned tick = 0; tick < 960; ++tick) {
-        BoatWakeStern before = boat_wake_stern(&emitter);
-        boat_step(&emitter, 0, 1);
-        CHECK(boat_wake_player_step(world, before, boat_wake_stern(&emitter)));
+        BoatWakeStern before
+            = boat_wake_stern(&emitter.boat, &emitter.world, boat_session_time(&emitter));
+        boat_session_step(&emitter, 0, 1);
+        CHECK(boat_wake_player_step(world, before,
+            boat_wake_stern(&emitter.boat, &emitter.world, boat_session_time(&emitter))));
     }
     BoatWakePlayerReport source = boat_wake_player_report(world);
     printf("actual full-throttle straight: speed %.6g m/s, x %.6g, wet %.6g; "
            "peak %.6g m, slope %.6g; positive %.6g / available %.6g J\n",
-        hypot(emitter.velocity.x, emitter.velocity.y), emitter.position.x,
-        boat_wake_stern(&emitter).wet, source.peak_height, source.peak_slope,
-        source.energy.positive_work, source.resistance_work);
+        hypot(emitter.boat.velocity.x, emitter.boat.velocity.y), emitter.boat.position.x,
+        boat_wake_stern(&emitter.boat, &emitter.world, boat_session_time(&emitter)).wet,
+        source.peak_height, source.peak_slope, source.energy.positive_work, source.resistance_work);
     /* Cross the freely propagating trail at right angles. The receiver emits
      * nothing: compare the real buoyancy response with an identical calm twin. */
-    Boat receiver = emitter;
-    receiver.position = (Vector2) { 0, 30 };
-    receiver.heading = 0;
-    receiver.velocity = (Vector2) { 0, -16 };
-    receiver.yaw_velocity = 0;
-    Boat calm = receiver;
+    BoatSession receiver = emitter;
+    receiver.boat.position = (Vector2) { 0, 30 };
+    receiver.boat.heading = 0;
+    receiver.boat.velocity = (Vector2) { 0, -16 };
+    receiver.boat.yaw_velocity = 0;
+    BoatSession calm = receiver;
     BoatWakePlayer *flat = boat_wake_player_create(1.0 / 120);
     CHECK(flat);
     /* Keep the candidate's buoyancy/damping path in the calm comparison too. */
-    calm.wake_surface = boat_wake_player_field(flat);
+    calm.world.wake_field = boat_wake_player_field(flat);
     double height = 0, velocity = 0, pitch = 0, surface = 0;
     unsigned dry_ticks = 0;
     for (unsigned tick = 0; tick < 480; ++tick) {
-        boat_step(&receiver, 0, 0);
-        boat_step(&calm, 0, 0);
+        boat_session_step(&receiver, 0, 0);
+        boat_session_step(&calm, 0, 0);
         CHECK(boat_wake_player_step(world, (BoatWakeStern) { 0 }, (BoatWakeStern) { 0 }));
-        height = fmax(height, fabs(receiver.height - calm.height));
-        velocity = fmax(velocity, fabs(receiver.vertical_velocity - calm.vertical_velocity));
-        pitch = fmax(pitch, fabs(receiver.pitch - calm.pitch));
-        dry_ticks += boat_wake_stern(&receiver).wet == 0;
+        height = fmax(height, fabs(receiver.boat.height - calm.boat.height));
+        velocity
+            = fmax(velocity, fabs(receiver.boat.vertical_velocity - calm.boat.vertical_velocity));
+        pitch = fmax(pitch, fabs(receiver.boat.pitch - calm.boat.pitch));
+        dry_ticks
+            += boat_wake_stern(&receiver.boat, &receiver.world, boat_session_time(&receiver)).wet
+            == 0;
         BoatWakeSample q;
-        CHECK(boat_wake_query(receiver.wake_surface, receiver.position.x, receiver.position.y, &q));
+        CHECK(boat_wake_query(
+            receiver.world.wake_field, receiver.boat.position.x, receiver.boat.position.y, &q));
         surface = fmax(surface, fabs(q.height));
-        CHECK(isfinite(receiver.height) && fabs(receiver.height) < 3);
+        CHECK(isfinite(receiver.boat.height) && fabs(receiver.boat.height) < 3);
     }
     printf("free-trail crossing: surface %.6g m; hull minus calm peak height %.6g m, "
            "vertical velocity %.6g m/s, pitch %.6g deg, dry stern %u ticks\n",
         surface, height, velocity, pitch * 57.2957795131, dry_ticks);
     for (unsigned tick = 0; tick < 720; ++tick) {
-        float neutral = fmaxf(-1, fminf(1, -receiver.throttle / (.5f * BOAT_STEP)));
-        boat_step(&receiver, 0, neutral);
+        float neutral = fmaxf(-1, fminf(1, -receiver.boat.throttle / (.5f * BOAT_STEP)));
+        boat_session_step(&receiver, 0, neutral);
         CHECK(boat_wake_player_step(world, (BoatWakeStern) { 0 }, (BoatWakeStern) { 0 }));
-        CHECK(isfinite(receiver.height) && fabs(receiver.height) < 3);
-        CHECK(isfinite(receiver.roll) && fabs(receiver.roll) < 1.5);
+        CHECK(isfinite(receiver.boat.height) && fabs(receiver.boat.height) < 3);
+        CHECK(isfinite(receiver.boat.roll) && fabs(receiver.boat.roll) < 1.5);
     }
     BoatWakeSample settled;
-    CHECK(
-        boat_wake_query(receiver.wake_surface, receiver.position.x, receiver.position.y, &settled));
+    CHECK(boat_wake_query(
+        receiver.world.wake_field, receiver.boat.position.x, receiver.boat.position.y, &settled));
     printf("neutral recovery after crossing: height relative to water %.6g m, "
            "vertical speed %.6g m/s, pitch %.6g deg\n",
-        receiver.height - settled.height, receiver.vertical_velocity,
-        receiver.pitch * 57.2957795131);
+        receiver.boat.height - settled.height, receiver.boat.vertical_velocity,
+        receiver.boat.pitch * 57.2957795131);
     CHECK(source.energy.positive_work < source.resistance_work);
-    CHECK(hypot(emitter.velocity.x, emitter.velocity.y) > 20);
+    CHECK(hypot(emitter.boat.velocity.x, emitter.boat.velocity.y) > 20);
     CHECK(source.peak_height > .65 && source.peak_height < 1.2);
     CHECK(height > .4 && velocity > 1.5 && dry_ticks > 0);
-    CHECK(fabs(receiver.height - settled.height) < .15 && fabs(receiver.vertical_velocity) < .3);
+    CHECK(fabs(receiver.boat.height - settled.height) < .15
+        && fabs(receiver.boat.vertical_velocity) < .3);
     boat_wake_player_destroy(flat);
     boat_wake_player_destroy(world);
     boat_water_destroy();
 }
 
-static void step(Boat *boat, BoatWakePlayer *world, unsigned tick)
+static void step(BoatSession *session, BoatWakePlayer *world, unsigned tick)
 {
-    BoatWakeStern before = boat_wake_stern(boat);
+    const Boat *boat = &session->boat;
+    BoatWakeStern before = boat_wake_stern(boat, &session->world, boat_session_time(session));
     float target = tick < 1440 ? 1 : tick < 1800 ? 0 : -.4f;
     float wheel = tick >= 420 && tick < 1440 ? 1 : 0;
-    boat_step(boat, fmaxf(-1, fminf(1, (wheel - boat->wheel) / BOAT_STEP)),
+    boat_session_step(session, fmaxf(-1, fminf(1, (wheel - boat->wheel) / BOAT_STEP)),
         fmaxf(-1, fminf(1, (target - boat->throttle) / (.5f * BOAT_STEP))));
     CHECK(tick < 1600);
     recorded[tick][0] = before;
-    recorded[tick][1] = boat_wake_stern(boat);
+    recorded[tick][1] = boat_wake_stern(boat, &session->world, boat_session_time(session));
     CHECK(boat_wake_player_step(world, before, recorded[tick][1]));
     CHECK(isfinite(boat->height) && fabsf(boat->height) < 3);
     CHECK(isfinite(boat->roll) && fabsf(boat->roll) < 1.5);
 }
 
-static void shader_queries(const Boat *boat, const BoatGpu *gpu)
+static void shader_queries(const BoatSession *session, const BoatGpu *gpu)
 {
+    const Boat *boat = &session->boat;
+    const BoatWake *field = session->world.wake_field;
     const char *paths[]
         = { "assets/shaders/waterfront_water.vs", "assets/shaders/waterfront_water.fs" };
     const char *vertex = "#version 330\nvoid main(){vec2 "
@@ -150,7 +161,7 @@ static void shader_queries(const Boat *boat, const BoatGpu *gpu)
         glUseProgram(shader.id);
         glUniform1i(GetShaderLocation(shader, "wakeFieldEnabled"), 1);
         glUniform1i(GetShaderLocation(shader, "wakeField"), 0);
-        BoatWakeConfig c = boat_wake_config(boat->wake_surface);
+        BoatWakeConfig c = boat_wake_config(field);
         glUniform3f(GetShaderLocation(shader, "wakeGrid"), (float)c.width, (float)c.height,
             (float)c.spacing);
         glActiveTexture(GL_TEXTURE0);
@@ -160,7 +171,7 @@ static void shader_queries(const Boat *boat, const BoatGpu *gpu)
             for (int x = -20; x < 20; x += 3) {
                 float px = boat->position.x + x + .173f, pz = boat->position.y + z + .391f;
                 BoatWakeSample q;
-                CHECK(boat_wake_query(boat->wake_surface, px, pz, &q));
+                CHECK(boat_wake_query(field, px, pz, &q));
                 glUniform2f(GetShaderLocation(shader, "probe"), -px, pz);
                 glDrawArrays(GL_TRIANGLES, 0, 3);
                 float actual[4];
@@ -202,19 +213,19 @@ int main(int argc, char **argv)
     }
     BoatWakePlayer *world = boat_wake_player_create(1.0 / 120);
     CHECK(world);
-    Boat boat;
-    boat_reset(&boat);
-    boat.wake_surface = boat_wake_player_field(world);
-    Boat dry = boat;
-    dry.height = 10;
-    CHECK(boat_wake_stern(&dry).wet == 0);
-    CHECK(boat_wake_stern(&boat).wet > .9);
+    BoatSession boat;
+    boat_session_init(&boat, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
+    boat.world.wake_field = boat_wake_player_field(world);
+    BoatSession dry = boat;
+    dry.boat.height = 10;
+    CHECK(boat_wake_stern(&dry.boat, &dry.world, boat_session_time(&dry)).wet == 0);
+    CHECK(boat_wake_stern(&boat.boat, &boat.world, boat_session_time(&boat)).wet > .9);
     /* Exercise real transformed stern history, then measure with a nonzero loop field. */
     unsigned tick = 0;
     for (; tick < 1080; ++tick)
         step(&boat, world, tick);
     if (graphics) {
-        boat_gpu_draw(&gpu, &boat, BOAT_CAMERA_DEFAULT);
+        boat_gpu_draw(&gpu, &boat.boat, &boat.world, BOAT_CAMERA_DEFAULT);
         glFinish();
     }
     double physics = 0, render = 0, peak = 0;
@@ -229,7 +240,7 @@ int main(int argc, char **argv)
         physics += stepped - start;
         double rendered = stepped;
         if (graphics) {
-            boat_gpu_draw(&gpu, &boat, BOAT_CAMERA_DEFAULT);
+            boat_gpu_draw(&gpu, &boat.boat, &boat.world, BOAT_CAMERA_DEFAULT);
             glFinish();
             rendered = GetTime();
             render += rendered - stepped;
@@ -237,7 +248,8 @@ int main(int argc, char **argv)
         physics_times[frame] = 1000 * (stepped - start);
         total_times[frame] = 1000 * (rendered - start);
         BoatWakeSample q;
-        CHECK(boat_wake_query(boat.wake_surface, boat.position.x, boat.position.y, &q));
+        CHECK(
+            boat_wake_query(boat.world.wake_field, boat.boat.position.x, boat.boat.position.y, &q));
         peak = fmax(peak, fabs(q.height));
     }
     BoatWakePlayerReport r = boat_wake_player_report(world);
@@ -280,7 +292,7 @@ int main(int argc, char **argv)
         for (int z = -40; z <= 20; z += 2)
             for (int x = -20; x <= 40; x += 2) {
                 BoatWakeSample a, b;
-                CHECK(boat_wake_query(boat.wake_surface, x + .17, z + .39, &a));
+                CHECK(boat_wake_query(boat.world.wake_field, x + .17, z + .39, &a));
                 CHECK(boat_wake_query(boat_wake_player_field(fine), x + .17, z + .39, &b));
                 err += pow(a.height - b.height, 2)
                     + pow(a.vertical_velocity - b.vertical_velocity, 2)
@@ -300,13 +312,13 @@ int main(int argc, char **argv)
         ImageFlipVertical(&image);
         CHECK(ExportImage(image, "build/wake-play-review.png"));
         UnloadImage(image);
-        Boat flat = boat;
-        flat.wake_surface = NULL;
+        BoatSession flat = boat;
+        flat.world.wake_field = NULL;
         /* Remove the candidate mesh for a conservative rest-water renderer baseline. */
         gpu.scene.near_water = (Mesh) { 0 };
         double start = GetTime();
         for (unsigned i = 0; i < 60; ++i) {
-            boat_gpu_draw(&gpu, &flat, BOAT_CAMERA_DEFAULT);
+            boat_gpu_draw(&gpu, &flat.boat, &flat.world, BOAT_CAMERA_DEFAULT);
             glFinish();
         }
         printf(

@@ -76,7 +76,8 @@ static bool append(BoatReplay *run, BoatReplaySample sample)
     return true;
 }
 
-void boat_replay_record(BoatReplay *run, BoatReplaySample before, const Boat *boat)
+void boat_replay_record(
+    BoatReplay *run, BoatReplaySample before, const Boat *boat, const BoatWorld *world)
 {
     const BoatCourse *c = &boat->course;
     if (!c->enabled || run->complete || run->failed || c->next_gate == 0)
@@ -85,7 +86,7 @@ void boat_replay_record(BoatReplay *run, BoatReplaySample before, const Boat *bo
     if (!run->count) {
         if (c->crossing[0] < 0)
             return;
-        run->waves = boat->water_settings.amplitude != 0;
+        run->waves = world->water.amplitude != 0;
         if (!append(run, interpolate(before, after, 0, (float)c->crossing[0])))
             run->failed = true;
     }
@@ -101,6 +102,11 @@ void boat_replay_record(BoatReplay *run, BoatReplaySample before, const Boat *bo
         run->failed = true;
     memcpy(run->splits, c->splits, sizeof(run->splits));
     run->complete = finish && !run->failed && run->count >= 2;
+}
+
+BoatWater boat_replay_water(const BoatReplay *run)
+{
+    return run->waves ? boat_water_gentle() : (BoatWater) { 0 };
 }
 
 bool boat_replay_sample(const BoatReplay *run, double at, Boat *boat)
@@ -132,7 +138,6 @@ bool boat_replay_sample(const BoatReplay *run, double at, Boat *boat)
         .camera_heading = s.camera_heading,
         .time = s.world_time,
         .replay_view = true,
-        .water_settings = run->waves ? boat_water_gentle() : (BoatWater) { 0 },
         .course = { .enabled = true, .elapsed = at, .next_gate = 1 } };
     memcpy(boat->course.splits, run->splits, sizeof(run->splits));
     for (int i = 1; i < BOAT_COURSE_GATES; ++i)
@@ -159,7 +164,7 @@ void boat_replay_animate_flag(const BoatReplay *run, Boat *boat, BoatReplayFlag 
     for (int tick = first; tick <= last; ++tick) {
         boat_replay_sample(run, tick * BOAT_TICK_SECONDS, &historical);
         historical.flag = cache->flag;
-        boat_update_flag(&historical);
+        boat_update_flag(&historical, historical.time);
         cache->flag = historical.flag;
     }
     cache->run = run;
@@ -418,12 +423,13 @@ void boat_replay_runs_reset(BoatReplayRuns *runs)
     }
 }
 
-void boat_replay_runs_step(BoatReplayRuns *runs, BoatReplaySample before, const Boat *boat)
+void boat_replay_runs_step(
+    BoatReplayRuns *runs, BoatReplaySample before, const Boat *boat, const BoatWorld *world)
 {
     if (runs->finished)
         return;
     bool failed = runs->recording.failed;
-    boat_replay_record(&runs->recording, before, boat);
+    boat_replay_record(&runs->recording, before, boat, world);
     if (!failed && runs->recording.failed)
         runs->notice = "Recording stopped (memory or 10 minute limit); best preserved";
     if (!runs->recording.complete)

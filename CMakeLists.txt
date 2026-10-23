@@ -31,6 +31,7 @@ if(APPLE)
 endif()
 
 set(PROTEUS_BOAT_WORLD_SOURCES
+  src/boat_location.c src/boat_world.c src/boat_session.c
   src/boat_water.c src/boat_wake_objects.c src/boat_wake.c src/boat_wake_player.c src/boat_course.c src/boat_replay.c src/boat_map.c
   src/waterfront.c src/waterfront_scene.c src/waterfront_corner.c)
 set(PROTEUS_HARBOR_SOURCES
@@ -280,6 +281,7 @@ add_executable(validate_boat_profile tools/validate_boat_profile.c src/boat_prof
   src/renderer3d.c)
 add_executable(validate_boat_environment tools/validate_boat_environment.c src/boat.c src/renderer3d.c)
 add_executable(validate_boat_replay tools/validate_boat_replay.c src/boat.c src/renderer3d.c)
+add_executable(validate_boat_world tools/validate_boat_world.c src/boat.c src/renderer3d.c)
 add_executable(wake_baseline tools/wake_baseline.c src/boat.c src/renderer3d.c)
 add_executable(boat_water_review tools/boat_water_review.c src/boat.c src/renderer3d.c
   src/boat_gpu.c src/renderer_gpu.c)
@@ -291,8 +293,8 @@ add_executable(boat_flag_review tools/boat_flag_review.c src/boat.c src/renderer
   src/boat_gpu.c src/renderer_gpu.c)
 add_dependencies(boat_flag_review proteus_assets)
 foreach(target validate_boat validate_boat_banking validate_boat_turn_entry validate_boat_profile
-    validate_boat_environment validate_boat_replay wake_baseline boat_water_review
-    boat_banking_review boat_flag_review)
+    validate_boat_environment validate_boat_replay validate_boat_world wake_baseline
+    boat_water_review boat_banking_review boat_flag_review)
   target_sources(${target} PRIVATE ${PROTEUS_BOAT_WORLD_SOURCES})
   target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
   target_link_libraries(${target} PRIVATE raylib)
@@ -309,6 +311,7 @@ add_test(NAME boat_flag_cpu COMMAND boat_flag_review --scenario cruise --time 5
 set_tests_properties(boat_flag_cpu PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 add_test(NAME boat_profile_records COMMAND validate_boat_profile)
 add_test(NAME boat_environment COMMAND validate_boat_environment)
+add_test(NAME boat_world_isolation COMMAND validate_boat_world)
 add_test(NAME boat_player_wake_screenshot COMMAND boat_study --renderer cpu --player-wake --time 9
   --screenshot ${CMAKE_CURRENT_BINARY_DIR}/boat-player-wake.png)
 add_test(NAME boat_player_wake_course_rejected COMMAND boat_study --player-wake --course)
@@ -444,9 +447,7 @@ target_compile_options(waterfront_storyboard PRIVATE
 )
 add_test(NAME waterfront_storyboard_is_valid COMMAND waterfront_storyboard --check)
 add_executable(validate_harbor tools/validate_harbor.c src/boat.c src/renderer3d.c
-  src/boat_flag.c src/boat_model.c src/waterfront_harbor.c src/waterfront_traffic.c
-  src/boat_water.c src/boat_wake_objects.c src/boat_wake.c src/boat_map.c
-  src/boat_course.c src/boat_replay.c src/waterfront.c src/waterfront_scene.c src/waterfront_corner.c)
+  ${PROTEUS_BOAT_WORLD_SOURCES} ${PROTEUS_HARBOR_SOURCES})
 target_include_directories(validate_harbor PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(validate_harbor PRIVATE raylib)
 target_compile_options(validate_harbor PRIVATE
@@ -454,9 +455,7 @@ target_compile_options(validate_harbor PRIVATE
 add_test(NAME harbor_geometry COMMAND validate_harbor)
 
 add_executable(validate_traffic tools/validate_traffic.c src/boat.c src/renderer3d.c
-  src/boat_flag.c src/boat_model.c src/waterfront_harbor.c src/waterfront_traffic.c
-  src/boat_water.c src/boat_wake_objects.c src/boat_wake.c src/boat_map.c
-  src/boat_course.c src/boat_replay.c src/waterfront.c src/waterfront_scene.c src/waterfront_corner.c)
+  ${PROTEUS_BOAT_WORLD_SOURCES} ${PROTEUS_HARBOR_SOURCES})
 target_include_directories(validate_traffic PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(validate_traffic PRIVATE raylib)
 target_compile_options(validate_traffic PRIVATE
@@ -477,7 +476,7 @@ target_compile_options(harbor_review PRIVATE
 
 # Shared generated boats and berth evaluation feed all waterfront consumers.
 foreach(target proteus gpu_fixture validate_boat validate_boat_banking validate_boat_turn_entry
-    validate_boat_profile validate_boat_environment validate_boat_replay
+    validate_boat_profile validate_boat_environment validate_boat_replay validate_boat_world
     wake_baseline boat_water_review boat_banking_review boat_flag_review waterfront_storyboard
     validate_waterfront_actors validate_city_dressing harbor_review)
   target_sources(${target} PRIVATE ${PROTEUS_HARBOR_SOURCES})
@@ -654,7 +653,7 @@ endforeach()
 if(PROTEUS_OPTIMIZE_TESTS)
   foreach(target validate_boat validate_boat_banking validate_boat_turn_entry
       validate_boat_environment validate_boat_replay boat_water_review wake_objects_review
-      validate_boat_clock)
+      validate_boat_clock validate_boat_world)
     target_compile_options(${target} PRIVATE
       $<$<AND:$<CONFIG:Debug>,$<C_COMPILER_ID:AppleClang,Clang,GNU>>:-O2>)
   endforeach()

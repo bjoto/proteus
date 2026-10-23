@@ -11,7 +11,7 @@ typedef struct {
     Mesh wave_mesh_extra; // Second indexed basin strip (16-bit vertex indices).
     Mesh basin_water;
     Vector2 wave_center;
-    bool wave_eriksberg;
+    bool wave_mapped; // Patch topology belongs to a mapped crop (W2 binds it to a world).
     int wave_capacity, wave_peak_triangles, wave_rebuilds;
     Texture2D wake_texture;
     float *wake_upload;
@@ -22,9 +22,9 @@ typedef struct {
 } BoatGpu;
 
 bool boat_gpu_init(BoatGpu *gpu, bool aa);
-void boat_gpu_draw(BoatGpu *gpu, const Boat *boat, BoatCamera camera);
+void boat_gpu_draw(BoatGpu *gpu, const Boat *boat, const BoatWorld *world, BoatCamera camera);
 void boat_gpu_destroy(BoatGpu *gpu);
-void boat_gpu_draw_with_ghost(
-    BoatGpu *gpu, const Boat *boat, BoatCamera camera, const Boat *ghost, float opacity);
+void boat_gpu_draw_with_ghost(BoatGpu *gpu, const Boat *boat, const BoatWorld *world,
+    BoatCamera camera, const Boat *ghost, float opacity);
 
 #endif

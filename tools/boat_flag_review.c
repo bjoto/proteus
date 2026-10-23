@@ -1,5 +1,5 @@
-#include "boat.h"
 #include "boat_gpu.h"
+#include "boat_session.h"
 #include "raymath.h"
 
 #include <math.h>
@@ -7,13 +7,14 @@
 #include <stdlib.h>
 #include <string.h>
 
-static void advance(Boat *boat, const char *scenario, int tick)
+static void advance(BoatSession *session, const char *scenario, int tick)
 {
+    Boat *boat = &session->boat;
     float t = tick * BOAT_STEP;
     if (strcmp(scenario, "idle") != 0)
         boat->throttle = strcmp(scenario, "reverse") == 0 ? -.65f : 1;
     float steering = strcmp(scenario, "turn") == 0 && t > 3 ? .7f : 0;
-    boat_step(boat, Clamp((steering - boat->wheel) / BOAT_STEP, -1, 1), 0);
+    boat_session_step(session, Clamp((steering - boat->wheel) / BOAT_STEP, -1, 1), 0);
 }
 
 static View3D camera_for(const Boat *boat)
@@ -64,8 +65,8 @@ int main(int argc, char **argv)
             && strcmp(scenario, "reverse")))
         return 2;
     SetTraceLogLevel(LOG_WARNING);
-    Boat boat;
-    boat_reset(&boat);
+    BoatSession boat;
+    boat_session_init(&boat, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
     for (int tick = 0; tick < (int)roundf(time / BOAT_STEP); ++tick)
         advance(&boat, scenario, tick);
     Renderer3D cpu = { 0 };
@@ -90,11 +91,11 @@ int main(int argc, char **argv)
     int count = screenshot ? 1 : frames;
     for (int f = 0; f < count && (screenshot || !WindowShouldClose()); ++f) {
         WaterfrontPlayerState player = { 0 };
-        boat_player_pose(&boat, &player);
-        View3D camera = camera_for(&boat);
+        boat_player_pose(&boat.boat, &player);
+        View3D camera = camera_for(&boat.boat);
         if (gpu) {
             WaterfrontSceneFrame frame;
-            boat_scene_frame(&boat, BOAT_CAMERA_DEFAULT, &frame);
+            boat_scene_frame(&boat.boat, &boat.world, BOAT_CAMERA_DEFAULT, &frame);
             frame.camera = camera;
             frame.scenery_count = 0;
             frame.gull_count = 0;
@@ -141,7 +142,7 @@ int main(int argc, char **argv)
             if (!gpu)
                 UnloadTexture(texture);
             for (int step = 0; step < 2; ++step)
-                advance(&boat, scenario, (int)roundf(boat.time / BOAT_STEP));
+                advance(&boat, scenario, (int)roundf(boat.boat.time / BOAT_STEP));
         }
     }
     if (gpu) {

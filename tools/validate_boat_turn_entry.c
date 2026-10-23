@@ -19,63 +19,66 @@ static float energy(const Boat *b)
 
 static int validate(FILE *report)
 {
-    Boat a, b;
+    BoatSession a, b;
     boat_turn_entry_reset(&a);
     b = a;
     int engine_at = -1, heading_at = -1, bank_at = -1;
     float peak_slip = 0;
     for (int tick = 0; tick < BOAT_TURN_ENTRY_TICKS; ++tick) {
-        float previous_roll = a.roll;
+        float previous_roll = a.boat.roll;
         boat_turn_entry_step(&a, tick, 1);
         boat_turn_entry_step(&b, tick, -1);
-        CHECK(fabsf(a.position.x) + 3 < BOAT_BASIN_HALF_X
-            && fabsf(a.position.y) + 3 < BOAT_BASIN_HALF_Z);
-        CHECK(fabsf(a.position.x + b.position.x) < .00003f
-            && fabsf(a.position.y - b.position.y) < .00003f);
-        CHECK(fabsf(a.heading + b.heading) < .00001f && fabsf(a.roll + b.roll) < .00002f);
-        CHECK(fabsf(a.roll - previous_roll - a.roll_velocity * BOAT_STEP) < .000001f);
-        CHECK(fabsf(a.engine_angle + b.engine_angle) < .000001f);
-        Vector2 forward = { sinf(a.heading), -cosf(a.heading) },
-                right = { cosf(a.heading), sinf(a.heading) };
-        float u = Vector2DotProduct(a.velocity, forward), v = Vector2DotProduct(a.velocity, right);
-        float slip = atan2f(v, u), bow = v + 1.2f * a.yaw_velocity,
-              stern = v - 1.6f * a.yaw_velocity;
+        CHECK(fabsf(a.boat.position.x) + 3 < BOAT_BASIN_HALF_X
+            && fabsf(a.boat.position.y) + 3 < BOAT_BASIN_HALF_Z);
+        CHECK(fabsf(a.boat.position.x + b.boat.position.x) < .00003f
+            && fabsf(a.boat.position.y - b.boat.position.y) < .00003f);
+        CHECK(fabsf(a.boat.heading + b.boat.heading) < .00001f
+            && fabsf(a.boat.roll + b.boat.roll) < .00002f);
+        CHECK(fabsf(a.boat.roll - previous_roll - a.boat.roll_velocity * BOAT_STEP) < .000001f);
+        CHECK(fabsf(a.boat.engine_angle + b.boat.engine_angle) < .000001f);
+        Vector2 forward = { sinf(a.boat.heading), -cosf(a.boat.heading) },
+                right = { cosf(a.boat.heading), sinf(a.boat.heading) };
+        float u = Vector2DotProduct(a.boat.velocity, forward),
+              v = Vector2DotProduct(a.boat.velocity, right);
+        float slip = atan2f(v, u), bow = v + 1.2f * a.boat.yaw_velocity,
+              stern = v - 1.6f * a.boat.yaw_velocity;
         peak_slip = fmaxf(peak_slip, fabsf(slip));
-        if (engine_at < 0 && a.engine_angle > DEG2RAD)
+        if (engine_at < 0 && a.boat.engine_angle > DEG2RAD)
             engine_at = tick;
-        if (heading_at < 0 && a.heading > DEG2RAD)
+        if (heading_at < 0 && a.boat.heading > DEG2RAD)
             heading_at = tick;
-        if (bank_at < 0 && a.roll > DEG2RAD)
+        if (bank_at < 0 && a.boat.roll > DEG2RAD)
             bank_at = tick;
         if (report)
             fprintf(report, "%d,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g\n", tick,
-                (tick + 1) * (double)BOAT_STEP, a.engine_angle, a.heading, a.yaw_velocity, slip,
-                a.roll, a.turn_roll_load, Vector2Length(a.velocity), bow, stern, energy(&a));
+                (tick + 1) * (double)BOAT_STEP, a.boat.engine_angle, a.boat.heading,
+                a.boat.yaw_velocity, slip, a.boat.roll, a.boat.turn_roll_load,
+                Vector2Length(a.boat.velocity), bow, stern, energy(&a.boat));
         if (tick == 0) {
             // The aligned stations have no lateral load on this first tick. Only the
             // already-turned outboard's thrust and passive skeg can start yaw/side motion.
-            float angle = a.engine_angle;
+            float angle = a.boat.engine_angle;
             float side = -11 * sinf(angle) - .10f * 12 * (12 * sinf(angle)) * cosf(angle);
-            CHECK(fabsf(a.velocity.x - side * BOAT_STEP) < .000001f);
-            CHECK(fabsf(a.yaw_velocity - (-1.6f * side / 2.2f) * BOAT_STEP) < .000001f);
-            CHECK(a.engine_angle > 0 && a.velocity.x < 0 && a.yaw_velocity > 0);
-            CHECK(stern < bow && fabsf(a.roll) < .001f * DEG2RAD);
+            CHECK(fabsf(a.boat.velocity.x - side * BOAT_STEP) < .000001f);
+            CHECK(fabsf(a.boat.yaw_velocity - (-1.6f * side / 2.2f) * BOAT_STEP) < .000001f);
+            CHECK(a.boat.engine_angle > 0 && a.boat.velocity.x < 0 && a.boat.yaw_velocity > 0);
+            CHECK(stern < bow && fabsf(a.boat.roll) < .001f * DEG2RAD);
         }
         if (tick == 119) {
-            CHECK(a.engine_angle > 30 * DEG2RAD && a.heading > 20 * DEG2RAD
-                && a.heading < 35 * DEG2RAD);
+            CHECK(a.boat.engine_angle > 30 * DEG2RAD && a.boat.heading > 20 * DEG2RAD
+                && a.boat.heading < 35 * DEG2RAD);
             CHECK(fabsf(slip) < 9.5f * DEG2RAD && bow < 0 && stern < 0);
             CHECK(fabsf(bow) < .35f * fabsf(stern));
-            CHECK(a.roll > 8 * DEG2RAD && a.roll < 12 * DEG2RAD);
+            CHECK(a.boat.roll > 8 * DEG2RAD && a.boat.roll < 12 * DEG2RAD);
             printf("entry_1s engine_deg=%.6f heading_deg=%.6f slip_deg=%.6f bank_deg=%.6f "
                    "bow_cross=%.6f stern_cross=%.6f speed=%.6f\n",
-                a.engine_angle * RAD2DEG, a.heading * RAD2DEG, slip * RAD2DEG, a.roll * RAD2DEG,
-                bow, stern, Vector2Length(a.velocity));
+                a.boat.engine_angle * RAD2DEG, a.boat.heading * RAD2DEG, slip * RAD2DEG,
+                a.boat.roll * RAD2DEG, bow, stern, Vector2Length(a.boat.velocity));
         }
     }
     CHECK(engine_at >= 0 && engine_at < heading_at && heading_at < bank_at);
     CHECK(peak_slip < 10 * DEG2RAD);
-    CHECK(fabsf(a.roll) < .1f * DEG2RAD && fabsf(a.yaw_velocity) < .1f * DEG2RAD);
+    CHECK(fabsf(a.boat.roll) < .1f * DEG2RAD && fabsf(a.boat.yaw_velocity) < .1f * DEG2RAD);
     printf("onset_1deg engine_seconds=%.6f heading_seconds=%.6f inward_bank_seconds=%.6f "
            "peak_slip_deg=%.6f\n",
         (engine_at + 1) * BOAT_STEP, (heading_at + 1) * BOAT_STEP, (bank_at + 1) * BOAT_STEP,
@@ -84,17 +87,17 @@ static int validate(FILE *report)
     // partial/full plane and both signs of side flow; resistance must remain passive.
     for (int trial = 0; trial < 3; ++trial)
         for (int sign = -1; sign <= 1; sign += 2) {
-            boat_reset(&a);
-            a.position = (Vector2) { 0 };
-            a.velocity = (Vector2) { sign * 3, -12 };
-            a.yaw_velocity = sign * .7f;
-            a.planing = trial * .5f;
-            a.wheel = sign * .5f;
-            a.engine_angle = sign * .275f;
+            boat_session_init(&a, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
+            a.boat.position = (Vector2) { 0 };
+            a.boat.velocity = (Vector2) { sign * 3, -12 };
+            a.boat.yaw_velocity = sign * .7f;
+            a.boat.planing = trial * .5f;
+            a.boat.wheel = sign * .5f;
+            a.boat.engine_angle = sign * .275f;
             for (int tick = 0; tick < 240; ++tick) {
-                float previous = energy(&a);
-                boat_step(&a, 0, 0);
-                CHECK(energy(&a) <= previous + .00001f);
+                float previous = energy(&a.boat);
+                boat_session_step(&a, 0, 0);
+                CHECK(energy(&a.boat) <= previous + .00001f);
             }
         }
     return 0;

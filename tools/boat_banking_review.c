@@ -34,8 +34,9 @@ static Vector3 point(Transform3D t, Vector3 p)
         t.position, Vector3Transform(Vector3Multiply(p, t.scale), MatrixRotateXYZ(t.rotation)));
 }
 
-static int pose_check(const Boat *b)
+static int pose_check(const BoatSession *session)
 {
+    const Boat *b = &session->boat;
     WaterfrontPlayerState p = { 0 };
     boat_player_pose(b, &p);
     Vector3 base = { -b->position.x, b->height, b->position.y };
@@ -56,7 +57,7 @@ static int pose_check(const Boat *b)
     // Each new airborne particle is born at the rolled rail (or lifted to the waterline).
     // A symmetric numerical derivative checks inherited vertical attachment velocity.
     Vector2 right = { cosf(b->heading), sinf(b->heading) };
-    Vector2 flow = boat_water_current(b->water_settings, b->position);
+    Vector2 flow = boat_water_current(session->world.water, b->position);
     float slip = Vector2DotProduct(Vector2Subtract(b->velocity, flow), right);
     for (int i = 0; i < BOAT_WATER_PARTICLES; ++i) {
         const BoatWaterParticle *w = &b->water[i];
@@ -68,7 +69,7 @@ static int pose_check(const Boat *b)
             Vector3 origin = Vector3Add(base, rotate(local, b));
             if (Vector2Distance(w->position, (Vector2) { -origin.x, origin.z }) > .00003f)
                 continue;
-            float surface = boat_water_query(b->water_settings, w->position, b->time).height;
+            float surface = boat_water_query(session->world.water, w->position, b->time).height;
             CHECK(fabsf(w->height - fmaxf(surface + .03f, origin.y)) < .00003f);
             Boat plus = *b, minus = *b;
             const float epsilon = .001f;
@@ -81,22 +82,23 @@ static int pose_check(const Boat *b)
             float variation = (float)((b->emission * 37u) % 101u) / 100;
             float strength = fabsf(slip) > .9f ? 1 : fmaxf(b->planing, b->wave_spray);
             float expected = (2 + variation * 2 + fminf(fabsf(slip) * .25f, 1.5f)) * strength
-                + vertical + (boat_water_displaced(b->water_settings) ? b->wave_spray : 0);
+                + vertical + (boat_water_displaced(session->world.water) ? b->wave_spray : 0);
             CHECK(fabsf(w->lift - expected) < .0002f);
             matched = true;
         }
         CHECK(matched);
     }
     WaterfrontSceneFrame frame;
-    boat_scene_frame(b, BOAT_CAMERA_DEFAULT, &frame);
+    boat_scene_frame(b, &session->world, BOAT_CAMERA_DEFAULT, &frame);
     CHECK(Vector3Distance(frame.camera.up, (Vector3) { 0, 1, 0 }) < .000001f);
     CHECK(Vector3Distance(frame.player.engine.position, p.engine.position) < .000001f);
     return 0;
 }
 
-static int capture(BoatGpu *gpu, Renderer3D *cpu, const Boat *b, bool use_gpu, BoatCamera camera,
-    const char *path, bool ghost)
+static int capture(BoatGpu *gpu, Renderer3D *cpu, const BoatSession *session, bool use_gpu,
+    BoatCamera camera, const char *path, bool ghost)
 {
+    const Boat *b = &session->boat;
     Color pixels[320 * 200];
     Boat opponent = *b;
     opponent.position.x += 7 * sinf(b->heading) + 3 * cosf(b->heading);
@@ -109,14 +111,14 @@ static int capture(BoatGpu *gpu, Renderer3D *cpu, const Boat *b, bool use_gpu, B
     }
     Image image;
     if (use_gpu) {
-        boat_gpu_draw_with_ghost(gpu, b, camera, ghost ? &opponent : NULL, .6f);
+        boat_gpu_draw_with_ghost(gpu, b, &session->world, camera, ghost ? &opponent : NULL, .6f);
         image = LoadImageFromTexture(gpu->target.texture);
         CHECK(image.data);
         ImageFlipVertical(&image);
         ImageFlipHorizontal(&image);
     } else {
-        CHECK(
-            boat_draw_with_ghost(cpu, pixels, 320, 200, b, camera, ghost ? &opponent : NULL, .6f));
+        CHECK(boat_draw_with_ghost(
+            cpu, pixels, 320, 200, b, &session->world, camera, ghost ? &opponent : NULL, .6f));
         image = (Image) { pixels, 320, 200, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 };
     }
     bool ok = ExportImage(image, path);
@@ -153,44 +155,44 @@ int main(int argc, char **argv)
     const char *names[] = { "straight", "left", "right", "reversal", "coast", "wave-peak" };
     for (int fixture = 0; fixture < 6; ++fixture) {
         int scenario = fixture == 5 ? 2 : fixture;
-        Boat boat, selected;
+        BoatSession boat, selected;
         banking_fixture_reset(&boat, scenario);
         if (fixture == 5)
-            boat.water_settings = boat_water_gentle();
+            boat.world.water = boat_water_gentle();
         selected = boat;
         float peak = 0;
         int selected_tick = 0;
         int ticks = banking_fixture_ticks(scenario);
         for (int tick = 0; tick < ticks; ++tick) {
-            CHECK(fabsf(boat.position.x) + 3 < BOAT_BASIN_HALF_X
-                && fabsf(boat.position.y) + 3 < BOAT_BASIN_HALF_Z);
-            boat_step(&boat, banking_fixture_input(&boat, scenario, tick), 0);
+            CHECK(fabsf(boat.boat.position.x) + 3 < BOAT_BASIN_HALF_X
+                && fabsf(boat.boat.position.y) + 3 < BOAT_BASIN_HALF_Z);
+            boat_session_step(&boat, banking_fixture_input(&boat.boat, scenario, tick), 0);
             CHECK(pose_check(&boat) == 0);
-            CHECK(isfinite(boat.roll) && fabsf(boat.roll) < 30 * DEG2RAD);
-            bool select = fixture >= 4 ? fabsf(boat.roll) > peak
+            CHECK(isfinite(boat.boat.roll) && fabsf(boat.boat.roll) < 30 * DEG2RAD);
+            bool select = fixture >= 4 ? fabsf(boat.boat.roll) > peak
                 : fixture == 3         ? tick == 599
                                        : tick == ticks - 1;
             if (select) {
                 selected = boat;
                 selected_tick = tick + 1;
-                peak = fabsf(boat.roll);
+                peak = fabsf(boat.boat.roll);
             }
         }
         if (fixture == 0)
-            CHECK(fabsf(selected.roll) < .000001f);
+            CHECK(fabsf(selected.boat.roll) < .000001f);
         if (fixture == 1 || fixture == 2)
-            CHECK((fixture == 1 ? -1 : 1) * selected.roll > DEG2RAD);
+            CHECK((fixture == 1 ? -1 : 1) * selected.boat.roll > DEG2RAD);
         if (fixture >= 4)
             CHECK(peak > DEG2RAD);
         printf("%s tick=%d roll_deg=%.6f rate_deg_s=%.6f\n", names[fixture], selected_tick,
-            selected.roll * RAD2DEG, selected.roll_velocity * RAD2DEG);
+            selected.boat.roll * RAD2DEG, selected.boat.roll_velocity * RAD2DEG);
         if (output)
             for (int view = 0; view < 3; ++view) {
                 BoatCamera camera
                     = view == 0 ? BOAT_CAMERA_DEFAULT : (BoatCamera) { .distance = 8, .height = 4 };
-                Boat shown = selected;
+                BoatSession shown = selected;
                 if (view == 2)
-                    shown.camera_heading = shown.heading + .65f;
+                    shown.boat.camera_heading = shown.boat.heading + .65f;
                 char path[2048];
                 CHECK(snprintf(path, sizeof(path), "%s/%s-%s.png", output, names[fixture],
                           view == 0       ? "default"
@@ -209,12 +211,12 @@ int main(int argc, char **argv)
     const float headings[] = { 0, PI / 2, -PI / 2, PI - .0001f, -PI + .0001f };
     for (int i = 0; i < 5; ++i)
         for (int sign = -1; sign <= 1; sign += 2) {
-            Boat b;
-            boat_reset(&b);
-            b.heading = headings[i];
-            b.roll = sign * 29 * DEG2RAD;
-            b.pitch = .2f;
-            b.engine_angle = .4f;
+            BoatSession b;
+            boat_session_init(&b, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
+            b.boat.heading = headings[i];
+            b.boat.roll = sign * 29 * DEG2RAD;
+            b.boat.pitch = .2f;
+            b.boat.engine_angle = .4f;
             CHECK(pose_check(&b) == 0);
         }
     // The wave turn found an asin precision loss near a side-on heading; keep
@@ -222,16 +224,16 @@ int main(int argc, char **argv)
     for (int sign = -1; sign <= 1; sign += 2) {
         const float offsets[] = { 0, -.000001f, .000001f, -.002f, .002f };
         for (int i = 0; i < 5; ++i) {
-            Boat b;
-            boat_reset(&b);
-            b.heading = sign * (PI / 2 + offsets[i]);
-            b.roll = .287961f;
-            b.pitch = i < 3 ? 0 : .00121496f;
-            b.engine_angle = .4f;
+            BoatSession b;
+            boat_session_init(&b, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
+            b.boat.heading = sign * (PI / 2 + offsets[i]);
+            b.boat.roll = .287961f;
+            b.boat.pitch = i < 3 ? 0 : .00121496f;
+            b.boat.engine_angle = .4f;
             CHECK(pose_check(&b) == 0);
         }
     }
-    Boat entry;
+    BoatSession entry;
     boat_turn_entry_reset(&entry);
     const int entry_ticks[] = { 0, 12, 36, 60, 120, 180, 240 };
     for (int tick = 0; tick <= 240; ++tick) {
@@ -241,9 +243,9 @@ int main(int argc, char **argv)
             selected |= tick == entry_ticks[i];
         if (output && selected)
             for (int view = 0; view < 2; ++view) {
-                Boat shown = entry;
+                BoatSession shown = entry;
                 if (view)
-                    shown.camera_heading = shown.heading + .65f;
+                    shown.boat.camera_heading = shown.boat.heading + .65f;
                 BoatCamera camera
                     = view ? (BoatCamera) { .distance = 8, .height = 4 } : BOAT_CAMERA_DEFAULT;
                 char path[2048];
@@ -258,7 +260,7 @@ int main(int argc, char **argv)
     const float exit_wheels[] = { .25f, .55f, 1 };
     const char *exit_names[] = { "quarter", "half", "full" };
     for (int trial = 0; trial < 3; ++trial) {
-        Boat b;
+        BoatSession b;
         banking_exit_reset(&b);
         for (int tick = 0; tick < BANKING_EXIT_TICKS; ++tick) {
             banking_exit_step(&b, exit_wheels[trial], tick);

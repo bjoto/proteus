@@ -75,23 +75,25 @@ int main(int argc, char **argv)
         free(trace);
         return fail("allocation failed");
     }
-    Boat boat;
+    BoatSession session;
     ObjectStudy objects;
-    boat_reset(&boat);
-    boat.water_settings = boat_water_test(false, false, false);
-    object_study_reset(&objects, &boat, false, BOAT_OBJECT_LIFE_TICKS, 1.8f);
+    boat_session_init(
+        &session, boat_location(BOAT_LOCATION_BASIN), boat_water_test(false, false, false));
+    const Boat *const boat = &session.boat;
+    object_study_reset(&objects, &session, false, BOAT_OBJECT_LIFE_TICKS, 1.8f);
     unsigned tick = 0;
     uint64_t hash = BOAT_STUDY_HASH_SEED;
     for (unsigned f = 0; f < warmup + frames; ++f) {
         double start = boat_profile_time(false);
         for (unsigned j = 0; j < 2; ++j)
-            demo_step(&boat, (int)tick++, NULL, NULL, &objects);
+            demo_step(&session, (int)tick++, NULL, NULL, &objects);
         double elapsed = (boat_profile_time(false) - start) * 1000;
         /* Trace serialization is deliberately outside the measured simulation interval. */
-        hash = boat_study_state_hash(hash, &boat, &objects);
-        trace[f] = (StateTrace) { hash, objects.world.emitted, boat.time, boat.position.x,
-            boat.position.y, boat.velocity.x, boat.velocity.y, boat.height, boat.vertical_velocity,
-            (unsigned)boat.motion_state, boat.landings, objects.world.live };
+        hash = boat_study_state_hash(hash, boat, &objects);
+        trace[f] = (StateTrace) { hash, objects.wakes.emitted, boat->time, boat->position.x,
+            boat->position.y, boat->velocity.x, boat->velocity.y, boat->height,
+            boat->vertical_velocity, (unsigned)boat->motion_state, boat->landings,
+            objects.wakes.live };
         if (f >= warmup)
             samples[f - warmup] = elapsed;
     }
@@ -153,8 +155,8 @@ int main(int argc, char **argv)
                 "  \"simulation_ms\":{\"p50\":%.9f,\"p95\":%.9f,\"p99\":%.9f,\"max\":%.9f},\n"
                 "  \"render_cpu_ms\":null,\"gpu_ms\":null\n}\n",
                 BOAT_BENCH_BUILD, BOAT_BENCH_PLATFORM, warmup, frames, warmup * 2, frames * 2, tick,
-                objects.world.life_ticks, (double)objects.world.crest_height, objects.world.emitted,
-                objects.world.peak_live, boat.landings, hash, sorted[(frames - 1) * 50 / 100],
+                objects.wakes.life_ticks, (double)objects.wakes.crest_height, objects.wakes.emitted,
+                objects.wakes.peak_live, boat->landings, hash, sorted[(frames - 1) * 50 / 100],
                 sorted[(frames - 1) * 95 / 100], sorted[(frames - 1) * 99 / 100],
                 sorted[frames - 1])
             < 0)

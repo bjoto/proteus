@@ -1,5 +1,5 @@
-#include "boat.h"
 #include "boat_map.h"
+#include "boat_session.h"
 #include "waterfront_harbor.h"
 
 #include "raymath.h"
@@ -170,24 +170,25 @@ int main(void)
     const Vector2 starts[] = { { -34, 35 }, { 0, 182 } };
     const float headings[] = { -PI / 2, PI / 2 };
     for (int test = 0; test < 2; ++test) {
-        Boat boat;
-        boat_reset_location(&boat, true);
-        boat.position = starts[test];
-        boat.heading = boat.camera_heading = headings[test];
-        boat.velocity = (Vector2) { sinf(boat.heading) * 8, -cosf(boat.heading) * 8 };
+        BoatSession boat;
+        boat_session_init(&boat, boat_location(BOAT_LOCATION_ERIKSBERG), (BoatWater) { 0 });
+        boat.boat.position = starts[test];
+        boat.boat.heading = boat.boat.camera_heading = headings[test];
+        boat.boat.velocity
+            = (Vector2) { sinf(boat.boat.heading) * 8, -cosf(boat.boat.heading) * 8 };
         for (int tick = 0; tick < 600; ++tick) {
-            boat_step(&boat, 0, 0);
-            CHECK(player_clear(&boat));
-            CHECK(isfinite(boat.yaw_velocity));
+            boat_session_step(&boat, 0, 0);
+            CHECK(player_clear(&boat.boat));
+            CHECK(isfinite(boat.boat.yaw_velocity));
         }
-        CHECK(Vector2Distance(boat.position, starts[test]) > 1);
-        Vector2 contact = boat.position;
-        boat.throttle = -.5f;
+        CHECK(Vector2Distance(boat.boat.position, starts[test]) > 1);
+        Vector2 contact = boat.boat.position;
+        boat.boat.throttle = -.5f;
         for (int tick = 0; tick < 600; ++tick) {
-            boat_step(&boat, 0, 0);
-            CHECK(player_clear(&boat));
+            boat_session_step(&boat, 0, 0);
+            CHECK(player_clear(&boat.boat));
         }
-        CHECK(Vector2Distance(contact, boat.position) > 3);
+        CHECK(Vector2Distance(contact, boat.boat.position) > 3);
     }
     printf("boat_models=%d variants=%d preset_triangles=%zu harbor_geometry=ok\n",
         BOAT_MODEL_KIND_COUNT, BOAT_MODEL_KIND_COUNT * 5, triangles);

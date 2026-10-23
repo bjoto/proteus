@@ -1,6 +1,6 @@
-#include "boat.h"
 #include "boat_clock.h"
 #include "boat_map.h"
+#include "boat_session.h"
 #include "raymath.h"
 #include "rlgl.h"
 
@@ -29,36 +29,38 @@ static int current_checks(void)
         CHECK(Vector2Distance(a, b) < .0001f);
     }
     // Galilean equivalence in a uniform flow, including steering and the local stern station.
-    Boat still, moving;
-    boat_reset(&still);
-    boat_reset(&moving);
+    BoatSession still, moving;
+    boat_session_init(&still, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
+    boat_session_init(&moving, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
     Vector2 flow = { .7f, -.3f };
-    moving.water_settings.current = flow;
-    moving.velocity = flow;
-    still.throttle = moving.throttle = .45f;
+    moving.world.water.current = flow;
+    moving.boat.velocity = flow;
+    still.boat.throttle = moving.boat.throttle = .45f;
     for (int tick = 0; tick < 240; tick++) {
-        boat_step(&still, .2f, 0);
-        boat_step(&moving, .2f, 0);
-        CHECK(Vector2Distance(still.velocity, Vector2Subtract(moving.velocity, flow)) < .00003f);
-        CHECK(fabsf(still.heading - moving.heading) < .00001f);
-        CHECK(fabsf(still.height - moving.height) < .00001f);
-        CHECK(fabsf(still.planing - moving.planing) < .00001f);
+        boat_session_step(&still, .2f, 0);
+        boat_session_step(&moving, .2f, 0);
+        CHECK(Vector2Distance(still.boat.velocity, Vector2Subtract(moving.boat.velocity, flow))
+            < .00003f);
+        CHECK(fabsf(still.boat.heading - moving.boat.heading) < .00001f);
+        CHECK(fabsf(still.boat.height - moving.boat.height) < .00001f);
+        CHECK(fabsf(still.boat.planing - moving.boat.planing) < .00001f);
     }
     Vector2 offset = Vector2Scale(flow, 240 * BOAT_STEP);
-    CHECK(Vector2Distance(moving.position, Vector2Add(still.position, offset)) < .0001f);
-    Boat drift;
-    boat_reset(&drift);
-    drift.water_settings = channel;
+    CHECK(Vector2Distance(moving.boat.position, Vector2Add(still.boat.position, offset)) < .0001f);
+    BoatSession drift;
+    boat_session_init(&drift, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
+    drift.world.water = channel;
     for (int tick = 0; tick < 1200; tick++)
-        boat_step(&drift, 0, 0);
-    CHECK(drift.position.x > 3 && drift.velocity.x > .4f && drift.planing == 0);
+        boat_session_step(&drift, 0, 0);
+    CHECK(drift.boat.position.x > 3 && drift.boat.velocity.x > .4f && drift.boat.planing == 0);
     // Authored flow remains contained by the existing basin shore contacts.
-    drift.position = (Vector2) { 117, 0 };
-    drift.water_settings.current_width = 0;
+    drift.boat.position = (Vector2) { 117, 0 };
+    drift.world.water.current_width = 0;
     for (int tick = 0; tick < 3600; tick++) {
-        boat_step(&drift, 0, 0);
-        CHECK(drift.position.x < BOAT_BASIN_HALF_X && fabsf(drift.position.y) < BOAT_BASIN_HALF_Z);
-        CHECK(isfinite(drift.height));
+        boat_session_step(&drift, 0, 0);
+        CHECK(drift.boat.position.x < BOAT_BASIN_HALF_X
+            && fabsf(drift.boat.position.y) < BOAT_BASIN_HALF_Z);
+        CHECK(isfinite(drift.boat.height));
     }
     return 0;
 }
@@ -132,28 +134,31 @@ static int wake_checks(void)
     float encounter = 0;
     for (int si = 0; si < 3; si++)
         for (int ai = 0; ai < 3; ai++) {
-            Boat a, b;
-            boat_reset(&a);
-            a.position = (Vector2) { 0, 1.6f };
-            a.heading = ai * PI / 4;
-            a.camera_heading = a.heading;
-            boat_set_tick(&a, 1200);
-            a.velocity = (Vector2) { sinf(a.heading) * speeds[si], -cosf(a.heading) * speeds[si] };
-            a.water_settings = wake;
+            BoatSession a, b;
+            boat_session_init(&a, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
+            a.boat.position = (Vector2) { 0, 1.6f };
+            a.boat.heading = ai * PI / 4;
+            a.boat.camera_heading = a.boat.heading;
+            boat_session_set_tick(&a, 1200);
+            a.boat.velocity = (Vector2) { sinf(a.boat.heading) * speeds[si],
+                -cosf(a.boat.heading) * speeds[si] };
+            a.world.water = wake;
             b = a;
             for (int tick = 0; tick < 3600; tick++) {
-                boat_step(&a, 0, 0);
-                boat_step(&b, 0, 0);
-                CHECK(a.turn_roll_load == b.turn_roll_load);
-                CHECK(a.height == b.height && a.position.x == b.position.x && a.pitch == b.pitch);
-                CHECK(isfinite(a.height) && fabsf(a.height) < 1);
-                CHECK(fabsf(a.roll) < .65f && fabsf(a.pitch) < .65f);
-                CHECK(Vector2Length(a.velocity) < 12);
+                boat_session_step(&a, 0, 0);
+                boat_session_step(&b, 0, 0);
+                CHECK(a.boat.turn_roll_load == b.boat.turn_roll_load);
+                CHECK(a.boat.height == b.boat.height && a.boat.position.x == b.boat.position.x
+                    && a.boat.pitch == b.boat.pitch);
+                CHECK(isfinite(a.boat.height) && fabsf(a.boat.height) < 1);
+                CHECK(fabsf(a.boat.roll) < .65f && fabsf(a.boat.pitch) < .65f);
+                CHECK(Vector2Length(a.boat.velocity) < 12);
                 if (si == 0)
-                    encounter = fmaxf(encounter, fabsf(a.height));
+                    encounter = fmaxf(encounter, fabsf(a.boat.height));
             }
-            CHECK(fabsf(a.height) < .002f && fabsf(a.pitch) < .002f && fabsf(a.roll) < .002f);
-            CHECK(fabsf(a.vertical_velocity) < .002f && Vector2Length(a.velocity) < .08f);
+            CHECK(fabsf(a.boat.height) < .002f && fabsf(a.boat.pitch) < .002f
+                && fabsf(a.boat.roll) < .002f);
+            CHECK(fabsf(a.boat.vertical_velocity) < .002f && Vector2Length(a.boat.velocity) < .08f);
         }
     CHECK(encounter > .01f);
     return 0;
@@ -209,41 +214,44 @@ static int player_wake_checks(void)
     for (float z = 0; z < 20; z += .1f)
         CHECK(fabsf(boat_water_query(copy, (Vector2) { -4, z }, 8).height) <= .65f);
     CHECK(boat_water_query(copy, (Vector2) { -4, 6 }, 25).height == 0);
-    Boat drifting;
-    boat_reset(&drifting);
-    drifting.water_settings = (BoatWater) { .player_wake_enabled = true, .current = { 1, 0 } };
-    drifting.velocity = (Vector2) { 1, 0 };
+    BoatSession drifting;
+    boat_session_init(&drifting, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
+    drifting.world.water = (BoatWater) { .player_wake_enabled = true, .current = { 1, 0 } };
+    drifting.boat.velocity = (Vector2) { 1, 0 };
     for (int tick = 0; tick < 480; ++tick)
-        boat_step(&drifting, 0, 0);
-    CHECK(drifting.water_settings.player_wake_count == 0);
+        boat_session_step(&drifting, 0, 0);
+    CHECK(drifting.world.water.player_wake_count == 0);
     // Drive a loop back through the emitted wake, then coast and settle after it passes.
-    Boat a, b;
-    boat_reset(&a);
-    boat_reset(&b);
-    a.water_settings.player_wake_enabled = b.water_settings.player_wake_enabled = true;
+    BoatSession a, b;
+    boat_session_init(&a, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
+    boat_session_init(&b, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
+    a.world.water.player_wake_enabled = b.world.water.player_wake_enabled = true;
     float encounter = 0, max_height = 0;
     for (int tick = 0; tick < 6000; ++tick) {
         float throttle = tick < 1440 ? 1 : 0;
         float wheel = tick >= 420 && tick < 1440 ? 1 : 0;
-        boat_step(&a, Clamp((wheel - a.wheel) / BOAT_STEP, -1, 1),
-            Clamp((throttle - a.throttle) / (.5f * BOAT_STEP), -1, 1));
-        boat_step(&b, Clamp((wheel - b.wheel) / BOAT_STEP, -1, 1),
-            Clamp((throttle - b.throttle) / (.5f * BOAT_STEP), -1, 1));
-        CHECK(a.turn_roll_load == b.turn_roll_load);
-        CHECK(a.height == b.height && a.position.x == b.position.x && a.roll == b.roll);
-        CHECK(fabsf(a.roll) < .7f && fabsf(a.pitch) < .7f && fabsf(a.height) < 1.5f);
-        CHECK(Vector2Length(a.velocity) < 23);
-        CHECK(fabsf(a.position.x) < BOAT_BASIN_HALF_X && fabsf(a.position.y) < BOAT_BASIN_HALF_Z);
-        max_height = fmaxf(max_height, fabsf(a.height));
+        boat_session_step(&a, Clamp((wheel - a.boat.wheel) / BOAT_STEP, -1, 1),
+            Clamp((throttle - a.boat.throttle) / (.5f * BOAT_STEP), -1, 1));
+        boat_session_step(&b, Clamp((wheel - b.boat.wheel) / BOAT_STEP, -1, 1),
+            Clamp((throttle - b.boat.throttle) / (.5f * BOAT_STEP), -1, 1));
+        CHECK(a.boat.turn_roll_load == b.boat.turn_roll_load);
+        CHECK(a.boat.height == b.boat.height && a.boat.position.x == b.boat.position.x
+            && a.boat.roll == b.boat.roll);
+        CHECK(fabsf(a.boat.roll) < .7f && fabsf(a.boat.pitch) < .7f && fabsf(a.boat.height) < 1.5f);
+        CHECK(Vector2Length(a.boat.velocity) < 23);
+        CHECK(fabsf(a.boat.position.x) < BOAT_BASIN_HALF_X
+            && fabsf(a.boat.position.y) < BOAT_BASIN_HALF_Z);
+        max_height = fmaxf(max_height, fabsf(a.boat.height));
         if (tick > 720 && tick < 1440)
-            encounter = fmaxf(
-                encounter, fabsf(boat_water_query(a.water_settings, a.position, a.time).height));
+            encounter = fmaxf(encounter,
+                fabsf(boat_water_query(a.world.water, a.boat.position, a.boat.time).height));
     }
     CHECK(encounter > .05f && max_height > .1f);
-    CHECK(fabsf(a.height) < .003f && fabsf(a.pitch) < .003f && fabsf(a.roll) < .003f);
-    CHECK(Vector2Length(a.velocity) < .01f);
-    boat_reset(&a);
-    CHECK(a.water_settings.player_wake_count == 0 && a.physical_wake_time == 0);
+    CHECK(
+        fabsf(a.boat.height) < .003f && fabsf(a.boat.pitch) < .003f && fabsf(a.boat.roll) < .003f);
+    CHECK(Vector2Length(a.boat.velocity) < .01f);
+    boat_session_init(&a, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
+    CHECK(a.world.water.player_wake_count == 0 && a.boat.physical_wake_time == 0);
     printf("player_wake=ok encounter=%g max_hull_height=%g\n", encounter, max_height);
     return 0;
 }
