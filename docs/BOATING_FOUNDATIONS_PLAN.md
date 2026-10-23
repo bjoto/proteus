@@ -4,8 +4,8 @@ Prepared 2026-10-19 against `f60ede8`, following the
 [architecture review](ARCHITECTURE_REVIEW.md). This document owns this technical sequence;
 [BOATING_PLAN.md](BOATING_PLAN.md) continues to own gameplay direction.
 
-Status: P1 and P2a implemented; full P2 and later tasks remain pending. Next task: P3a
-(current arcade-loop baseline; see [performance evidence](BOATING_PERFORMANCE.md)).
+Status: P1, P2a and P3a implemented; full P2/P3 remain pending. Next task for the
+[multiplayer prerequisite](MULTIPLAYER_PLAN.md): C1 integer tick authority and replay revision.
 At preparation, the user requested a plan only. Implementation began with P1 on 2026-10-19;
 execute later requested tasks using the protocol below. No additional approval gates are created
 by this plan. Verification of the original planning work is recorded at the end.
@@ -57,10 +57,10 @@ All rows start **pending**. Replace the evidence column with actual dated result
 
 | Task | Deliverable | Depends on | Status / evidence |
 | --- | --- | --- | --- |
-| P1 | Frame/tick metrics and correct timing boundaries | — | Implemented 2026-10-19; original verification limits and later 70-test result recorded below. P2a is implemented; P3a is next. |
+| P1 | Frame/tick metrics and correct timing boundaries | — | Implemented 2026-10-19; original verification limits and later 70-test result recorded below. P2a is implemented; P3a was next at this checkpoint. |
 | P2 | Repeatable benchmark/report tool and renderer counters | P1 | Pending |
 | P2a | Existing arcade-loop simulation benchmark; subset of P2 | P1 | Implemented 2026-10-23; [report contract and verification](BOATING_PERFORMANCE.md) |
-| P3a | Current arcade-loop baseline; subset of P3 | P2a | Pending; next task |
+| P3a | Current arcade-loop baseline; subset of P3 | P2a | Implemented 2026-10-23; [three-run trace, timings and captures](BOATING_PERFORMANCE.md#p3a-current-arcade-baseline--2026-10-23); full P3 matrix pending |
 | P3 | Baseline report and workload fixtures | P2 | Pending |
 | C1 | Integer tick authority and replay revision | P3 | Pending |
 | C2 | Precise CPU/GPU time consumers | C1 | Pending |
@@ -648,7 +648,7 @@ clock, wake-emission or asset changes are intended; no user acceptance is inferr
 
 ## P2a completion — 2026-10-23
 
-P2a is implemented; P3a is next. Full P2 renderer counters and full P3 fixtures remain pending.
+P2a is implemented; P3a was next at this checkpoint. Full P2 renderer counters and full P3 fixtures remain pending.
 The tools-only shared driver preserves the current default arcade input/step path and optional
 rival/wake paths. `boat_benchmark` adds bounded simulation-only JSON/CSV reporting and named
 physical/wake state hashing; it does not change physics, float time, emission or controls.
@@ -666,9 +666,26 @@ Pre-existing documentation/planning edits are preserved and excluded from these 
 
 ## P3a trace preparation — 2026-10-23
 
-P3a is in progress. The benchmark now records bounded per-frame physical/wake diagnostic traces
+At this intermediate checkpoint, P3a was in progress. The benchmark records bounded per-frame physical/wake diagnostic traces
 outside its timed interval, including warmup. The [performance record](BOATING_PERFORMANCE.md#p3a-trace-preparation--2026-10-23)
 owns the trace contract and three-run milestone/repeat runner. Focused Debug driver and report
 checks pass; the common full suite is being completed before controlled Release measurements.
 No physics, time arithmetic, controls, emission or rendering changed. Next: controlled repeated
 measurements, inspected CPU/GPU captures and the final baseline evidence. Full P2/P3 stay pending.
+
+## P3a completion — 2026-10-23
+
+P3a is implemented for the current finite arcade wake-loop simulation fixture. The
+[performance record](BOATING_PERFORMANCE.md#p3a-current-arcade-baseline--2026-10-23)
+contains the three matching Release traces, 120-second measured-frame timing table, CPU/GPU
+capture paths and inspection, exact reproduction commands, machine/build/power metadata,
+Debug 85-case full-suite pass, scripted app run and verification limits. The fixture
+capsizes after its one landing and all wakes expire early; its 120-second p50 is therefore
+weighted toward a settled state. This is a known workload limitation, not a full-pool cost
+claim. P3a changes diagnostic trace output only; no handling, clock or renderer behavior
+changed. Full P2 renderer counters and the other P3 workload fixtures remain pending.
+
+C1 is next on the multiplayer prerequisite track: integer tick authority and explicit replay
+compatibility. The current 14,640-tick float time differs from nominal 122 s by about 7.7 ms.
+C1/C2/C3 must record their intended clock/phase differences against this baseline before
+world/session extraction. No cross-platform bit identity or user acceptance is inferred.

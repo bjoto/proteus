@@ -9,7 +9,7 @@ Both default to GPU rendering; the CPU reference supports display-free captures.
 
 | Area and owning document | Implemented | Remaining / next task |
 | --- | --- | --- |
-| [Boating foundations](BOATING_FOUNDATIONS_PLAN.md) | P1 instrumentation and P2a headless arcade benchmark implemented; [report contract/evidence](BOATING_PERFORMANCE.md) | P3a: controlled current arcade-loop baseline; full P2/P3 and clock/world/session work remain pending |
+| [Boating foundations](BOATING_FOUNDATIONS_PLAN.md) | P1 instrumentation, P2a benchmark and P3a current arcade baseline implemented; [report contract/evidence](BOATING_PERFORMANCE.md) | C1: integer tick authority and replay revision; full P2/P3 workload and renderer matrix remains pending |
 | [Boating design](BOATING_PLAN.md) | Basin, Eriksberg, and river locations; timed S course, recordings, persistent bests, ghosts, replays, full-window presentation with modal `?` help, quiet engine/water audio with a joyful repeating XM, and a user-accepted wind-driven Swedish ensign | [Boat visual improvement](BOATING_PLAN.md#boat-visual-improvement--saved-2026-10-20) saved for later: cabin/hull shapes and palette; optional closer-camera comparison, score-loop, and archipelago remain proposals |
 | [Boat physics](BOAT_PHYSICS_PLAN.md) | A–D3 plus accepted H1/H2 countersteering and speed view; T1–T5 load-driven banking and quicker recovery; user-accepted H3 firmer planing hull grip; arcade flight/contact rules advance compatibility to revision 5 | [H3 carving pass](BOAT_PHYSICS_PLAN.md#h3--stern-led-carving-feel-2026-10-20): feel accepted on 2026-10-20; exhaustive hands-on/platform checks unverified; optional trim/loading not started |
 | [Wake rewrite](WAKE_REWRITE_PLAN.md) | Arcade default; bounded 128-object pool, smoother pieces; [review implementation](WAKE_ARCADE_IMPLEMENTATION.md): flight/landing/capsize, height-aware contacts, dynamic rival, crossing outcomes and crest readability | User driving/readability feedback; tight-turn overlapping pattern resembles the stuck-wave report, exact reproduction/fix unconfirmed; platform/fleet costs remain open |
@@ -27,7 +27,7 @@ does not authorize advancing every plan. Use the requested track's scope and acc
 
 ## Guides and evidence
 
-- [Boating performance](BOATING_PERFORMANCE.md): headless arcade benchmark command, report contract and P2a verification.
+- [Boating performance](BOATING_PERFORMANCE.md): headless arcade benchmark contract, P2a verification and P3a baseline.
 - [Architecture review](ARCHITECTURE_REVIEW.md): 2026-10-19 assessment of ownership, performance,
   iteration, and growth risks; the [foundations plan](BOATING_FOUNDATIONS_PLAN.md) owns the
   selected implementation sequence. These do not replace the gameplay plans.
