@@ -1,11 +1,14 @@
-/* Multiplayer M2 authority process, scripted mode only: one headless basin fleet driven by the
- * boat_fleet_bots drivers for a fixed number of ticks, then a summary and exit. No socket,
- * window, audio, asset or file access; links only proteus_boat_core. The network protocol and
- * the 120 Hz wall-clock scheduler arrive with M3. */
+/* Multiplayer authority process. Headless: no window, audio, asset or file access.
+ * --scripted (M2) runs the local fleet with bots as fast as possible and exits.
+ * Otherwise (M3) it listens for boat_study/boat_bot clients over ENet and runs the room at
+ * 120 Hz wall-clock time until --ticks/--seconds elapse or it is interrupted. */
 #include "boat_fleet.h"
 #include "boat_fleet_bots.h"
+#include "boat_net_enet.h"
+#include "boat_net_server.h"
 
 #include <inttypes.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,10 +17,18 @@
 static void usage(FILE *out)
 {
     fprintf(out,
-        "usage: boat_server --scripted [--ticks N] [--boats 1-4] [--location basin]\n"
+        "usage: boat_server [--bind IPV4] [--port N] [--token TEXT] [--players 1-4] [--waves]\n"
+        "                   [--location basin] [--ticks N | --seconds S] [--report-every N]\n"
+        "       boat_server --scripted [--ticks N] [--boats 1-4] [--location basin]\n"
         "                   [--report-every N]\n"
-        "Scripted local authority: bots drive N ticks (default 7200, one minute at 120 Hz)\n"
-        "as fast as possible, then print the fleet hash and per-tick cost. No networking yet.\n");
+        "Room (default): listen on --bind (default 127.0.0.1; use a LAN address to accept other\n"
+        "machines) and UDP --port (default %d) for up to four boat_study --connect or boat_bot\n"
+        "clients. Runs the 120 Hz basin authority until --ticks/--seconds or Ctrl+C. Clients\n"
+        "must present the same --token (default empty). A diagnostic: no internet reachability,\n"
+        "encryption or authentication.\n"
+        "--scripted: bots drive N ticks (default 7200, one minute at 120 Hz) as fast as\n"
+        "possible, then print the fleet hash and per-tick cost; no socket.\n",
+        BOAT_NET_PORT);
 }
 
 static bool parse_count(const char *text, unsigned long low, unsigned long high, unsigned long *out)
@@ -43,43 +54,8 @@ static int compare_double(const void *a, const void *b)
     return (x > y) - (x < y);
 }
 
-int main(int argc, char **argv)
+static int scripted(unsigned long ticks, unsigned long boats, unsigned long report)
 {
-    unsigned long ticks = 7200, boats = BOAT_FLEET_SLOTS, report = 0;
-    bool scripted = false;
-    for (int i = 1; i < argc; ++i) {
-        const char *value = i + 1 < argc ? argv[i + 1] : NULL;
-        if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
-            usage(stdout);
-            return 0;
-        } else if (strcmp(argv[i], "--scripted") == 0) {
-            scripted = true;
-        } else if (strcmp(argv[i], "--ticks") == 0 && value
-            && parse_count(value, 1, 120ul * 60 * 60 * 24, &ticks)) {
-            ++i;
-        } else if (strcmp(argv[i], "--boats") == 0 && value
-            && parse_count(value, 1, BOAT_FLEET_SLOTS, &boats)) {
-            ++i;
-        } else if (strcmp(argv[i], "--report-every") == 0 && value
-            && parse_count(value, 1, 120ul * 60 * 60 * 24, &report)) {
-            ++i;
-        } else if (strcmp(argv[i], "--location") == 0 && value) {
-            if (strcmp(value, "basin") != 0) {
-                fprintf(stderr, "boat_server: only the basin hosts a fleet before M7.\n");
-                return 2;
-            }
-            ++i;
-        } else {
-            fprintf(stderr, "boat_server: invalid argument: %s\n", argv[i]);
-            usage(stderr);
-            return 2;
-        }
-    }
-    if (!scripted) {
-        fprintf(stderr, "boat_server: networking is not implemented yet; use --scripted.\n");
-        usage(stderr);
-        return 2;
-    }
     static BoatFleet fleet;
     if (!boat_fleet_init(&fleet, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 },
             BOAT_OBJECT_LIFE_TICKS, 1.8f)) {
@@ -143,4 +119,223 @@ int main(int argc, char **argv)
         return 1;
     }
     return 0;
+}
+
+static volatile sig_atomic_t stop_requested;
+
+static void request_stop(int signal_number)
+{
+    (void)signal_number;
+    stop_requested = 1;
+}
+
+typedef struct {
+    const char *bind, *token;
+    uint16_t port;
+    bool waves;
+    unsigned long players, ticks, report;
+} RoomOptions;
+
+static void print_roster(const BoatNetServer *server)
+{
+    printf("players: %u [", boat_net_server_players(server));
+    for (unsigned i = 0; i < BOAT_FLEET_SLOTS; ++i) {
+        int peer = server->slot_peer[i];
+        printf("%s%u:%s", i ? " " : "", i + 1, peer < 0 ? "-" : server->peers[peer].name);
+    }
+    printf("]\n");
+    fflush(stdout);
+}
+
+static int room(const RoomOptions *options)
+{
+    char error[160];
+    if (!boat_net_enet_startup()) {
+        fprintf(stderr, "boat_server: cannot initialize networking.\n");
+        return 1;
+    }
+    BoatNetEnet *enet = boat_net_enet_listen(options->bind, options->port, error, sizeof(error));
+    if (!enet) {
+        fprintf(stderr, "boat_server: %s\n", error);
+        boat_net_enet_cleanup();
+        return 1;
+    }
+    uint32_t epoch = (uint32_t)time(NULL) ^ (uint32_t)(boat_net_clock() * 1e6);
+    BoatNetServerConfig config = { .token = options->token,
+        .waves = options->waves,
+        .epoch = epoch ? epoch : 1,
+        .max_players = (unsigned)options->players };
+    static BoatNetServer server;
+    if (!boat_net_server_init(&server, boat_net_enet_transport(enet), &config)) {
+        fprintf(stderr, "boat_server: invalid room configuration.\n");
+        boat_net_enet_close(enet, 0);
+        boat_net_enet_cleanup();
+        return 1;
+    }
+    signal(SIGINT, request_stop);
+    signal(SIGTERM, request_stop);
+    printf("boat_server listening on %s:%u (basin, %s water, protocol %d, handling %d, "
+           "epoch %08" PRIx32 ", up to %lu players)\n",
+        options->bind, (unsigned)options->port, options->waves ? "wave" : "calm", BOAT_NET_VERSION,
+        BOAT_PHYSICS_REVISION, config.epoch, options->players);
+    fflush(stdout);
+    unsigned players = 0;
+    unsigned max_mtu = 0;
+    double busy = 0, started = boat_net_clock();
+    int result = 0;
+    while (!stop_requested && (!options->ticks || server.fleet.state.tick < options->ticks)) {
+        double now = boat_net_clock();
+        uint64_t before = server.fleet.state.tick;
+        if (!boat_net_server_service(&server, now)) {
+            fprintf(stderr,
+                "boat_server: overloaded (more than 500 ms behind for a second); "
+                "closing the room.\n");
+            result = 1;
+            break;
+        }
+        boat_net_enet_flush(enet);
+        busy += boat_net_clock() - now;
+        for (unsigned i = 0; i < BOAT_FLEET_SLOTS; ++i) {
+            int peer = server.slot_peer[i];
+            unsigned mtu = peer < 0 ? 0 : boat_net_enet_peer_mtu(enet, (unsigned)peer);
+            max_mtu = mtu > max_mtu ? mtu : max_mtu;
+        }
+        if (boat_net_server_players(&server) != players) {
+            players = boat_net_server_players(&server);
+            print_roster(&server);
+        }
+        if (options->report
+            && server.fleet.state.tick / options->report != before / options->report)
+            printf("tick %" PRIu64 " hash %016" PRIx64 " live %u players %u\n",
+                server.fleet.state.tick, boat_fleet_hash(&server.fleet.state),
+                server.fleet.state.wakes.live, players);
+        boat_net_enet_wait(enet, boat_net_server_next_tick(&server) - boat_net_clock());
+    }
+    boat_net_server_shutdown(&server);
+    boat_net_enet_flush(enet);
+    BoatNetTransportStats net = boat_net_enet_transport(enet).stats(enet);
+    boat_net_enet_close(enet, 1);
+    boat_net_enet_cleanup();
+    const BoatNetServerStats *s = &server.stats;
+    double elapsed = boat_net_clock() - started;
+    printf("boat_server room: ticks=%" PRIu64 " seconds=%.2f accepted=%" PRIu64 " left=%" PRIu64
+           " timeouts=%" PRIu64 "\n",
+        server.fleet.state.tick, elapsed, s->accepted, s->left, s->timeouts);
+    printf("rejected: version=%" PRIu64 " physics=%" PRIu64 " content=%" PRIu64 " token=%" PRIu64
+           " full=%" PRIu64 " malformed=%" PRIu64 "\n",
+        s->rejected[BOAT_NET_REJECT_VERSION], s->rejected[BOAT_NET_REJECT_PHYSICS],
+        s->rejected[BOAT_NET_REJECT_CONTENT], s->rejected[BOAT_NET_REJECT_TOKEN],
+        s->rejected[BOAT_NET_REJECT_FULL], s->rejected[BOAT_NET_REJECT_MALFORMED]);
+    printf("sent: snapshots=%" PRIu64 " birth_batches=%" PRIu64 " births=%" PRIu64
+           " bootstraps=%" PRIu64 " bootstrap_bytes=%" PRIu64 " resyncs=%" PRIu64 "\n",
+        s->snapshots, s->birth_batches, s->births_sent, s->bootstraps, s->bootstrap_bytes,
+        s->resyncs);
+    printf("commands: stored=%" PRIu64 " duplicate=%" PRIu64 " late=%" PRIu64 " future=%" PRIu64
+           " stale_life=%" PRIu64 " stale_packets=%" PRIu64 " rate_limited=%" PRIu64 "\n",
+        s->commands, s->duplicate_commands, s->late_commands, s->future_commands,
+        s->stale_life_commands, s->stale_packets, s->rate_limited);
+    printf("inputs: received=%" PRIu64 " repeated=%" PRIu64 " zero=%" PRIu64 " neutral=%" PRIu64
+           "\n",
+        s->input_states[BOAT_NET_INPUT_RECEIVED], s->input_states[BOAT_NET_INPUT_REPEATED],
+        s->input_states[BOAT_NET_INPUT_ZERO], s->input_states[BOAT_NET_INPUT_NEUTRAL]);
+    printf("faults: malformed=%" PRIu64 " forbidden=%" PRIu64 " misbehaving=%" PRIu64
+           " output=%" PRIu64 " emission=%" PRIu64 " max_backlog=%u\n",
+        s->malformed, s->forbidden, s->misbehaving, s->output_faults, s->emission_failures,
+        s->max_backlog);
+    printf("transport: sent=%" PRIu64 " bytes=%" PRIu64 " received=%" PRIu64 " bytes=%" PRIu64
+           " dropped=%" PRIu64 " max_message=%zu max_datagram=%zu peer_mtu=%u\n",
+        net.sent, net.sent_bytes, net.received, net.received_bytes, net.dropped, net.max_message,
+        net.max_datagram, max_mtu);
+    printf("service_ms_per_tick: %.4f\n",
+        server.fleet.state.tick ? busy * 1000 / (double)server.fleet.state.tick : 0);
+    if (s->output_faults || s->emission_failures)
+        result = 1;
+    return result;
+}
+
+int main(int argc, char **argv)
+{
+    unsigned long ticks = 0, boats = BOAT_FLEET_SLOTS, report = 0, seconds = 0;
+    bool scripted_mode = false, room_option = false;
+    RoomOptions room_options
+        = { .bind = "127.0.0.1", .token = "", .port = BOAT_NET_PORT, .players = BOAT_FLEET_SLOTS };
+    for (int i = 1; i < argc; ++i) {
+        const char *value = i + 1 < argc ? argv[i + 1] : NULL;
+        if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
+            usage(stdout);
+            return 0;
+        } else if (strcmp(argv[i], "--scripted") == 0) {
+            scripted_mode = true;
+        } else if (strcmp(argv[i], "--ticks") == 0 && value
+            && parse_count(value, 1, 120ul * 60 * 60 * 24, &ticks)) {
+            ++i;
+        } else if (strcmp(argv[i], "--seconds") == 0 && value
+            && parse_count(value, 1, 60ul * 60 * 24, &seconds)) {
+            ++i;
+        } else if (strcmp(argv[i], "--boats") == 0 && value
+            && parse_count(value, 1, BOAT_FLEET_SLOTS, &boats)) {
+            ++i;
+        } else if (strcmp(argv[i], "--report-every") == 0 && value
+            && parse_count(value, 1, 120ul * 60 * 60 * 24, &report)) {
+            ++i;
+        } else if (strcmp(argv[i], "--bind") == 0 && value) {
+            room_options.bind = value;
+            room_option = true;
+            ++i;
+        } else if (strcmp(argv[i], "--port") == 0 && value) {
+            if (!boat_net_parse_port(value, &room_options.port)) {
+                fprintf(stderr, "boat_server: --port needs a UDP port 1-65535, not '%s'.\n", value);
+                return 2;
+            }
+            room_option = true;
+            ++i;
+        } else if (strcmp(argv[i], "--token") == 0 && value) {
+            if (strlen(value) > BOAT_NET_TOKEN_BYTES) {
+                fprintf(stderr, "boat_server: --token is at most %d characters.\n",
+                    BOAT_NET_TOKEN_BYTES);
+                return 2;
+            }
+            room_options.token = value;
+            room_option = true;
+            ++i;
+        } else if (strcmp(argv[i], "--players") == 0 && value
+            && parse_count(value, 1, BOAT_FLEET_SLOTS, &room_options.players)) {
+            room_option = true;
+            ++i;
+        } else if (strcmp(argv[i], "--waves") == 0) {
+            room_options.waves = true;
+            room_option = true;
+        } else if (strcmp(argv[i], "--location") == 0 && value) {
+            if (strcmp(value, "basin") != 0) {
+                fprintf(stderr, "boat_server: only the basin hosts a fleet before M7.\n");
+                return 2;
+            }
+            ++i;
+        } else {
+            fprintf(stderr, "boat_server: invalid argument: %s\n", argv[i]);
+            usage(stderr);
+            return 2;
+        }
+    }
+    if (scripted_mode) {
+        if (room_option || seconds) {
+            fprintf(stderr,
+                "boat_server: --scripted runs without a socket; room options "
+                "(--bind, --port, --token, --players, --waves, --seconds) do not "
+                "apply.\n");
+            return 2;
+        }
+        return scripted(ticks ? ticks : 7200, boats, report);
+    }
+    if (boats != BOAT_FLEET_SLOTS) {
+        fprintf(stderr, "boat_server: --boats applies to --scripted; rooms use --players.\n");
+        return 2;
+    }
+    if (ticks && seconds) {
+        fprintf(stderr, "boat_server: give --ticks or --seconds, not both.\n");
+        return 2;
+    }
+    room_options.ticks = seconds ? seconds * BOAT_TICK_HZ : ticks;
+    room_options.report = report;
+    return room(&room_options);
 }

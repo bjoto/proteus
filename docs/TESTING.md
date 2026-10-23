@@ -1,11 +1,11 @@
 # Test workflow and timing
 
-Multiplayer M2's local authority has display-free checks (`boat_fleet`, `boat_server_scripted`,
-see [below](#core-boundary-gate)). Network tests are
-[planned, not implemented](MULTIPLAYER_PLAN.md#verification-matrix-and-telemetry): seeded
-impairment profiles, collision/wake consistency gates, process tests and long-session/four-player
-stress. Add runnable commands and labels as those targets land; the routine suite does not
-verify network behavior.
+Multiplayer M2's local authority and M3's protocol and transport have display-free checks
+(see [below](#core-boundary-gate) and [network checks](#network-checks)). The M3 suite covers
+the codec, sessions over a seeded in-memory network (including profile F one way) and a real
+ENet loopback process test. Still [planned](MULTIPLAYER_PLAN.md#verification-matrix-and-telemetry):
+the full impairment matrix, an OS-level impairment lane, prediction/collision feel gates and
+long-session/four-player stress.
 
 Status, 2026-10-22: the user requested a quick routine suite and suspension of the
 retired physical wake-field tests until that research resumes. Arcade wakes, handling,
@@ -23,24 +23,30 @@ ctest --test-dir build -j 4 --output-on-failure
 disabled, covering the owned field, refinement, cadence, candidate sources/boats/GPU,
 compact packets and Python prototypes. CTest lists them as disabled, not failed. Their
 sources, targets and manual diagnostic commands remain available. All arcade-object tests
-stay enabled. With `PROTEUS_GPU_TESTS=ON`, the normal suite runs 93 checks as of 2026-10-23
-(after multiplayer M2; counted from the generated CTest file). GPU cases retain serial scheduling while independent
+stay enabled. With `PROTEUS_GPU_TESTS=ON`, the normal suite runs 101 checks as of 2026-10-23
+(after multiplayer M3; counted from the generated CTest file). GPU cases retain serial scheduling while independent
 CPU checks may run concurrently; fixture dependencies still govern capture/replay comparisons.
 
-Every active test carries one of three labels: `cpu` (49, display-free), `render` (23, CPU
-captures and checksums) or `gpu` (21, graphics context). The five `core` checks are also `cpu`:
-`boat_core` runs `validate_boat_core`, which links only the boating core library;
-`boat_core_boundary` runs `tools/check_core_boundary.py` over the core sources and archive;
-`boat_fleet` runs `validate_boat_fleet` (multiplayer M2 fleet step, contacts, spawns and
-checkpoints); and `boat_server_scripted`/`boat_server_unscripted_rejected` run the scripted
-authority for 2400 ticks and check that it refuses to start without `--scripted`.
+Every active test carries one of three labels: `cpu` (57, display-free), `render` (23, CPU
+captures and checksums) or `gpu` (21, graphics context). The thirteen `core` checks are also
+`cpu`:
+- `boat_core` runs `validate_boat_core`, which links only the boating core library.
+- `boat_core_boundary` runs `tools/check_core_boundary.py` over the core sources and archive,
+  and `boat_net_boundary` does the same for the core and net libraries together.
+- `boat_fleet` runs `validate_boat_fleet` (multiplayer M2 fleet step, contacts, spawns and
+  checkpoints), and `boat_server_scripted` runs the scripted authority for 2400 ticks.
+- `boat_net` and `boat_net_loopback` are the [network checks](#network-checks).
+- Six argument checks expect a failure: `boat_server --scripted` with a room option, an invalid
+  `--port` and an invalid `--bind`, `boat_bot` without a port, `boat_study --connect` combined
+  with `--waves`, and `--name` without `--connect`.
 Select a group with `-L`, for example `ctest --test-dir build -L core`; CTest adds fixture
 setup tests that a selected test requires, whatever their label.
 
 `PROTEUS_OPTIMIZE_TESTS=ON` compiles the long numerical validators and the shared boating
 libraries (core, render, session and drive) at `-O2` even in Clang/GCC Debug builds. The
 validators are boat handling, banking, turn entry, environment, replay, clock, world isolation,
-core, fleet, scripted server, water routes and object-wake review. Debug symbols and assertions remain enabled; there
+core, fleet, scripted server, network library and validator, water routes and object-wake
+review. Debug symbols and assertions remain enabled; there
 is no fast-math, reduced simulation duration or sampled-down scenario coverage. Because
 validators and applications link one copy of each library, Debug `boat_study` also runs this
 optimized boat code; the GPU library and application sources keep the selected build type. For
@@ -55,6 +61,29 @@ The optimization override currently applies to Clang/GCC only. MSVC keeps its se
 configuration; Windows timings have not been measured. GPU checks are opt-in through
 `PROTEUS_GPU_TESTS=ON` and need a desktop context. A display-free suite with GPU checks
 off has less coverage; report that omission.
+
+## Network checks
+
+`boat_net` runs `validate_boat_net`, which links only the core and net libraries and takes
+under a second. It covers:
+- golden bytes and pinned snapshot layout, all truncations, invalid fields, and checkpoint
+  round trips that resume bit-identically;
+- seeded in-memory rooms: handshake rejections, the input-loss policy, command idempotence,
+  sequence wrap, a flood against the bounded queue, profile F one way for 60 s, blackouts and
+  timeouts, and wake resync;
+- client mirrors that reproduce the authority's `boat_fleet_hash`.
+
+`boat_net_loopback` runs `tools/boat_net_smoke.py`, which starts real `boat_server` and
+`boat_bot` processes on a free 127.0.0.1 UDP port for about 10 s. Two bots drive and a
+wrong-token bot is refused. A second server on the same port must fail, and the message,
+datagram and MTU bounds plus a bounded exit are checked. Run it alone with:
+
+```sh
+python3 tools/boat_net_smoke.py --server build/boat_server --bot build/boat_bot
+```
+
+Neither test impairs a real network interface, and neither replaces the
+[planned matrix](MULTIPLAYER_PLAN.md#verification-matrix-and-telemetry).
 
 ## Core boundary gate
 
@@ -74,6 +103,9 @@ python3 tools/check_core_boundary.py --self-test
 Add a new core source and its header to `PROTEUS_BOAT_CORE_SOURCES` in `CMakeLists.txt`.
 Presentation, GPU, session/replay and the boat_study drive/profile code live in the
 `proteus_render`, `proteus_gpu`, `proteus_boat_session` and `proteus_boat_drive` libraries.
+Network codec, session and in-memory transport sources go in `PROTEUS_BOAT_NET_SOURCES` and
+obey the same rules (`boat_net_boundary`); only `src/boat_net_enet.c` may use ENet and sockets.
+The script accepts `--archive` more than once and resolves symbols across the listed archives.
 
 ## Long-session clock gate
 

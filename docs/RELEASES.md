@@ -1,10 +1,10 @@
 # Automated app releases
 
 The [multiplayer plan](MULTIPLAYER_PLAN.md) proposes native multiplayer before browser support;
-current release packages remain single-player. Its M6 will add protocol/content identity,
-transport licensing, native cross-platform checks and a separate headless-server distribution
-to release documentation. No package, workflow, tag, hosting service or release changes are
-implemented here. A future native multiplayer release need not imply browser multiplayer parity.
+release packages remain single-player apart from M3's diagnostic `boat_study --connect`
+(2026-10-23), which links ENet; both packages now include `enet-LICENSE.txt`. M6 will add
+protocol/content identity, native cross-platform checks and a separate headless-server
+distribution to release documentation. A future native multiplayer release need not imply browser multiplayer parity.
 
 The **Release boating apps** workflow builds and tests the Apple Silicon Mac app
 and Windows x64 package for the same version tag, then attaches both ZIPs and their

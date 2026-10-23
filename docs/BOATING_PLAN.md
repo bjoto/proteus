@@ -14,9 +14,10 @@ A [Swedish ensign](#swedish-ensign--2026-10-20) now responds to a light breeze a
 The score-loop arcade mode and archipelago remain proposals.
 
 The user reports current jumping, landing and capsizing are fun. The
-[multiplayer plan](MULTIPLAYER_PLAN.md) owns the new planning-only track: preserve that feel
+[multiplayer plan](MULTIPLAYER_PLAN.md) owns the multiplayer track: preserve that feel
 with an authoritative native-first world for four friends, beginning with a two-player basin
-slice. No networking is implemented. Shared free boating precedes elaborate competitive modes.
+slice. M3 added a diagnostic network room (`boat_server`, `boat_study --connect`) without
+prediction; the first playable is M4. Shared free boating precedes elaborate competitive modes.
 
 Current clock/replay compatibility is revision 6 after foundations C1; revision-5
 personal best files remain on disk and are not loaded into current play.

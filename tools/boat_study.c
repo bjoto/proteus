@@ -7,6 +7,9 @@
 #include "boat_replay.h"
 #include "boat_session.h"
 #include "boat_study_drive.h"
+#ifdef PROTEUS_BOAT_NET
+#include "boat_study_net.h"
+#endif
 #include "boat_water_mesh.h"
 #include "profiler.h"
 #include "raymath.h"
@@ -48,7 +51,10 @@ static void usage(void)
         "F3: toggle debug profiler | --profiler: show it on startup\n"
         "CPU screenshots need no window; GPU screenshots require a graphics context.\n"
         "--time is screenshot-only (0..60, or 0..600 with --replay); --frames limits a smoke run.\n"
-        "--demo drives the screenshot example in a window; R restarts it.");
+        "--demo drives the screenshot example in a window; R restarts it.\n"
+        "--connect HOST:PORT: join a boat_server room (native multiplayer M3 diagnostic: the\n"
+        "  view is server-driven and about one round trip late, no prediction; R asks for a\n"
+        "  new life; the nearest other boat is drawn) | --name TEXT | --token TEXT");
 }
 
 static BoatWater study_water(
@@ -182,6 +188,12 @@ int main(int argc, char **argv)
     bool gpu_enabled = true, gpu_aa = false;
     bool profiler_visible = false;
     int frame_limit = 0;
+    const char *connect_to = NULL, *net_name = "player", *net_token = "";
+    bool networked = false; // Joined a room with --connect (native builds only).
+#ifdef PROTEUS_BOAT_NET
+    static NetStudy net_study;
+    NetStudy *net = NULL;
+#endif
     for (int i = 1; i < argc; ++i) {
         if (strcmp(argv[i], "--help") == 0) {
             usage();
@@ -281,6 +293,12 @@ int main(int argc, char **argv)
                 camera_settings.height = parsed;
                 camera_height_set = true;
             }
+        } else if (strcmp(argv[i], "--connect") == 0 && i + 1 < argc) {
+            connect_to = argv[++i];
+        } else if (strcmp(argv[i], "--name") == 0 && i + 1 < argc) {
+            net_name = argv[++i];
+        } else if (strcmp(argv[i], "--token") == 0 && i + 1 < argc) {
+            net_token = argv[++i];
         } else if (strcmp(argv[i], "--frames") == 0 && i + 1 < argc) {
             char *end;
             const char *value = argv[++i];
@@ -294,6 +312,35 @@ int main(int argc, char **argv)
     }
     if ((time_set && !screenshot) || (screenshot && frame_limit) || (!replay_path && time > 60))
         goto invalid;
+    if (!connect_to && (strcmp(net_name, "player") != 0 || net_token[0])) {
+        fprintf(stderr, "--name and --token require --connect.\n");
+        goto invalid;
+    }
+    if (connect_to) {
+#ifdef PROTEUS_BOAT_NET
+        // Any option that the room's own settings replace.
+        bool other_mode = course || ghost_path || replay_path || wake_field || wake_objects
+            || object_tuning || player_wake_set || current || crossing_wake || waves || demo
+            || screenshot || location->id != BOAT_LOCATION_BASIN;
+        if (other_mode) {
+            fprintf(stderr,
+                "--connect takes its water, location and wakes from the room; it cannot be "
+                "combined with course, replay, wake, water, location, demo or screenshot "
+                "options.\n");
+            goto invalid;
+        }
+        if (strlen(net_name) > BOAT_NET_NAME_BYTES || strlen(net_token) > BOAT_NET_TOKEN_BYTES) {
+            fprintf(stderr, "--name is at most %d and --token at most %d characters.\n",
+                BOAT_NET_NAME_BYTES, BOAT_NET_TOKEN_BYTES);
+            goto invalid;
+        }
+        player_wake = false;
+        player_wake_set = true; // No local wake mode: the room's pool is drawn instead.
+#else
+        fprintf(stderr, "--connect is only available in native builds.\n");
+        goto invalid;
+#endif
+    }
     if ((!course && (data_dir || export_path)) || (replay_path && ghost_path))
         goto invalid;
     if (course && (location->mapped || demo)) {
@@ -390,6 +437,14 @@ int main(int argc, char **argv)
         object_study_reset(objects, &session, object_crossing, object_life, object_height);
     int result = 1;
     BoatReplayFlag playback_flag = { 0 }, ghost_flag = { 0 };
+#ifdef PROTEUS_BOAT_NET
+    if (connect_to) {
+        if (!net_study_connect(&net_study, connect_to, net_name, net_token, &session))
+            goto cleanup;
+        net = &net_study;
+        networked = true;
+    }
+#endif
     if (wake_field) {
         wake = boat_wake_player_create(1.0 / 120);
         if (!wake) {
@@ -658,7 +713,23 @@ int main(int argc, char **argv)
         metrics.course_replay_ms
             += (float)((boat_profile_time(true) - course_input_started_at) * 1000.0);
         double simulation_started_at = boat_profile_time(true);
-        if (active && IsKeyPressed(KEY_R)) {
+        if (networked) {
+#ifdef PROTEUS_BOAT_NET
+            BoatInput input = { 0 };
+            if (active)
+                input = (BoatInput) {
+                    .steering_rate = (float)((IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D))
+                        - (IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A))),
+                    .throttle_rate = (float)((IsKeyDown(KEY_UP) || IsKeyDown(KEY_W))
+                        - (IsKeyDown(KEY_DOWN) || IsKeyDown(KEY_S))),
+                };
+            // No multiplayer pause: the room keeps running while help or focus is away.
+            if (!net_study_frame(net, &session, input, active, active && IsKeyPressed(KEY_R))) {
+                result = 1;
+                break;
+            }
+#endif
+        } else if (active && IsKeyPressed(KEY_R)) {
             boat_session_restart(
                 &session, study_water(location, waves, current, crossing_wake, player_wake));
             if (wake) {
@@ -745,6 +816,14 @@ int main(int argc, char **argv)
             ghost_view_flag = &objects->other_presentation.flag;
             ghost_opacity = 1;
         }
+#ifdef PROTEUS_BOAT_NET
+        if (net && net->other_visible) {
+            other_view = (BoatViewState) { .boat = net->other, .time = live_view.time };
+            ghost_view = &other_view;
+            ghost_view_flag = &net->other_presentation.flag;
+            ghost_opacity = 1;
+        }
+#endif
         if (course && !session.runs.playing && session.runs.ghost_visible
             && session.runs.opponent.complete) {
             double fade = 1
@@ -817,7 +896,13 @@ int main(int argc, char **argv)
                 12, GetScreenHeight() - 24, 12, SKYBLUE);
         if (course)
             course_runs_hud(&session.runs, view, ghost_view, GetScreenWidth());
-        if (!IsWindowFocused())
+        if (networked) {
+#ifdef PROTEUS_BOAT_NET
+            DrawText(net_study_status(net), 12, GetScreenHeight() - 24, 12, SKYBLUE);
+            if (!net->own_visible)
+                DrawText("WAITING FOR A SAFE SPAWN", 12, 36, 20, ORANGE);
+#endif
+        } else if (!IsWindowFocused())
             DrawText("PAUSED", 12, 12, 20, RAYWHITE);
         if (profiler_visible)
             profiler_draw(&profiler, &snapshot, size);
@@ -864,6 +949,10 @@ cleanup:
             stdout, "Wake nodal peaks: height %.6g m, slope %.6g\n", r.peak_height, r.peak_slope);
     }
     boat_wake_player_destroy(wake);
+#ifdef PROTEUS_BOAT_NET
+    if (net)
+        net_study_close(net);
+#endif
     boat_session_flush(&session);
     boat_session_destroy(&session);
     if (window_ready) {

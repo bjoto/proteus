@@ -1,9 +1,12 @@
 # macOS boat study builds
 
-Multiplayer is [planning only](MULTIPLAYER_PLAN.md). Current packages are single-player.
-The native-first plan's M6 owns future ENet license/dependency packaging, direct connection,
-firewall guidance and a headless child-process Host option; no such build flags or controls
-are shipped yet. Existing download/build commands below remain the current interface.
+Multiplayer M3 (2026-10-23): native builds fetch the pinned ENet library, and `boat_study`
+links it for the diagnostic `--connect` mode, so the app bundle now carries
+`enet-LICENSE.txt`. The package does not include `boat_server` or `boat_bot`, and has no Host
+or Join controls. Packaged play stays single-player unless launched from a terminal with
+`--connect`. The plan's M6 owns server packaging, firewall guidance and a child-process Host
+option. The package script change was run locally on a Debug build; the CI workflow has not
+run it yet.
 
 The **macOS boat study** GitHub Actions workflow builds a Release Apple Silicon
 app on `macos-15`, targeting macOS 13 or newer. It runs on pushes and can be

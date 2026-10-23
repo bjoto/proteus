@@ -9,7 +9,7 @@ Both default to GPU rendering; the CPU reference supports display-free captures.
 
 | Area and owning document | Implemented | Remaining / next task |
 | --- | --- | --- |
-| [Multiplayer](MULTIPLAYER_PLAN.md) | Native-first authoritative four-player design, protocol/wake strategy and verification gates; M2 local four-boat authority (`boat_fleet`, scripted `boat_server`) implemented | M2 automated checks pass and user-played (crossing rival); next: protocol/transport (M3); no networking implemented |
+| [Multiplayer](MULTIPLAYER_PLAN.md) | Native-first authoritative four-player design, protocol/wake strategy and verification gates; M2 local four-boat authority (`boat_fleet`, scripted `boat_server`) implemented and user-played; M3 [protocol v1](MULTIPLAYER_PROTOCOL.md), ENet transport, `boat_server` rooms, `boat_bot` and diagnostic `boat_study --connect` implemented (server-driven view, no prediction) | M3 automated and agent-run loopback checks pass on macOS; not yet user-played; Windows/Linux/web builds unchecked; next: M4 checkpoint/input replay (prediction) toward the first playable |
 | [Boating foundations](BOATING_FOUNDATIONS_PLAN.md) | P1 instrumentation, P2a benchmark, P3a arcade baseline, C1 integer clock/replay revision C2 double-time water/traffic/shader consumers, and C3 long-session gate/replacement baseline implemented and played; basin W1/W3 slice (location definitions, explicit world/session) implemented and played; basin S1/S2 slice (shared pose math, cosmetic presentation split) implemented; basin S3 slice (session-owned course/runs, replay view state, finish saves outside the tick) implemented; basin S4 slice (static core library, core validator, boundary check, test labels) and S3 `BoatInput` type implemented; [report contract/evidence](BOATING_PERFORMANCE.md) | Mapped W1–W4, shared CPU/GPU scene frame, validator splitting, S5 and full P2/P3 workload/renderer matrix remain pending |
 | [Boating design](BOATING_PLAN.md) | Basin, Eriksberg, and river locations; timed S course, recordings, persistent bests, ghosts, replays, full-window presentation with modal `?` help, quiet engine/water audio with a joyful repeating XM, and a user-accepted wind-driven Swedish ensign | [Boat visual improvement](BOATING_PLAN.md#boat-visual-improvement--saved-2026-10-20) saved for later: cabin/hull shapes and palette; optional closer-camera comparison, score-loop, and archipelago remain proposals |
 | [Boat physics](BOAT_PHYSICS_PLAN.md) | A–D3 plus accepted H1/H2 countersteering and speed view; T1–T5 load-driven banking and quicker recovery; user-accepted H3 firmer planing hull grip; arcade flight/contact rules used revision 5; C1 clock/replay migration advances compatibility to revision 6 | [H3 carving pass](BOAT_PHYSICS_PLAN.md#h3--stern-led-carving-feel-2026-10-20): feel accepted on 2026-10-20; exhaustive hands-on/platform checks unverified; optional trim/loading not started |
@@ -29,6 +29,8 @@ does not authorize advancing every plan. Use the requested track's scope and acc
 ## Guides and evidence
 
 - [Boating performance](BOATING_PERFORMANCE.md): headless arcade benchmark contract, P2a verification, P3a baseline and C1 clock comparison.
+- [Multiplayer protocol](MULTIPLAYER_PROTOCOL.md): protocol v1 byte layout, channels, validation
+  envelope, authority rules carried on the wire, version policy and fixtures.
 - [Architecture review](ARCHITECTURE_REVIEW.md): 2026-10-19 assessment of ownership, performance,
   iteration, and growth risks; the [foundations plan](BOATING_FOUNDATIONS_PLAN.md) owns the
   selected implementation sequence. These do not replace the gameplay plans.
@@ -50,6 +52,13 @@ does not authorize advancing every plan. Use the requested track's scope and acc
   to the current owners above. Dated progress entries retain results for their original revisions.
 
 ## Verification baseline
+
+Multiplayer M3, 2026-10-23, M1 Max/macOS 26.6.2: Debug build warning-free and all 101 active
+CTests (21 GPU) pass, including the protocol/session validator, a real ENet loopback process
+test and the net boundary check; fifteen retired field cases stay disabled. Single-player CPU
+captures match `803a901` byte for byte. An agent-run windowed `boat_study --connect` joined a
+room beside a bot. No keyboard play, two-machine session, user play or Windows/Linux/browser
+build is claimed. [M3 evidence](MULTIPLAYER_PLAN.md#m3-protocol-and-transport-handoff--2026-10-23).
 
 Multiplayer planning, 2026-10-23, Apple Silicon/macOS: documentation only; Debug
 configure/build and all 83 active CTests (20 GPU) pass in 113.65 s with desktop access;

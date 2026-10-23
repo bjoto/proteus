@@ -6,6 +6,10 @@ first and a later WebRTC DataChannel experiment sharing the protocol/physics. Br
 cannot directly use raw UDP. GitHub Pages serves the client; multiplayer needs a separately
 reachable authority and, for that WebRTC path, signaling and potentially TURN. No new web
 network dependency, service or gameplay feature is implemented by this plan.
+Since M3 (2026-10-23) native builds fetch and link ENet; the Emscripten configure returns before
+those targets and compiles `boat_study` without `PROTEUS_BOAT_NET`, so `--connect` is refused
+as native-only. A native compile without that definition passed; the Emscripten build itself
+was not run.
 
 ## Current status
 

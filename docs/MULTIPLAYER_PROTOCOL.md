@@ -1,0 +1,261 @@
+# Multiplayer protocol v1
+
+Written 2026-10-23 with multiplayer M3. This document owns the byte layout, delivery classes,
+validation rules and version policy of the boating network protocol. Task status, decisions
+and acceptance stay in the [multiplayer plan](MULTIPLAYER_PLAN.md); the codec is
+[`src/boat_net_protocol.[ch]`](../src/boat_net_protocol.h) and its fixtures are in
+[`tools/validate_boat_net.c`](../tools/validate_boat_net.c).
+
+v1 is a diagnostic protocol for one basin room of up to four players. It has no prediction
+support beyond the fields listed here, and no encryption or authentication: a room token is a
+shared word, not a secret.
+
+## Conventions
+
+- Every multi-byte integer is **big-endian** (network order). `i8` is two's complement.
+- `f32` is an IEEE-754 binary32 bit pattern sent as a `u32`. Builds whose `float` is not binary32
+  fail to compile. Decoders reject NaN and infinities in every float field.
+- Structs, padding, `bool`, native `long` and compiler enum representations are never sent.
+  Booleans are `u8` 0 or 1; enums are `u8` with documented values.
+- Reserved bytes are written as zero and **must** be zero on receipt.
+- One message is one transport packet of at most **1100 bytes**, header included. The ENet MTU is
+  1200 bytes of UDP payload, so a message never fragments.
+- A decoder validates everything before it writes its output. It rejects a message for the
+  wrong size, an unknown type, an invalid field, a non-finite float or a value outside the
+  safety envelope below. The encoder runs the same decoder on its own output and refuses to
+  emit anything that fails it.
+- Strings are printable ASCII (0x20–0x7e). Hello strings are a `u8` length followed by that many
+  bytes. Roster names are a `u8` length followed by 16 bytes, zero-padded.
+
+## Header (32 bytes)
+
+| Offset | Type | Field | Rule |
+| ---: | --- | --- | --- |
+| 0 | u32 | magic | `0x50424e54` ("PBNT") |
+| 4 | u16 | version | 1. Any other value is a version mismatch (a Hello gets Reject `VERSION`) |
+| 6 | u8 | type | 1–16, below |
+| 7 | u8 | flags | 0 |
+| 8 | u32 | epoch | Room session epoch from Accept; 0 in Hello |
+| 12 | u32 | sequence | Per sender and channel, starting anywhere, wrapping modulo 2³² |
+| 16 | u64 | tick | Authoritative tick the message refers to (see each type) |
+| 24 | u16 | payload | Payload bytes, at most 1068; the packet must be exactly 32 + payload bytes |
+| 26 | u16 | reserved | 0 |
+| 28 | u32 | reserved | 0 |
+
+Sequence comparison is modular half-range: `a` is newer than `b` when `(a - b) mod 2³²` is
+between 1 and 2³¹ − 1. Receivers discard state-channel and birth-channel messages that are not
+newer than the last one accepted. Messages whose epoch is not the room's are discarded, so
+traffic from an earlier session never reaches a room.
+
+## Channels
+
+| Channel | ENet delivery | Carries |
+| ---: | --- | --- |
+| 0 control | reliable, ordered | Hello, Accept, Reject, Roster, Ready, SpawnRequest, ResyncRequest, Disconnect |
+| 1 state | unreliable, sequenced | InputBatch (up), Snapshot (down), Ping, Pong |
+| 2 births | unreliable, sequenced | WakeBirths |
+| 3 registry | unreliable, unsequenced | Reserved for wake registry pages (M4/M5); unused in v1 |
+| 4 bootstrap | reliable, ordered | WorldBegin, WorldPage, WorldEnd |
+
+A message on the wrong channel is discarded. Reliable bootstrap traffic cannot hold up new
+snapshots, because they travel on a different channel.
+
+## Messages
+
+`C→S` is client to server. Every payload size is exact unless a count or string decides it.
+
+| Type | Name | Dir | Header tick | Payload bytes |
+| ---: | --- | --- | --- | ---: |
+| 1 | Hello | C→S | 0 | 15 + three string lengths |
+| 2 | Accept | S→C | room tick | 20 |
+| 3 | Reject | S→C | room tick | 16 |
+| 4 | Roster | S→C | room tick | 72 |
+| 5 | WorldBegin | S→C | checkpoint tick | 28 |
+| 6 | WorldPage | S→C | checkpoint tick | 8 + 1..1024 |
+| 7 | WorldEnd | S→C | checkpoint tick | 8 |
+| 8 | Ready | C→S | checkpoint tick | 8 |
+| 9 | InputBatch | C→S | target tick of the newest command | 16 + 4 × count |
+| 10 | Snapshot | S→C | post-tick n | 720 |
+| 11 | WakeBirths | S→C | room tick | 4 + 40 × count |
+| 12 | SpawnRequest | C→S | client's mirror tick | 8 |
+| 13 | Ping | C→S | client's mirror tick | 8 |
+| 14 | Pong | S→C | room tick | 8 |
+| 15 | ResyncRequest | C→S | client's mirror tick | 12 |
+| 16 | Disconnect | both | sender's tick | 4 |
+
+### Hello, Accept, Reject
+
+Hello: `u32` handling revision (`BOAT_PHYSICS_REVISION`, currently 6), `u64` content digest,
+then the name (≤16), room token (≤32) and build label (≤32) strings.
+
+The content digest is FNV-1a 64 over the location's identity, mapped flag, basin half-extents,
+spawn, current centre and crossing offset, plus the fleet and wake contract constants: tick
+rate, slots, solver passes, spawn retry, emitter slots, emission cadence, maximum lifetime,
+mass and restitution. `boat_net_content_digest()` defines the exact order.
+
+The server checks, in order: version (from the header), handling revision, content digest,
+token, free slot. The first failure is answered with Reject and a disconnect, before any slot
+or boat exists.
+
+Accept: `u8` slot (0–3), `u8` waves (0/1), `u8` snapshot interval (4), `u8` birth interval (12),
+`u8` input interval (2), `u8` commands per batch (12), `u8` future window (24), `u8` reserved,
+`u16` tick rate (must be 120), `u16` reserved, `u32` wake lifetime ticks (240–1920),
+`f32` crest height (0.1–3). The header epoch is the room's epoch.
+
+Reject: `u8` reason, `u8` reserved, `u16` server protocol version, `u32` server handling
+revision, `u64` server content digest. Reasons: 1 version, 2 handling revision, 3 content,
+4 token, 5 room full, 6 malformed handshake.
+
+### Roster
+
+Four entries of 18 bytes, in slot order: `u8` state (0 empty, 1 joining, 2 playing), then the
+fixed-width name. It is sent whenever a slot changes.
+
+### World checkpoint
+
+The bootstrap and resync checkpoint is a byte string of 5336 bytes, at most 16384, cut into
+pages of 1024 bytes:
+
+| Offset | Type | Field |
+| ---: | --- | --- |
+| 0 | u64 | fleet tick (equals the wake pool tick) |
+| 8 | u32 | next spawn-request number |
+| 12 | u32 | wake lifetime ticks |
+| 16 | f32 | crest height |
+| 20 | u16 | live records (must equal the records with non-zero amplitude) |
+| 22 | u16 | peak live records |
+| 24 | u64 | births emitted |
+| 32 | u64 | records expired |
+| 40 | 4 × 172 | slot blocks (below) |
+| 728 | 128 × 36 | wake records (below), in pool order |
+
+WorldBegin: `u32` checkpoint ID, `u32` byte count, `u16` page count (must equal
+`ceil(bytes / 1024)`), `u16` reserved, `u64` FNV-1a 64 of the checkpoint bytes, `u64`
+`boat_fleet_hash()` of the encoded state. WorldPage: `u32` checkpoint ID, `u16` index, `u16`
+count, then the page bytes. WorldEnd and Ready: `u32` checkpoint ID, `u32` reserved.
+
+The client installs a checkpoint only when every page arrived, the byte digest matches, it
+decodes and its fleet hash equals the sender's. It then answers Ready. A failed install asks for
+a resync.
+
+### Slot block (172 bytes)
+
+Snapshots and checkpoints use the same block for each slot:
+
+| Offset | Type | Field |
+| ---: | --- | --- |
+| 0 | u8 | bit 0 active, bit 1 spawn pending; other bits 0 |
+| 1 | u8 | motion state: 0 waterborne, 1 airborne, 2 landing, 3 capsized |
+| 2 | u8 | input source on the latest tick: 0 none, 1 received, 2 repeated, 3 zero, 4 neutral |
+| 3 | u8 | reserved |
+| 4 | u32 | life (spawn generation) |
+| 8 | u32 | spawn request number |
+| 12 | u64 | tick of the pending spawn request (≤ header tick) |
+| 20 | u64 | last tick whose received command was used (≤ header tick) |
+| 28 | i8, i8 | steering and throttle rates used on the latest tick, × 127 (−128 invalid) |
+| 30 | u8 | flags of that command: bit 0 inactive |
+| 31 | u8 | reserved |
+| 32 | u32 | landings |
+| 36 | 25 × f32 | position x, z; velocity x, z; heading; throttle; engine response; planing; height; vertical velocity; pitch; pitch velocity; roll; roll velocity; dry time; landing time; inverted-contact time; turn-roll load; wave spray; wheel; engine angle; yaw velocity; legacy trail time; legacy trail start x, z |
+| 136 | 2 × f32 | emitter span start x, z |
+| 144 | u64 | emitter span start tick (≤ header tick) |
+| 152 | u64 | emitter last tracked tick (≤ header tick) |
+| 160 | u8 | emitter cursor (0–31) |
+| 161 | u8 | emitter initialized (0/1) |
+| 162 | u16 | reserved |
+| 164 | f32 | emitter strength |
+| 168 | f32 | emitter strength sum |
+
+### Wake record (36 bytes)
+
+`f32` position x, z; `f32` direction x, z; `f32` length; `f32` amplitude; `f32` inverse speed;
+`u64` birth tick (≤ header or checkpoint tick). Positions are simulation X/Z; the renderer's
+reflected X never travels.
+
+### Snapshot
+
+Post-tick authoritative state, sent every fourth tick (30 Hz) to every accepted client: `u32`
+next spawn-request number, `u16` live records, `u16` peak live, `u64` births emitted, `u64`
+records expired, `u64` wake digest, then four slot blocks: 752 bytes with the header (target
+≤800). The wake digest is FNV-1a 64 over each live record's pool index and fields, in pool
+order (`boat_net_wake_digest()`). The client compares it with the records it rebuilt. Wake
+records themselves travel only in checkpoints and births.
+
+### WakeBirths
+
+Sent every twelfth tick (10 Hz): `u8` count (≤16), three reserved bytes, then per birth `u8`
+pool slot (< 128; slot ÷ 32 is the emitter), three reserved bytes and a 36-byte record. Each
+batch repeats every birth of the last 180 ticks (1.5 s), newest first when more than 16 would
+fit. A birth replaces a pool slot only when it is newer than the record already there.
+Records born after the client's newest snapshot wait until that tick's snapshot arrives. When
+the digest mismatch outlasts one second, the client asks for a resync.
+
+### InputBatch
+
+`u32` life the commands steer, `u8` count (1–12, ≤ header tick), three reserved bytes, `u64`
+newest snapshot tick the client has applied, then `count` commands for consecutive ticks ending
+at the header tick: `i8` steering rate × 127, `i8` throttle rate × 127 (−128 invalid), `u8`
+flags (bit 0 inactive), `u8` reserved. Rates −1, 0 and 1 survive exactly.
+
+The authority accepts a command for tick t only when the slot is active on that life,
+fleet tick < t ≤ fleet tick + 24, and no command for t is stored yet. Stored commands are
+immutable, so repeated copies in later batches cannot change them.
+
+### Other control messages
+
+- SpawnRequest: `u32` request ID, `u32` life to reset. It is honoured only while the slot is on
+  that life (or not yet placed), so a repeated request cannot reset twice.
+- Ping/Pong: `u64` client clock in microseconds, echoed unchanged.
+- ResyncRequest: `u8` reason (1 wake digest mismatch, 2 other), three reserved, `u64` mirror tick.
+- Disconnect: `u8` reason (1 quit, 2 timeout, 3 shutdown, 4 misbehaving), three reserved.
+
+## Authority rules carried by the protocol
+
+- **No client state.** Clients never send positions, impacts, launches, landings, capsizes or
+  wake records. A client that sends a server-only type is counted, and after 16 malformed or
+  forbidden messages it is disconnected.
+- **Missing commands.** The authority repeats the last received command for up to 6 ticks, then
+  uses zero rates (zero throttle rate holds the throttle). From 30 ticks (250 ms) without a
+  command, or at once for a command flagged inactive, it eases toward neutral. Neutral means
+  zero steering and a throttle rate toward idle at the ordinary adjustment speed. The boat
+  stays physical.
+- **Rates and bounds.** Per peer: 120 command packets/s with a burst of 30, 2 spawn requests/s
+  and 1 resync/s. At most 128 messages are handled per service call. Each slot buffers 256
+  commands by tick. The room allows four players and four handshakes, a handshake must finish
+  within 10 s, and silence of 5 s disconnects a peer. ENet's maximum packet is 1100 bytes and
+  its waiting data 64 KiB per peer.
+- **Scheduling.** 120 Hz from a monotonic clock, with at most eight catch-up ticks per service
+  call and never a larger step. A room more than 500 ms behind for a second closes.
+
+## Safety envelope
+
+These are generous decode limits, not gameplay limits. Positions (boats, emitter starts, wake
+records) must be within the basin walls plus 100 m. Speeds are limited to ±1000 m/s, angular
+rates to ±10000 rad/s, pitch, roll and heading to ±10⁶ rad, height to ±1000 m, and timers to
+0–10⁹ s. Throttle, engine response and wheel must be within −1..1, planing and wave spray
+within 0..1, and engine angle within ±π. Wake amplitude and emitter strength must be within
+0–3.5, direction components within ±1.001, and length and inverse speed within 0–10⁴. Counts
+must not exceed their capacities, and expired ≤ emitted.
+
+## Version rules
+
+- Any change to a byte layout, a message type, a channel or a rule above increments the
+  protocol version. v1 rejects every other version; there is no negotiation or migration.
+- A handling change increments `BOAT_PHYSICS_REVISION`; a change to the basin definition or the
+  fleet/wake contract changes the content digest. Either is rejected at Hello.
+- Registry pages, prediction acknowledgements and remote-input history arrive with M4/M5 and
+  will be protocol v2.
+
+## Fixtures
+
+`validate_boat_net` pins:
+
+- golden bytes of a Ping, an InputBatch and a Hello payload;
+- the snapshot size (752), slot field offsets and an FNV-1a 64 digest of a hand-built
+  snapshot's bytes (`57447ded5b742cfe`);
+- round trips of all 16 types, rejection of every truncation, and a declared extra byte;
+- header, field, non-finite and range faults;
+- checkpoints of busy four-boat fleets (calm and waves) that decode to the same fleet hash,
+  re-encode byte for byte and resume 600 ticks bit-identically.
+
+Any intentional layout change must update these fixtures, this document and the version.

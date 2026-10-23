@@ -17,7 +17,8 @@ compatibility to revision 6. The 64-entry shader discussion and ABI sizes below
 describe the reviewed older version. The [multiplayer source assessment](MULTIPLAYER_PLAN.md#source-assessment-and-corrections-to-older-assumptions)
 records current symbols, remaining boundaries and an authoritative native-first design.
 Its prerequisites use [foundations slices](BOATING_FOUNDATIONS_PLAN.md#multiplayer-prerequisite-slices--2026-10-23),
-not a competing refactor sequence. Multiplayer remains planning only.
+not a competing refactor sequence. Multiplayer has since reached a diagnostic protocol/transport
+milestone (M3, 2026-10-23); this review predates it.
 
 ## Recommendation
 

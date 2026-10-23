@@ -1,0 +1,265 @@
+#ifndef PROTEUS_BOAT_NET_PROTOCOL_H
+#define PROTEUS_BOAT_NET_PROTOCOL_H
+
+#include "boat_fleet.h"
+
+#include <stddef.h>
+#include <stdint.h>
+
+// Multiplayer protocol v1 (M3). docs/MULTIPLAYER_PROTOCOL.md owns the byte tables. Every
+// multi-byte field is big-endian; floats travel as IEEE-754 binary32 bit patterns. Encoders
+// never copy structs, padding, bool or enum representations; decoders validate every field
+// and never write the destination on failure.
+#define BOAT_NET_MAGIC 0x50424e54u // "PBNT"
+#define BOAT_NET_VERSION 1
+#define BOAT_NET_HEADER_BYTES 32
+#define BOAT_NET_MAX_MESSAGE 1100 // Whole message; the transport MTU allows for its headers.
+#define BOAT_NET_MAX_PAYLOAD (BOAT_NET_MAX_MESSAGE - BOAT_NET_HEADER_BYTES)
+#define BOAT_NET_PORT 24680
+#define BOAT_NET_MAX_PEERS 8 // Four players plus four handshakes.
+#define BOAT_NET_SNAPSHOT_TICKS 4 // 30 Hz snapshots.
+#define BOAT_NET_BIRTH_TICKS 12 // 10 Hz recent-birth batches.
+#define BOAT_NET_BIRTH_WINDOW_TICKS 180 // Each batch repeats 1.5 s of births.
+#define BOAT_NET_MAX_BIRTHS 16
+#define BOAT_NET_INPUT_TICKS 2 // 60 Hz command packets.
+#define BOAT_NET_MAX_COMMANDS 12 // Recent ticks repeated in each command packet.
+#define BOAT_NET_MAX_FUTURE_TICKS 24 // The authority's furthest accepted command.
+#define BOAT_NET_MESSAGES_PER_SERVICE 128 // Messages handled per service call at most.
+#define BOAT_NET_TIMEOUT 5.0 // Seconds without any message from the other end.
+#define BOAT_NET_HANDSHAKE_TIMEOUT 10.0 // Seconds from connection to an installed world.
+#define BOAT_NET_PAGE_BYTES 1024 // Checkpoint bytes per bootstrap page.
+#define BOAT_NET_MAX_CHECKPOINT 16384
+#define BOAT_NET_NAME_BYTES 16
+#define BOAT_NET_TOKEN_BYTES 32
+#define BOAT_NET_BUILD_BYTES 32
+// Broad safety envelope around the basin walls for decoded positions, not a gameplay limit.
+#define BOAT_NET_WORLD_MARGIN 100.0f
+
+// Delivery classes. ENet maps each to one channel; the in-memory adapter models the same rules.
+typedef enum {
+    BOAT_NET_CONTROL, // Reliable, ordered: handshake, roster, spawn, resync, leave.
+    BOAT_NET_STATE, // Unreliable, sequenced: commands up, snapshots down, ping/pong.
+    BOAT_NET_BIRTHS, // Unreliable, sequenced: recent wake births.
+    BOAT_NET_REGISTRY, // Unreliable, unsequenced: reserved for registry pages (M4/M5).
+    BOAT_NET_BOOTSTRAP, // Reliable, ordered: world checkpoints.
+    BOAT_NET_CHANNELS
+} BoatNetChannel;
+
+typedef enum {
+    BOAT_NET_HELLO = 1,
+    BOAT_NET_ACCEPT = 2,
+    BOAT_NET_REJECT = 3,
+    BOAT_NET_ROSTER = 4,
+    BOAT_NET_WORLD_BEGIN = 5,
+    BOAT_NET_WORLD_PAGE = 6,
+    BOAT_NET_WORLD_END = 7,
+    BOAT_NET_READY = 8,
+    BOAT_NET_INPUT_BATCH = 9,
+    BOAT_NET_SNAPSHOT = 10,
+    BOAT_NET_WAKE_BIRTHS = 11,
+    BOAT_NET_SPAWN_REQUEST = 12,
+    BOAT_NET_PING = 13,
+    BOAT_NET_PONG = 14,
+    BOAT_NET_RESYNC_REQUEST = 15,
+    BOAT_NET_DISCONNECT = 16,
+    BOAT_NET_TYPE_LIMIT
+} BoatNetType;
+
+typedef enum {
+    BOAT_NET_OK,
+    BOAT_NET_TRUNCATED, // Shorter than the header or its declared payload.
+    BOAT_NET_BAD_MAGIC,
+    BOAT_NET_BAD_VERSION, // The header is otherwise readable: answer a Hello with a Reject.
+    BOAT_NET_BAD_HEADER, // Flags, reserved bytes or a payload beyond the limit.
+    BOAT_NET_BAD_TYPE,
+    BOAT_NET_BAD_LENGTH, // Payload size does not match the type and its counts.
+    BOAT_NET_BAD_FIELD, // Invalid enum, count, index, string or reserved payload byte.
+    BOAT_NET_NONFINITE,
+    BOAT_NET_OUT_OF_RANGE, // Finite but outside the documented safety envelope.
+} BoatNetError;
+
+typedef enum {
+    BOAT_NET_REJECT_VERSION = 1,
+    BOAT_NET_REJECT_PHYSICS = 2,
+    BOAT_NET_REJECT_CONTENT = 3,
+    BOAT_NET_REJECT_TOKEN = 4,
+    BOAT_NET_REJECT_FULL = 5,
+    BOAT_NET_REJECT_MALFORMED = 6,
+    BOAT_NET_REJECT_LIMIT
+} BoatNetRejectReason;
+
+typedef enum {
+    BOAT_NET_LEAVE_QUIT = 1,
+    BOAT_NET_LEAVE_TIMEOUT = 2,
+    BOAT_NET_LEAVE_SHUTDOWN = 3,
+    BOAT_NET_LEAVE_MISBEHAVING = 4,
+    BOAT_NET_LEAVE_LIMIT
+} BoatNetLeaveReason;
+
+// What the authority integrated for a slot on its latest tick.
+typedef enum {
+    BOAT_NET_INPUT_NONE, // Inactive slot.
+    BOAT_NET_INPUT_RECEIVED, // The command for exactly this tick.
+    BOAT_NET_INPUT_REPEATED, // Missing; repeating the last received command (<= 6 ticks).
+    BOAT_NET_INPUT_ZERO, // Missing for longer: zero rates (throttle holds).
+    BOAT_NET_INPUT_NEUTRAL, // Inactive client or 250 ms without input: easing to neutral.
+    BOAT_NET_INPUT_STATES
+} BoatNetInputState;
+
+#define BOAT_NET_COMMAND_INACTIVE 1u // Help, focus loss: the authority neutralizes controls.
+
+typedef struct {
+    uint8_t type, flags; // Flags are zero in v1.
+    uint32_t epoch; // Room session epoch; zero in a Hello.
+    uint32_t sequence; // Per sender and channel; wraps.
+    uint64_t tick; // Authoritative tick the message refers to (see the protocol table).
+    uint16_t payload; // Decoded payload length.
+} BoatNetHeader;
+
+typedef struct {
+    int8_t steering, throttle; // Rates times 127: keyboard -1, 0 and 1 stay exact.
+    uint8_t flags;
+} BoatNetCommand;
+
+typedef struct {
+    uint64_t tick; // Last tick whose command was received and used, zero for none.
+    uint8_t state; // BoatNetInputState.
+    BoatNetCommand used; // Rates integrated on the latest tick.
+} BoatNetSlotInput;
+
+typedef struct {
+    uint32_t physics_revision;
+    uint64_t content_digest;
+    char name[BOAT_NET_NAME_BYTES + 1], token[BOAT_NET_TOKEN_BYTES + 1];
+    char build[BOAT_NET_BUILD_BYTES + 1];
+} BoatNetHello;
+
+typedef struct {
+    uint8_t slot;
+    bool waves;
+    uint8_t snapshot_ticks, birth_ticks, input_ticks, max_commands, max_future;
+    uint16_t tick_hz;
+    uint32_t wake_life_ticks;
+    float crest_height;
+} BoatNetAccept;
+
+typedef struct {
+    uint8_t reason; // BoatNetRejectReason.
+    uint16_t version;
+    uint32_t physics_revision;
+    uint64_t content_digest;
+} BoatNetReject;
+
+typedef enum {
+    BOAT_NET_ROSTER_EMPTY,
+    BOAT_NET_ROSTER_JOINING,
+    BOAT_NET_ROSTER_PLAYING
+} BoatNetRosterState;
+
+typedef struct {
+    struct {
+        uint8_t state; // BoatNetRosterState.
+        char name[BOAT_NET_NAME_BYTES + 1];
+    } slots[BOAT_FLEET_SLOTS];
+} BoatNetRoster;
+
+typedef struct {
+    uint32_t checkpoint, bytes;
+    uint16_t pages;
+    uint64_t digest; // FNV-1a 64 of the checkpoint bytes.
+    uint64_t fleet_hash; // boat_fleet_hash() of the encoded state.
+} BoatNetWorldBegin;
+
+typedef struct {
+    uint32_t checkpoint;
+    uint16_t index, count, size;
+    uint8_t data[BOAT_NET_PAGE_BYTES];
+} BoatNetWorldPage;
+
+typedef struct {
+    uint32_t life; // The slot life these commands steer; others are ignored.
+    uint8_t count; // Commands for ticks header.tick - count + 1 .. header.tick.
+    uint64_t snapshot_tick; // Latest snapshot the client has applied.
+    BoatNetCommand commands[BOAT_NET_MAX_COMMANDS];
+} BoatNetInputBatch;
+
+// Post-tick authoritative fleet state without wake records, which travel as births and
+// checkpoints; wake_digest names the exact live record set at this tick.
+typedef struct {
+    uint32_t next_request;
+    uint16_t live, peak_live;
+    uint64_t emitted, expired, wake_digest;
+    BoatFleetSlot slots[BOAT_FLEET_SLOTS];
+    BoatWakeObjectEmitter emitters[BOAT_FLEET_SLOTS];
+    BoatNetSlotInput inputs[BOAT_FLEET_SLOTS];
+} BoatNetSnapshot;
+
+typedef struct {
+    uint8_t slot; // Pool slot; slot / BOAT_OBJECT_PER_BOAT is the emitter.
+    BoatWakeObject record;
+} BoatNetBirth;
+
+typedef struct {
+    uint8_t count;
+    BoatNetBirth births[BOAT_NET_MAX_BIRTHS];
+} BoatNetWakeBirths;
+
+typedef struct {
+    BoatNetHeader header;
+    union {
+        BoatNetHello hello;
+        BoatNetAccept accept;
+        BoatNetReject reject;
+        BoatNetRoster roster;
+        BoatNetWorldBegin world_begin;
+        BoatNetWorldPage world_page;
+        uint32_t checkpoint; // WORLD_END, READY.
+        BoatNetInputBatch input;
+        BoatNetSnapshot snapshot;
+        BoatNetWakeBirths births;
+        struct {
+            uint32_t request, life; // Reset the slot while it is on LIFE (or not yet placed).
+        } spawn;
+        uint64_t clock; // PING sends the client clock in microseconds; PONG echoes it.
+        struct {
+            uint8_t reason; // 1: wake digest mismatch, 2: other.
+            uint64_t snapshot_tick;
+        } resync;
+        uint8_t leave; // BoatNetLeaveReason.
+    };
+} BoatNetMessage;
+
+// Encode MESSAGE (its header payload length is computed) into OUT. Returns the byte count, or
+// zero for a message that does not satisfy the decoder's own validation.
+size_t boat_net_encode(const BoatNetMessage *message, uint8_t out[BOAT_NET_MAX_MESSAGE]);
+// Header only: enough to answer a Hello from another protocol version.
+BoatNetError boat_net_decode_header(const uint8_t *data, size_t size, BoatNetHeader *header);
+BoatNetError boat_net_decode(const uint8_t *data, size_t size, BoatNetMessage *message);
+const char *boat_net_error_name(BoatNetError error);
+const char *boat_net_reject_text(uint8_t reason);
+// The channel a message type travels on.
+BoatNetChannel boat_net_channel(uint8_t type);
+// True when A follows B in modular u32 order (half-range comparison).
+bool boat_net_sequence_newer(uint32_t a, uint32_t b);
+
+// Rates to the wire and back. Non-finite rates encode as zero.
+BoatNetCommand boat_net_command(BoatInput input, uint8_t flags);
+BoatInput boat_net_command_input(BoatNetCommand command);
+
+// Compatibility digest of the compiled definition and the fleet/wake contract constants.
+uint64_t boat_net_content_digest(const BoatWorldDefinition *definition);
+// Canonical digest of the live record set (slot index and every field of live records).
+uint64_t boat_net_wake_digest(const BoatWakeObjects *wakes);
+uint64_t boat_net_bytes_digest(const void *data, size_t size);
+
+// Snapshot of STATE after its latest tick, with each slot's input record.
+void boat_net_snapshot_of(const BoatFleetState *state,
+    const BoatNetSlotInput inputs[BOAT_FLEET_SLOTS], BoatNetSnapshot *snapshot);
+// Complete checkpoint bytes: everything in a snapshot plus the wake pool's records and
+// settings. Returns the byte count (well below BOAT_NET_MAX_CHECKPOINT).
+size_t boat_net_checkpoint_encode(const BoatFleetState *state,
+    const BoatNetSlotInput inputs[BOAT_FLEET_SLOTS], uint8_t *out, size_t capacity);
+BoatNetError boat_net_checkpoint_decode(const uint8_t *data, size_t size, BoatFleetState *state,
+    BoatNetSlotInput inputs[BOAT_FLEET_SLOTS]);
+
+#endif

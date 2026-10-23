@@ -10,6 +10,8 @@
 #define BOAT_LIMIT_X (BOAT_BASIN_HALF_X - 2.5f)
 #define BOAT_LIMIT_Z (BOAT_BASIN_HALF_Z - 2.5f)
 #define BOAT_CONTACT_RESTITUTION 0.12f
+// Handling compatibility: recordings, saved bests and network peers must match it.
+#define BOAT_PHYSICS_REVISION 6
 
 typedef enum { BOAT_WATERBORNE, BOAT_AIRBORNE, BOAT_LANDING, BOAT_CAPSIZED } BoatMotionState;
 

@@ -5,7 +5,7 @@ file I/O.
 Sources: every quoted include must be another core header (or raylib.h/raymath.h for vector
 types and math, or compiled map geometry), system headers come from a short allowlist without
 <stdio.h>, raylib-style PascalCase calls must be raymath, and C library I/O/process calls are
-rejected. Archive (when nm is given): every undefined symbol is defined in the archive or is
+rejected. Archives (when nm is given): every undefined symbol is defined in one of the archives or is
 raymath, libm, libc memory/sort/assert, clock(), or the Accelerate DFT backend.
 
 Run with --self-test to confirm each rule rejects a known violation.
@@ -73,7 +73,8 @@ def check_source(name, text, core_headers):
     for number, line in enumerate(code.splitlines(), 1):
         if line.lstrip().startswith("#"):
             continue
-        for match in re.finditer(r"\b([A-Za-z_]\w*)\s*\(", line):
+        # A "Type (*name)(...)" function-pointer declarator is not a call.
+        for match in re.finditer(r"\b([A-Za-z_]\w*)\s*\((?!\s*\*)", line):
             call = match.group(1)
             pascal = call[0].isupper() and any(c.islower() for c in call)
             if pascal and not RAYMATH_CALL.fullmatch(call):
@@ -103,8 +104,8 @@ def symbol_allowed(symbol, defined):
             or RUNTIME_SYMBOL.fullmatch(symbol))
 
 
-def check_archive(nm, archive):
-    def symbols(*options):
+def check_archives(nm, archives):
+    def symbols(archive, *options):
         output = subprocess.run([nm, *options, archive], check=True, capture_output=True,
             text=True).stdout
         names = set()
@@ -118,10 +119,15 @@ def check_archive(nm, archive):
             names.add(name)
         return names
 
-    defined = symbols("-g", "--defined-only")
-    undefined = symbols("-u")
-    return [f"{Path(archive).name}: references {s}" for s in sorted(undefined)
-            if not symbol_allowed(s, defined)]
+    # Archives listed together link together: a symbol defined in one may be used by another.
+    defined = set()
+    for archive in archives:
+        defined |= symbols(archive, "-g", "--defined-only")
+    problems = []
+    for archive in archives:
+        problems += [f"{Path(archive).name}: references {s}"
+                     for s in sorted(symbols(archive, "-u")) if not symbol_allowed(s, defined)]
+    return problems
 
 
 def self_test():
@@ -143,6 +149,7 @@ def self_test():
     failures = [k for k, v in violations.items() if not check_source(k, v, headers)]
     clean = ('#include "boat.h"\n#include "raymath.h"\n#include <math.h>\n'
              "// DrawCube(fopen) in a comment\n"
+             "typedef struct { BoatStats (*stats)(void *context); } Table;\n"
              'float f(Vector2 v) { const char *s = "printf("; (void)s;\n'
              "    return Clamp(Vector2Length(Vector2Scale(v, 2)), 0, sinf(1)); }\n")
     noisy = check_source("clean", clean, headers)
@@ -164,7 +171,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--root", type=Path, default=Path("."))
     parser.add_argument("--nm")
-    parser.add_argument("--archive")
+    parser.add_argument("--archive", action="append", default=[])
     parser.add_argument("--self-test", action="store_true")
     parser.add_argument("files", nargs="*")
     args = parser.parse_args()
@@ -177,8 +184,9 @@ def main():
     problems = check_sources(args.root, args.files)
     print(f"sources: {len(args.files)} core files checked")
     if args.nm and args.archive:
-        problems += check_archive(args.nm, args.archive)
-        print(f"symbols: {Path(args.archive).name} checked with {Path(args.nm).name}")
+        problems += check_archives(args.nm, args.archive)
+        names = ", ".join(Path(a).name for a in args.archive)
+        print(f"symbols: {names} checked with {Path(args.nm).name}")
     else:
         print("symbols: skipped (no nm)")
     for problem in problems:

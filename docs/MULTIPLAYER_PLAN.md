@@ -1,7 +1,8 @@
 # Multiplayer: shared boating implementation plan
 
-Prepared 2026-10-23 against `2994e0d`. **M2, the local four-boat authority, is implemented;
-there is no networking yet.**
+Prepared 2026-10-23 against `2994e0d`. **M3, the protocol, ENet transport and separate
+`boat_server` process, is implemented as a diagnostic: clients see a server-driven, latency-late
+boat with no prediction.** It is not the first playable (M4).
 This document owns multiplayer decisions, milestones, verification and acceptance.
 The [foundations plan](BOATING_FOUNDATIONS_PLAN.md) owns prerequisite extractions;
 the [physics](BOAT_PHYSICS_PLAN.md) and [wake](WAKE_REWRITE_PLAN.md) plans own handling.
@@ -19,8 +20,12 @@ display-free core validator, source/symbol boundary check; not yet user-played) 
 prerequisites. M2 (fleet step, simultaneous contacts, spawn/life rules, checkpoints and the
 scripted `boat_server`) is implemented and automatically verified. The user played its crossing
 rival on 2026-10-23 ("seems to work great"). See the
-[M2 handoff](#m2-local-authority-handoff--2026-10-23). Next: M3 (protocol, transport and
-process boundary). M3–M8 are pending.
+[M2 handoff](#m2-local-authority-handoff--2026-10-23). M3 (protocol v1, transport boundary,
+in-memory impairment adapter, ENet adapter, authority/client sessions, `boat_server` rooms,
+`boat_bot` and `boat_study --connect`) is implemented and automatically verified on macOS. It
+is not yet user-played; see the [M3 handoff](#m3-protocol-and-transport-handoff--2026-10-23)
+and the [protocol](MULTIPLAYER_PROTOCOL.md). Next: M4, starting with checkpoint/input replay
+(client prediction). M4–M8 are pending.
 Numerical budgets below are proposed gates, not measured multiplayer results.
 The final evidence section distinguishes checks performed for this document from future checks.
 
@@ -651,6 +656,11 @@ all queues demonstrably bounded, native builds pass and web excludes ENet cleanl
 Non-goals: internet reachability, polished UI and accepted responsive multiplayer. This diagnostic
 mode can be latency-delayed; it must not be presented as the first finished playable.
 
+Status, 2026-10-23: implemented and automatically verified on macOS; manual two-process runs
+done by the agent, not yet user-played. The web build was not built. Details, deviations and
+evidence are in the [M3 handoff](#m3-protocol-and-transport-handoff--2026-10-23); the byte
+layout is in [MULTIPLAYER_PROTOCOL.md](MULTIPLAYER_PROTOCOL.md).
+
 ### M4 — first playable: two people collide and jump each other's wakes
 
 Depends on M3. Likely `boat_net_client`, new `boat_prediction.[ch]`, `boat_world`,
@@ -854,9 +864,10 @@ proves observed feel; only explicit feedback establishes acceptance.
 ## Documentation structure and maintenance
 
 This file is the single multiplayer task/status owner. Keep the decision rationale, phase
-dependencies, budgets, test matrix and acceptance here. At M3 extract the byte schema into
-`docs/MULTIPLAYER_PROTOCOL.md`, owning exact field tables, delivery classes, fixtures and
-version rules, with a link here for task status. Do not duplicate the milestone ledger there.
+dependencies, budgets, test matrix and acceptance here. Since M3 the byte schema lives in
+[MULTIPLAYER_PROTOCOL.md](MULTIPLAYER_PROTOCOL.md), owning exact field tables, delivery classes,
+fixtures and version rules, with a link here for task status. Do not duplicate the milestone
+ledger there.
 No separate multiplayer architecture essay is needed: the diagram and ownership contract above
 are sufficient. At M6 add a short `docs/MULTIPLAYER_HOSTING.md` only if operator commands and
 troubleshooting outgrow the README. All prospective files must be linked when actually created.
@@ -986,6 +997,137 @@ playback was not checked. There was no keyboard play.
   review.
 - No network, wire encoding, prediction or multi-boat renderer exists. The rival is still
   drawn through the ghost path.
+
+## M3 protocol and transport handoff — 2026-10-23
+
+Started from `803a901`; only the untracked `docs/TITLE_SCREEN_PLAN.md` was dirty, and it is not
+part of this change.
+
+| Implemented | Automated verification | Manual observation | User acceptance |
+| --- | --- | --- | --- |
+| Protocol v1 codec, transport boundary, in-memory impairment and ENet adapters, authority and client sessions, `boat_server` rooms, `boat_bot`, `boat_study --connect` | `boat_net`, `boat_net_loopback`, `boat_net_boundary`, six CLI checks, the full suite, and 8/8 identical single-player captures against `803a901` | Agent-run windowed `boat_study --connect` with a bot (GPU renderer) and its error paths; no keyboard play | None yet |
+
+**Modules.** The new `proteus_boat_net` library holds the codec (`boat_net_protocol.[ch]`), the
+transport boundary and in-memory adapter (`boat_net_transport.h`, `boat_net_memory.c`), the
+authority session (`boat_net_server.[ch]`) and the client session (`boat_net_client.[ch]`). It
+links only the core, and `boat_net_boundary` holds it to the core rules: no devices, files or
+sockets. `proteus_boat_net_enet` (`boat_net_enet.[ch]`) is the only code that sees ENet or the
+operating system: sockets, the monotonic clock and sleeping. ENet v1.3.18 is fetched at commit
+`2662c0de09e36f2a2030ccc2c528a3e4c9e8138a` (MIT, `LICENSE` in its source tree). It is compiled
+as `proteus_enet` with its own configure checks and warnings off, and only for native targets:
+the web build returns before these targets and compiles `boat_study` without
+`PROTEUS_BOAT_NET`.
+
+**Authority.** `boat_net_server_service(server, now)` handles at most 128 messages, applies
+handshakes, Ready, commands, spawn requests, resyncs and leaves at the tick boundary, then runs
+the due 120 Hz ticks (at most eight per call). For each tick it selects one command per slot by
+the loss policy, calls `boat_fleet_step` and sends births every twelfth tick and snapshots every
+fourth tick. Ready requests the slot's first spawn through the M2 spawn rules. Commands are
+immutable per tick and life. Clients cannot send world state: such messages are counted and
+ignored, and 16 offences disconnect the peer. The server is a separate process. It opens no
+window, audio device or asset, and its only file access is the console.
+
+**Client.** `boat_net_client_service(client, now, input, inactive)` handshakes, assembles and
+verifies the world checkpoint (byte digest and fleet hash), then keeps a mirror `BoatFleet`. A
+snapshot replaces the boats, emitters and counters and expires old records; births fill the
+pool. Each snapshot's wake digest checks the rebuilt records, and a mismatch lasting over a
+second requests a fresh checkpoint. Commands are generated at 120 Hz for the estimated server
+tick plus a lead of half the round trip plus four ticks (4–16), and sent 12 at a time at 60 Hz.
+There is **no prediction**: `boat_study --connect` interpolates the mirror's two newest snapshots,
+so the view runs about one snapshot plus one round trip behind the keys. It draws the nearest
+other boat through the existing ghost path and prints a network status line. R requests a new
+life.
+
+**Commands.**
+
+```sh
+./build/boat_server [--bind 127.0.0.1] [--port 24680] [--token TEXT] [--players 1-4] [--waves]
+./build/boat_study --connect 127.0.0.1:24680 [--name TEXT] [--token TEXT]
+./build/boat_bot --connect 127.0.0.1:24680 [--seconds 5]
+```
+
+`boat_server` with no arguments now opens a loopback room. The M2 `--scripted` mode is unchanged
+and refuses room options.
+
+**Deviations from the text above, for review.**
+- Wake birth identity is (pool slot, birth tick), not (epoch, emitter, u32 serial). Each pool
+  slot belongs to one emitter, births are at least 60 ticks apart and a slot only ever receives
+  newer births, so this identifies every record without adding serials to the wake state.
+  Owner generations are not sent.
+- There are no registry pages or tombstones yet. A wake digest mismatch that outlasts one second
+  is repaired by a reliable full checkpoint (at most one per second).
+- Spawned, Despawn and ClientStatus are not separate messages: snapshots carry life and active
+  flags, the roster carries joins and leaves, and an inactive flag on each command carries the
+  focus state. Recent remote inputs are limited to the last command used per slot.
+- The 1 ms decode budget is not implemented, only the 128-message cap. The overload policy
+  closes the room; it does not first reject joins or drop snapshots to 20 Hz. Outgoing reliable
+  bytes are not counted per peer by the application (ENet caps waiting data at 64 KiB). The
+  30-second reconnect reservation is not implemented.
+- Snapshots received before the baseline is installed are dropped rather than buffered; held
+  births (at most 64) are kept.
+- The content digest covers the basin definition and the fleet/wake contract constants, since
+  the basin has no map geometry.
+- `BOAT_PHYSICS_REVISION` moved from `boat_replay.h` to `boat.h` so the core-only net library can
+  name it; the value (6) is unchanged.
+- The client's round-trip filter falls at once and rises slowly. A pong read late after a local
+  stall (the window opening took about a second) had pushed the lead and clock estimate far
+  ahead; the authority then refused 2224 commands as too far in the future. `boat_net` now
+  reproduces that stall, and the fix brings the count to zero.
+
+**Automated verification.** Apple M1 Max/macOS 26.6.2, Apple clang 21.0.0, Debug common recipe
+with `PROTEUS_GPU_TESTS=ON`. The build is warning-free and the **101 active CTests pass** (21
+GPU), with 15 retired cases disabled. The 13 `core` tests include the new `boat_net`,
+`boat_net_loopback`, `boat_net_boundary` and six new CLI argument checks. `validate_boat_net`
+(core and net only, under one second) checks:
+- golden bytes for a Ping, an InputBatch and a Hello payload; snapshot offsets and a pinned
+  digest; round trips of all 16 types; 2381 truncations; header, field, range and 224 non-finite
+  faults; encoder self-rejection;
+- checkpoints of busy four-boat fleets in calm and wave water (5336 bytes, 88 and 91 live
+  records) that decode to the same fleet hash, re-encode byte for byte and resume 600 ticks
+  bit-identically;
+- a lossless room with a late joiner: the mirrors matched the authority's `boat_fleet_hash` at
+  290/290 birth-batch ticks, 99.7% of integrated ticks used the client's own command, the
+  largest message was 1064 bytes, a one-second client stall caused no future commands, and a
+  graceful leave freed the slot and kept the wakes;
+- full, token, version, handling, content and malformed Hellos rejected before any slot exists;
+- missing input repeating for 6 ticks, then zero, then neutral from 250 ms (throttle 0.65 →
+  0.17 over 160 ticks with the boat still physical); immutable, late, future, stale-life,
+  stale-sequence and foreign-epoch commands; inactive neutralization; idempotent reset; a
+  forged client snapshot ignored and repeated offences disconnected;
+- sequence numbers wrapping in both directions with no stale discards (55/55 matches), and a
+  2000-packet flood held to the 256-message queue and rate limit with the authority on time;
+- profile F one way on both directions (40 ± 10 ms, 1% loss, 0.2% duplicates, 1% reordered
+  by 20 ms) for 60 s with waves: RTT about 90 ms, lead 10, 0.58% of ticks without a command,
+  975/1073 hash matches, no resyncs, mismatches repaired within 175 ms, queue high-water 5;
+  then a 1 s blackout recovered and a 6 s blackout timed out on both ends;
+- a damaged mirror asking for one checkpoint after a second and matching again.
+
+`boat_net_loopback` runs real processes over ENet/UDP on 127.0.0.1. Two bots drive for 4 s,
+and a third with the wrong token is refused. A second server on the same port fails with
+"cannot listen". Each bot received about 120 snapshots with no resyncs and mismatches repaired
+within 38 ms, and 98% of its integrated ticks used its own command. Messages were at most 1064
+bytes, the largest datagram 1074 bytes, and the negotiated peer MTU 1200. The server stopped on
+time with no faults, at 0.077–0.087 ms of service per tick (Debug, two clients).
+Single-player CPU captures (default, crossing with and without waves, waves, environment,
+course, river, Eriksberg) are byte-identical to a `803a901` build.
+
+**Manual observation (agent).** A windowed `boat_study --connect` (GPU renderer, 900 frames)
+joined a `--waves` room beside a bot and exited cleanly. It showed its own boat, the bot's
+boat and wakes, and the status line. The server reported 2 accepted, 2 left, no faults and no
+future or late commands. Window focus was elsewhere for part of the run, so 75 ticks were
+neutralized. Wrong token, no server (10 s timeout with a reachability hint), a malformed
+endpoint and `--connect` combined with `--waves` all print clear errors. There was no keyboard
+driving, no two-window or two-machine session and no listening.
+
+**Limits.**
+- macOS only; the Windows (winsock) and Linux paths of the ENet adapter were not compiled, and
+  the Emscripten build was not run. A native compile of `boat_study.c` without
+  `PROTEUS_BOAT_NET` passed.
+- Loopback only: no LAN, firewall or OS-level impairment lane; profile F ran on the in-memory
+  adapter, which models ENet's sequencing but not its retransmission or aggregation.
+- The view is deliberately late and draws one other boat; four-boat rendering, prediction,
+  reconciliation and remote interpolation are M4.
+- The first configure now also needs network access to fetch ENet.
 
 ## Exact first implementation task
 

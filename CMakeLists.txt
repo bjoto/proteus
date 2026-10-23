@@ -82,6 +82,67 @@ add_executable(boat_study tools/boat_study.c src/profiler.c src/boat_audio.c src
 target_link_libraries(boat_study PRIVATE proteus_boat_drive proteus_gpu)
 target_compile_options(boat_study PRIVATE ${PROTEUS_WARNINGS})
 
+# Multiplayer M3, native only: the protocol codec, the authority and client sessions and the
+# in-memory impairment transport obey the core boundary (no devices, files or sockets);
+# boat_net_enet.c is the only file that sees ENet or the operating system's sockets.
+if(NOT EMSCRIPTEN)
+  set(PROTEUS_BOAT_NET_SOURCES
+    src/boat_net_client.c src/boat_net_client.h src/boat_net_memory.c src/boat_net_protocol.c
+    src/boat_net_protocol.h src/boat_net_server.c src/boat_net_server.h src/boat_net_transport.h)
+  add_library(proteus_boat_net STATIC ${PROTEUS_BOAT_NET_SOURCES})
+  target_link_libraries(proteus_boat_net PUBLIC proteus_boat_core)
+  target_compile_options(proteus_boat_net PRIVATE ${PROTEUS_WARNINGS})
+
+  # ENet v1.3.18 (MIT, LICENSE in its source tree), pinned to the tag's commit. Its sources are
+  # compiled here as a static library with its own configure checks and no project warnings.
+  FetchContent_Declare(
+    enet
+    GIT_REPOSITORY https://github.com/lsalzman/enet.git
+    GIT_TAG 2662c0de09e36f2a2030ccc2c528a3e4c9e8138a # v1.3.18
+    SOURCE_SUBDIR no-cmake-build # Fetch only; the target is defined below.
+  )
+  FetchContent_MakeAvailable(enet)
+  add_library(proteus_enet STATIC
+    ${enet_SOURCE_DIR}/callbacks.c ${enet_SOURCE_DIR}/compress.c ${enet_SOURCE_DIR}/host.c
+    ${enet_SOURCE_DIR}/list.c ${enet_SOURCE_DIR}/packet.c ${enet_SOURCE_DIR}/peer.c
+    ${enet_SOURCE_DIR}/protocol.c ${enet_SOURCE_DIR}/unix.c ${enet_SOURCE_DIR}/win32.c)
+  target_include_directories(proteus_enet SYSTEM PUBLIC ${enet_SOURCE_DIR}/include)
+  set_target_properties(proteus_enet PROPERTIES C_STANDARD 99 C_EXTENSIONS ON)
+  if(WIN32)
+    target_link_libraries(proteus_enet PUBLIC ws2_32 winmm)
+  else()
+    include(CheckFunctionExists)
+    include(CheckStructHasMember)
+    include(CheckTypeSize)
+    foreach(function fcntl poll getaddrinfo getnameinfo gethostbyname_r gethostbyaddr_r
+        inet_pton inet_ntop)
+      string(TOUPPER "HAS_${function}" variable)
+      check_function_exists(${function} ${variable})
+      if(${variable})
+        target_compile_definitions(proteus_enet PRIVATE ${variable}=1)
+      endif()
+    endforeach()
+    check_struct_has_member("struct msghdr" "msg_flags" "sys/types.h;sys/socket.h"
+      HAS_MSGHDR_FLAGS)
+    set(CMAKE_EXTRA_INCLUDE_FILES "sys/types.h" "sys/socket.h")
+    check_type_size("socklen_t" HAS_SOCKLEN_T BUILTIN_TYPES_ONLY)
+    unset(CMAKE_EXTRA_INCLUDE_FILES)
+    foreach(variable HAS_MSGHDR_FLAGS HAS_SOCKLEN_T)
+      if(${variable})
+        target_compile_definitions(proteus_enet PRIVATE ${variable}=1)
+      endif()
+    endforeach()
+  endif()
+  target_compile_options(proteus_enet PRIVATE $<$<C_COMPILER_ID:AppleClang,Clang,GNU>:-w>)
+
+  add_library(proteus_boat_net_enet STATIC src/boat_net_enet.c src/boat_net_enet.h)
+  target_link_libraries(proteus_boat_net_enet PUBLIC proteus_boat_net PRIVATE proteus_enet)
+  target_compile_options(proteus_boat_net_enet PRIVATE ${PROTEUS_WARNINGS})
+  target_link_libraries(boat_study PRIVATE proteus_boat_net_enet)
+  target_compile_definitions(boat_study PRIVATE PROTEUS_BOAT_NET=1)
+  target_sources(boat_study PRIVATE tools/boat_study_net.c tools/boat_study_net.h)
+endif()
+
 if(EMSCRIPTEN)
   include(cmake/Web.cmake)
   return() # Desktop demo, studies, and CTest tools remain native targets.
@@ -327,9 +388,17 @@ target_compile_options(validate_boat_core PRIVATE ${PROTEUS_WARNINGS})
 add_test(NAME boat_core COMMAND validate_boat_core)
 # Multiplayer M2: the local four-boat authority and its scripted server, also core-only.
 add_executable(validate_boat_fleet tools/validate_boat_fleet.c)
+target_link_libraries(validate_boat_fleet PRIVATE proteus_boat_core)
+# M3: the authority process and a scripted network client link the ENet transport; the
+# protocol/session validator links only the display- and socket-free net library.
 add_executable(boat_server tools/boat_server.c)
-foreach(target validate_boat_fleet boat_server)
-  target_link_libraries(${target} PRIVATE proteus_boat_core)
+add_executable(boat_bot tools/boat_bot.c)
+foreach(target boat_server boat_bot)
+  target_link_libraries(${target} PRIVATE proteus_boat_net_enet)
+endforeach()
+add_executable(validate_boat_net tools/validate_boat_net.c)
+target_link_libraries(validate_boat_net PRIVATE proteus_boat_net)
+foreach(target validate_boat_fleet boat_server boat_bot validate_boat_net)
   target_compile_options(${target} PRIVATE ${PROTEUS_WARNINGS})
 endforeach()
 add_test(NAME boat_fleet COMMAND validate_boat_fleet)
@@ -337,8 +406,23 @@ set_tests_properties(boat_fleet PROPERTIES PASS_REGULAR_EXPRESSION "boat_fleet=o
 add_test(NAME boat_server_scripted COMMAND boat_server --scripted --ticks 2400)
 set_tests_properties(boat_server_scripted PROPERTIES
   PASS_REGULAR_EXPRESSION "boat_server scripted: boats=4 ticks=2400")
-add_test(NAME boat_server_unscripted_rejected COMMAND boat_server)
-set_tests_properties(boat_server_unscripted_rejected PROPERTIES WILL_FAIL TRUE)
+add_test(NAME boat_server_scripted_room_option_rejected
+  COMMAND boat_server --scripted --port 24680)
+add_test(NAME boat_server_port_rejected COMMAND boat_server --port 0)
+add_test(NAME boat_server_bind_rejected COMMAND boat_server --bind not-an-address --ticks 1)
+add_test(NAME boat_bot_endpoint_rejected COMMAND boat_bot --connect 127.0.0.1)
+add_test(NAME boat_net_study_mode_rejected COMMAND boat_study --connect 127.0.0.1:24680 --waves)
+add_test(NAME boat_net_study_name_rejected COMMAND boat_study --name lonely)
+set_tests_properties(boat_server_scripted_room_option_rejected boat_server_port_rejected
+  boat_server_bind_rejected boat_bot_endpoint_rejected boat_net_study_mode_rejected
+  boat_net_study_name_rejected PROPERTIES WILL_FAIL TRUE)
+add_test(NAME boat_net COMMAND validate_boat_net)
+set_tests_properties(boat_net PROPERTIES PASS_REGULAR_EXPRESSION "boat_net=ok")
+add_test(NAME boat_net_loopback COMMAND ${Python3_EXECUTABLE}
+  ${CMAKE_CURRENT_SOURCE_DIR}/tools/boat_net_smoke.py --server $<TARGET_FILE:boat_server>
+  --bot $<TARGET_FILE:boat_bot>)
+set_tests_properties(boat_net_loopback PROPERTIES PASS_REGULAR_EXPRESSION "boat_net_loopback=ok"
+  TIMEOUT 60)
 set(BOAT_CORE_BOUNDARY_NM)
 if(CMAKE_NM AND NOT MSVC)
   set(BOAT_CORE_BOUNDARY_NM --nm ${CMAKE_NM} --archive $<TARGET_FILE:proteus_boat_core>)
@@ -347,6 +431,16 @@ add_test(NAME boat_core_boundary COMMAND ${Python3_EXECUTABLE}
   ${CMAKE_CURRENT_SOURCE_DIR}/tools/check_core_boundary.py --root ${CMAKE_CURRENT_SOURCE_DIR}
   ${BOAT_CORE_BOUNDARY_NM} ${PROTEUS_BOAT_CORE_SOURCES})
 set_tests_properties(boat_core_boundary PROPERTIES PASS_REGULAR_EXPRESSION "core_boundary=ok")
+# The net library (codec, sessions, memory transport) obeys the same rules, with no sockets.
+set(BOAT_NET_BOUNDARY_NM)
+if(CMAKE_NM AND NOT MSVC)
+  set(BOAT_NET_BOUNDARY_NM --nm ${CMAKE_NM} --archive $<TARGET_FILE:proteus_boat_core>
+    --archive $<TARGET_FILE:proteus_boat_net>)
+endif()
+add_test(NAME boat_net_boundary COMMAND ${Python3_EXECUTABLE}
+  ${CMAKE_CURRENT_SOURCE_DIR}/tools/check_core_boundary.py --root ${CMAKE_CURRENT_SOURCE_DIR}
+  ${BOAT_NET_BOUNDARY_NM} ${PROTEUS_BOAT_CORE_SOURCES} ${PROTEUS_BOAT_NET_SOURCES})
+set_tests_properties(boat_net_boundary PROPERTIES PASS_REGULAR_EXPRESSION "core_boundary=ok")
 add_test(NAME boat_handling COMMAND validate_boat)
 add_test(NAME boat_banking COMMAND validate_boat_banking)
 add_test(NAME boat_turn_entry COMMAND validate_boat_turn_entry)
@@ -663,12 +757,12 @@ foreach(test IN LISTS PROTEUS_WAKE_FIELD_CASES)
   endif()
 endforeach()
 
-# Labels: core (display-free core library gates, fleet and scripted server), render (CPU captures), gpu (graphics context)
+# Labels: core (display-free core and net library gates, fleet, server and bot), render (CPU captures), gpu (graphics context)
 # and cpu (everything else that runs without a display).
 get_property(PROTEUS_TESTS DIRECTORY PROPERTY TESTS)
 foreach(test IN LISTS PROTEUS_TESTS)
   get_test_property(${test} LABELS labels)
-  if(test MATCHES "^boat_core|^boat_fleet|^boat_server")
+  if(test MATCHES "^boat_core|^boat_fleet|^boat_server|^boat_net|^boat_bot")
     set_property(TEST ${test} APPEND PROPERTY LABELS core cpu)
   elseif(labels MATCHES "gpu")
   elseif(test MATCHES "screenshot|checksum|_cpu$")
@@ -687,7 +781,8 @@ if(PROTEUS_OPTIMIZE_TESTS)
   foreach(target proteus_boat_core proteus_render proteus_boat_session proteus_boat_drive
       validate_boat validate_boat_banking validate_boat_turn_entry
       validate_boat_environment validate_boat_replay boat_water_review wake_objects_review
-      validate_boat_clock validate_boat_world validate_boat_core validate_boat_fleet boat_server)
+      validate_boat_clock validate_boat_world validate_boat_core validate_boat_fleet boat_server
+      proteus_boat_net validate_boat_net)
     target_compile_options(${target} PRIVATE
       $<$<AND:$<CONFIG:Debug>,$<C_COMPILER_ID:AppleClang,Clang,GNU>>:-O2>)
   endforeach()

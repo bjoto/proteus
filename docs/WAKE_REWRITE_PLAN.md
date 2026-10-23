@@ -3,7 +3,8 @@
 2026-10-23 direction: the user reports boating, especially jumping, landing and capsizing,
 is fun. Preserve that feel. The [multiplayer plan](MULTIPLAYER_PLAN.md) now owns shared-fleet
 authority/replication planning; this plan retains the arcade surface recipe and visual work.
-No networking is implemented, and this feedback does not resolve the tight-turn readability
+Multiplayer M3 sends wake births and checkpoints without changing the recipe. This feedback
+does not resolve the tight-turn readability
 report or establish network/platform acceptance.
 
 Status, 2026-10-22: **bounded arcade wake objects are now the free-boating default,

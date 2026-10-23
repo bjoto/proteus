@@ -1,9 +1,11 @@
 # Windows boat study builds
 
-Multiplayer is [planning only](MULTIPLAYER_PLAN.md). Current packages are single-player.
-M6 will qualify the pinned transport under MSVC, expand core/codec/loopback CI, package its
-license and document Windows firewall/Host behavior. These are future checks; the existing
-Windows verification limits below remain unresolved by the planning task.
+Multiplayer M3 (2026-10-23): `boat_study` now links the pinned ENet library (winsock,
+`ws2_32`/`winmm`) for the diagnostic `--connect` mode, and the package step copies
+`enet-LICENSE.txt`. **The Windows build of ENet and `src/boat_net_enet.c` has not been compiled**;
+the next workflow run is its first MSVC build. [M6](MULTIPLAYER_PLAN.md) still owns MSVC
+qualification, codec/loopback CI on Windows and firewall/Host documentation. The existing
+Windows verification limits below remain unresolved.
 
 The Windows boat study GitHub Actions workflow builds a Release x64 executable
 on windows-2022 with Visual Studio 2022. It runs on pushes and can also be

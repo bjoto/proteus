@@ -18,6 +18,10 @@ iterating on effects, timing, audio, and presentation.
   queries, wakes, course crossing, contacts and geometry data) must not draw, read input, open
   windows or audio, or touch files; `tools/check_core_boundary.py` enforces this in CTest. See
   `docs/TESTING.md` for the libraries and test labels.
+- `src/boat_net_*.[ch]`: multiplayer protocol codec, authority/client sessions and transports.
+  `proteus_boat_net` obeys the core boundary (`boat_net_boundary`); only `boat_net_enet.c` uses
+  ENet and sockets. `tools/boat_server.c` and `tools/boat_bot.c` are the server and scripted
+  client; `docs/MULTIPLAYER_PROTOCOL.md` owns the byte layout.
 - `src/profiler.c`: runtime profiling statistics, reports, and overlay.
 - `src/audio_spectrum.c`: PCM capture, FFT analysis, and smoothed frequency-band levels.
 - `src/xm_audio.c`: XM-specific playback helpers layered over raylib's bundled decoder.
@@ -29,7 +33,8 @@ iterating on effects, timing, audio, and presentation.
 
 ## Build and verify
 
-The first configure fetches pinned raylib 6.0 sources and therefore needs network access.
+The first configure fetches pinned raylib 6.0 sources (and, for native builds, ENet v1.3.18) and
+therefore needs network access.
 
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug

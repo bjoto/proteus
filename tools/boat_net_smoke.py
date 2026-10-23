@@ -1,0 +1,123 @@
+#!/usr/bin/env python3
+"""Multiplayer M3 loopback smoke test: one boat_server room and boat_bot client processes over
+real ENet/UDP on 127.0.0.1.
+
+Two bots join and drive for a few seconds; a third presents the wrong room token and must be
+refused; a second server on the same port must fail with a clear message. Checks exit codes,
+summaries, message/datagram/MTU bounds and that every process stops within a bounded time.
+"""
+
+import argparse
+import re
+import socket
+import subprocess
+import sys
+import time
+
+
+def free_port():
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def fields(text, prefix):
+    for line in text.splitlines():
+        if line.startswith(prefix):
+            return dict(re.findall(r"(\w+)=([^\s]+)", line))
+    raise AssertionError(f"missing '{prefix}' in output:\n{text}")
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--server", required=True)
+    parser.add_argument("--bot", required=True)
+    parser.add_argument("--seconds", type=int, default=4)
+    args = parser.parse_args()
+    port = free_port()
+    endpoint = f"127.0.0.1:{port}"
+    server_seconds = args.seconds + 5
+    started = time.monotonic()
+    server = subprocess.Popen(
+        [args.server, "--port", str(port), "--token", "smoke", "--seconds", str(server_seconds)],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    problems = []
+    try:
+        line = server.stdout.readline()
+        if "listening on" not in line:
+            raise AssertionError(f"server did not start: {line!r}")
+        print(line.strip())
+        clash = subprocess.run([args.server, "--port", str(port), "--ticks", "1"],
+            capture_output=True, text=True, timeout=10)
+        if clash.returncode == 0 or "cannot listen" not in clash.stderr:
+            problems.append(f"second server on the same port: {clash.returncode} {clash.stderr}")
+        else:
+            print("port clash:", clash.stderr.strip())
+        bots = [subprocess.Popen([args.bot, "--connect", endpoint, "--token", "smoke",
+                    "--name", name, "--seconds", str(args.seconds)],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                for name in ("smoke-a", "smoke-b")]
+        intruder = subprocess.run([args.bot, "--connect", endpoint, "--token", "wrong",
+            "--expect-reject"], capture_output=True, text=True, timeout=20)
+        if intruder.returncode != 0 or "wrong room token" not in intruder.stdout:
+            problems.append(f"wrong token: {intruder.returncode} {intruder.stdout}"
+                f"{intruder.stderr}")
+        else:
+            print(intruder.stdout.strip())
+        for bot in bots:
+            out, err = bot.communicate(timeout=args.seconds + 20)
+            print(out.strip())
+            if bot.returncode != 0:
+                problems.append(f"bot exit {bot.returncode}: {err}")
+                continue
+            summary = fields(out, "boat_bot summary:")
+            control = fields(out, "control:")
+            transport = fields(out, "transport:")
+            births = fields(out, "births:")
+            expected_snapshots = 30 * args.seconds * 0.8
+            checks = {
+                "snapshots": int(summary["snapshots"]) >= expected_snapshots,
+                "no resyncs": int(summary["resyncs"]) == 0,
+                "one bootstrap": int(summary["bootstraps"]) == 1,
+                "short mismatches": float(summary["max_mismatch_ms"]) < 250,
+                "births applied": int(births["applied"]) > 0 and int(births["dropped"]) == 0,
+                "commands used": float(control["received_ratio"]) > 0.9,
+                "boat moved": float(control["travelled_m"]) > 10,
+                "no decode errors": int(control["decode_errors"]) == 0,
+                "message bound": int(transport["max_message"]) <= 1100,
+                "datagram bound": 0 < int(transport["max_datagram"]) <= 1200,
+                "mtu": 0 < int(transport["peer_mtu"]) <= 1200,
+            }
+            problems += [f"bot check failed: {k}" for k, ok in checks.items() if not ok]
+        out, err = server.communicate(timeout=server_seconds + 15)
+        elapsed = time.monotonic() - started
+        print(out.strip())
+        if server.returncode != 0:
+            problems.append(f"server exit {server.returncode}: {err}")
+        else:
+            room = fields(out, "boat_server room:")
+            rejected = fields(out, "rejected:")
+            faults = fields(out, "faults:")
+            transport = fields(out, "transport:")
+            checks = {
+                "two accepted": room["accepted"] == "2" and room["left"] == "2",
+                "token rejected": rejected["token"] == "1",
+                "no faults": all(faults[k] == "0" for k in
+                    ("malformed", "forbidden", "misbehaving", "output", "emission")),
+                "ticks": int(room["ticks"]) == server_seconds * 120,
+                "message bound": int(transport["max_message"]) <= 1100,
+                "datagram bound": 0 < int(transport["max_datagram"]) <= 1200,
+                "bounded exit": elapsed < server_seconds + 10,
+            }
+            problems += [f"server check failed: {k}" for k, ok in checks.items() if not ok]
+    finally:
+        if server.poll() is None:
+            server.kill()
+    for problem in problems:
+        print(problem)
+    print("boat_net_loopback=" + ("fail" if problems else "ok"))
+    return 1 if problems else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

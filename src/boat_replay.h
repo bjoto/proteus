@@ -7,7 +7,6 @@
 #define BOAT_REPLAY_MAX_SECONDS 600
 // Recorded world time is absolute session time, so a course may start long after launch.
 #define BOAT_REPLAY_MAX_WORLD_SECONDS (100.0 * 365 * 86400)
-#define BOAT_PHYSICS_REVISION 6
 #define BOAT_REPLAY_MAX_SAMPLES (BOAT_REPLAY_MAX_SECONDS * BOAT_TICK_HZ + 2)
 
 typedef struct {
