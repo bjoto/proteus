@@ -2,6 +2,7 @@
 #define PROTEUS_BOAT_H
 
 #include "boat_clock.h"
+#include "boat_input.h"
 #include "boat_wake_player.h"
 #include "boat_world.h"
 
@@ -43,9 +44,8 @@ void boat_reset(Boat *boat);
 void boat_reset_location(Boat *boat, const BoatWorldDefinition *definition);
 // Advance one fixed tick ending at world time NOW; the caller owns the clock (BoatSession).
 // Translation starts from the position given, so callers sweep gates from it.
-// Only WORLD's water history is written. Inputs are adjustment rates in -1..1; zero centres
-// the wheel and holds throttle. Opposite steering unwinds the wheel three times faster.
-void boat_step(Boat *boat, BoatWorld *world, double now, float wheel_change, float throttle_change);
+// Only WORLD's water history is written. Opposite steering unwinds the wheel three times faster.
+void boat_step(Boat *boat, BoatWorld *world, double now, BoatInput input);
 // Mutual planar impulse/separation for two dynamic hulls with vertical overlap.
 // Positive normalized masses also scale yaw inertia; no allocation or route ownership.
 bool boat_collide_pair(Boat *a, float mass_a, Boat *b, float mass_b);

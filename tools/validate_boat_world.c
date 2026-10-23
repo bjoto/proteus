@@ -37,7 +37,7 @@ static void drive(BoatSession *session, int tick)
 {
     float wheel, throttle;
     loop_inputs(&session->boat, tick, &wheel, &throttle);
-    boat_session_step(session, wheel, throttle);
+    boat_session_step(session, (BoatInput) { wheel, throttle });
 }
 
 static void start(BoatSession *session, int index)
@@ -114,7 +114,7 @@ static int clones(void)
     reference = original;
     for (int tick = 1200; tick < 1800; ++tick) {
         drive(&original, tick);
-        boat_session_step(&clone, -1, -1);
+        boat_session_step(&clone, (BoatInput) { -1, -1 });
     }
     for (int tick = 1200; tick < 1800; ++tick)
         drive(&reference, tick);
@@ -224,7 +224,7 @@ static int core_order(void)
         float wheel, throttle;
         loop_inputs(&boat, i, &wheel, &throttle);
         Vector2 previous = boat.position;
-        boat_step(&boat, &world, boat_tick_seconds(++tick), wheel, throttle);
+        boat_step(&boat, &world, boat_tick_seconds(++tick), (BoatInput) { wheel, throttle });
         boat_course_step(&course, previous, boat.position, BOAT_TICK_SECONDS);
         drive(&session, i);
         CHECK(session.tick == tick && memcmp(&session.boat, &boat, sizeof(boat)) == 0);

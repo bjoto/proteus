@@ -178,7 +178,7 @@ int main(void)
         boat.boat.velocity
             = (Vector2) { sinf(boat.boat.heading) * 8, -cosf(boat.boat.heading) * 8 };
         for (int tick = 0; tick < 600; ++tick) {
-            boat_session_step(&boat, 0, 0);
+            boat_session_step(&boat, (BoatInput) { 0 });
             CHECK(player_clear(&boat.boat));
             CHECK(isfinite(boat.boat.yaw_velocity));
         }
@@ -186,7 +186,7 @@ int main(void)
         Vector2 contact = boat.boat.position;
         boat.boat.throttle = -.5f;
         for (int tick = 0; tick < 600; ++tick) {
-            boat_session_step(&boat, 0, 0);
+            boat_session_step(&boat, (BoatInput) { 0 });
             CHECK(player_clear(&boat.boat));
         }
         CHECK(Vector2Distance(contact, boat.boat.position) > 3);

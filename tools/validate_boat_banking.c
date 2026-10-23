@@ -89,14 +89,14 @@ static int validate_core(void)
     BoatSession boat;
     boat_session_init(&boat, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
     for (int tick = 0; tick < 240; ++tick) {
-        boat_session_step(&boat, 1, 0);
+        boat_session_step(&boat, (BoatInput) { 1, 0 });
         CHECK(boat.boat.turn_roll_load == 0 && fabsf(boat.boat.roll) < .000001f
             && fabsf(boat.boat.roll_velocity) < .000001f);
     }
     // A no-force residual decays exactly; the filter is still active in neutral.
     boat.boat.turn_roll_load = 2;
     float previous = boat.boat.turn_roll_load;
-    boat_session_step(&boat, 0, 0);
+    boat_session_step(&boat, (BoatInput) { 0 });
     CHECK(fabsf(boat.boat.turn_roll_load - previous * expf(-BOAT_STEP / 0.06f)) < .000001f);
     CHECK(boat.boat.roll > 0 && boat.boat.roll_velocity > 0);
     boat_session_init(&boat, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
@@ -112,7 +112,7 @@ static int validate_core(void)
     for (int sign = -1; sign <= 1; sign += 2) {
         boat_session_init(&boat, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
         boat.boat.turn_roll_load = sign * 10000;
-        boat_session_step(&boat, 0, 0);
+        boat_session_step(&boat, (BoatInput) { 0 });
         float moment = .45f * boat.boat.roll_velocity / BOAT_STEP;
         CHECK(fabsf(moment - sign * 27.04f * 12 * DEG2RAD) < .00001f);
         CHECK(fabsf(boat.boat.roll - boat.boat.roll_velocity * BOAT_STEP) < .000001f);
@@ -123,7 +123,7 @@ static int validate_core(void)
     boat.boat.yaw_velocity = .4f;
     boat.boat.planing = 1;
     BoatSession before = boat;
-    boat_session_step(&boat, 0, 0);
+    boat_session_step(&boat, (BoatInput) { 0 });
     CHECK(check_filter(
               &before.boat, &boat.boat, (boat.boat.velocity.x - before.boat.velocity.x) / BOAT_STEP)
         == 0);
@@ -135,7 +135,7 @@ static int validate_core(void)
         boat.boat.velocity = Vector2Add(Vector2Scale(forward(boat.boat.heading), -3),
             Vector2Scale(right(boat.boat.heading), .8f));
         boat.boat.yaw_velocity = .4f;
-        boat_session_step(&boat, 0, 0);
+        boat_session_step(&boat, (BoatInput) { 0 });
         reverse_peak = fmaxf(reverse_peak, fabsf(boat.boat.roll));
         CHECK(reverse_peak < 3 * DEG2RAD);
     }
@@ -145,10 +145,10 @@ static int validate_core(void)
     for (int sign = -1; sign <= 1; sign += 2) {
         boat_session_init(&boat, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
         boat.boat.roll = sign * 32 * DEG2RAD;
-        boat_session_step(&boat, 0, 0);
+        boat_session_step(&boat, (BoatInput) { 0 });
         CHECK(sign * boat.boat.roll > 30 * DEG2RAD && sign * boat.boat.roll_velocity < 0);
         for (int tick = 0; tick < 360; ++tick)
-            boat_session_step(&boat, 0, 0);
+            boat_session_step(&boat, (BoatInput) { 0 });
         CHECK(fabsf(boat.boat.roll) < .5f * DEG2RAD
             && fabsf(boat.boat.roll_velocity) < .5f * DEG2RAD);
     }
@@ -186,7 +186,7 @@ static int validate_restoring(FILE *report)
     BoatSession boat;
     boat_session_init(&boat, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
     boat.boat.roll = .0001f;
-    boat_session_step(&boat, 0, 0);
+    boat_session_step(&boat, (BoatInput) { 0 });
     float stiffness = -(.45f * boat.boat.roll_velocity / BOAT_STEP) / .0001f;
     CHECK(fabsf(stiffness - 64 * .65f * .65f) < .002f);
     boat_session_init(&boat, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
@@ -194,7 +194,7 @@ static int validate_restoring(FILE *report)
     int last_unsettled = 0;
     for (int tick = 0; tick < 360; ++tick) {
         BoatSession before = boat;
-        boat_session_step(&boat, 0, 0);
+        boat_session_step(&boat, (BoatInput) { 0 });
         row(report, "free_decay", tick, &before, 0, 0, 0);
         CHECK(isfinite(boat.boat.roll) && isfinite(boat.boat.roll_velocity));
         if (fabsf(boat.boat.roll) >= .5f * DEG2RAD
@@ -223,8 +223,8 @@ static int validate_free(FILE *report)
             banking_fixture_input(&repeat.boat, scenario, tick);
             CHECK(open_water(&boat.boat));
             BoatSession before = boat;
-            boat_session_step(&boat, wheel, 0);
-            boat_session_step(&repeat, wheel, 0);
+            boat_session_step(&boat, (BoatInput) { wheel, 0 });
+            boat_session_step(&repeat, (BoatInput) { wheel, 0 });
             CHECK(same_state(&boat, &repeat));
             CHECK(open_water(&boat.boat));
             float load
@@ -273,7 +273,7 @@ static float probe_planing(float speed, float slip, float yaw, float planing)
     prescribe(&boat.boat, speed, slip, yaw);
     boat.boat.planing = planing;
     Vector2 velocity = boat.boat.velocity;
-    boat_session_step(&boat, 0, 0);
+    boat_session_step(&boat, (BoatInput) { 0 });
     return (boat.boat.velocity.x - velocity.x) / BOAT_STEP;
 }
 
@@ -317,7 +317,7 @@ static int validate_tow(FILE *report)
                 prescribe(&boat.boat, speed, slip, yaw);
                 CHECK(open_water(&boat.boat));
                 BoatSession before = boat;
-                boat_session_step(&boat, 0, 0);
+                boat_session_step(&boat, (BoatInput) { 0 });
                 CHECK(open_water(&boat.boat));
                 float load
                     = Vector2DotProduct(Vector2Subtract(boat.boat.velocity, before.boat.velocity),
@@ -377,7 +377,7 @@ static int validate_release(void)
         float previous = floating_energy(&boat.boat), peak_gain = 0;
         int last_unsettled = 0;
         for (int tick = 0; tick < 1200; ++tick) {
-            boat_session_step(&boat, 0, 0);
+            boat_session_step(&boat, (BoatInput) { 0 });
             float next = floating_energy(&boat.boat);
             peak_gain = fmaxf(peak_gain, next - previous);
             CHECK(next <= previous + .000002f);
@@ -420,8 +420,8 @@ static int validate_blend_flow(void)
             flow.boat.velocity = Vector2Add(flow.boat.velocity, flow.world.water.current);
             // Flat, spatially uniform flow: recentering is legitimate external tow work.
             BoatSession before = still;
-            boat_session_step(&still, 0, 0);
-            boat_session_step(&flow, 0, 0);
+            boat_session_step(&still, (BoatInput) { 0 });
+            boat_session_step(&flow, (BoatInput) { 0 });
             float load
                 = Vector2DotProduct(Vector2Subtract(still.boat.velocity, before.boat.velocity),
                       right(before.boat.heading))
@@ -464,15 +464,15 @@ static int validate_blend_flow(void)
     a.boat.planing = .5f;
     b = a;
     b.boat.planing += .0001f;
-    boat_session_step(&a, 0, 0);
-    boat_session_step(&b, 0, 0);
+    boat_session_step(&a, (BoatInput) { 0 });
+    boat_session_step(&b, (BoatInput) { 0 });
     CHECK(fabsf(a.boat.turn_roll_load - b.boat.turn_roll_load) < .0001f);
     const float speeds[] = { 0, 4, 12, 18 };
     for (int si = 0; si < 4; ++si) {
         boat_session_init(&a, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
         for (int tick = 0; tick < 960; ++tick) {
             prescribe(&a.boat, speeds[si], 0, 0);
-            boat_session_step(&a, 0, 0);
+            boat_session_step(&a, (BoatInput) { 0 });
             CHECK(fabsf(a.boat.turn_roll_load) < .000001f && fabsf(a.boat.roll) < .000001f);
         }
     }
@@ -481,7 +481,7 @@ static int validate_blend_flow(void)
     float docking_peak = 0;
     for (int tick = 0; tick < 960; ++tick) {
         prescribe(&a.boat, 1, .2f, .4f);
-        boat_session_step(&a, 0, 0);
+        boat_session_step(&a, (BoatInput) { 0 });
         docking_peak = fmaxf(docking_peak, fabsf(a.boat.roll));
     }
     CHECK(docking_peak < 2 * DEG2RAD);
@@ -504,8 +504,8 @@ static int validate_transitions(FILE *report)
         float wheel = tick < 480 ? 1 : -1;
         BoatSession before = a;
         CHECK(open_water(&a.boat) && open_water(&b.boat));
-        boat_session_step(&a, wheel, 0);
-        boat_session_step(&b, -wheel, 0);
+        boat_session_step(&a, (BoatInput) { wheel, 0 });
+        boat_session_step(&b, (BoatInput) { -wheel, 0 });
         CHECK(open_water(&a.boat) && open_water(&b.boat));
         CHECK(fabsf(a.boat.roll + b.boat.roll) < .00002f);
         CHECK(fabsf(a.boat.roll_velocity + b.boat.roll_velocity) < .00005f);
@@ -535,7 +535,7 @@ static int validate_transitions(FILE *report)
     for (int tick = 0; tick < 2400; ++tick) {
         BoatSession before = a;
         CHECK(open_water(&a.boat));
-        boat_session_step(&a, 0, 0);
+        boat_session_step(&a, (BoatInput) { 0 });
         CHECK(open_water(&a.boat));
         CHECK(energy(&a.boat) <= energy(&before.boat) + .00002f);
         float load = Vector2DotProduct(Vector2Subtract(a.boat.velocity, before.boat.velocity),
@@ -647,8 +647,8 @@ static int validate_wave_turns(FILE *report)
             // Free constant-wheel circles; no imposed positions in spatial wave fields.
             float wheel = .55f;
             BoatSession before = boat;
-            boat_session_step(&boat, wheel, 0);
-            boat_session_step(&repeat, wheel, 0);
+            boat_session_step(&boat, (BoatInput) { wheel, 0 });
+            boat_session_step(&repeat, (BoatInput) { wheel, 0 });
             CHECK(same_state(&boat, &repeat) && finite_state(&boat.boat));
             CHECK(open_water(&boat.boat));
             CHECK(fabsf(boat.boat.roll) < 30 * DEG2RAD);
@@ -678,13 +678,13 @@ static int validate_wave_turns(FILE *report)
         boat.world.water = (BoatWater) { 0 };
         boat.boat.throttle = 0;
         for (int tick = 0; tick < 14400; ++tick) {
-            boat_session_step(&boat, 0, 0);
+            boat_session_step(&boat, (BoatInput) { 0 });
             CHECK(finite_state(&boat.boat) && fabsf(boat.boat.roll) < 30 * DEG2RAD);
         }
         CHECK(fabsf(boat.boat.roll) < .0001f && fabsf(boat.boat.roll_velocity) < .0001f);
         Vector2 rest = boat.boat.position;
         for (int tick = 0; tick < 14400; ++tick)
-            boat_session_step(&boat, 0, 0);
+            boat_session_step(&boat, (BoatInput) { 0 });
         printf("rest_drift=%g speed=%g\n", Vector2Distance(rest, boat.boat.position),
             Vector2Length(boat.boat.velocity));
         CHECK(
@@ -724,8 +724,8 @@ static int validate_long_transitions(void)
     float peak = 0, peak_rate = 0;
     for (int tick = 0; tick < 14400; ++tick) {
         float wheel = sinf(tick * .005f), throttle_change = sinf(tick * .001f);
-        boat_session_step(&boat, wheel, throttle_change);
-        boat_session_step(&repeat, wheel, throttle_change);
+        boat_session_step(&boat, (BoatInput) { wheel, throttle_change });
+        boat_session_step(&repeat, (BoatInput) { wheel, throttle_change });
         CHECK(same_state(&boat, &repeat) && finite_state(&boat.boat));
         CHECK(footprint_clear(&boat));
         CHECK(fabsf(boat.boat.roll) < 30 * DEG2RAD);
@@ -770,8 +770,8 @@ static int validate_contacts(void)
             BoatSession probe_boat = boat;
             probe_boat.world.definition = boat_location(BOAT_LOCATION_BASIN);
             probe_boat.boat.position = (Vector2) { 0 };
-            boat_session_step(&probe_boat, 0, 0);
-            boat_session_step(&boat, 0, 0);
+            boat_session_step(&probe_boat, (BoatInput) { 0 });
+            boat_session_step(&boat, (BoatInput) { 0 });
             float error = fabsf(boat.boat.turn_roll_load - probe_boat.boat.turn_roll_load);
             max_load_error = fmaxf(max_load_error, error);
             CHECK(error < .000001f);

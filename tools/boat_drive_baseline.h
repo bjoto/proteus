@@ -38,7 +38,7 @@ static void baseline_step(BoatSession *session, float steering, float throttle,
         boat_wake_objects_advance(&objects->wakes);
     BoatWakeStern before = wake ? boat_wake_stern(boat, &session->world, boat_session_time(session))
                                 : (BoatWakeStern) { 0 };
-    boat_session_step(session, steering, throttle);
+    boat_session_step(session, (BoatInput) { steering, throttle });
     double now = boat_session_time(session);
     if (objects) {
         baseline_track(objects, boat, &session->world, now, 0);
@@ -54,8 +54,8 @@ static void baseline_step(BoatSession *session, float steering, float throttle,
             // Recovery once narrowed the crossing boat's cached time to float for this tick.
             double other_time = now;
             boat_step(other, &objects->other_world, now,
-                Clamp((wheel - other->wheel) / BOAT_STEP, -1, 1),
-                Clamp((.75f - other->throttle) / (.5f * BOAT_STEP), -1, 1));
+                (BoatInput) { Clamp((wheel - other->wheel) / BOAT_STEP, -1, 1),
+                    Clamp((.75f - other->throttle) / (.5f * BOAT_STEP), -1, 1) });
             boat_collide_pair(boat, 1, other, 1.6f);
             if (other->motion_state == BOAT_CAPSIZED) {
                 objects->recovery_time += BOAT_STEP;

@@ -28,11 +28,11 @@ static int clock_contracts(void)
             session.tick == ticks[i] && boat_session_time(&session) == boat_tick_seconds(ticks[i]));
     }
     boat_session_set_tick(&session, 432000);
-    CHECK(boat_session_step(&session, 0, 0));
+    CHECK(boat_session_step(&session, (BoatInput) { 0 }));
     CHECK(session.tick == 432001 && boat_session_time(&session) == boat_tick_seconds(432001));
     boat_session_set_tick(&session, UINT64_MAX);
     Boat held = session.boat;
-    CHECK(!boat_session_step(&session, 1, 1) && session.tick == UINT64_MAX);
+    CHECK(!boat_session_step(&session, (BoatInput) { 1, 1 }) && session.tick == UINT64_MAX);
     CHECK(memcmp(&held, &session.boat, sizeof(held)) == 0);
     boat_session_init(&session, basin, (BoatWater) { 0 });
     CHECK(session.tick == 0 && boat_session_time(&session) == 0);
@@ -298,8 +298,9 @@ static int banked_course(const char *directory)
         float throttle = fabsf(error) > .4f ? .25f : .45f;
         BoatReplaySample before
             = boat_replay_pose(b, &session.presentation, boat_session_time(&session));
-        boat_session_step(&session, Clamp((wheel - b->wheel) / BOAT_STEP, -1, 1),
-            Clamp((throttle - b->throttle) / (.5f * BOAT_STEP), -1, 1));
+        boat_session_step(&session,
+            (BoatInput) { Clamp((wheel - b->wheel) / BOAT_STEP, -1, 1),
+                Clamp((throttle - b->throttle) / (.5f * BOAT_STEP), -1, 1) });
         boat_replay_record(&live, before,
             boat_replay_pose(b, &session.presentation, boat_session_time(&session)),
             &session.course, false);
@@ -327,7 +328,7 @@ static int banked_course(const char *directory)
     CHECK(memcmp(own->splits, live.splits, sizeof(live.splits)) == 0);
     CHECK(session.runs.save_best && !FileExists(best));
     for (int tick = 0; tick < 120; ++tick) // Finished: further ticks neither record nor save.
-        CHECK(boat_session_step(&session, 0, 0));
+        CHECK(boat_session_step(&session, (BoatInput) { 0 }));
     CHECK(own->count == live.count && !FileExists(best));
     boat_session_flush(&session);
     CHECK(!session.runs.save_best && boat_replay_load(&loaded, best));

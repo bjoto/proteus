@@ -377,3 +377,20 @@ final header rename/formatting pass, and the hour soaks ran on the new tree.
 The `d65d469` outputs came from a concurrent run, so the timings are not comparable.
 Artifacts are in `build/bench/s4/{out-head,out-new,soak-new,fixtures}`. No simulation or
 render behavior was intended to change, so C3 remains the reference baseline.
+
+## S3 `BoatInput` comparison — 2026-10-23
+
+The [`BoatInput` change](BOATING_FOUNDATIONS_PLAN.md#s3-boatinput-handoff--2026-10-23)
+replaces the two step-rate floats with one input value, without formula changes. It was
+compared against a detached `ba83d53` worktree with the same setup: MacBookPro18,2 (M1 Max,
+macOS 26.6.2), Release AppleClang and `-DFETCHCONTENT_SOURCE_DIR_RAYLIB`. Both trees ran the
+S4 comparison script one after the other.
+
+| Check | Result |
+| --- | --- |
+| Validators/review tools | 18 outputs exit 0 and match except the object-wake timing line |
+| Benchmark trace | Byte-identical state CSV, hash `2c318477117e222e`; p50 0.067 ms |
+| Captures | The same 54 CPU/GPU frames are byte-identical to `ba83d53` |
+
+The hour soaks were not rerun. Artifacts are in `build/bench/input/{out-head,out-new}`. No
+simulation or render behavior was intended to change, so C3 remains the reference baseline.

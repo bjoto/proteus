@@ -209,8 +209,8 @@ static void jumps(void)
     for (unsigned t = 0; t < 600; ++t) {
         boat_wake_objects_advance(&world);
         boat_wake_objects_advance(&flat);
-        boat_session_step(&receiver, 0, 0);
-        boat_session_step(&calm, 0, 0);
+        boat_session_step(&receiver, (BoatInput) { 0 });
+        boat_session_step(&calm, (BoatInput) { 0 });
         height = fmaxf(height, receiver.boat.height - calm.boat.height);
         lift = fmaxf(lift, receiver.boat.vertical_velocity);
         dry += boat_wake_stern(&receiver.boat, &receiver.world, boat_session_time(&receiver)).wet
@@ -223,7 +223,7 @@ static void jumps(void)
     for (unsigned t = 0; t < 2400; ++t) {
         boat_wake_objects_advance(&world);
         float neutral = Clamp(-receiver.boat.throttle / (.5f * BOAT_STEP), -1, 1);
-        boat_session_step(&receiver, 0, neutral);
+        boat_session_step(&receiver, (BoatInput) { 0, neutral });
         CHECK(isfinite(receiver.boat.height) && fabsf(receiver.boat.height) < 8);
     }
     CHECK(world.live == 0 && fabsf(receiver.boat.vertical_velocity) < .2f);
@@ -252,8 +252,8 @@ static float diagonal_jump(bool crossing)
     for (unsigned tick = 0; tick < 720; ++tick) {
         boat_wake_objects_advance(&world);
         boat_wake_objects_advance(&flat);
-        boat_session_step(&boat, 0, 0);
-        boat_session_step(&calm, 0, 0);
+        boat_session_step(&boat, (BoatInput) { 0 });
+        boat_session_step(&calm, (BoatInput) { 0 });
         CHECK(isfinite(boat.boat.height) && fabsf(boat.boat.height) < 40);
         peak = fmaxf(peak, boat.boat.height - calm.boat.height);
     }
@@ -283,8 +283,8 @@ static void local_fleet(void)
         for (unsigned i = 0; i < 4; ++i) {
             Boat *boat = &fleet[i].boat;
             bool airborne = boat->motion_state == BOAT_AIRBORNE;
-            boat_session_step(
-                &fleet[i], tick < 180 ? 0 : (i % 2 ? -1 : 1) * .7f, tick < 240 ? 1 : 0);
+            boat_session_step(&fleet[i],
+                (BoatInput) { tick < 180 ? 0 : (i % 2 ? -1 : 1) * .7f, tick < 240 ? 1 : 0 });
             flights += !airborne && boat->motion_state == BOAT_AIRBORNE;
             CHECK(isfinite(boat->height) && isfinite(boat->heading));
             BoatWakeStern stern
@@ -334,7 +334,7 @@ static void gameplay_envelope(void)
                     bool airborne = false;
                     for (unsigned tick = 0; tick < 4200; ++tick) {
                         boat_wake_objects_advance(&world);
-                        boat_session_step(&boat, 0, 0);
+                        boat_session_step(&boat, (BoatInput) { 0 });
                         CHECK(isfinite(boat.boat.height) && isfinite(boat.boat.pitch)
                             && isfinite(boat.boat.roll));
                         airborne |= boat.boat.motion_state == BOAT_AIRBORNE;
@@ -554,7 +554,8 @@ static void runtime(bool graphics, bool visible)
         for (unsigned j = 0; j < 2; ++j) {
             boat_wake_objects_advance(&w);
             float wheel = frame > 210 ? 1 : 0;
-            boat_session_step(&boat, Clamp((wheel - boat.boat.wheel) / BOAT_STEP, -1, 1), 1);
+            boat_session_step(
+                &boat, (BoatInput) { Clamp((wheel - boat.boat.wheel) / BOAT_STEP, -1, 1), 1 });
             track(&w, &boat);
             CHECK(isfinite(boat.boat.height) && fabsf(boat.boat.height) < 8);
             dry += boat_wake_stern(&boat.boat, &boat.world, boat_session_time(&boat)).wet == 0;

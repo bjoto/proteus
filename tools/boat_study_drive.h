@@ -15,7 +15,6 @@ typedef struct {
 } ObjectStudy;
 
 void object_study_reset(ObjectStudy *, BoatSession *, bool, unsigned, float);
-void timed_boat_step(
-    BoatSession *, float, float, BoatFrameMetrics *, BoatWakePlayer *, ObjectStudy *);
+void timed_boat_step(BoatSession *, BoatInput, BoatFrameMetrics *, BoatWakePlayer *, ObjectStudy *);
 void demo_step(BoatSession *, int, BoatFrameMetrics *, BoatWakePlayer *, ObjectStudy *);
 #endif

@@ -44,6 +44,6 @@ void boat_session_respawn(BoatSession *session);
 // Advance the clock once, step the boat at the new tick, sweep the course gates from its
 // previous position, step its presentation when enabled and record course runs when enabled.
 // No file I/O. False at the clock limit.
-bool boat_session_step(BoatSession *session, float wheel_change, float throttle_change);
+bool boat_session_step(BoatSession *session, BoatInput input);
 
 #endif

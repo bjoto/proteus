@@ -28,8 +28,8 @@ static void object_track(
     }
 }
 
-void timed_boat_step(BoatSession *session, float steering, float throttle,
-    BoatFrameMetrics *metrics, BoatWakePlayer *wake, ObjectStudy *objects)
+void timed_boat_step(BoatSession *session, BoatInput input, BoatFrameMetrics *metrics,
+    BoatWakePlayer *wake, ObjectStudy *objects)
 {
     Boat *boat = &session->boat;
     double started = boat_profile_time(IsWindowReady());
@@ -37,7 +37,7 @@ void timed_boat_step(BoatSession *session, float steering, float throttle,
         boat_wake_objects_advance(&objects->wakes);
     BoatWakeStern before = wake ? boat_wake_stern(boat, &session->world, boat_session_time(session))
                                 : (BoatWakeStern) { 0 };
-    boat_session_step(session, steering, throttle);
+    boat_session_step(session, input);
     double now = boat_session_time(session);
     if (objects) {
         object_track(objects, boat, &session->world, now, 0);
@@ -51,8 +51,8 @@ void timed_boat_step(BoatSession *session, float steering, float throttle,
             float error = remainderf(target - other->heading, 2 * PI);
             float wheel = Clamp(2 * error - other->yaw_velocity, -1, 1);
             boat_step(other, &objects->other_world, now,
-                Clamp((wheel - other->wheel) / BOAT_STEP, -1, 1),
-                Clamp((.75f - other->throttle) / (.5f * BOAT_STEP), -1, 1));
+                (BoatInput) { Clamp((wheel - other->wheel) / BOAT_STEP, -1, 1),
+                    Clamp((.75f - other->throttle) / (.5f * BOAT_STEP), -1, 1) });
             if (session->presentation_enabled)
                 boat_presentation_step(
                     &objects->other_presentation, other, &objects->other_world, now);
@@ -94,20 +94,23 @@ void demo_step(BoatSession *session, int tick, BoatFrameMetrics *metrics, BoatWa
     if (wake || objects || water->player_wake_enabled) {
         float throttle = tick < 1440 ? 1 : 0;
         float wheel = tick >= 420 && tick < 1440 ? 1 : 0;
-        timed_boat_step(session, Clamp((wheel - boat->wheel) / BOAT_STEP, -1, 1),
-            Clamp((throttle - boat->throttle) / (.5f * BOAT_STEP), -1, 1), metrics, wake, objects);
+        timed_boat_step(session,
+            (BoatInput) { Clamp((wheel - boat->wheel) / BOAT_STEP, -1, 1),
+                Clamp((throttle - boat->throttle) / (.5f * BOAT_STEP), -1, 1) },
+            metrics, wake, objects);
         return;
     }
     if (water->wake_amplitude != 0 || Vector2LengthSqr(water->current) > 0) {
         // Let the source become visible, approach its spreading wake, then recover in neutral.
         float target = tick < 720 ? 0 : tick < 1200 ? .65f : 0;
-        timed_boat_step(session, 0, Clamp((target - boat->throttle) / (.5f * BOAT_STEP), -1, 1),
-            metrics, wake, objects);
+        timed_boat_step(session,
+            (BoatInput) { 0, Clamp((target - boat->throttle) / (.5f * BOAT_STEP), -1, 1) }, metrics,
+            wake, objects);
         return;
     }
     // Ease through neutral into reverse with the same held steering.
     float target_wheel = tick >= 360 ? 0.65f : 0;
     float wheel_change = fmaxf(-1, fminf(1, (target_wheel - boat->wheel) / BOAT_STEP));
     float throttle_change = tick < 240 ? 1 : tick < 480 ? 0 : tick < 960 ? -1 : 0;
-    timed_boat_step(session, wheel_change, throttle_change, metrics, wake, objects);
+    timed_boat_step(session, (BoatInput) { wheel_change, throttle_change }, metrics, wake, objects);
 }

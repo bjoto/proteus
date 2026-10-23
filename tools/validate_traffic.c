@@ -308,14 +308,14 @@ int main(void)
         boat.boat.position = (Vector2) { -p.x, p.z };
         Vector2 initial = boat.boat.position;
         for (int tick = 0; tick < 120 * 8; ++tick) {
-            boat_session_step(&boat, 0, 0);
+            boat_session_step(&boat, (BoatInput) { 0 });
             CHECK(hulls_clear(&boat.boat, boat_session_time(&boat)));
             CHECK(Vector2Length(boat.boat.velocity) < 12 && fabsf(boat.boat.yaw_velocity) < 5);
         }
         CHECK(Vector2Distance(initial, boat.boat.position) > .5f);
         boat.boat.throttle = 1;
         for (int tick = 0; tick < 120 * 6; ++tick) {
-            boat_session_step(&boat, 0, 0);
+            boat_session_step(&boat, (BoatInput) { 0 });
             CHECK(hulls_clear(&boat.boat, boat_session_time(&boat)));
         }
         // A deliberate beam-on crossing checks the full SAT hull and moving contact torque.
@@ -330,7 +330,7 @@ int main(void)
         boat.boat.velocity
             = (Vector2) { sinf(boat.boat.heading) * 8, -cosf(boat.boat.heading) * 8 };
         for (int tick = 0; tick < 120 * 5; ++tick) {
-            boat_session_step(&boat, 0, 0);
+            boat_session_step(&boat, (BoatInput) { 0 });
             CHECK(hulls_clear(&boat.boat, boat_session_time(&boat)));
             CHECK(Vector2Length(boat.boat.velocity) < 16 && fabsf(boat.boat.yaw_velocity) < 6);
         }

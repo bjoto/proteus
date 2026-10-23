@@ -57,7 +57,7 @@ void boat_session_respawn(BoatSession *session)
     boat_presentation_reset(&session->presentation);
 }
 
-bool boat_session_step(BoatSession *session, float wheel_change, float throttle_change)
+bool boat_session_step(BoatSession *session, BoatInput input)
 {
     if (session->tick == UINT64_MAX)
         return false;
@@ -68,7 +68,7 @@ bool boat_session_step(BoatSession *session, float wheel_change, float throttle_
     Vector2 previous = session->boat.position;
     ++session->tick;
     double now = boat_session_time(session);
-    boat_step(&session->boat, &session->world, now, wheel_change, throttle_change);
+    boat_step(&session->boat, &session->world, now, input);
     boat_course_step(&session->course, previous, session->boat.position, BOAT_TICK_SECONDS);
     if (session->presentation_enabled)
         boat_presentation_step(&session->presentation, &session->boat, &session->world, now);

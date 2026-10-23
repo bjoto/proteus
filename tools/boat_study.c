@@ -675,10 +675,12 @@ int main(int argc, char **argv)
             metrics.course_replay_ms
                 += (float)((boat_profile_time(true) - course_started_at) * 1000.0);
         } else if (active) {
-            float steering = (IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D))
-                - (IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A));
-            float throttle_change = (IsKeyDown(KEY_UP) || IsKeyDown(KEY_W))
-                - (IsKeyDown(KEY_DOWN) || IsKeyDown(KEY_S));
+            BoatInput input = {
+                .steering_rate = (float)((IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D))
+                    - (IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A))),
+                .throttle_rate = (float)((IsKeyDown(KEY_UP) || IsKeyDown(KEY_W))
+                    - (IsKeyDown(KEY_DOWN) || IsKeyDown(KEY_S))),
+            };
             double raw_active_delta = GetFrameTime();
             metrics.discarded_active_ms
                 = boat_profile_discarded_seconds(raw_active_delta, true) * 1000.0f;
@@ -687,7 +689,7 @@ int main(int argc, char **argv)
                 if (demo)
                     demo_step(&session, demo_tick++, &metrics, wake, objects);
                 else
-                    timed_boat_step(&session, steering, throttle_change, &metrics, wake, objects);
+                    timed_boat_step(&session, input, &metrics, wake, objects);
                 accumulator -= BOAT_TICK_SECONDS;
             }
         } else {

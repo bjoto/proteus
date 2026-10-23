@@ -13,8 +13,9 @@ playback of all modes), the foundations basin W1/W3 slice (explicit world/sessio
 gate; user-played), the basin S1/S2 slice (shared pose math, presentation split; not yet
 user-played), the basin S3 slice (session-owned course/runs, replay view state, finish saves
 outside the physical tick; user-played) and the basin S4 slice (static core library,
-display-free core validator, source/symbol boundary check; not yet user-played) are
-implemented. Next: the foundations S3 `BoatInput` type, then M2. All M1–M8 work is pending. Numerical budgets below are proposed gates, not measured multiplayer results.
+display-free core validator, source/symbol boundary check; not yet user-played) and the S3
+`BoatInput` type (not yet user-played) are implemented, completing the minimum core
+prerequisites. Next: M2. All M1–M8 work is pending. Numerical budgets below are proposed gates, not measured multiplayer results.
 The final evidence section distinguishes checks performed for this document from future checks.
 
 ## Recommendation and product boundary

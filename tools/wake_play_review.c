@@ -36,7 +36,7 @@ static void crossing(void)
     for (unsigned tick = 0; tick < 960; ++tick) {
         BoatWakeStern before
             = boat_wake_stern(&emitter.boat, &emitter.world, boat_session_time(&emitter));
-        boat_session_step(&emitter, 0, 1);
+        boat_session_step(&emitter, (BoatInput) { 0, 1 });
         CHECK(boat_wake_player_step(world, before,
             boat_wake_stern(&emitter.boat, &emitter.world, boat_session_time(&emitter))));
     }
@@ -61,8 +61,8 @@ static void crossing(void)
     double height = 0, velocity = 0, pitch = 0, surface = 0;
     unsigned dry_ticks = 0;
     for (unsigned tick = 0; tick < 480; ++tick) {
-        boat_session_step(&receiver, 0, 0);
-        boat_session_step(&calm, 0, 0);
+        boat_session_step(&receiver, (BoatInput) { 0 });
+        boat_session_step(&calm, (BoatInput) { 0 });
         CHECK(boat_wake_player_step(world, (BoatWakeStern) { 0 }, (BoatWakeStern) { 0 }));
         height = fmax(height, fabs(receiver.boat.height - calm.boat.height));
         velocity
@@ -82,7 +82,7 @@ static void crossing(void)
         surface, height, velocity, pitch * 57.2957795131, dry_ticks);
     for (unsigned tick = 0; tick < 720; ++tick) {
         float neutral = fmaxf(-1, fminf(1, -receiver.boat.throttle / (.5f * BOAT_STEP)));
-        boat_session_step(&receiver, 0, neutral);
+        boat_session_step(&receiver, (BoatInput) { 0, neutral });
         CHECK(boat_wake_player_step(world, (BoatWakeStern) { 0 }, (BoatWakeStern) { 0 }));
         CHECK(isfinite(receiver.boat.height) && fabs(receiver.boat.height) < 3);
         CHECK(isfinite(receiver.boat.roll) && fabs(receiver.boat.roll) < 1.5);
@@ -111,8 +111,9 @@ static void step(BoatSession *session, BoatWakePlayer *world, unsigned tick)
     BoatWakeStern before = boat_wake_stern(boat, &session->world, boat_session_time(session));
     float target = tick < 1440 ? 1 : tick < 1800 ? 0 : -.4f;
     float wheel = tick >= 420 && tick < 1440 ? 1 : 0;
-    boat_session_step(session, fmaxf(-1, fminf(1, (wheel - boat->wheel) / BOAT_STEP)),
-        fmaxf(-1, fminf(1, (target - boat->throttle) / (.5f * BOAT_STEP))));
+    boat_session_step(session,
+        (BoatInput) { fmaxf(-1, fminf(1, (wheel - boat->wheel) / BOAT_STEP)),
+            fmaxf(-1, fminf(1, (target - boat->throttle) / (.5f * BOAT_STEP))) });
     CHECK(tick < 1600);
     recorded[tick][0] = before;
     recorded[tick][1] = boat_wake_stern(boat, &session->world, boat_session_time(session));

@@ -47,8 +47,9 @@ static void drive(BoatSession *session, size_t *destination)
     float error = remainderf(target - boat->heading, 2 * PI);
     float wheel = Clamp(1.5f * error - .8f * boat->yaw_velocity, -.65f, .65f);
     float thrust = fabsf(error) > .5f ? .25f : .6f;
-    boat_session_step(session, Clamp((wheel - boat->wheel) / BOAT_STEP, -1, 1),
-        Clamp((thrust - boat->throttle) / (.5f * BOAT_STEP), -1, 1));
+    boat_session_step(session,
+        (BoatInput) { Clamp((wheel - boat->wheel) / BOAT_STEP, -1, 1),
+            Clamp((thrust - boat->throttle) / (.5f * BOAT_STEP), -1, 1) });
 }
 
 static bool hull_clear(const Boat *boat)

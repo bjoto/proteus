@@ -38,8 +38,8 @@ static int current_checks(void)
     moving.boat.velocity = flow;
     still.boat.throttle = moving.boat.throttle = .45f;
     for (int tick = 0; tick < 240; tick++) {
-        boat_session_step(&still, .2f, 0);
-        boat_session_step(&moving, .2f, 0);
+        boat_session_step(&still, (BoatInput) { .2f, 0 });
+        boat_session_step(&moving, (BoatInput) { .2f, 0 });
         CHECK(Vector2Distance(still.boat.velocity, Vector2Subtract(moving.boat.velocity, flow))
             < .00003f);
         CHECK(fabsf(still.boat.heading - moving.boat.heading) < .00001f);
@@ -52,13 +52,13 @@ static int current_checks(void)
     boat_session_init(&drift, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
     drift.world.water = channel;
     for (int tick = 0; tick < 1200; tick++)
-        boat_session_step(&drift, 0, 0);
+        boat_session_step(&drift, (BoatInput) { 0 });
     CHECK(drift.boat.position.x > 3 && drift.boat.velocity.x > .4f && drift.boat.planing == 0);
     // Authored flow remains contained by the existing basin shore contacts.
     drift.boat.position = (Vector2) { 117, 0 };
     drift.world.water.current_width = 0;
     for (int tick = 0; tick < 3600; tick++) {
-        boat_session_step(&drift, 0, 0);
+        boat_session_step(&drift, (BoatInput) { 0 });
         CHECK(drift.boat.position.x < BOAT_BASIN_HALF_X
             && fabsf(drift.boat.position.y) < BOAT_BASIN_HALF_Z);
         CHECK(isfinite(drift.boat.height));
@@ -146,8 +146,8 @@ static int wake_checks(void)
             a.world.water = wake;
             b = a;
             for (int tick = 0; tick < 3600; tick++) {
-                boat_session_step(&a, 0, 0);
-                boat_session_step(&b, 0, 0);
+                boat_session_step(&a, (BoatInput) { 0 });
+                boat_session_step(&b, (BoatInput) { 0 });
                 CHECK(a.boat.turn_roll_load == b.boat.turn_roll_load);
                 CHECK(a.boat.height == b.boat.height && a.boat.position.x == b.boat.position.x
                     && a.boat.pitch == b.boat.pitch);
@@ -220,7 +220,7 @@ static int player_wake_checks(void)
     drifting.world.water = (BoatWater) { .player_wake_enabled = true, .current = { 1, 0 } };
     drifting.boat.velocity = (Vector2) { 1, 0 };
     for (int tick = 0; tick < 480; ++tick)
-        boat_session_step(&drifting, 0, 0);
+        boat_session_step(&drifting, (BoatInput) { 0 });
     CHECK(drifting.world.water.player_wake_count == 0);
     // Drive a loop back through the emitted wake, then coast and settle after it passes.
     BoatSession a, b;
@@ -231,10 +231,12 @@ static int player_wake_checks(void)
     for (int tick = 0; tick < 6000; ++tick) {
         float throttle = tick < 1440 ? 1 : 0;
         float wheel = tick >= 420 && tick < 1440 ? 1 : 0;
-        boat_session_step(&a, Clamp((wheel - a.boat.wheel) / BOAT_STEP, -1, 1),
-            Clamp((throttle - a.boat.throttle) / (.5f * BOAT_STEP), -1, 1));
-        boat_session_step(&b, Clamp((wheel - b.boat.wheel) / BOAT_STEP, -1, 1),
-            Clamp((throttle - b.boat.throttle) / (.5f * BOAT_STEP), -1, 1));
+        boat_session_step(&a,
+            (BoatInput) { Clamp((wheel - a.boat.wheel) / BOAT_STEP, -1, 1),
+                Clamp((throttle - a.boat.throttle) / (.5f * BOAT_STEP), -1, 1) });
+        boat_session_step(&b,
+            (BoatInput) { Clamp((wheel - b.boat.wheel) / BOAT_STEP, -1, 1),
+                Clamp((throttle - b.boat.throttle) / (.5f * BOAT_STEP), -1, 1) });
         CHECK(a.boat.turn_roll_load == b.boat.turn_roll_load);
         CHECK(a.boat.height == b.boat.height && a.boat.position.x == b.boat.position.x
             && a.boat.roll == b.boat.roll);

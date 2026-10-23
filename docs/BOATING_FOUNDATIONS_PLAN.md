@@ -4,11 +4,11 @@ Prepared 2026-10-19 against `f60ede8`, following the
 [architecture review](ARCHITECTURE_REVIEW.md). This document owns this technical sequence;
 [BOATING_PLAN.md](BOATING_PLAN.md) continues to own gameplay direction.
 
-Status: P1, P2a, P3a, phase C (C1–C3) and the basin W1/W3, S1/S2, S3 and S4 slices
-implemented; full P2/P3, mapped W1/W3, W2, W4, the remaining S1 frame consolidation, full S4
-validator splitting and S5 remain pending. Next for the
-[multiplayer prerequisite](MULTIPLAYER_PLAN.md): the S3 `BoatInput` type, the last minimum core
-prerequisite before multiplayer M2; see the [S4 basin handoff](#s4-basin-slice-handoff--2026-10-23).
+Status: P1, P2a, P3a, phase C (C1–C3), the basin W1/W3, S1/S2, S3 and S4 slices and the S3
+`BoatInput` type implemented; full P2/P3, mapped W1/W3, W2, W4, the remaining S1 frame
+consolidation, full S4 validator splitting and S5 remain pending. The minimum core
+[multiplayer prerequisites](MULTIPLAYER_PLAN.md) are complete; next is multiplayer M2. See the
+[`BoatInput` handoff](#s3-boatinput-handoff--2026-10-23).
 At preparation, the user requested a plan only. Implementation began with P1 on 2026-10-19;
 execute later requested tasks using the protocol below. No additional approval gates are created
 by this plan. Verification of the original planning work is recorded at the end.
@@ -74,7 +74,7 @@ All rows start **pending**. Replace the evidence column with actual dated result
 | W4 | Reload/isolation/resource-lifetime gate | W3 | Pending |
 | S1 | Extract pose, camera, scenery, and drawing | W4 | Basin slice implemented 2026-10-23 ahead of W4 (shared `boat_pose`, `boat_view`, `boat_course_view`); one shared CPU/GPU scene frame pending; [handoff](#s1s2-basin-slice-handoff--2026-10-23) |
 | S2 | Separate cosmetic state from boat simulation | S1 | Basin slice implemented 2026-10-23 (`BoatPresentation`, presentation on/off and 30/60/144 Hz gates); [handoff](#s1s2-basin-slice-handoff--2026-10-23) |
-| S3 | Session-owned course/replay orchestration and finish I/O | S2 | Basin slice implemented 2026-10-23 (course and runs in `BoatSession`, `BoatViewState`, finish saves flushed after the tick loop); `BoatInput` type pending; [handoff](#s3-basin-slice-handoff--2026-10-23) |
+| S3 | Session-owned course/replay orchestration and finish I/O | S2 | Basin slice implemented 2026-10-23 (course and runs in `BoatSession`, `BoatViewState`, finish saves flushed after the tick loop); [handoff](#s3-basin-slice-handoff--2026-10-23). `BoatInput` type implemented 2026-10-23; [handoff](#s3-boatinput-handoff--2026-10-23) |
 | S4 | Shared build targets and dependency checks | S3 | Basin slice implemented 2026-10-23 (static core/render/GPU/session/drive libraries, display-free core validator, source/symbol boundary check, test labels); splitting mixed validators pending; [handoff](#s4-basin-slice-handoff--2026-10-23) |
 | S5 | Final comparison, playback, and handoff | S4 | Pending |
 
@@ -1049,8 +1049,8 @@ world/session extraction. No cross-platform bit identity or user acceptance is i
   [multiplayer prerequisite slices](#multiplayer-prerequisite-slices--2026-10-23) is
   implemented, starting from `65804ea` (only the unrelated untracked `docs/TITLE_SCREEN_PLAN.md`
   and its `docs/README.md` index row were dirty). Next: the basin S4 slice (core-only build
-  target and source-boundary check). Still pending from full S3: a `BoatInput` type
-  (`boat_session_step`/`boat_step` keep the two signed rate floats).
+  target and source-boundary check). Still pending from full S3 at this checkpoint: a
+  `BoatInput` type, since added in the [`BoatInput` handoff](#s3-boatinput-handoff--2026-10-23).
 - **Course in the session:** `BoatCourse` moved from `Boat` to `BoatSession.course`.
   `boat_session_step` keeps the boat's position before `boat_step` (where translation starts)
   and sweeps the gates after it, before presentation, which is the old order. `boat_step`
@@ -1113,8 +1113,8 @@ world/session extraction. No cross-platform bit identity or user acceptance is i
 - **Status / next:** The basin subset of S4 from the
   [multiplayer prerequisite slices](#multiplayer-prerequisite-slices--2026-10-23) is
   implemented, starting from `d65d469`. Only the unrelated untracked `docs/TITLE_SCREEN_PLAN.md`
-  and its `docs/README.md` index row were dirty. Next: the S3 `BoatInput` type, then multiplayer
-  M2. Still pending from full S4: splitting the mixed validators by responsibility.
+  and its `docs/README.md` index row were dirty. Next at this checkpoint: the S3 `BoatInput`
+  type (since [implemented](#s3-boatinput-handoff--2026-10-23)), then multiplayer M2. Still pending from full S4: splitting the mixed validators by responsibility.
 - **Libraries:** `CMakeLists.txt` builds five static libraries, each linked once per
   executable with no cycles: core ← render ← GPU, and render ← session ← drive. The repeated
   `PROTEUS_BOAT_SOURCES`/`PROTEUS_BOAT_WORLD_SOURCES`/`PROTEUS_HARBOR_SOURCES` lists and
@@ -1197,3 +1197,39 @@ and `clang-format` pass.
   - Core links the raylib library (raymath's Debug definitions). The source and symbol checks,
     not the link line, keep core free of raylib drawing, input, window, audio and file calls.
   - Map selection and the map/water-mesh caches remain process globals pending mapped W1/W2.
+
+## S3 `BoatInput` handoff — 2026-10-23
+
+- **Status / next:** The `BoatInput` type from S3 is implemented, starting from `ba83d53`.
+  Only the unrelated untracked `docs/TITLE_SCREEN_PLAN.md` was dirty. This completes the
+  minimum core prerequisites in the
+  [multiplayer prerequisite slices](#multiplayer-prerequisite-slices--2026-10-23). Next:
+  multiplayer M2 (`boat_world_step(world, inputs[4])`, checkpoints, local four-boat authority).
+- **API:** the data-only core header `src/boat_input.h` defines
+  `BoatInput { float steering_rate, throttle_rate; }`. The semantics are unchanged: signed
+  rates clamped to -1..1 when applied. Zero steering lets the wheel spring back to centre, and
+  zero throttle holds the setting. `boat_step(boat, world, now, input)`,
+  `boat_session_step(session, input)` and the tools' `timed_boat_step(session, input, ...)`
+  take it in place of the two floats. `boat_study` builds one `BoatInput` per frame from the
+  keyboard and applies it to every catch-up tick, as before.
+- **Callers:** every validator, review tool, the shared drive and the scripted crossing boat
+  pass compound literals with the same expressions in the same order. The frozen P2a oracle
+  (`tools/boat_drive_baseline.h`) was ported only at its two step calls. Fixture helpers that
+  take two floats (`core_step`, `baseline_step`, the banking/turn-entry fixtures) keep their
+  signatures. The wheel-update local in `boat_step` was renamed from `input` to `rate`. No
+  formulas changed, and there are no wrappers.
+- **Automated verification:** Apple M1 Max/macOS 26.6.2, Debug common recipe with
+  `PROTEUS_GPU_TESTS=ON`: warning-free build, and the 90 active CTests pass in 77.0 s, with
+  fifteen retired field cases disabled. `clang-format` and `git diff --check` pass.
+- **Baseline comparison:** see the
+  [`BoatInput` comparison](BOATING_PERFORMANCE.md#s3-boatinput-comparison--2026-10-23). The
+  Release outputs match a detached `ba83d53` worktree. The benchmark state trace (hash
+  `2c318477117e222e`) and the 54 CPU/GPU captures match byte for byte. The 18 validator and
+  review outputs exit 0 and match apart from the object-wake timing line. The hour soaks were
+  not rerun, since the state trace and validators are identical.
+- **Manual playback:** windowed 600-frame runs of `--course` on GPU and CPU, `--demo` and
+  `--wake-objects-crossing --waves` exited 0 and wrote no files. Keyboard steering and
+  throttle were not exercised by an automated run. The user has not played this change.
+- **Limits:** One machine; Windows, Linux and the browser build were not built or run.
+  `BoatInput` has no wire encoding or quantization; the 8-bit command codec belongs to the
+  multiplayer protocol milestone.

@@ -97,7 +97,7 @@ static int validate(FILE *report)
             a.boat.engine_angle = sign * .275f;
             for (int tick = 0; tick < 240; ++tick) {
                 float previous = energy(&a.boat);
-                boat_session_step(&a, 0, 0);
+                boat_session_step(&a, (BoatInput) { 0 });
                 CHECK(energy(&a.boat) <= previous + .00001f);
             }
         }

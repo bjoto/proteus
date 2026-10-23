@@ -35,7 +35,8 @@ static void core_step(CoreRun *run, float wheel_change, float throttle_change)
 {
     Vector2 previous = run->boat.position;
     ++run->tick;
-    boat_step(&run->boat, &run->world, boat_tick_seconds(run->tick), wheel_change, throttle_change);
+    boat_step(&run->boat, &run->world, boat_tick_seconds(run->tick),
+        (BoatInput) { wheel_change, throttle_change });
     boat_course_step(&run->course, previous, run->boat.position, BOAT_TICK_SECONDS);
 }
 

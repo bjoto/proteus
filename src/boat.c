@@ -402,8 +402,10 @@ static void buoyancy_step(Boat *boat, const BoatWorld *world, double time, float
     boat->roll += boat->roll_velocity * BOAT_STEP;
 }
 
-void boat_step(Boat *boat, BoatWorld *world, double now, float wheel_change, float throttle_change)
+void boat_step(Boat *boat, BoatWorld *world, double now, BoatInput input)
 {
+    float wheel_change = input.steering_rate;
+    float throttle_change = input.throttle_rate;
     double time = now;
     float wet = hull_wet(boat, world, time) > 0 ? 1 : 0;
     motion_step(boat, wet);
@@ -413,14 +415,14 @@ void boat_step(Boat *boat, BoatWorld *world, double now, float wheel_change, flo
     // unwinding full lock; any time left in this tick uses the normal turn-in rate.
     // Splitting at centre keeps the faster rate from overshooting into the new turn.
     if (wheel_change != 0) {
-        float input = Clamp(wheel_change, -1, 1);
+        float rate = Clamp(wheel_change, -1, 1);
         float remaining = BOAT_STEP;
-        if (input * boat->wheel < 0) {
-            float unwind = fminf(remaining, fabsf(boat->wheel / input) / WHEEL_UNWIND_RATE);
-            boat->wheel += input * WHEEL_UNWIND_RATE * unwind;
+        if (rate * boat->wheel < 0) {
+            float unwind = fminf(remaining, fabsf(boat->wheel / rate) / WHEEL_UNWIND_RATE);
+            boat->wheel += rate * WHEEL_UNWIND_RATE * unwind;
             remaining -= unwind;
         }
-        boat->wheel = Clamp(boat->wheel + input * remaining, -1, 1);
+        boat->wheel = Clamp(boat->wheel + rate * remaining, -1, 1);
     } else {
         boat->wheel *= expf(-WHEEL_RETURN_RATE * BOAT_STEP);
         if (fabsf(boat->wheel) < 0.001f)
