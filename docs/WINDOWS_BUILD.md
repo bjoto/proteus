@@ -1,5 +1,10 @@
 # Windows boat study builds
 
+Multiplayer is [planning only](MULTIPLAYER_PLAN.md). Current packages are single-player.
+M6 will qualify the pinned transport under MSVC, expand core/codec/loopback CI, package its
+license and document Windows firewall/Host behavior. These are future checks; the existing
+Windows verification limits below remain unresolved by the planning task.
+
 The Windows boat study GitHub Actions workflow builds a Release x64 executable
 on windows-2022 with Visual Studio 2022. It runs on pushes and can also be
 started manually from the Actions tab after the workflow exists on the default branch.

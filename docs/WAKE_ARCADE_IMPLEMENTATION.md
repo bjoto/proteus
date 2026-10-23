@@ -6,10 +6,16 @@ That review remains a dated baseline; its findings are not descriptions of this 
 
 ## Current status and rules
 
+User feedback, 2026-10-23: boating is fun, particularly jumping, landing and capsizing.
+The [multiplayer plan](MULTIPLAYER_PLAN.md) preserves that baseline and owns the new planning
+request. This establishes the desired feel; it does not establish a tight-turn fix, multiplayer
+acceptance or the still-unverified platform checks below.
+
 Implemented findings 1–5 in order, followed by the crest-readability/geometry pass and
 stationary-camera tight-turn investigation. Verification is complete for the checks listed below.
-Next: user driving/readability feedback, particularly the tight-turn pattern; platform
-playback/performance checks remain separate. No new user acceptance is claimed. Documentation link targets and `git diff --check` pass.
+Next on this track: readability feedback, particularly the tight-turn pattern; platform
+playback/performance checks remain separate. The implementation-time evidence below did not
+claim user acceptance; later feedback is recorded above. Documentation link targets and `git diff --check` pass.
 
 1. **Flight, landing, capsize.** Six support locations determine whole-hull water contact.
    At least .05 s without support establishes airborne state; renewed support records a

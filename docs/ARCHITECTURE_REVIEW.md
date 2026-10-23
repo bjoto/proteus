@@ -9,6 +9,15 @@ The [foundations implementation plan](BOATING_FOUNDATIONS_PLAN.md) owns the sele
 sequence and its task status. P1/P2a/P3a, C1 and C2 are now implemented; C3 is next.
 No runtime changes in this review.
 
+Current-context note, 2026-10-23: this is a dated baseline. Arcade wakes now use four
+emitters and 128 objects, flight/landing/capsize and mutual height-aware pair impacts exist,
+and handling compatibility was revision 5 at this review. C1 subsequently advanced
+compatibility to revision 6. The 64-entry shader discussion and ABI sizes below
+describe the reviewed older version. The [multiplayer source assessment](MULTIPLAYER_PLAN.md#source-assessment-and-corrections-to-older-assumptions)
+records current symbols, remaining boundaries and an authoritative native-first design.
+Its prerequisites use [foundations slices](BOATING_FOUNDATIONS_PLAN.md#multiplayer-prerequisite-slices--2026-10-23),
+not a competing refactor sequence. Multiplayer remains planning only.
+
 ## Recommendation
 
 Keep C17, raylib, fixed-step physics, and the compact visual style. The next useful investment

@@ -1,5 +1,11 @@
 # Coherent, crossable wakes
 
+2026-10-23 direction: the user reports boating, especially jumping, landing and capsizing,
+is fun. Preserve that feel. The [multiplayer plan](MULTIPLAYER_PLAN.md) now owns shared-fleet
+authority/replication planning; this plan retains the arcade surface recipe and visual work.
+No networking is implemented, and this feedback does not resolve the tight-turn readability
+report or establish network/platform acceptance.
+
 Status, 2026-10-22: **bounded arcade wake objects are now the free-boating default,
 with `--wake-objects` retained as an explicit selector.** The user redirected the work toward tall waves that are fun to jump,
 independent per-boat pieces, explicit tick lifetimes and signed overlap. D3 is available
@@ -29,10 +35,10 @@ switch. Completed: free-boating default selection, explicit legacy/opt-out overr
 an updated default-versus-explicit object capture check. Course/replay/ghost behavior is retained.
 Default launch is 1.8 m / 1920 ticks (16 s); `--wake-height 1.2` offers a gentler ride.
 
-Completed review: [arcade gameplay/performance assessment](WAKE_ARCADE_REVIEW.md),
-2026-10-22. Jumping and signed reinforcement work, but flight retains water-handling
-forces, contacts ignore height, pitch can settle inverted without a capsize outcome,
-and ordinary boats react through their pose rather than dynamic motion. The review
+Historical pre-implementation review: [arcade gameplay/performance assessment](WAKE_ARCADE_REVIEW.md),
+2026-10-22. At that reviewed revision, jumping and signed reinforcement worked, but flight
+retained water-handling forces, contacts ignored height, and pitch could settle inverted
+without a capsize outcome. Ordinary boats reacted through their pose rather than dynamic motion. The review
 records targeted probes, full-pool GPU costs, appearance recommendations and limits.
 
 Implemented follow-up, 2026-10-22: the user requested addressing the review in order.
@@ -45,7 +51,8 @@ and advances replay compatibility to revision 5. Debug build, all 83 active CTes
 inspected captures and visible scripted basin/river runs pass; the implementation record
 separates that evidence from hands-on driving and user acceptance.
 
-Next: user driving and readability feedback, especially the persistent tight-turn pattern.
+Next on the wake track: readability feedback, especially the persistent tight-turn pattern;
+the user's 2026-10-23 enjoyment of jumping/landing/capsize is recorded above.
 Individual crests demonstrably move while overlapping patterns can retain a similar shape;
 the user says this sounds very similar to their experience. The exact original report and
 a propagation/readability fix remain unconfirmed. Current source height/propagation and

@@ -1,5 +1,11 @@
 # Automated app releases
 
+The [multiplayer plan](MULTIPLAYER_PLAN.md) proposes native multiplayer before browser support;
+current release packages remain single-player. Its M6 will add protocol/content identity,
+transport licensing, native cross-platform checks and a separate headless-server distribution
+to release documentation. No package, workflow, tag, hosting service or release changes are
+implemented here. A future native multiplayer release need not imply browser multiplayer parity.
+
 The **Release boating apps** workflow builds and tests the Apple Silicon Mac app
 and Windows x64 package for the same version tag, then attaches both ZIPs and their
 SHA-256 files to a GitHub Release. Downloads from Releases do not require navigating

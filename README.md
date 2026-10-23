@@ -10,6 +10,10 @@ The separate boating playground provides free exploration, a timed basin course,
 and replays. See the [documentation and current plans](docs/README.md) for project status,
 next tasks, and the [Gothenburg boating design](docs/BOATING_PLAN.md).
 
+[Multiplayer is planned](docs/MULTIPLAYER_PLAN.md): a native-first, four-player shared boating
+world, starting with two players colliding and jumping each other's wakes. Current builds are
+single-player; the plan defines the architecture, prerequisites, playtests and internet/browser path.
+
 ## Generate the original sample pack and starter XM (archived sketch)
 
 ```sh

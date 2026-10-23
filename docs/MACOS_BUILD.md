@@ -1,5 +1,10 @@
 # macOS boat study builds
 
+Multiplayer is [planning only](MULTIPLAYER_PLAN.md). Current packages are single-player.
+The native-first plan's M6 owns future ENet license/dependency packaging, direct connection,
+firewall guidance and a headless child-process Host option; no such build flags or controls
+are shipped yet. Existing download/build commands below remain the current interface.
+
 The **macOS boat study** GitHub Actions workflow builds a Release Apple Silicon
 app on `macos-15`, targeting macOS 13 or newer. It runs on pushes and can be
 started manually after the workflow is on the default branch. Intel Macs are

@@ -1,5 +1,10 @@
 # Test workflow and timing
 
+Multiplayer tests are [planned, not implemented](MULTIPLAYER_PLAN.md#verification-matrix-and-telemetry).
+The owning plan specifies seeded impairment profiles, collision/wake consistency gates, process
+tests and long-session/four-player stress. Add runnable commands and labels as those targets
+land; the current routine suite below does not verify network behavior.
+
 Status, 2026-10-22: the user requested a quick routine suite and suspension of the
 retired physical wake-field tests until that research resumes. Arcade wakes, handling,
 course/replay, environment, audio and renderer checks remain active.

@@ -1,5 +1,11 @@
 # Boat physics: learnable handling
 
+2026-10-23: the user enjoys the current jumping, landing and capsizing. Preserve this
+arcade handling baseline in the [multiplayer plan](MULTIPLAYER_PLAN.md), which owns shared
+authority, prediction and fleet contact scheduling. Networking is planning only. Future
+clock/contact changes must record their physical effects and compatibility revision here;
+successful network tests will not substitute for human handling acceptance.
+
 Status, 2026-10-22: A1–D3 implemented; the user-requested
 [handling feel pass](#handling-feel-pass--2026-10-19) adds quicker countersteering and a speed view, accepted by the user on 2026-10-19. Phase C is accepted; Phase D handling and
 player-wake motion are provisionally accepted by the user, with continued evaluation

@@ -1,8 +1,9 @@
 # Gothenburg boating playground
 
-Status: updated 2026-10-20. `boat_study` implements free boating in basin, Eriksberg,
+Status: updated 2026-10-23. `boat_study` implements free boating in basin, Eriksberg,
 and river locations, reverse/docking, planing, buoyancy, optional gentle waves, opt-in
-current/scripted-wake options in all locations, a default player-path wake, and a timed S course with recordings, persistent personal bests, ghosts, and replay controls. The study
+current/scripted-wake options in all locations, default bounded arcade wakes in free boating,
+and a timed S course with recordings, persistent personal bests, ghosts, and replay controls. The study
 has quiet engine/water audio and a repeating, gentle XM background piece. The
 [stern-wake motion pass](#stern-wake-motion--2026-10-18) and physics Phase D are implemented;
 the user has provisionally accepted Phase D handling and revised player-wake motion,
@@ -11,6 +12,11 @@ The [handling and speed review](#handling-and-speed-review--2026-10-19) adds qui
 countersteering and a modest speed view, accepted by the user on 2026-10-19.
 A [Swedish ensign](#swedish-ensign--2026-10-20) now responds to a light breeze and boat-relative air flow.
 The score-loop arcade mode and archipelago remain proposals.
+
+The user reports current jumping, landing and capsizing are fun. The
+[multiplayer plan](MULTIPLAYER_PLAN.md) owns the new planning-only track: preserve that feel
+with an authoritative native-first world for four friends, beginning with a two-player basin
+slice. No networking is implemented. Shared free boating precedes elaborate competitive modes.
 
 Current clock/replay compatibility is revision 6 after foundations C1; revision-5
 personal best files remain on disk and are not loaded into current play.
@@ -24,7 +30,8 @@ The [2026-10-19 architecture review](ARCHITECTURE_REVIEW.md) records growth risk
 technical sequence for exploration/racing. The review is complete; P1 instrumentation is implemented.
 The [foundations implementation plan](BOATING_FOUNDATIONS_PLAN.md) now owns the ordered tasks:
 instrumentation, clock correction, explicit world ownership, and simulation/presentation
-separation. P2 benchmark/report tooling and renderer counters are next; later phases remain pending.
+separation. P2a, the existing arcade-loop simulation benchmark, is next; the foundations plan
+defines minimum multiplayer prerequisite slices while remaining full-phase tasks stay pending.
 Verification evidence and limits belong to those documents; existing gameplay acceptance and
 the feature tracks below remain separate.
 
@@ -32,7 +39,9 @@ Turn banking update, 2026-10-20: T2 adds lateral-load-driven roll with inertia a
 planing dependence; speed and turn tightness both affect the bank. Waves share the same
 physical hull and the camera remains upright. Banking introduced handling revision 3; the
 H3 carving pass introduced revision 4. The subsequent [arcade gameplay pass](WAKE_ARCADE_IMPLEMENTATION.md)
-uses revision 5 and preserves earlier best files separately.
+used revision 5 and preserved earlier best files separately. The subsequent
+[clock migration](BOATING_FOUNDATIONS_PLAN.md#c1--authoritative-ticks-precise-seconds-compatibility)
+uses revision 6 and keeps revision-5 files on disk.
 The [banking plan](BOAT_TURN_BANKING_PLAN.md) records T3 dynamics coverage
 and large-angle recovery tuning, followed by T4 presentation/replay fixtures and the spray
 attachment correction. T5 now tunes quicker turn-exit recovery while retaining roughly
@@ -519,12 +528,13 @@ These are tunable gameplay models, not calibrated hydrodynamics.
   and local water-relative resistance; measured harbor currents remain future work.
 - **Gentle waves (C1–C3, implemented and accepted):** physical buoyancy and encounter resistance
   depend on speed and heading. Visual shelter/exposure varies independently of the wave physics.
-- **Crossable wakes (D2/D3, implemented; provisionally accepted):** an opt-in scripted source in all locations
-  plus a default player-path history (`--no-player-wake` opts out) for crossing your own trail, with matching
-  rendering and forces. Fleet foam remains visual only. The
-  [wake rewrite](WAKE_REWRITE_PLAN.md) now provides an opt-in native basin field candidate
-  (`--wake-field`) with coherent propagation and signed interference. Initial user feedback
-  prompted stronger full-speed forcing; revised play acceptance and the default switch remain pending.
+- **Crossable wakes (arcade default, implemented and enjoyed):** the
+  [wake plan](WAKE_REWRITE_PLAN.md) owns bounded per-boat pieces, signed overlap, flight,
+  landing and capsize. Free boating uses arcade objects; `--player-wake` selects legacy D3,
+  `--no-player-wake` opts out, and `--wake-field` remains a separate native basin experiment.
+  The dynamic basin rival shares wakes and mutual impacts; ordinary harbor/traffic trails
+  remain visual. Multiplayer sharing/authority is planned separately in
+  [the multiplayer owner](MULTIPLAYER_PLAN.md), preserving the accepted arcade feel.
 
 Judge each experiment through driving before combining it with the others. Wake and spray should
 help reveal movement through water as these models evolve.
@@ -534,11 +544,13 @@ help reveal movement through water as these models evolve.
 The first complete game can be one arena, one craft, one course, one music track, free driving, and
 one score mode. The archipelago is the direction for expansion, not a requirement to build a vast map.
 
-Defer upgrades, unlocks, economy, building systems, missions, multiplayer, procedural terrain,
+Defer upgrades, unlocks, economy, building systems, missions, procedural terrain,
 a level editor, full fluid simulation, and broader progression saves. Course personal bests
 and portable run files already persist. Incremental boat physics follows the
-separate physics plan rather than being a prerequisite for a complete game. Jumps and boost wait until ordinary
-turning is satisfying, since they would materially change course design.
+separate physics plan rather than being a prerequisite for a complete game. Arcade wake jumps,
+landing and capsize now exist in free boating; boost remains deferred. Multiplayer is now a
+planning track for shared free boating, superseding its earlier deferral; elaborate networked
+competition and changes to the offline course remain outside the first release.
 
 ## Questions to revisit through play
 

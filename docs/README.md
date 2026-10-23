@@ -1,6 +1,6 @@
 # Documentation and current plans
 
-Current status reconciled on 2026-10-22. The main demo is a four-minute Eriksberg
+Current status reconciled on 2026-10-23. The main demo is a four-minute Eriksberg
 journey following five gulls to “Below the surface” at 120 BPM. The separate
 `boat_study`, with quiet engine/water audio and a gentle XM background loop, provides free boating and a basin time trial.
 Both default to GPU rendering; the CPU reference supports display-free captures.
@@ -9,10 +9,11 @@ Both default to GPU rendering; the CPU reference supports display-free captures.
 
 | Area and owning document | Implemented | Remaining / next task |
 | --- | --- | --- |
+| [Multiplayer](MULTIPLAYER_PLAN.md) | Planning only: source assessment, native-first authoritative four-player design, protocol/wake strategy and verification gates | Next task: foundations C3 long-session gate and replacement baseline; then minimum core prerequisites, two-player basin collision/wake slice, four-player/internet hardening; no networking implemented |
 | [Boating foundations](BOATING_FOUNDATIONS_PLAN.md) | P1 instrumentation, P2a benchmark, P3a arcade baseline, C1 integer clock/replay revision and C2 double-time water/traffic/shader consumers implemented; [report contract/evidence](BOATING_PERFORMANCE.md) | C3: long-session/compatibility gate and replacement baseline; full P2/P3 workload and renderer matrix remains pending |
 | [Boating design](BOATING_PLAN.md) | Basin, Eriksberg, and river locations; timed S course, recordings, persistent bests, ghosts, replays, full-window presentation with modal `?` help, quiet engine/water audio with a joyful repeating XM, and a user-accepted wind-driven Swedish ensign | [Boat visual improvement](BOATING_PLAN.md#boat-visual-improvement--saved-2026-10-20) saved for later: cabin/hull shapes and palette; optional closer-camera comparison, score-loop, and archipelago remain proposals |
 | [Boat physics](BOAT_PHYSICS_PLAN.md) | A–D3 plus accepted H1/H2 countersteering and speed view; T1–T5 load-driven banking and quicker recovery; user-accepted H3 firmer planing hull grip; arcade flight/contact rules used revision 5; C1 clock/replay migration advances compatibility to revision 6 | [H3 carving pass](BOAT_PHYSICS_PLAN.md#h3--stern-led-carving-feel-2026-10-20): feel accepted on 2026-10-20; exhaustive hands-on/platform checks unverified; optional trim/loading not started |
-| [Wake rewrite](WAKE_REWRITE_PLAN.md) | Arcade default; bounded 128-object pool, smoother pieces; [review implementation](WAKE_ARCADE_IMPLEMENTATION.md): flight/landing/capsize, height-aware contacts, dynamic rival, crossing outcomes and crest readability | User driving/readability feedback; tight-turn overlapping pattern resembles the stuck-wave report, exact reproduction/fix unconfirmed; platform/fleet costs remain open |
+| [Wake rewrite](WAKE_REWRITE_PLAN.md) | Arcade default; bounded 128-object pool, smoother pieces; [review implementation](WAKE_ARCADE_IMPLEMENTATION.md): flight/landing/capsize, height-aware contacts, dynamic rival; user now enjoys jumping, landing and capsizing | Preserve feel in multiplayer planning; tight-turn overlapping pattern resembles the stuck-wave report, exact reproduction/fix unconfirmed; platform/fleet costs remain open |
 | [Living city](LIVING_CITY_PLAN.md) | 01–05: city dressing, materials, berths, shared actors; travelling boats and a compact ferry brought forward; demo flock and 32 reactive boating gulls | 06 people/cyclists; varied road traffic, building activity, ferry polish, perched gulls, and final review remain |
 | [River / Älvsborgsbron](eriksberg/bridge/README.md) | Separate source/crop, navigable bridge blockout, blocking tower legs, and grounded road approaches | Bridge/shoreline/building refinement; human handling and camera review |
 | [GPU migration](GPU_WATERFRONT_PLAN.md) | Steps 01–12 implemented; GPU default, lighting, shadows, atmosphere, reflections, and regression checks | Migration is implemented; other-platform and human visual acceptance remain separate from automated checks |
@@ -49,6 +50,13 @@ does not authorize advancing every plan. Use the requested track's scope and acc
   to the current owners above. Dated progress entries retain results for their original revisions.
 
 ## Verification baseline
+
+Multiplayer planning, 2026-10-23, Apple Silicon/macOS: documentation only; Debug
+configure/build and all 83 active CTests (20 GPU) pass in 113.65 s with desktop access;
+fifteen retired field cases stay disabled. The first sandboxed GPU attempt timed out and
+was stopped. [Planning evidence](MULTIPLAYER_PLAN.md#verification-of-this-planning-change)
+records the dependency review and limits. No network prototype, manual multiplayer play,
+Windows/Linux/browser qualification or new audiovisual review is claimed.
 
 Arcade review implementation, 2026-10-22, M1 Max/macOS: Debug build and all 83 active
 CTests (20 GPU) pass in 121.79 s; fifteen retired field cases stay disabled. The Emscripten

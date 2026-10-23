@@ -59,9 +59,9 @@ All rows start **pending**. Replace the evidence column with actual dated result
 | --- | --- | --- | --- |
 | P1 | Frame/tick metrics and correct timing boundaries | — | Implemented 2026-10-19; original verification limits and later 70-test result recorded below. P2a is implemented; P3a was next at this checkpoint. |
 | P2 | Repeatable benchmark/report tool and renderer counters | P1 | Pending |
-| P2a | Existing arcade-loop simulation benchmark; subset of P2 | P1 | Implemented 2026-10-23; [report contract and verification](BOATING_PERFORMANCE.md) |
-| P3a | Current arcade-loop baseline; subset of P3 | P2a | Implemented 2026-10-23; [three-run trace, timings and captures](BOATING_PERFORMANCE.md#p3a-current-arcade-baseline--2026-10-23); full P3 matrix pending |
+| P2a | Existing arcade-loop simulation benchmark; subset of P2 | P1 | Implemented 2026-10-23; shared-driver parity, benchmark contracts and 85 active CTests pass; [evidence](BOATING_PERFORMANCE.md) |
 | P3 | Baseline report and workload fixtures | P2 | Pending |
+| P3a | Current arcade-loop baseline; subset of P3 | P2a | Implemented 2026-10-23; [three-run trace, timings and captures](BOATING_PERFORMANCE.md#p3a-current-arcade-baseline--2026-10-23); full P3 matrix pending |
 | C1 | Integer tick authority and replay revision | P3 | Implemented 2026-10-23 after P3a slice; [clock handoff below](#c1-handoff--2026-10-23) |
 | C2 | Precise CPU/GPU time consumers | C1 | Implemented 2026-10-23; [C2 handoff below](#c2-handoff--2026-10-23); 85 active CTests pass |
 | C3 | Long-session/compatibility gate and new baseline | C2 | Pending |
@@ -74,6 +74,78 @@ All rows start **pending**. Replace the evidence column with actual dated result
 | S3 | Session-owned course/replay orchestration and finish I/O | S2 | Pending |
 | S4 | Shared build targets and dependency checks | S3 | Pending |
 | S5 | Final comparison, playback, and handoff | S4 | Pending |
+
+## Multiplayer prerequisite slices — 2026-10-23
+
+The user requested multiplayer planning only. [MULTIPLAYER_PLAN.md](MULTIPLAYER_PLAN.md)
+owns that proposal, protocol and fleet milestones; no implementation is authorized by this
+status entry. This document continues to own core extractions. The original complete P/C/W/S
+sequence remains useful, but is not an all-or-nothing prerequisite for a basin network slice.
+
+For that track, perform P2a/P3a first, then the C1–C3 clock/phase/compatibility contract.
+Next take the **basin subset** of W1/W3 (immutable definition, explicit water/world/session),
+S1/S2 (shared pure pose math and cosmetic/view separation), S3 (course/file work outside the
+physical tick) and S4 (core-only dependency gate). These may precede mapped W2/W4 because
+the basin has no map collision cache. Two independent basin worlds and presentation-off
+physics must work before fleet/network code. Keep remaining full-task acceptance pending.
+
+Mapped W1/W2/W3 and W4 lifecycle gates are required before river/Eriksberg multiplayer.
+Full renderer counters, all P3 workloads, course save-queue polish and broad view consolidation
+may follow the basin proof. Do not postpone the physical checkpoint boundary, integer time,
+wave phase precision, or headless dependency checks. Record partial scope/evidence under these
+existing IDs, with any temporary offline wrappers and their removal task; do not duplicate
+physics or add a default-world singleton to get a server compiling.
+
+The single-player update order below remains the structural reference. Multiplayer M2 owns
+the later explicit multi-boat schedule and contact changes, with separate behavior evidence.
+The arcade `BoatWakeObjects` world already owns shared emitter state; W3 must preserve that
+ownership rather than moving it back into individual boats. Legacy D3 bookkeeping can remain
+in its offline adapter during migration. `BoatFlag` also belongs in presentation after S2.
+The default P3 wake fixture is now arcade objects (128 total slots, 32 per emitter); any
+64-entry D3 workload must be explicitly selected and labeled as legacy comparison.
+
+### P2a — first multiplayer prerequisite task
+
+Add a **simulation-only** `tools/boat_benchmark.c` target and a small tools-only shared driver
+helper (proposed `tools/boat_study_drive.[ch]`). Read `demo_step`, `timed_boat_step`,
+`object_study_reset`/`object_track` in `tools/boat_study.c`, `boat_profile_time`, and
+`tools/wake_objects_review.c` before editing. Share the actual default one-boat arcade
+input/step path; preserve advance → boat step → stern track, float clock arithmetic,
+expressions and emission sequence. Keep the rival and optional wake modes compiling with
+their current behavior. Do not introduce the future fleet scheduler here.
+
+1. Support only `--scenario wake-loop --mode simulation --renderer none`, plus bounded
+   `--warmup`, `--frames`, `--output`. Reject other modes/unknown options clearly. Advance two
+   existing 120 Hz ticks per nominal frame without a window/audio device. Warmup and measured
+   frames are one continuous scenario; do not reset the driver or world between them.
+2. Share the current driver; do not tune it to fill the pool. It stops commanding powered
+   turns after its existing tick 1440. Label the report as that finite scripted wake-return
+   fixture, not a sustained full-pool benchmark. Report actual births/peak objects/landings.
+3. Use `boat_profile_time(false)`; preallocate bounded timing samples. Write JSON metadata
+   and p50/p95/p99/max plus per-frame CSV **after** measured ticks. Report unavailable render/
+   GPU timings as null, include scenario revision/build/platform/options and actual tick counts.
+   Validate count/size arithmetic and output errors. No timed file I/O or personal-best writes.
+4. Record a hash/trace of named physical fields and wake/emitter values (including motion
+   timers, velocities and counters), never raw structs/pointers. Verify repeated identical
+   runs agree on this build. Do not claim cross-platform bit-identical simulation.
+5. Add a short CTest schema/error/deterministic-state check, including a baseline comparison
+   of the old app driver versus the shared helper for the same command sequence. Capture
+   before changing the helper, then compare the migrated app's CPU output at matching ticks.
+   No new pixel baseline or relaxed physics tolerance is justified by this extraction.
+6. Run configure/build/CTest; inspect the before/after CPU captures and one scripted app run
+   if the shared app path changed. Create `docs/BOATING_PERFORMANCE.md` with the report contract
+   and actual evidence, link it in the index, mark P2a implemented only, and set P3a next.
+
+Proposed smoke command, available only after this task:
+
+```sh
+./build/boat_benchmark --scenario wake-loop --mode simulation --renderer none --warmup 120 --frames 1800 --output build/bench/arcade-baseline
+```
+
+Deliverable: compiling existing programs plus one bounded headless benchmark, reproducible
+state evidence and honest report. Non-goals: renderer counters, every P3 fixture, ENet/sockets,
+integer time, physical/collision changes or new UI. P3a subsequently captures the baseline
+report/traces and representative CPU/GPU views before C1; full P2/P3 remain pending.
 
 ## Design decisions fixed for this sequence
 
@@ -187,7 +259,9 @@ Required scenario IDs and provenance:
 | `course-finish` | New fixed gate-following input fixture using the water-review controller pattern | Ghost, recording growth, best/export save |
 
 Use production simulation at every tick. Short scenarios may reset between attempts, but label
-resets; do not reset the wake-loop before it has filled the 64-slot history. Assert scenario
+resets; explicitly label finite arcade-return and sustained full-pool workloads separately.
+The legacy D3 workload fills its 64-slot history; the current arcade fixture reports its
+actual occupancy, with a separate sustained-source fixture for the 128-slot fleet bound. Assert scenario
 milestones (arrival, contact, full history, finish); a non-finishing drive is a failed fixture.
 The finish scenario must write only into its benchmark output directory, never personal bests.
 The existing replay validator's `route()` prescribes poses: it is useful for recorder tests,
@@ -238,8 +312,8 @@ Read/edit: `src/boat.[ch]`, `src/boat_course.[ch]`, `src/boat_replay.[ch]`,
    may contain its recorded double view time and must never be passed to live stepping. Do not
    quantize replay interpolation or seek to a tick. Keep the main demo's music clock independent.
 4. Change replay sample `world_time` to double. Bump `REPLAY_VERSION` from 1 to 2 and
-   `BOAT_PHYSICS_REVISION` from 2 to 3 once for the entire C phase (use the next revision if
-   another change has already consumed these values). Serialize the double with `%.17g`, parse
+   `BOAT_PHYSICS_REVISION` from the current 5 to 6 once for the entire C phase (use the next
+   unused revision if another change consumes it). Serialize the double with `%.17g`, parse
    with `%lf`, and use exact double tick duration in version-2 headers/interval validation.
    Audit interpolation, finite/range checks, and fixture parsers too: do not narrow `world_time`
    through the existing array of float pose values during validation.

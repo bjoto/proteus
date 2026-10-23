@@ -1,5 +1,12 @@
 # Browser boating build
 
+Multiplayer planning, 2026-10-23: current browser builds remain single-player. The
+[multiplayer plan](MULTIPLAYER_PLAN.md#browser-decision) recommends native ENet multiplayer
+first and a later WebRTC DataChannel experiment sharing the protocol/physics. Browser code
+cannot directly use raw UDP. GitHub Pages serves the client; multiplayer needs a separately
+reachable authority and, for that WebRTC path, signaling and potentially TURN. No new web
+network dependency, service or gameplay feature is implemented by this plan.
+
 ## Current status
 
 Implemented on 2026-10-19: a CMake/Emscripten build of the released `boat_study` game,
