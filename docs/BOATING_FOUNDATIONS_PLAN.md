@@ -663,3 +663,12 @@ No cross-platform determinism, controlled P3a baseline or user acceptance is inf
 
 The extraction was committed as `b06ecd2`; benchmark/report completion follows separately.
 Pre-existing documentation/planning edits are preserved and excluded from these commits.
+
+## P3a trace preparation — 2026-10-23
+
+P3a is in progress. The benchmark now records bounded per-frame physical/wake diagnostic traces
+outside its timed interval, including warmup. The [performance record](BOATING_PERFORMANCE.md#p3a-trace-preparation--2026-10-23)
+owns the trace contract and three-run milestone/repeat runner. Focused Debug driver and report
+checks pass; the common full suite is being completed before controlled Release measurements.
+No physics, time arithmetic, controls, emission or rendering changed. Next: controlled repeated
+measurements, inspected CPU/GPU captures and the final baseline evidence. Full P2/P3 stay pending.

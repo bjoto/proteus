@@ -83,3 +83,19 @@ P2a is implemented. Next is P3a: capture the current arcade baseline under contr
 with the required representative CPU/GPU evidence before clock migration. Full P2/P3 remain
 pending. No new physics tolerance, pixel baseline, handling change or user acceptance is claimed.
 Windows/Linux/browser qualification and human motion/audio review were not performed.
+
+## P3a trace preparation — 2026-10-23
+
+The benchmark now additionally writes `<prefix>.state.csv` after all simulation ticks.
+Its columns record every nominal frame, including warmup: absolute end tick, accumulated float
+simulation time, X/Z position and velocity, height/vertical velocity, motion state, landings,
+live wake objects, births and the rolling physical/wake hash. Storage is bounded and allocated
+before warmup; copying these values happens after the timer stops. Existing JSON/timing CSV
+formats and scenario/hash revisions remain unchanged. The new trace is diagnostic output,
+not a change to the simulation or a portable replay contract.
+
+The contract test checks trace row counts, finite values, end ticks, report agreement and exact
+repeat traces, plus failure to open a trace output. `boat_benchmark_baseline.py` captures three
+sequential 120-warmup/7200-measured runs and requires matching traces and the fixture's actual
+17 births/peak, one landing, flight/landing states and eventual complete expiry.
+P3a remains in progress until controlled measurements and CPU/GPU evidence are recorded below.

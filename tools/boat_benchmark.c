@@ -6,6 +6,12 @@
 #include <stdlib.h>
 #include <string.h>
 
+typedef struct {
+    uint64_t hash, births;
+    float time, x, z, vx, vz, height, vertical_velocity;
+    unsigned motion, landings, live;
+} StateTrace;
+
 static int compare(const void *a, const void *b)
 {
     double x = *(const double *)a, y = *(const double *)b;
@@ -62,9 +68,11 @@ int main(int argc, char **argv)
     /* Counts are bounded above before multiplication, allocation, or conversion to driver int. */
     double *samples = calloc(frames, sizeof(*samples));
     double *sorted = calloc(frames, sizeof(*sorted));
-    if (!samples || !sorted) {
+    StateTrace *trace = calloc(warmup + frames, sizeof(*trace));
+    if (!samples || !sorted || !trace) {
         free(samples);
         free(sorted);
+        free(trace);
         return fail("allocation failed");
     }
     Boat boat;
@@ -81,6 +89,9 @@ int main(int argc, char **argv)
         double elapsed = (boat_profile_time(false) - start) * 1000;
         /* Trace serialization is deliberately outside the measured simulation interval. */
         hash = boat_study_state_hash(hash, &boat, &objects);
+        trace[f] = (StateTrace) { hash, objects.world.emitted, boat.time, boat.position.x,
+            boat.position.y, boat.velocity.x, boat.velocity.y, boat.height, boat.vertical_velocity,
+            (unsigned)boat.motion_state, boat.landings, objects.world.live };
         if (f >= warmup)
             samples[f - warmup] = elapsed;
     }
@@ -97,6 +108,29 @@ int main(int argc, char **argv)
             if (fprintf(csv, "%u,%u,%.9f\n", i, (warmup + i + 1) * 2, samples[i]) < 0)
                 ok = false;
         if (fclose(csv))
+            ok = false;
+    }
+    snprintf(path, sizeof(path), "%s.state.csv", output);
+    FILE *states = ok ? fopen(path, "w") : NULL;
+    if (!states)
+        ok = false;
+    if (states) {
+        if (fprintf(states,
+                "end_tick,time,x,z,vx,vz,height,vertical_velocity,motion,landings,live,births,"
+                "state_hash\n")
+            < 0)
+            ok = false;
+        for (unsigned i = 0; i < warmup + frames; ++i) {
+            StateTrace t = trace[i];
+            if (fprintf(states,
+                    "%u,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%u,%u,%u,%" PRIu64 ",%016" PRIx64 "\n",
+                    (i + 1) * 2, (double)t.time, (double)t.x, (double)t.z, (double)t.vx,
+                    (double)t.vz, (double)t.height, (double)t.vertical_velocity, t.motion,
+                    t.landings, t.live, t.births, t.hash)
+                < 0)
+                ok = false;
+        }
+        if (fclose(states))
             ok = false;
     }
     snprintf(path, sizeof(path), "%s.json", output);
@@ -130,5 +164,6 @@ int main(int argc, char **argv)
     }
     free(samples);
     free(sorted);
+    free(trace);
     return ok ? 0 : fail("cannot write report (parent directory must exist)");
 }

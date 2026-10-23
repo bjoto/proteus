@@ -32,6 +32,19 @@ with tempfile.TemporaryDirectory() as directory:
         with prefix.with_suffix('.csv').open() as stream:
             rows = list(csv.DictReader(stream))
         assert len(rows) == 800
+        with pathlib.Path(str(prefix) + '.state.csv').open() as stream:
+            states = list(csv.DictReader(stream))
+        assert len(states) == 810
+        assert [int(row['end_tick']) for row in states] == list(range(2, 1621, 2))
+        assert states[-1]['state_hash'] == report['state_hash']
+        assert int(states[-1]['births']) == report['births']
+        assert int(states[-1]['landings']) == report['landings']
+        assert all(math.isfinite(float(row[key])) for row in states
+                   for key in ('time', 'x', 'z', 'vx', 'vz', 'height', 'vertical_velocity'))
+        if name == 'a':
+            first_states = states
+        else:
+            assert states == first_states
         times = []
         for i, row in enumerate(rows):
             assert int(row['frame']) == i and int(row['end_tick']) == 20 + 2 * (i + 1)
@@ -54,6 +67,8 @@ with tempfile.TemporaryDirectory() as directory:
         result = run('--output', root / 'invalid', *args) if args else run()
         assert result.returncode != 0 and 'boat_benchmark:' in result.stderr, args
     assert run('--frames', 1, '--output', root / 'missing' / 'out').returncode != 0
+    (root / 'blocked-trace.state.csv').mkdir()
+    assert run('--frames', 1, '--output', root / 'blocked-trace').returncode != 0
     (root / 'blocked.json').mkdir()
     assert run('--frames', 1, '--output', root / 'blocked').returncode != 0
     result = run('--warmup', 0, '--frames', 1, '--output', root / 'one')
