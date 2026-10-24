@@ -7,7 +7,9 @@
 #include "boat_profile.h"
 #include "boat_replay.h"
 #include "boat_session.h"
+#include "boat_steering.h"
 #include "boat_study_drive.h"
+#include "boat_throttle.h"
 #ifdef PROTEUS_BOAT_NET
 #include "boat_study_net.h"
 #endif
@@ -22,15 +24,28 @@
 #include <stdlib.h>
 #include <string.h>
 
+#if defined(__EMSCRIPTEN__)
+#include <emscripten/emscripten.h>
+
+EM_JS(int, boat_web_mouse_state, (int wanted, int available),
+    { return Module['boatMouse']['state'](wanted, available); })
+EM_JS(int, boat_web_mouse_toggle, (void), { return Module['boatMouse']['toggle'](); })
+EM_JS(float, boat_web_mouse_movement, (void), { return Module['boatMouse']['movement'](); })
+EM_JS(float, boat_web_mouse_scroll, (void), { return Module['boatMouse']['scroll'](); })
+#endif
+
 static void usage(void)
 {
     puts(
         "Usage: boat_study [--demo] [--frames COUNT] [--screenshot FILE [--time SECONDS]]\n"
         "No options (or --title): Wake Velocity title with name, boat and multiplayer address;\n"
         "  Esc in a session returns to it | --title --screenshot FILE: capture the title\n"
-        "Left/Right or A/D: adjust wheel | Up/Down or W/S: adjust thrust (-100..100%)\n"
-        "Wheel springs to centre when released; thrust holds. R: reset and centre wheel | Esc: "
-        "close\n"
+        "Left/Right or A/D: adjust wheel | Up/Down or W/S: step thrust (4 forward / neutral / 2 "
+        "reverse)\n"
+        "Scroll up/down: step thrust (also Up/Down or W/S)\n"
+        "M: capture/release mouse steering (move to turn; stop to hold) | --mouse-steering\n"
+        "Keyboard wheel springs to centre; mouse wheel and thrust hold. R: reset | Esc: release "
+        "mouse, then leave\n"
         "+/-: closer/farther | PageUp/PageDown: raise/lower camera | C: reset view\n"
         "--wake-field: opt-in coherent CPU field, native basin only\n"
         "--wake-objects: bounded arcade jump wakes (default in free boating)\n"
@@ -76,10 +91,14 @@ static void draw_help(bool course, bool mapped)
     int width = GetScreenWidth(), height = GetScreenHeight();
     const char *lines[] = {
         "BOATING / KEYBOARD",
-        "Left/Right or A/D: steer",
-        "Up/Down or W/S: adjust thrust",
-        "Release steering: centre wheel",
-        "Release thrust: hold setting",
+        "Left/Right or A/D: steer (keyboard mode)",
+        "M: toggle mouse / keyboard steering",
+        "Mouse: move to turn; stop to hold wheel",
+        "Esc: release mouse / return to keyboard",
+        "Scroll up/down or W/S: step thrust",
+        "Release keyboard steering: centre wheel",
+        "Thrust: 4 forward / neutral / 2 reverse",
+        "Tap thrust: one step; release holds",
         "R: reset boat / restart demo",
         "+/-: zoom | PgUp/PgDn: height",
         "C: reset camera | F3: profiler",
@@ -177,7 +196,7 @@ static int study(int argc, char **argv)
     float time = 0;
     BoatCamera camera_settings = BOAT_CAMERA_DEFAULT;
     bool camera_distance_set = false, camera_height_set = false;
-    bool time_set = false, demo = false;
+    bool time_set = false, demo = false, mouse_steering = false;
     const BoatWorldDefinition *location = boat_location(BOAT_LOCATION_BASIN);
     bool course = false, waves = false;
     bool current = false, crossing_wake = false, player_wake = true;
@@ -265,6 +284,8 @@ static int study(int argc, char **argv)
             data_dir = argv[++i];
         } else if (strcmp(argv[i], "--course") == 0) {
             course = true;
+        } else if (strcmp(argv[i], "--mouse-steering") == 0) {
+            mouse_steering = true;
         } else if (strcmp(argv[i], "--demo") == 0) {
             demo = true;
         } else if (strcmp(argv[i], "--screenshot") == 0 && i + 1 < argc) {
@@ -429,10 +450,12 @@ static int study(int argc, char **argv)
     BoatGpu gpu = { 0 };
     Texture2D texture = { 0 };
     RenderTexture2D frame_target = { 0 };
-    bool window_ready = false, window_owned = false;
+    bool window_ready = false, window_owned = false, mouse_captured = false;
     BoatAudio audio = { 0 };
     Music music = { 0 };
     bool music_ready = false;
+    int thrust_step = BOAT_THROTTLE_NEUTRAL;
+    float throttle_scroll = 0;
     BoatSession session;
     boat_session_init(
         &session, location, study_water(location, waves, current, crossing_wake, player_wake));
@@ -626,6 +649,10 @@ static int study(int argc, char **argv)
     int frames = 0, demo_tick = 0;
     bool replay_dragging = false;
     bool help_visible = false;
+    float mouse_wheel = session.boat.wheel;
+#if defined(__EMSCRIPTEN__)
+    bool mouse_unavailable = false;
+#endif
     SetExitKey(KEY_NULL);
     Profiler profiler = { 0 };
     BoatProfile boat_profile = { 0 };
@@ -648,12 +675,65 @@ static int study(int argc, char **argv)
         if (IsKeyPressed(KEY_ESCAPE)) {
             if (help_visible)
                 help_visible = false;
+            else if (mouse_steering)
+                mouse_steering = false;
 #if !defined(__EMSCRIPTEN__)
             else
                 break;
 #endif
         }
         bool active = IsWindowFocused() && !help_visible;
+#if defined(__EMSCRIPTEN__)
+        bool mouse_toggle_pressed = boat_web_mouse_toggle() != 0;
+#else
+        bool mouse_toggle_pressed = IsKeyPressed(KEY_M);
+#endif
+        bool toggle_mouse = active && !demo && !session.runs.playing && mouse_toggle_pressed;
+        if (toggle_mouse) {
+#if defined(__EMSCRIPTEN__)
+            mouse_unavailable = false;
+#endif
+            mouse_steering = !mouse_steering;
+            if (mouse_steering)
+                mouse_wheel = session.boat.wheel;
+        }
+        bool mouse_driving = mouse_steering && !demo && !session.runs.playing;
+#if defined(__EMSCRIPTEN__)
+        int browser_mouse = boat_web_mouse_state(
+            active && mouse_driving, active && !demo && !session.runs.playing);
+        if (browser_mouse & 4)
+            mouse_unavailable = true;
+        if (browser_mouse & 2) {
+            mouse_steering = mouse_driving = false;
+            browser_mouse = boat_web_mouse_state(0, active && !demo && !session.runs.playing);
+        }
+        bool capture_mouse = (browser_mouse & 1) != 0;
+        bool capture_changed = capture_mouse != mouse_captured;
+        mouse_captured = capture_mouse;
+        float mouse_delta = boat_web_mouse_movement();
+        float scroll_delta = boat_web_mouse_scroll();
+#else
+        bool capture_mouse = active && mouse_driving;
+        bool capture_changed = capture_mouse != mouse_captured;
+        if (capture_changed) {
+            if (capture_mouse)
+                DisableCursor();
+            else
+                EnableCursor();
+            mouse_captured = capture_mouse;
+        }
+        float mouse_delta = GetMouseDelta().x;
+        float scroll_delta = GetMouseWheelMoveV().y;
+#endif
+        // Capture warps the native cursor; discard that frame's delta. Stop moving to
+        // hold this target, rather than deriving steering from a screen position.
+        if (active && IsKeyPressed(KEY_R))
+            mouse_wheel = 0;
+        else if (mouse_captured && !capture_changed)
+            mouse_wheel = boat_mouse_wheel(mouse_wheel, mouse_delta);
+        if (!active && networked)
+            mouse_wheel = 0; // The authority neutralizes inactive controls too.
+        float steering_target = mouse_driving ? mouse_wheel : NAN;
         if (active && IsKeyPressed(KEY_F3)) {
             profiler_visible = !profiler_visible;
             next_snapshot_time = 0;
@@ -669,6 +749,14 @@ static int study(int argc, char **argv)
                 = fmaxf(4, fminf(36, camera_settings.height + elevation * 8 * dt));
             if (IsKeyPressed(KEY_C))
                 camera_settings = camera_default;
+        }
+        if (active && !demo && !session.runs.playing) {
+            int direction = (IsKeyPressed(KEY_UP) || IsKeyPressed(KEY_W))
+                - (IsKeyPressed(KEY_DOWN) || IsKeyPressed(KEY_S));
+            thrust_step = boat_throttle_step(thrust_step, direction);
+            thrust_step = boat_throttle_scroll(thrust_step, scroll_delta, &throttle_scroll);
+        } else {
+            throttle_scroll = 0;
         }
         bool replay_adjusted = false;
         if (!active)
@@ -740,16 +828,27 @@ static int study(int argc, char **argv)
                 input = (BoatInput) {
                     .steering_rate = (float)((IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D))
                         - (IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A))),
-                    .throttle_rate = (float)((IsKeyDown(KEY_UP) || IsKeyDown(KEY_W))
-                        - (IsKeyDown(KEY_DOWN) || IsKeyDown(KEY_S))),
                 };
             // No multiplayer pause: the room keeps running while help or focus is away.
-            if (!net_study_frame(net, &session, input, active, active && IsKeyPressed(KEY_R))) {
+            uint32_t previous_life = net->own_life;
+            if (!active || IsKeyPressed(KEY_R)) {
+                thrust_step = BOAT_THROTTLE_NEUTRAL;
+                throttle_scroll = 0;
+            }
+            if (!net_study_frame(net, &session, input, boat_throttle_setting(thrust_step),
+                    steering_target, active, active && IsKeyPressed(KEY_R))) {
                 result = 1;
                 break;
             }
+            if (net->own_life != previous_life) {
+                thrust_step = BOAT_THROTTLE_NEUTRAL;
+                throttle_scroll = 0;
+                mouse_wheel = 0;
+            }
 #endif
         } else if (active && IsKeyPressed(KEY_R)) {
+            thrust_step = BOAT_THROTTLE_NEUTRAL;
+            throttle_scroll = 0;
             boat_session_restart(
                 &session, study_water(location, waves, current, crossing_wake, player_wake));
             if (wake) {
@@ -771,8 +870,6 @@ static int study(int argc, char **argv)
             BoatInput input = {
                 .steering_rate = (float)((IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D))
                     - (IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A))),
-                .throttle_rate = (float)((IsKeyDown(KEY_UP) || IsKeyDown(KEY_W))
-                    - (IsKeyDown(KEY_DOWN) || IsKeyDown(KEY_S))),
             };
             double raw_active_delta = GetFrameTime();
             metrics.discarded_active_ms
@@ -781,8 +878,14 @@ static int study(int argc, char **argv)
             while (accumulator >= BOAT_TICK_SECONDS) {
                 if (demo)
                     demo_step(&session, demo_tick++, &metrics, wake, objects);
-                else
+                else {
+                    if (mouse_driving)
+                        input.steering_rate
+                            = boat_steering_rate(session.boat.wheel, steering_target);
+                    input.throttle_rate = boat_throttle_rate(
+                        session.boat.throttle, boat_throttle_setting(thrust_step));
                     timed_boat_step(&session, input, &metrics, wake, objects);
+                }
                 accumulator -= BOAT_TICK_SECONDS;
             }
         } else {
@@ -910,6 +1013,13 @@ static int study(int argc, char **argv)
                 .thrust = view->boat.throttle,
                 .steering = view->boat.wheel },
             WIDTH, HEIGHT);
+        if (mouse_driving)
+            DrawText(mouse_captured ? "MOUSE / ESC: RELEASE" : "MOUSE / CLICK TO CAPTURE", 4, 4, 10,
+                (Color) { 218, 223, 202, 255 });
+#if defined(__EMSCRIPTEN__)
+        if (mouse_unavailable)
+            DrawText("MOUSE UNAVAILABLE / USE A/D", 4, 4, 10, (Color) { 218, 223, 202, 255 });
+#endif
         EndTextureMode();
         BeginDrawing();
         ClearBackground((Color) { 14, 23, 32, 255 });
@@ -1003,6 +1113,12 @@ cleanup:
     boat_session_flush(&session);
     boat_session_destroy(&session);
     if (window_ready) {
+#if defined(__EMSCRIPTEN__)
+        boat_web_mouse_state(0, 0);
+#else
+        if (mouse_captured)
+            EnableCursor();
+#endif
         if (frame_target.id)
             UnloadRenderTexture(frame_target);
         if (gpu_enabled)

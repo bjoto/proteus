@@ -2,6 +2,7 @@
 #include "boat_map.h"
 #include "boat_model.h"
 #include "boat_pose.h"
+#include "boat_steering.h"
 #include "raymath.h"
 #include "waterfront_harbor.h"
 #include "waterfront_traffic.h"
@@ -15,8 +16,6 @@ static const float ENGINE_THRUST = 11.0f;
 static const float ENGINE_RESPONSE_RATE = 3.5f;
 // Overdamped spring return when steering is released; larger values centre faster (1/seconds).
 static const float WHEEL_RETURN_RATE = 3.0f;
-// Keep progressive turn-in, but unwind promptly when the player asks for the other direction.
-static const float WHEEL_UNWIND_RATE = 3.0f;
 static const float YAW_INERTIA = 2.2f;
 static const float HULL_DRAG_LINEAR = 0.22f;
 static const float HULL_DRAG_QUADRATIC = 0.025f;
@@ -463,8 +462,8 @@ void boat_step(Boat *boat, BoatWorld *world, double now, BoatInput input)
         float rate = Clamp(wheel_change, -1, 1);
         float remaining = BOAT_STEP;
         if (rate * boat->wheel < 0) {
-            float unwind = fminf(remaining, fabsf(boat->wheel / rate) / WHEEL_UNWIND_RATE);
-            boat->wheel += rate * WHEEL_UNWIND_RATE * unwind;
+            float unwind = fminf(remaining, fabsf(boat->wheel / rate) / BOAT_WHEEL_UNWIND_RATE);
+            boat->wheel += rate * BOAT_WHEEL_UNWIND_RATE * unwind;
             remaining -= unwind;
         }
         boat->wheel = Clamp(boat->wheel + rate * remaining, -1, 1);

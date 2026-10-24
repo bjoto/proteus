@@ -8,8 +8,8 @@ reachable authority and, for that WebRTC path, signaling and potentially TURN. N
 network dependency, service or gameplay feature is implemented by this plan.
 Since M3 (2026-10-23) native builds fetch and link ENet; the Emscripten configure returns before
 those targets and compiles `boat_study` without `PROTEUS_BOAT_NET`, so `--connect` is refused
-as native-only. A native compile without that definition passed; the Emscripten build itself
-was not run.
+as native-only. The HUD/controls worktree built with Emscripten 6.0.12 on 2026-10-24;
+see [control qualification](#mouse-and-scroll-qualification-2026-10-24).
 
 ## Current status
 
@@ -31,7 +31,8 @@ The landing footer now shows the packaged build version: the exact `v*` release 
 or a Git development description/hash (with `-dirty` for tracked local changes). The
 packager accepts `--version` for source archives; without Git or an override it shows
 `unknown`. The [live page](https://doomdavve.github.io/proteus/) is linked from the README.
-Next: review the version footer in the deployed build; Safari/Firefox, physical GPU
+Next: review the version footer in the deployed build. Chrome/Firefox controls are covered by
+[automated checks below](#mouse-and-scroll-qualification-2026-10-24); Safari itself, physical GPU
 performance, and human audio review remain outstanding.
 
 ## Build and deployment
@@ -105,6 +106,56 @@ latency is accepted. See [candidate limits](WAKE_CANDIDATE_RESULTS.md).
   bytes and writes the URL mapping into `index.html`. Relative URLs work under a repository
   Pages subpath. There is no service worker or preload cache. Only the generated `site/`
   directory is published; raylib's license is included. SDK/build/cache files stay local.
+
+## Mouse and scroll qualification, 2026-10-24
+
+Current control implementation in `boat-marine-hud`: captured relative mouse steering, held
+wheel state and scroll thrust share the native C controllers. The browser adapter lives in
+[mouse_controls.js](../web/mouse_controls.js), installed by `runtime.js` and linked before it
+through `Web.cmake`. It requests capture directly from M/canvas-click gestures, waits for actual
+`pointerlockchange`, and falls back to keyboard mode with a visible message if capture fails.
+Browser Escape can bypass game key events, so external unlock is handled independently and
+never automatically re-locks. Closing help shows a click-to-capture prompt; focus loss returns
+to keyboard mode. The adapter follows the [Pointer Lock API](https://developer.mozilla.org/en-US/docs/Web/API/Pointer_Lock_API).
+
+Movement events accumulate until the C frame consumes them; capture transitions discard
+stale movement. Scroll events also accumulate, preserving trackpad fractions. Pixel/line/page
+scroll modes normalize to 100 pixels / 3 lines / 1 page per thrust step, with up positive.
+Only vertical scrolling changes thrust; scroll events over the focused game prevent page
+scrolling. Pinch zoom does not change thrust.
+This bypasses the pinned browser GLFW layer's minimum-one-step wheel quantization and raylib's
+last-event-only locked movement callback. Native builds continue using raylib/GLFW directly.
+
+Completed verification on Apple M1 Max / macOS: Emscripten **6.0.12** MinSizeRel build passed
+without application warnings. The Node event-contract check passes for synchronous/Promise
+capture APIs, missing/denied capture, delayed capture, short M presses, multiple movement
+and scroll events, Escape/help/focus release, and scroll units. Browser integration results
+and remaining platform limitations are also recorded in [the HUD owner](BOAT_HUD.md). Chrome
+(headless/SwiftShader) and Firefox (headed) passed captured input, help/unlock/reacquisition and
+fallback integration. Headed WebKit refused capture and passed the keyboard/scroll fallback;
+shipping Safari and physical device behavior remain unverified. The new event contract also
+runs in Pages CI before the Wasm build.
+
+Run the display-free event contract with Node (registered as CTest `web_mouse_controls` when
+Node is found), and optionally drive an actual served Wasm build using Playwright:
+
+```sh
+node tools/test_web_mouse_controls.cjs
+python3 tools/check_web_controls.py --url http://127.0.0.1:8000/ --browser chromium --output build-web/controls-chromium
+python3 tools/check_web_controls.py --url http://127.0.0.1:8000/ --browser firefox --headed --output build-web/controls-firefox
+python3 tools/check_web_controls.py --url http://127.0.0.1:8000/ --browser webkit --headed --output build-web/controls-webkit
+```
+
+The optional script needs Playwright and its browser binaries. `--executable` selects an
+installed browser. It checks real pointer-lock acquisition, C-bridge consumption, normalized
+scrolling, help/reacquisition, browser-initiated unlock and keyboard fallback, saving captures
+and `results.json`. If the engine refuses capture it records `web_controls_fallback=ok` and
+checks keyboard/scroll fallback instead of claiming mouse support. Movement and scroll totals
+use deterministic DOM events; this does not certify physical mouse/trackpad feel. A tested
+WebKit build is not the shipping Safari application. Touch remains unsupported.
+
+Next: physical-device and shipping Safari checks; native Windows/Linux qualification after
+CI runs, plus connected multiplayer HUD/control review. No deployment was performed.
 
 ## Verification evidence
 

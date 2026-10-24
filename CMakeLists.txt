@@ -42,7 +42,7 @@ set(PROTEUS_BOAT_CORE_SOURCES
   src/boat_fleet.c src/boat_fleet.h src/boat_location.c src/boat_location.h src/boat_map.c
   src/boat_map.h
   src/boat_model.c src/boat_model.h src/boat_pose.c src/boat_pose.h
-  src/boat_input.h src/boat_view_state.h src/boat_wake.c src/boat_wake.h src/boat_wake_objects.c
+  src/boat_input.h src/boat_throttle.h src/boat_steering.h src/boat_view_state.h src/boat_wake.c src/boat_wake.h src/boat_wake_objects.c
   src/boat_wake_objects.h src/boat_wake_player.c src/boat_wake_player.h src/boat_water.c
   src/boat_water.h src/boat_world.c src/boat_world.h src/geometry3d.h
   src/waterfront_city.c src/waterfront_city.h src/waterfront_harbor.c src/waterfront_harbor.h
@@ -375,6 +375,14 @@ set_tests_properties(boat_skin PROPERTIES LABELS "render;cpu")
 add_test(NAME boat_fleet_render COMMAND boat_fleet_review --check)
 set_tests_properties(boat_fleet_render PROPERTIES LABELS "render;cpu"
   PASS_REGULAR_EXPRESSION "boat_fleet_render=ok")
+find_program(PROTEUS_NODE_EXECUTABLE node)
+if(PROTEUS_NODE_EXECUTABLE)
+  add_test(NAME web_mouse_controls COMMAND ${PROTEUS_NODE_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/tools/test_web_mouse_controls.cjs)
+  set_tests_properties(web_mouse_controls PROPERTIES LABELS "cpu"
+    PASS_REGULAR_EXPRESSION "web_mouse_controls=ok")
+endif()
+
 add_executable(boat_hud_review tools/boat_hud_review.c)
 target_link_libraries(boat_hud_review PRIVATE proteus_render)
 target_compile_options(boat_hud_review PRIVATE ${PROTEUS_WARNINGS})

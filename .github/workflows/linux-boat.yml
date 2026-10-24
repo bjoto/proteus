@@ -1,0 +1,29 @@
+name: Linux boat study
+
+on:
+  push:
+    branches: ['**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Install desktop build and virtual display dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libx11-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev libgl1-mesa-dev xvfb xauth
+      - name: Configure, build and test
+        run: |
+          cmake -S . -B build-linux -DCMAKE_BUILD_TYPE=Debug -DPROTEUS_GPU_TESTS=OFF -DGLFW_BUILD_WAYLAND=OFF
+          cmake --build build-linux --parallel 2
+          ctest --test-dir build-linux -j 4 --output-on-failure
+      - name: Check mouse capture startup and clean exit under X11
+        run: xvfb-run -a ./build-linux/boat_study --location basin --mouse-steering --frames 120

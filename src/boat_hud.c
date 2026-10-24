@@ -1,4 +1,5 @@
 #include "boat_hud.h"
+#include "boat_throttle.h"
 #include "raylib.h"
 
 #include <math.h>
@@ -111,13 +112,14 @@ void boat_hud_draw(BoatHudTelemetry telemetry, int width, int height)
     line(p, 112, 8, 112, 36, (Color) { 43, 61, 65, 255 });
 
     label(p, "THRUST", 28, 7, muted);
-    // Vertical telegraph: ahead above neutral, reverse below. This only displays
-    // the held command; a future spring-to-neutral decision belongs to input/physics.
+    // Give each detent distinct travel, including the low-power docking settings.
     box(p, 26, 14, 5, 23, (Color) { 8, 20, 25, 255 });
-    int travel = (int)roundf(-thrust * 11);
+    int travel = (int)roundf(boat_throttle_position(thrust) * 11);
     box(p, 28, travel < 0 ? 25 + travel : 25, 1, abs(travel), thrust_color);
-    for (int y = 14; y <= 36; y += 11)
+    for (int i = 0; i < BOAT_THROTTLE_COUNT; ++i) {
+        int y = 25 + (int)roundf(boat_throttle_position(boat_throttle_setting(i)) * 11);
         line(p, 20, y, 23, y, muted);
+    }
     line(p, 24, 25, 33, 25, muted);
     box(p, 24, 24 + travel, 9, 3, ink);
     box(p, 25, 25 + travel, 7, 1, thrust_color);

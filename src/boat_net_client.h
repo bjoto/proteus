@@ -105,6 +105,13 @@ void boat_net_client_init(BoatNetClient *client, BoatNetTransport transport,
 // Handle waiting messages and, while playing, generate one command per local 120 Hz tick from
 // INPUT (INACTIVE asks the authority to neutralize the controls). False once rejected or closed.
 bool boat_net_client_service(BoatNetClient *client, double now, BoatInput input, bool inactive);
+// Optional local target controller: converts thrust to ordinary wire rates per predicted tick.
+// Requires prediction; INPUT steering and INACTIVE keep their ordinary meanings.
+bool boat_net_client_service_thrust(
+    BoatNetClient *client, double now, BoatInput input, bool inactive, float thrust_target);
+// As above, with optional absolute wheel target; NAN keeps INPUT's steering rate.
+bool boat_net_client_service_targets(BoatNetClient *client, double now, BoatInput input,
+    bool inactive, float thrust_target, float steering_target);
 // Ask the authority for a new life at a safe spawn (the R key).
 void boat_net_client_request_reset(BoatNetClient *client);
 // Progress of the latest reset request; SECONDS (may be NULL) receives its age.

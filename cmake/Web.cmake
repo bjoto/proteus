@@ -54,10 +54,12 @@ target_link_options(boat_study PRIVATE
   -sASYNCIFY_STACK_SIZE=65536 -sENVIRONMENT=web -sEXIT_RUNTIME=1
   -lidbfs.js
   "SHELL:--preload-file \"${WEB_ASSETS}@/assets\""
+  "SHELL:--pre-js \"${CMAKE_CURRENT_SOURCE_DIR}/web/mouse_controls.js\""
   "SHELL:--pre-js \"${CMAKE_CURRENT_SOURCE_DIR}/web/runtime.js\"")
 set_property(TARGET boat_study APPEND PROPERTY LINK_DEPENDS
   ${WEB_SHADERS} ${WEB_TEXTURES}
   "${CMAKE_CURRENT_SOURCE_DIR}/assets/music/a-little-boat.xm"
+  "${CMAKE_CURRENT_SOURCE_DIR}/web/mouse_controls.js"
   "${CMAKE_CURRENT_SOURCE_DIR}/web/runtime.js")
 
 # Only this directory is served/deployed. Content hashes keep JS, Wasm and data in sync.

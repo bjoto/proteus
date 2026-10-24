@@ -1,5 +1,7 @@
 #include "boat_map.h"
+#include "boat_steering.h"
 #include "boat_test_session.h"
+#include "boat_throttle.h"
 #include "boat_view.h"
 #include "boat_water_mesh.h"
 #include "raymath.h"
@@ -1179,8 +1181,90 @@ static int validate_water_patch(void)
     return 0;
 }
 
+static int validate_throttle_detents(void)
+{
+    // Exercise every transition through the real integrator, including crossing neutral.
+    for (int from = 0; from < BOAT_THROTTLE_COUNT; ++from) {
+        for (int to = 0; to < BOAT_THROTTLE_COUNT; ++to) {
+            BoatSession session = basin_session((Boat) { .throttle = boat_throttle_setting(from) });
+            float target = boat_throttle_setting(to);
+            for (int tick = 0; tick < 360; ++tick) {
+                float previous = session.boat.throttle;
+                boat_session_step(
+                    &session, (BoatInput) { 0, boat_throttle_rate(previous, target) });
+                CHECK(session.boat.throttle >= fminf(previous, target) - .000001f);
+                CHECK(session.boat.throttle <= fmaxf(previous, target) + .000001f);
+            }
+            CHECK(fabsf(session.boat.throttle - target) < .000001f);
+            CHECK(boat_throttle_rate(session.boat.throttle, target) == 0);
+        }
+    }
+    int step = BOAT_THROTTLE_NEUTRAL;
+    for (int i = 0; i < 10; ++i)
+        step = boat_throttle_step(step, 1);
+    CHECK(step == 6);
+    for (int i = 0; i < 10; ++i)
+        step = boat_throttle_step(step, -1);
+    CHECK(step == 0);
+    float remainder = 0;
+    step = boat_throttle_scroll(2, .25f, &remainder);
+    CHECK(step == 2 && remainder == .25f);
+    step = boat_throttle_scroll(step, .75f, &remainder);
+    CHECK(step == 3 && remainder == 0);
+    step = boat_throttle_scroll(step, 2, &remainder);
+    CHECK(step == 5);
+    step = boat_throttle_scroll(step, -4, &remainder);
+    CHECK(step == 1); // Cross neutral using the same forward/reverse ordering.
+    step = boat_throttle_scroll(step, -100, &remainder);
+    CHECK(step == 0 && remainder == 0);
+    step = boat_throttle_scroll(step, 1, &remainder);
+    CHECK(step == 1);
+    step = boat_throttle_scroll(step, 100, &remainder);
+    CHECK(step == 6 && remainder == 0);
+    step = boat_throttle_scroll(step, -1, &remainder);
+    CHECK(step == 5);
+    CHECK(boat_throttle_scroll(step, NAN, &remainder) == 5);
+    return 0;
+}
+
+static int validate_mouse_steering(void)
+{
+    CHECK(boat_mouse_wheel(.4f, 0) == .4f); // Stationary mouse holds its wheel state.
+    CHECK(boat_mouse_wheel(0, 300) == 1 && boat_mouse_wheel(0, -300) == -1);
+    CHECK(boat_mouse_wheel(1, 900) == 1 && boat_mouse_wheel(-1, -900) == -1);
+    CHECK(fabsf(boat_mouse_wheel(1, -30) - .9f) < .000001f); // No full-lock windup.
+    CHECK(fabsf(boat_mouse_wheel(.4f, -120)) < .000001f);
+    CHECK(boat_mouse_wheel(.4f, NAN) == .4f);
+    CHECK(boat_mouse_wheel(NAN, 0) == 0);
+    float wheel_60 = 0, wheel_144 = 0;
+    for (int i = 0; i < 60; ++i)
+        wheel_60 = boat_mouse_wheel(wheel_60, 120.0f / 60);
+    for (int i = 0; i < 144; ++i)
+        wheel_144 = boat_mouse_wheel(wheel_144, 120.0f / 144);
+    CHECK(fabsf(wheel_60 - wheel_144) < .00001f); // Movement, not frame rate.
+    const float targets[] = { -1, -.7f, -.01f, 0, .01f, .7f, 1 };
+    for (int quantized = 0; quantized < 2; ++quantized) {
+        for (int from = 0; from < 7; ++from) {
+            for (int to = 0; to < 7; ++to) {
+                BoatSession session = basin_session((Boat) { .wheel = targets[from] });
+                for (int tick = 0; tick < 600; ++tick) {
+                    float rate = boat_steering_rate(session.boat.wheel, targets[to]);
+                    if (quantized)
+                        rate = roundf(rate * 127) / 127;
+                    boat_session_step(&session, (BoatInput) { rate, 0 });
+                    if (tick >= 360)
+                        CHECK(fabsf(session.boat.wheel - targets[to]) < .0002f);
+                }
+            }
+        }
+    }
+    return 0;
+}
+
 int main(void)
 {
+    CHECK(validate_throttle_detents() == 0);
+    CHECK(validate_mouse_steering() == 0);
     CHECK(validate_flight_outcomes() == 0);
     CHECK(validate_dynamic_pair() == 0);
     CHECK(validate_water_patch() == 0);

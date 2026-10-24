@@ -20,6 +20,16 @@ three rivals through the shared scene call; each rival must change the CPU image
 be identical and drawing must not change the fleet or presentations. For a look, run
 `./build/boat_fleet_review --renderer gpu --waves --time 4 --screenshot build/fleet.png`.
 
+The HUD/control worktree also checks all 49 transitions between the seven thrust detents
+through the real integrator in `boat_handling`, and forward/reverse target settling on both
+the authority and predicted client in `boat_net`. Mouse steering adds 49 wheel transitions
+with both float and quantized rates, sustained target holding and virtual network target
+checks. Relative mouse mapping covers accumulated movement and lock reversal; scroll thrust
+covers fractional/multiple-step input, neutral crossing and overscroll reversal. See [the HUD guide](BOAT_HUD.md) for power
+settings, visual fixtures and the remaining manual checks. When Node.js is installed,
+`web_mouse_controls` runs the browser event-contract tests without a browser. Real Wasm
+checks use the opt-in [Playwright command](WEB_BUILD.md#mouse-and-scroll-qualification-2026-10-24).
+
 ## Routine checks
 
 ```sh
@@ -32,8 +42,8 @@ ctest --test-dir build -j 4 --output-on-failure
 disabled, covering the owned field, refinement, cadence, candidate sources/boats/GPU,
 compact packets and Python prototypes. CTest lists them as disabled, not failed. Their
 sources, targets and manual diagnostic commands remain available. All arcade-object tests
-stay enabled. With `PROTEUS_GPU_TESTS=ON`, this speedboat worktree runs 102 active checks as of 2026-10-24
-(including the new skin validator; counted from the generated CTest file). GPU cases retain serial scheduling while independent
+stay enabled. With `PROTEUS_GPU_TESTS=ON` and Node.js available, this HUD/control worktree runs 103 active
+checks as of 2026-10-24 (including the browser event contract; counted by the current CTest run). GPU cases retain serial scheduling while independent
 CPU checks may run concurrently; fixture dependencies still govern capture/replay comparisons.
 
 Every active test carries one of three labels: `cpu` (display-free), `render` (CPU

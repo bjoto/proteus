@@ -9,6 +9,7 @@
 #include "boat_fleet_bots.h"
 #include "boat_net_client.h"
 #include "boat_net_server.h"
+#include "boat_throttle.h"
 #include "raymath.h"
 
 #include <inttypes.h>
@@ -400,6 +401,8 @@ typedef struct {
     bool live[ROOM_CLIENTS]; // Serviced each step.
     bool inactive[ROOM_CLIENTS];
     bool predict; // Clients joining from now on predict.
+    bool detents;
+    float thrust_target, steering_target;
     bool keyboard; // Bots press keys: each rate rounded to -1, 0 or 1.
     double service_seconds[ROOM_CLIENTS]; // Processor time in client service calls.
     BoatFleetBots bots[ROOM_CLIENTS];
@@ -419,7 +422,7 @@ typedef struct {
 
 static bool room_open(Room *room, uint64_t seed, BoatNetServerConfig config)
 {
-    *room = (Room) { .network = boat_net_memory_create(seed) };
+    *room = (Room) { .network = boat_net_memory_create(seed), .steering_target = NAN };
     if (!config.epoch)
         config.epoch = 0x5eed;
     if (!config.max_players)
@@ -510,7 +513,10 @@ static void room_step(Room *room, double dt)
                 = fabsf(input.throttle_rate) < .3f ? 0 : copysignf(1, input.throttle_rate);
         }
         clock_t started = clock();
-        room->live[i] = boat_net_client_service(c, room->now, input, room->inactive[i]);
+        room->live[i] = room->detents
+            ? boat_net_client_service_targets(c, room->now, (BoatInput) { 0 }, room->inactive[i],
+                  room->thrust_target, room->steering_target)
+            : boat_net_client_service(c, room->now, input, room->inactive[i]);
         room->service_seconds[i] += (double)(clock() - started) / CLOCKS_PER_SEC;
         if (c->predict && c->phase == BOAT_NET_CLIENT_PLAYING)
             room_view_remote(room, i, tick, dt);
@@ -1322,8 +1328,40 @@ static int prediction_network(void)
     return 0;
 }
 
+static int throttle_detents(void)
+{
+    static Room room;
+    CHECK(room_open(&room, 92, (BoatNetServerConfig) { 0 }));
+    room.predict = room.detents = true;
+    unsigned i = room_join(&room, "detents", NULL, 0);
+    room_run(&room, 1);
+    BoatNetClient *c = &room.clients[i];
+    CHECK(boat_net_client_own(c));
+    const int steps[] = { 3, 4, 5, 6, 5, 4, 3, 2, 1, 0, 1, 2 };
+    for (unsigned k = 0; k < sizeof(steps) / sizeof(steps[0]); ++k) {
+        room.thrust_target = boat_throttle_setting(steps[k]);
+        room_run(&room, 2.5);
+        CHECK(fabsf(room.server.fleet.state.slots[c->slot].boat.throttle - room.thrust_target)
+            < .0001f);
+        CHECK(
+            fabsf(boat_net_client_view(c)->state.slots[c->slot].boat.throttle - room.thrust_target)
+            < .0001f);
+    }
+    room.thrust_target = 0;
+    const float wheel[] = { -.8f, .35f, 1, 0, -1, .01f, -.01f, 0 };
+    for (unsigned k = 0; k < sizeof(wheel) / sizeof(wheel[0]); ++k) {
+        room.steering_target = wheel[k];
+        room_run(&room, 3);
+        CHECK(fabsf(room.server.fleet.state.slots[c->slot].boat.wheel - wheel[k]) < .0002f);
+        CHECK(fabsf(boat_net_client_view(c)->state.slots[c->slot].boat.wheel - wheel[k]) < .0002f);
+    }
+    room_close(&room);
+    return 0;
+}
+
 int main(void)
 {
+    RUN(throttle_detents());
     RUN(golden());
     RUN(codec());
     RUN(checkpoints());

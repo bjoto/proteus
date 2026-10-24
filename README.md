@@ -345,9 +345,25 @@ wheel; release to let it spring smoothly back to centre without overshooting. Th
 stronger farther from centre, reaching within 1% of centre from full lock in about 1.5 seconds.
 One second of held input moves it from centre to either limit. Opposite input unwinds full lock
 in about a third of a second, then builds the new turn at the normal rate. This makes catching a
-turn quicker while retaining progressive steering and hull inertia. Hold up/W to increase thrust and down/S to reduce it, from -100% reverse through 0% neutral to 100% forward; releasing keys
-holds the setting. Full-range adjustment takes four seconds. Passing through neutral is deliberate
-and smooth; R resets to neutral thrust and centres the wheel. Esc closes the window.
+turn quicker while retaining progressive steering and hull inertia. Tap up/W or down/S to move
+one thrust step; holding a key does not repeat. Forward has ultra-slow (5%, for docking), slow
+(20%), medium (50%) and max (100%); reverse has ultra-slow (5%) and slow (20%). Neutral sits
+between the directions. Releasing keys holds the selected setting, with smooth command travel
+and engine response. R resets to neutral thrust and centres the wheel. Esc closes the window.
+Press `M` to capture the mouse for steering, or launch with `--mouse-steering`. The pointer
+is hidden and horizontal movement accumulates wheel angle: move right/left to turn the wheel,
+then stop moving to hold that setting. About 300 mouse pixels moves the requested wheel from
+centre to full lock, independently of window size. Move back to straighten it; R resets both
+wheel and thrust. The steering needle shows the actual wheel as it follows the target smoothly.
+M or Esc releases the pointer and returns to keyboard steering; another Esc closes the window.
+Help and focus loss release capture. Desktop builds resume capture on return; browsers may
+need a canvas click or M to capture again. Browsers that deny or lack capture show a keyboard
+fallback message. Mouse mode is inactive during scripted demos and replay playback.
+
+Scroll up/down to increase/decrease thrust one step per scroll unit, in either steering mode.
+Fractional trackpad scrolling accumulates until a full step; larger scrolls can move several
+steps. The selected thrust holds when scrolling stops. Up/W and Down/S remain available.
+
 The scene uses the full window with a compact [marine instrument panel](docs/BOAT_HUD.md)
 showing vertical held thrust, a speed needle, and port/starboard steering as visual ranges
 without numbers or units. Its slightly translucent case sits at the bottom of the scene;
@@ -775,7 +791,9 @@ nearest-neighbour scaling in multiples of the 320x200 scene, with a 320x200 mini
 Press **PLAY** to start with sound. The compact **Settings** toggle holds location, waves,
 smooth edges, and fullscreen; smooth edges and fullscreen default to on. The launcher disappears during play; the game fills
 the browser using integer scaling. Press `?` for the built-in controls; Escape closes help
-or leaves fullscreen. Reload the page to choose another location. Browser throttling
+or releases the mouse/leaves fullscreen. M enables captured mouse steering; scroll up/down
+changes thrust steps. After help, click the canvas to recapture. If capture is unavailable,
+keyboard steering stays available. Reload the page to choose another location. Browser throttling
 can affect animation/audio in background tabs. Bests are local to this browser and site,
 can be lost when storage is cleared or unavailable, and do not sync with native saves.
 Local recording import/export and native screenshot/profiling commands are not exposed by

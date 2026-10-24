@@ -1,4 +1,6 @@
 #include "boat_net_client.h"
+#include "boat_steering.h"
+#include "boat_throttle.h"
 
 #include <math.h>
 #include <string.h>
@@ -352,15 +354,30 @@ const BoatFleet *boat_net_client_view(const BoatNetClient *c)
 }
 
 // One command per local tick, aimed at the estimated server tick plus the lead.
-static void command(BoatNetClient *c, double now, BoatNetCommand next)
+static void command(
+    BoatNetClient *c, double now, BoatNetCommand next, float thrust_target, float steering_target)
 {
     const BoatFleetSlot *own = boat_net_client_own(c);
     if (!own || !c->offset_valid)
         return;
-    if (own->life != c->command_life) {
+    bool new_life = own->life != c->command_life;
+    if (new_life) {
         c->command_life = own->life;
         c->command_count = 0;
         c->command_tick = 0;
+    }
+    if (isfinite(thrust_target) && !(next.flags & BOAT_NET_COMMAND_INACTIVE)) {
+        const BoatFleetSlot *predicted = &boat_net_client_view(c)->state.slots[c->slot];
+        float target_thrust = new_life ? 0 : thrust_target;
+        next.throttle = boat_net_command(
+            (BoatInput) { 0, boat_throttle_rate(predicted->boat.throttle, target_thrust) }, 0)
+                            .throttle;
+    }
+    if (isfinite(steering_target) && !(next.flags & BOAT_NET_COMMAND_INACTIVE)) {
+        const Boat *boat = &boat_net_client_view(c)->state.slots[c->slot].boat;
+        next.steering = boat_net_command(
+            (BoatInput) { boat_steering_rate(boat->wheel, new_life ? 0 : steering_target), 0 }, 0)
+                            .steering;
     }
     uint64_t target = (uint64_t)fmax(0, floor(now * BOAT_TICK_HZ + c->offset)) + c->lead;
     uint64_t tick = c->command_tick + 1;
@@ -397,8 +414,11 @@ static void command(BoatNetClient *c, double now, BoatNetCommand next)
     ++c->stats.input_packets;
 }
 
-bool boat_net_client_service(BoatNetClient *c, double now, BoatInput input, bool inactive)
+static bool service(BoatNetClient *c, double now, BoatInput input, bool inactive,
+    float thrust_target, float steering_target)
 {
+    uint32_t life_before
+        = c->phase == BOAT_NET_CLIENT_PLAYING ? c->fleet.state.slots[c->slot].life : 0;
     BoatNetEvent event;
     for (unsigned handled = 0;
         handled < BOAT_NET_MESSAGES_PER_SERVICE && boat_net_poll(&c->transport, &event);
@@ -455,12 +475,16 @@ bool boat_net_client_service(BoatNetClient *c, double now, BoatInput input, bool
         BoatPredictionWakes wakes = { c->wake_digest, c->pending, c->pending_count, hold };
         c->predict_dirty = !boat_prediction_correct(&c->prediction, &c->fleet, c->inputs, &wakes);
     }
+    if (c->fleet.state.slots[c->slot].life != life_before) {
+        thrust_target = isfinite(thrust_target) ? 0 : NAN;
+        steering_target = isfinite(steering_target) ? 0 : NAN;
+    }
     if (c->input_clock == 0 || now - c->input_clock > .25)
         c->input_clock = now; // Never replay a backlog of held keys after a stall.
     BoatNetCommand next = boat_net_command(input, inactive ? BOAT_NET_COMMAND_INACTIVE : 0);
     while (c->input_clock + BOAT_TICK_SECONDS <= now) {
         c->input_clock += BOAT_TICK_SECONDS;
-        command(c, now, next);
+        command(c, now, next, thrust_target, steering_target);
     }
     if (c->reset_request) {
         const BoatFleetSlot *own = &c->fleet.state.slots[c->slot];
@@ -475,6 +499,23 @@ bool boat_net_client_service(BoatNetClient *c, double now, BoatInput input, bool
         }
     }
     return true;
+}
+
+bool boat_net_client_service(BoatNetClient *c, double now, BoatInput input, bool inactive)
+{
+    return service(c, now, input, inactive, NAN, NAN);
+}
+
+bool boat_net_client_service_thrust(
+    BoatNetClient *c, double now, BoatInput input, bool inactive, float thrust_target)
+{
+    return service(c, now, input, inactive, thrust_target, NAN);
+}
+
+bool boat_net_client_service_targets(BoatNetClient *c, double now, BoatInput input, bool inactive,
+    float thrust_target, float steering_target)
+{
+    return service(c, now, input, inactive, thrust_target, steering_target);
 }
 
 void boat_net_client_request_reset(BoatNetClient *c)

@@ -25,6 +25,17 @@ on windows-2022 with Visual Studio 2022. It runs on pushes and can also be
 started manually from the Actions tab after the workflow exists on the default branch.
 No Windows development tools are needed on your Mac or the test machine.
 
+## HUD/control qualification, 2026-10-24
+
+The `boat-marine-hud` worktree adds relative captured mouse steering (M/Esc releases),
+scroll-wheel thrust and shared pure control helpers. Native input uses the same pinned raylib
+GLFW backend on macOS, Windows and Linux; browser-only code is excluded from MSVC builds.
+The existing Windows `boat_handling` check exercises all detent/wheel transitions, held targets,
+relative movement, scroll accumulation and lock/overscroll reversal. This revision has **not**
+yet been compiled or played on Windows; the next push/workflow run must qualify it before
+Windows support is called verified. Manual pointer capture, help/focus/Esc, mouse/trackpad feel
+and connected play remain required. See [the HUD owner](BOAT_HUD.md).
+
 ## Download and test
 
 For versioned downloads, use the ZIP under **Releases** once a version is published;

@@ -5,6 +5,7 @@ const storageLine = document.getElementById('storage');
 const canvas = Module['canvas'];
 const stage = document.getElementById('stage');
 let started = false;
+installBoatMouseControls(Module, canvas, document, window);
 document.getElementById('fullscreen').disabled = !stage.requestFullscreen;
 
 Module['preRun'] = Module['preRun'] || [];
@@ -42,6 +43,7 @@ function fitCanvas() {
 playButton.addEventListener('click', () => {
   if (started) return;
   started = true;
+  Module['boatGameStarted'] = true;
   playButton.disabled = true;
   document.body.classList.add('playing');
   fitCanvas();

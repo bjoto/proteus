@@ -21,6 +21,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Check browser input event contract
+        run: node tools/test_web_mouse_controls.cjs
+
       - name: Check out official Emscripten SDK
         uses: actions/checkout@v6
         with:

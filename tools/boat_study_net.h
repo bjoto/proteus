@@ -34,7 +34,8 @@ bool net_study_connect(
     NetStudy *net, const char *endpoint, const char *name, const char *token, BoatSession *session);
 // One displayed frame: service the network with this frame's controls and update the view.
 // False when the connection ended (the reason was printed).
-bool net_study_frame(NetStudy *net, BoatSession *session, BoatInput input, bool active, bool reset);
+bool net_study_frame(NetStudy *net, BoatSession *session, BoatInput input, float thrust_target,
+    float steering_target, bool active, bool reset);
 // The other boats as rival views at TIME, each with its slot's skin.
 void net_study_rivals(const NetStudy *net, double time, BoatRivals *rivals);
 // A slot's skin: the same on every client.

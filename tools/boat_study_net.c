@@ -122,13 +122,14 @@ static Boat shown(const NetStudy *net, unsigned slot)
     return boat;
 }
 
-bool net_study_frame(NetStudy *net, BoatSession *session, BoatInput input, bool active, bool reset)
+bool net_study_frame(NetStudy *net, BoatSession *session, BoatInput input, float thrust_target,
+    float steering_target, bool active, bool reset)
 {
     BoatNetClient *c = &net->client;
     double now = boat_net_clock();
     if (reset && active)
         boat_net_client_request_reset(c);
-    if (!boat_net_client_service(c, now, input, !active)) {
+    if (!boat_net_client_service_targets(c, now, input, !active, thrust_target, steering_target)) {
         fail(net, "Disconnected: %s.", boat_net_client_failure(c));
         return false;
     }
