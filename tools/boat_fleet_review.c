@@ -30,7 +30,7 @@ static void formation(Formation *f, bool waves, float seconds)
 {
     const BoatWorldDefinition *basin = boat_location(BOAT_LOCATION_BASIN);
     boat_fleet_init(&f->fleet, basin, boat_world_test_water(basin, waves, false, false),
-        BOAT_OBJECT_LIFE_TICKS, 1.8f);
+        BOAT_OBJECT_LIFE_TICKS, BOAT_OBJECT_DEFAULT_HEIGHT);
     static const Vector2 start[BOAT_FLEET_SLOTS] = { { 0, 50 }, { -5, 40 }, { 5, 36 }, { 0, 29 } };
     for (unsigned i = 0; i < BOAT_FLEET_SLOTS; ++i) {
         boat_fleet_place(&f->fleet, i, (Boat) { .position = start[i], .throttle = .55f });

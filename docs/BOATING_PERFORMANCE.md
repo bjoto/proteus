@@ -1,5 +1,12 @@
 # Boating performance tools
 
+2026-10-24: [arcade stability tuning](ARCADE_STABILITY.md) advances handling to revision 7.
+The benchmark retains its explicit 1.8 m stress setting; historical physics-6 trajectories
+and timings below do not establish a baseline for the revised handling.
+Revision-7 reports include `physics_revision`; the updated three-run trace has 19 births,
+peak 19 objects, one landing and final hash `a991b713315ef1e4`. See the
+[candidate evidence](ARCADE_STABILITY.md) for validation and its limits.
+
 The foundations [P2a task](BOATING_FOUNDATIONS_PLAN.md#p2a-completion--2026-10-23)
 owns the finite scripted arcade wake-return benchmark. Full P2 renderer counters and the
 P3 workload matrix remain pending.

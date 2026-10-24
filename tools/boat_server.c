@@ -108,7 +108,7 @@ static int scripted(
     }
     static BoatFleet fleet;
     if (!boat_fleet_init(&fleet, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 },
-            BOAT_OBJECT_LIFE_TICKS, 1.8f)) {
+            BOAT_OBJECT_LIFE_TICKS, BOAT_OBJECT_DEFAULT_HEIGHT)) {
         fprintf(stderr, "boat_server: cannot create the basin fleet.\n");
         return 1;
     }

@@ -265,8 +265,8 @@ Personal bests persist between launches, with separate files for calm water and 
 The browser version stores these in IndexedDB for the current site; clearing site data removes them.
 On macOS they live in `~/Library/Application Support/Proteus/`; Windows uses `%LOCALAPPDATA%/Proteus/`,
 and Linux uses `$XDG_DATA_HOME/proteus/` (or `~/.local/share/proteus/`). The files are
-`course-calm-physics6.run` and `course-waves-physics6.run`. Use `--data-dir DIR` to select another
-directory. Clock/replay revision 6 starts a separate set of bests; revision-5, revision-4,
+`course-calm-physics7.run` and `course-waves-physics7.run`. Use `--data-dir DIR` to select another
+directory. Arcade handling revision 7 starts a separate set of bests; revision-6, revision-5, revision-4,
 revision-3, revision-2 and original best files remain on disk and are not loaded or overwritten
 automatically. Version-1/revision-5 recordings are rejected as replays/ghosts by this version.
 Incompatible or damaged saved bests are ignored with a message. Failed saves preserve the best in
@@ -360,7 +360,7 @@ turn quicker while retaining progressive steering and hull inertia. Tap up/W or 
 one thrust step; holding a key does not repeat. Forward has ultra-slow (5%, for docking), slow
 (20%), medium (50%) and max (100%); reverse has ultra-slow (5%) and slow (20%). Neutral sits
 between the directions. Releasing keys holds the selected setting, with smooth command travel
-and engine response. R resets to neutral thrust and centres the wheel. Esc closes the window.
+and engine response. R resets to neutral thrust and centres the wheel.
 Press `M` to capture the mouse for steering, or launch with `--mouse-steering`. The pointer
 is hidden and horizontal movement accumulates wheel angle: move right/left to turn the wheel,
 then stop moving to hold that setting. About 300 mouse pixels moves the requested wheel from
@@ -371,6 +371,12 @@ M or Esc releases the pointer and returns to keyboard steering; another Esc retu
 Help and focus loss release capture. Desktop builds resume capture on return; browsers may
 need a canvas click or M to capture again. Browsers that deny or lack capture show a keyboard
 fallback message. Mouse mode is inactive during scripted demos and replay playback.
+
+In arcade object-wake jumps, steering also rolls the boat in the air. Small wheel angles
+give gentle roll control; full steering permits a barrel roll. Centre the wheel to brake
+the spin and help prepare for landing. In mouse mode, move the mouse back to centre:
+stopping it holds the wheel angle. The hull has stronger passive recovery, but an inverted
+landing can still capsize it. This [first stability tuning](docs/ARCADE_STABILITY.md) awaits play feedback.
 
 Scroll up/down to increase/decrease thrust one step per scroll unit, in either steering mode.
 Fractional trackpad scrolling accumulates until a full step; larger scrolls can move several
@@ -488,7 +494,8 @@ The default **arcade wake objects** build tall, rideable jump waves:
 ./build/review/boat_study --wake-objects --wake-height 1.2 --wake-life-ticks 1440
 ```
 
-The default crest scale is 1.8 m and pieces live for 1920 ticks (16 seconds). Nearby
+The default crest scale is 1.2 m and pieces live for 1920 ticks (16 seconds). Use
+`--wake-height 1.8` to compare the earlier taller setting. Nearby
 pieces add directly, so crossings can produce taller waves. Half-second emission, smoothed
 strength and age-aligned fading reduce visible packet joins; the sixteen-second lifetime
 is retained. `--wake-height` accepts

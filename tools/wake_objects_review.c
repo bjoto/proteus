@@ -303,7 +303,7 @@ static void local_fleet(void)
         (unsigned long long)world.emitted, world.peak_live, contacts, flights);
 }
 
-static void gameplay_envelope(void)
+static unsigned gameplay_envelope(float crest_height)
 {
     unsigned cases = 0, flights = 0, landings = 0, capsizes = 0;
     float peak = 0, peak_lift = 0;
@@ -314,6 +314,8 @@ static void gameplay_envelope(void)
             for (unsigned angle = 0; angle < 3; ++angle)
                 for (unsigned age = 0; age < 3; ++age) {
                     BoatWakeObjects world = seed();
+                    world.crest_height = crest_height;
+                    world.objects[0].amplitude *= crest_height / 1.8f;
                     world.tick = world.objects[0].born + ages[age];
                     for (unsigned source = 1; source < sources; ++source) {
                         world.objects[source * BOAT_OBJECT_PER_BOAT] = world.objects[0];
@@ -352,9 +354,53 @@ static void gameplay_envelope(void)
                     ++cases;
                 }
     CHECK(flights > 0 && landings > 0 && capsizes > 0);
-    printf("gameplay envelope: %u cases, %u flights, %u landed, %u capsized; peak %.4gm, lift "
-           "%.4gm/s\n",
-        cases, flights, landings, capsizes, peak, peak_lift);
+    printf(
+        "gameplay envelope (%.2gm): %u cases, %u flights, %u landed, %u capsized; peak %.4gm, lift "
+        "%.4gm/s\n",
+        crest_height, cases, flights, landings, capsizes, peak, peak_lift);
+    return capsizes;
+}
+
+static void air_roll_control(void)
+{
+    BoatWakeObjects water;
+    CHECK(boat_wake_objects_init(&water, BOAT_OBJECT_LIFE_TICKS, BOAT_OBJECT_DEFAULT_HEIGHT));
+    BoatSession left, right, recover;
+    boat_session_init(&right, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
+    right.world.water.objects = &water;
+    right.boat.height = 200; // Isolate several seconds of dry controls from landing forces.
+    right.boat.wheel = 1;
+    right.boat.velocity = (Vector2) { 3, -7 };
+    left = right;
+    left.boat.wheel = -1;
+    recover = right;
+    recover.boat.wheel = 0;
+    recover.boat.roll = 70 * DEG2RAD;
+    recover.boat.roll_velocity = 2;
+    for (unsigned tick = 0; tick < 240; ++tick) {
+        boat_session_step(&right, (BoatInput) { 1, 0 });
+        boat_session_step(&left, (BoatInput) { -1, 0 });
+        boat_session_step(&recover, (BoatInput) { 0 });
+    }
+    CHECK(right.boat.motion_state == BOAT_AIRBORNE && left.boat.motion_state == BOAT_AIRBORNE);
+    CHECK(right.boat.roll > 2 * PI && left.boat.roll < -2 * PI);
+    CHECK(fabsf(right.boat.roll + left.boat.roll) < .0001f);
+    CHECK(fabsf(recover.boat.roll) < 10 * DEG2RAD && fabsf(recover.boat.roll_velocity) < .2f);
+    CHECK(right.boat.velocity.x == 3 && right.boat.velocity.y == -7);
+    CHECK(fabsf(right.boat.height - left.boat.height) < .0001f);
+    for (unsigned tick = 0; tick < 360; ++tick)
+        boat_session_step(&right, (BoatInput) { 0 });
+    CHECK(fabsf(right.boat.roll_velocity) < .3f);
+
+    BoatSession inverted;
+    boat_session_init(&inverted, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
+    inverted.world.water.objects = &water;
+    inverted.boat.roll = PI;
+    for (unsigned tick = 0; tick < 120; ++tick)
+        boat_session_step(&inverted, (BoatInput) { 0 });
+    CHECK(inverted.boat.motion_state == BOAT_CAPSIZED);
+    puts(
+        "arcade air control: mirrored steering rolls, neutral recovery, momentum and capsize pass");
 }
 
 static BoatWakeObjects curved_world(void)
@@ -526,7 +572,7 @@ static void shader_checks(const BoatWakeObjects *w, float probe_z)
 static void runtime(bool graphics, bool visible)
 {
     BoatWakeObjects w;
-    CHECK(boat_wake_objects_init(&w, BOAT_OBJECT_LIFE_TICKS, 1.8f));
+    CHECK(boat_wake_objects_init(&w, BOAT_OBJECT_LIFE_TICKS, BOAT_OBJECT_DEFAULT_HEIGHT));
     BoatSession boat;
     boat_session_init(&boat, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 });
     boat.world.water.objects = &w;
@@ -656,7 +702,10 @@ int main(int argc, char **argv)
     printf("same diagonal approach: one wake %.4gm, crossing wakes %.4gm above calm\n", single,
         crossed);
     CHECK(crossed > single * 1.2f);
-    gameplay_envelope();
+    air_roll_control();
+    unsigned tall_capsizes = gameplay_envelope(1.8f);
+    unsigned default_capsizes = gameplay_envelope(BOAT_OBJECT_DEFAULT_HEIGHT);
+    CHECK(tall_capsizes < 43 && default_capsizes < tall_capsizes);
     local_fleet();
     (void)curved_world();
     bool visible = argc == 2 && strcmp(argv[1], "--desktop") == 0;

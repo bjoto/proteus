@@ -1,5 +1,10 @@
 # Coherent, crossable wakes
 
+Current tuning, 2026-10-24: [stability and steering-roll study](ARCADE_STABILITY.md) lowers
+the default crest scale to 1.2 m, adds passive recovery and lets steering command air roll.
+The user requests fewer accidental capsizes; the first candidate needs play feedback.
+The earlier enjoyment below is the baseline for this refinement, not acceptance of the new tuning.
+
 2026-10-23 direction: the user reports boating, especially jumping, landing and capsizing,
 is fun. Preserve that feel. The [multiplayer plan](MULTIPLAYER_PLAN.md) now owns shared-fleet
 authority/replication planning; this plan retains the arcade surface recipe and visual work.
@@ -28,13 +33,14 @@ exceeds 128 live objects. Current actual hull checks retain 7.195 m above-calm j
 larger launches through crossed wakes. One-boat optimized measurements include about
 .15 ms for two physics/source ticks and 2.42–2.45 ms median for physics plus complete
 GPU rendering, versus 2.05 ms before this continuity change in the same review workload.
-The 16-second lifetime and 1.8 m crest setting are retained. These are observations,
+At the continuity checkpoint the 16-second lifetime and 1.8 m crest setting were retained. These are observations,
 not a hard 2 ms guarantee or a four-boat rendering result.
 
 The user reviewed the continuity revision, reports it is very fun and requested the default
 switch. Completed: free-boating default selection, explicit legacy/opt-out overrides, and
 an updated default-versus-explicit object capture check. Course/replay/ghost behavior is retained.
-Default launch is 1.8 m / 1920 ticks (16 s); `--wake-height 1.2` offers a gentler ride.
+Default launch is now 1.2 m / 1920 ticks (16 s); `--wake-height 1.8` restores the earlier
+tall setting. Steering controls roll in object-mode flight; centre the wheel for recovery.
 
 Historical pre-implementation review: [arcade gameplay/performance assessment](WAKE_ARCADE_REVIEW.md),
 2026-10-22. At that reviewed revision, jumping and signed reinforcement worked, but flight
@@ -52,7 +58,8 @@ and advances replay compatibility to revision 5. Debug build, all 83 active CTes
 inspected captures and visible scripted basin/river runs pass; the implementation record
 separates that evidence from hands-on driving and user acceptance.
 
-Next on the wake track: readability feedback, especially the persistent tight-turn pattern;
+Next on the wake track: play the [stability candidate](ARCADE_STABILITY.md), alongside
+readability feedback on the persistent tight-turn pattern;
 the user's 2026-10-23 enjoyment of jumping/landing/capsize is recorded above.
 Individual crests demonstrably move while overlapping patterns can retain a similar shape;
 the user says this sounds very similar to their experience. The exact original report and

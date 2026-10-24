@@ -25,10 +25,11 @@ for attempt in range(1, 4):
     assert report['scenario_revision'] == report['hash_revision'] == 1
     assert report['warmup_ticks'] == 240 and report['measured_ticks'] == 14400
     assert report['total_ticks'] == 14640 and len(trace) == 7320
-    assert report['births'] == report['peak_objects'] == 17
+    assert report['physics_revision'] == 7
+    assert report['births'] == report['peak_objects'] == 19
     assert report['landings'] == 1
     assert int(trace[-1]['live']) == 0
-    assert max(int(row['live']) for row in trace) == 17
+    assert max(int(row['live']) for row in trace) == 19
     assert {int(row['motion']) for row in trace}.issuperset({0, 1, 2})
     assert trace[-1]['state_hash'] == report['state_hash']
     if reference is None:
