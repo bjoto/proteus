@@ -37,7 +37,7 @@ EM_JS(float, boat_web_mouse_scroll, (void), { return Module['boatMouse']['scroll
 static void usage(void)
 {
     puts(
-        "Usage: boat_study [--demo] [--frames COUNT] [--screenshot FILE [--time SECONDS]]\n"
+        "Usage: wake_velocity [--demo] [--frames COUNT] [--screenshot FILE [--time SECONDS]]\n"
         "--verbose: log graphics/window backend and resource initialization\n"
         "No options (or --title): Wake Velocity title with multiplayer and settings (name, boat,\n"
         "  mouse steering)\n"

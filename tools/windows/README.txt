@@ -1,9 +1,9 @@
-Proteus boat study - Windows x64
+Wake Velocity - Windows x64
 
-Extract the entire ZIP, then double-click launch.bat (or boat_study.exe) to open
+Extract the entire ZIP, then double-click launch.bat (or wake_velocity.exe) to open
 the Wake Velocity title. Pick NAME, BOAT and STEERING under SETTINGS, then SINGLE PLAYER for the river, or
 MULTIPLAYER to type a room's HOST:PORT address and connect. Esc in a session
-returns to the title. Keep assets beside boat_study.exe.
+returns to the title. Keep assets beside wake_velocity.exe.
 
 To host a room for friends on the same network, double-click host.bat and allow
 boat_server.exe through Windows Firewall when asked. Friends choose MULTIPLAYER
@@ -28,14 +28,14 @@ F3: toggle profiler overlay
 Esc: release the mouse, then back to the title (Esc again on the title quits)
 
 Explicit options skip the title. Eriksberg with 4x4 supersampling, from PowerShell:
-  .\boat_study.exe --location eriksberg --gpu --gpu-aa
+  .\wake_velocity.exe --location eriksberg --gpu --gpu-aa
 
 If GPU startup fails, launch from PowerShell to read the diagnostic output.
 CPU rendering is also available:
-  .\boat_study.exe --renderer cpu --location eriksberg
+  .\wake_velocity.exe --renderer cpu --location eriksberg
 
 For the expanded river and bridge, use --location river. Add --waves for gentle
-waves in any location. Run .\boat_study.exe --help for course and replay options.
+waves in any location. Run .\wake_velocity.exe --help for course and replay options.
 
 When reporting issues, include build.txt, Windows version, GPU model, and
 whether the problem also happens without --gpu-aa.

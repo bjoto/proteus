@@ -1,4 +1,4 @@
-# Windows boat study builds
+# Windows Wake Velocity builds
 
 Multiplayer M3 (2026-10-23): `boat_study` now links the pinned ENet library (winsock,
 `ws2_32`/`winmm`) for the diagnostic `--connect` mode, and the package step copies
@@ -24,7 +24,7 @@ validators, the selected CPU and multiplayer tests (step result only; per-test l
 read), packaging and the relocated `boat_study`/`boat_server` checks. The HUD/control merge below
 has not yet been through Windows CI. Human Windows play and `host.bat` remain unverified.
 
-The Windows boat study GitHub Actions workflow builds a Release x64 executable
+The Windows Wake Velocity GitHub Actions workflow builds a Release x64 executable
 on windows-2022 with Visual Studio 2022. It runs on pushes and can also be
 started manually from the Actions tab after the workflow exists on the default branch.
 No Windows development tools are needed on your Mac or the test machine.
@@ -43,16 +43,18 @@ and connected play remain required. See [the HUD owner](BOAT_HUD.md).
 ## Download and test
 
 For versioned downloads, use the ZIP under **Releases** once a version is published;
-see [automated releases](RELEASES.md). Extract `boat-study-windows-x64.zip` completely
-on Windows and double-click `launch.bat`. For an ordinary branch build:
+see [automated releases](RELEASES.md). Extract `wake_velocity-<version>-windows-x64.zip` completely
+on Windows and double-click `launch.bat`. Here `<version>` is the release tag
+(for example `v0.1.0`); branch artifacts use
+`dev-<full-commit-sha>`. For an ordinary branch build:
 
 1. Commit and push the source and .github/workflows/windows-boat.yml to GitHub.
-2. Open the repository's **Actions** tab and select **Windows boat study**.
-3. Open the successful run and download **boat-study-windows-x64** under **Artifacts**.
+2. Open the repository's **Actions** tab and select **Windows Wake Velocity**.
+3. Open the successful run and download `wake_velocity-<version>-windows-x64` under **Artifacts**.
 4. Transfer the ZIP to Windows and extract it completely before running it.
-5. Double-click launch.bat to open the Wake Velocity title (`boat_study.exe` without options).
+5. Double-click launch.bat to open the Wake Velocity title (`wake_velocity.exe` without options).
 
-Artifacts expire after 30 days. build.txt records the source commit. The package
+Artifacts expire after 30 days. `build.txt` records the version and source commit. The package
 includes shader/texture/title assets, background music, and map attribution; geometry is
 compiled into the executable. Asset loading uses the executable directory, so the folder can be moved.
 raylib and the MSVC runtime are statically linked for this workflow.
@@ -91,6 +93,13 @@ already set up a GitHub SSH key. Pushes upload committed files only.
 See [GitHub's artifact download instructions](https://docs.github.com/en/actions/managing-workflow-runs/downloading-workflow-artifacts).
 
 ## Current status and verification
+
+Release naming, 2026-10-24: The release naming now uses `wake_velocity.exe`, matching `launch.bat`, and
+versioned package/artifact names. A fixture ZIP layout/checksum and workflow lint
+passed locally; real PowerShell packaging and Windows execution still require CI.
+[Releases](RELEASES.md#status-and-verification) owns the complete evidence and limits.
+Next: verify the updated workflow downloads and perform user playback.
+
 
 Static package review, 2026-10-24: the Windows workflow copied shaders, textures, music, and
 map attribution but omitted `assets/title/river-backdrop.png`. Since `launch.bat` starts the

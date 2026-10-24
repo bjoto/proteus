@@ -10,10 +10,10 @@ case "$tag" in
 esac
 
 assets=(
-    "$asset_dir/proteus-boating-macos-arm64.zip"
-    "$asset_dir/proteus-boating-macos-arm64.zip.sha256"
-    "$asset_dir/boat-study-windows-x64.zip"
-    "$asset_dir/boat-study-windows-x64.zip.sha256"
+    "$asset_dir/wake_velocity-${tag}-macos-arm64.zip"
+    "$asset_dir/wake_velocity-${tag}-macos-arm64.zip.sha256"
+    "$asset_dir/wake_velocity-${tag}-windows-x64.zip"
+    "$asset_dir/wake_velocity-${tag}-windows-x64.zip.sha256"
 )
 for asset in "${assets[@]}"; do
     test -s "$asset"

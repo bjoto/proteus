@@ -15,9 +15,7 @@ class PublishReleaseTest(unittest.TestCase):
         self.root = Path(self.directory.name)
         self.assets = self.root / "release assets"
         self.assets.mkdir()
-        for platform in ("proteus-boating-macos-arm64", "boat-study-windows-x64"):
-            for suffix in (".zip", ".zip.sha256"):
-                (self.assets / (platform + suffix)).write_text("fixture")
+        self.make_assets()
         self.log = self.root / "calls.jsonl"
         cli = self.root / "gh"
         cli.write_text("""#!/usr/bin/env python3
@@ -31,6 +29,11 @@ if command == os.environ.get('TEST_GH_FAIL'):
     sys.exit(1)
 """)
         cli.chmod(0o755)
+
+    def make_assets(self, tag="v0.1.0"):
+        for platform in ("macos-arm64", "windows-x64"):
+            for suffix in (".zip", ".zip.sha256"):
+                (self.assets / f"wake_velocity-{tag}-{platform}{suffix}").write_text("fixture")
 
     def publish(self, tag="v0.1.0", **options):
         env = os.environ.copy()
@@ -54,9 +57,11 @@ if command == os.environ.get('TEST_GH_FAIL'):
         self.assertEqual(calls[3], ["release", "edit", "v0.1.0", "--draft=false"])
 
     def test_prerelease_tag(self):
+        self.make_assets("v0.1.0-rc.1")
         result, calls = self.publish("v0.1.0-rc.1")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("--prerelease", calls[1])
+        self.assertTrue(all("wake_velocity-v0.1.0-rc.1-" in asset for asset in calls[2][3:-1]))
 
     def test_rerun_reuses_release_without_changing_notes(self):
         result, calls = self.publish(TEST_GH_EXISTS="1")
@@ -74,8 +79,13 @@ if command == os.environ.get('TEST_GH_FAIL'):
         self.assertEqual([call[1] for call in calls], ["view", "create"])
 
     def test_missing_asset_does_not_contact_github(self):
-        (self.assets / "boat-study-windows-x64.zip").unlink()
+        (self.assets / "wake_velocity-v0.1.0-windows-x64.zip").unlink()
         result, calls = self.publish()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(calls, [])
+
+    def test_other_version_assets_do_not_contact_github(self):
+        result, calls = self.publish("v0.2.0")
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(calls, [])
 

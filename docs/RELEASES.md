@@ -1,13 +1,13 @@
 # Automated app releases
 
 The [multiplayer plan](MULTIPLAYER_PLAN.md) proposes native multiplayer before browser support;
-release packages link ENet for `boat_study --connect` and the title's MULTIPLAYER entry
+release packages link ENet for `wake_velocity --connect` and the title's MULTIPLAYER entry
 (2026-10-23/24) and include `enet-LICENSE.txt`. Since 2026-10-24 both also carry `boat_server`
 for LAN rooms (Windows: `host.bat`; Mac: inside the app bundle). M6 will add protocol/content
 identity, native cross-platform checks and a separate Linux headless-server distribution to
 release documentation. A future native multiplayer release need not imply browser multiplayer parity.
 
-The **Release boating apps** workflow builds and tests the Apple Silicon Mac app
+The **Release Wake Velocity** workflow builds and tests the Apple Silicon Mac app
 and Windows x64 package for the same version tag, then attaches both ZIPs and their
 SHA-256 files to a GitHub Release. Downloads from Releases do not require navigating
 Actions artifacts and are not subject to their 30-day retention policy.
@@ -18,7 +18,7 @@ After the release workflow changes are committed and pushed, create and push a
 version tag on the commit you want to ship. For example, using a new version:
 
 ```sh
-git tag -a v0.1.0 -m "Proteus boating v0.1.0"
+git tag -a v0.1.0 -m "Wake Velocity v0.1.0"
 git push origin v0.1.0
 ```
 
@@ -53,9 +53,20 @@ in draft if its uploads fail. Do not move an already published version tag.
 
 | Asset | Contents |
 | --- | --- |
-| `proteus-boating-macos-arm64.zip` | Ad-hoc signed `Proteus Boating.app`; Apple Silicon, macOS 13+ |
-| `boat-study-windows-x64.zip` | Portable folder containing `launch.bat`, executable, and assets |
+| `wake_velocity-<version>-macos-arm64.zip` | Ad-hoc signed `Wake Velocity.app`; Apple Silicon, macOS 13+ |
+| `wake_velocity-<version>-windows-x64.zip` | Portable folder containing `launch.bat`, `wake_velocity.exe`, and assets |
 | Matching `.zip.sha256` files | SHA-256 checksums for both archives |
+
+Here `<version>` is the full release tag, including its `v` prefix (for example,
+`wake_velocity-v0.1.0-windows-x64.zip` or `wake_velocity-v0.1.0-rc.1-macos-arm64.zip`).
+The Windows ZIP contains a folder with the same versioned stem. The Mac app is
+`Wake Velocity.app`, with `Contents/MacOS/wake_velocity` as its executable.
+Both packages record the full version in `build.txt`; the Mac bundle version uses
+the numeric part of a semantic version tag. Branch/manual builds use `dev-<full-commit-sha>`
+for their Actions artifact names and packages. Local Mac packaging defaults to `dev`.
+The internal CMake target and source files retain `boat_study`; developer checkout
+commands in the guides still use that build target. This release naming change does
+not rename the browser build's internal files or promote the boating target to `proteus`.
 
 See [Mac first-launch instructions](MACOS_BUILD.md#download-and-open) and
 [Windows controls and startup](WINDOWS_BUILD.md#download-and-test). The Mac app
@@ -69,6 +80,33 @@ recipes. Only its publication job receives `contents: write`, using GitHub's
 provided token. No personal access token or additional secret is needed.
 
 ## Status and verification
+
+Current status, 2026-10-24: Wake Velocity native package naming and versioned
+archives, checksums and Actions artifacts are implemented. The macOS executable,
+bundle display name, Windows launcher/readme and CLI usage use the released name.
+Internal source/CMake names remain unchanged. Next: run the updated platform workflows
+and publish the next chosen version; download both packages for user review.
+
+Verification on Apple Silicon/macOS 26, 2026-10-24:
+
+- Debug configure/build passed. `ctest --test-dir build -j 4 --output-on-failure`
+  passed all 110 enabled tests; 15 retired wake-field checks stayed disabled. The initial
+  sandboxed attempt hit loopback permissions and was stopped; the complete rerun used
+  desktop/socket access.
+- Eight offline publisher tests passed, including prerelease filenames and rejection
+  of assets for a different version. Actionlint and `bash -n` passed.
+- A real `v0.1.0-rc.1` Mac ZIP from the local Debug build passed checksum, extraction,
+  strict signature, bundle metadata, relocated CLI help/CPU capture, title capture,
+  a 120-frame GPU demo, four-second no-argument startup and scripted server checks.
+  Title and CPU gameplay captures were inspected.
+- Windows versioned ZIP layout and checksum passed with a fixture executable; this
+  does not verify PowerShell packaging or Windows execution. Changed local documentation
+  file links and `git diff --check` passed.
+
+No release was published. Updated CI, real Windows packaging/execution, browser-download
+Gatekeeper behavior, human input/audio playback and user acceptance remain unverified.
+
+### Earlier release automation evidence
 
 2026-10-18: reusable platform workflows, version-tag and published-release triggers,
 Windows release ZIP/checksum, draft/upload/publish script, and documentation implemented.
@@ -87,6 +125,6 @@ The Windows fix at `3bffdb7` passed its real
 handling/capture tests, packaging, relocation, and artifact upload. The Mac build's
 existing evidence is in its [guide](MACOS_BUILD.md#implementation-status-and-verification).
 
-Next: push the release automation, then publish the next chosen version to verify
+Historical next step (superseded by the current status above): publish a version to verify
 the full release path and download both ZIPs. Actual release publication, GitHub
 token permissions, and human Windows GPU/audio/control playback remain unverified.

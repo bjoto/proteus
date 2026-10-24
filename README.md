@@ -97,7 +97,7 @@ The boating game also builds for browsers from the same C sources. See
 [browser builds and GitHub Pages](#browser-build-and-github-pages) below.
 
 For a downloadable Windows executable built on GitHub Actions, see
-[Windows boat study builds](docs/WINDOWS_BUILD.md).
+[Windows Wake Velocity builds](docs/WINDOWS_BUILD.md).
 For an Apple Silicon Mac app ZIP built on GitHub Actions, see
 [macOS app builds](docs/MACOS_BUILD.md), including the first-launch security approval.
 Version tags and published releases automatically build and attach both app ZIPs;
@@ -215,7 +215,7 @@ Since 2026-10-24 the Mac app and the Windows ZIP include `boat_server`. On Windo
 through, and allow it through Windows Firewall. On a Mac, run it from Terminal:
 
 ```sh
-"/Applications/Proteus Boating.app/Contents/MacOS/boat_server" --bind 0.0.0.0
+"/Applications/Wake Velocity.app/Contents/MacOS/boat_server" --bind 0.0.0.0
 ```
 
 Friends on the same network choose MULTIPLAYER on the title. The room appears in its LAN row,

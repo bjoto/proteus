@@ -1,4 +1,4 @@
-name: Windows boat study
+name: Windows Wake Velocity
 
 on:
   push:
@@ -12,6 +12,8 @@ permissions:
 jobs:
   build:
     runs-on: windows-2022
+    env:
+      PACKAGE_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || format('dev-{0}', github.sha) }}
     timeout-minutes: 20
     defaults:
       run:
@@ -26,7 +28,7 @@ jobs:
           cmake -S . -B build-win -G "Visual Studio 17 2022" -A x64
           -DBUILD_SHARED_LIBS=OFF -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
 
-      - name: Build boat study, room server and validators
+      - name: Build Wake Velocity, room server and validators
         run: |
           $targets = 'boat_study', 'boat_server', 'boat_bot', 'validate_boat', 'validate_boat_net'
           cmake --build build-win --config Release --target $targets --parallel 2>&1 |
@@ -46,11 +48,11 @@ jobs:
           ctest --test-dir build-win -C Release --output-on-failure
           -R '^(boat_handling|boat_screenshot|boat_eriksberg_screenshot|boat_server_scripted|boat_net|boat_net_loopback)$'
 
-      - name: Package portable boat study
+      - name: Package portable Wake Velocity
         run: |
-          $package = 'build-win/package/boat-study-windows-x64'
+          $package = "build-win/package/wake_velocity-$env:PACKAGE_VERSION-windows-x64"
           New-Item -ItemType Directory -Force -Path "$package/assets" | Out-Null
-          Copy-Item build-win/Release/boat_study.exe $package
+          Copy-Item build-win/Release/boat_study.exe "$package/wake_velocity.exe"
           Copy-Item build-win/Release/boat_server.exe $package
           Copy-Item build-win/Release/assets/shaders "$package/assets" -Recurse
           Copy-Item build-win/Release/assets/textures "$package/assets" -Recurse
@@ -65,15 +67,15 @@ jobs:
           Copy-Item build-win/_deps/raylib-src/LICENSE "$package/raylib-LICENSE.txt"
           Copy-Item build-win/_deps/raylib-src/src/external/glfw/LICENSE.md "$package/glfw-LICENSE.md"
           Copy-Item build-win/_deps/enet-src/LICENSE "$package/enet-LICENSE.txt"
-          Set-Content -Path "$package/build.txt" -Value "Commit: $env:GITHUB_SHA" -Encoding utf8
+          Set-Content -Path "$package/build.txt" -Value "Version: $env:PACKAGE_VERSION`nCommit: $env:GITHUB_SHA" -Encoding utf8
 
       - name: Check relocated executable from another working directory
         run: |
-          $exe = (Resolve-Path build-win/package/boat-study-windows-x64/boat_study.exe).Path
+          $exe = (Resolve-Path "build-win/package/wake_velocity-$env:PACKAGE_VERSION-windows-x64/wake_velocity.exe").Path
           Push-Location $env:RUNNER_TEMP
           try {
             & $exe --renderer cpu --location eriksberg --time 3 --screenshot boat-portable.png
-            if ($LASTEXITCODE -ne 0) { throw "Relocated boat study failed: $LASTEXITCODE" }
+            if ($LASTEXITCODE -ne 0) { throw "Relocated Wake Velocity failed: $LASTEXITCODE" }
             $server = Join-Path (Split-Path $exe) boat_server.exe
             & $server --scripted --ticks 240
             if ($LASTEXITCODE -ne 0) { throw "Relocated boat server failed: $LASTEXITCODE" }
@@ -88,7 +90,7 @@ jobs:
       - name: Upload Windows package
         uses: actions/upload-artifact@v4
         with:
-          name: boat-study-windows-x64
-          path: build-win/package/boat-study-windows-x64/
+          name: wake_velocity-${{ env.PACKAGE_VERSION }}-windows-x64
+          path: build-win/package/wake_velocity-${{ env.PACKAGE_VERSION }}-windows-x64/
           if-no-files-found: error
           retention-days: 30

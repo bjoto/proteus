@@ -134,6 +134,12 @@ packaged macOS/Windows launches, Windows/Linux builds, two-machine play, and use
 acceptance. The marine HUD branch is not merged; it also edits `tools/boat_study.c`
 and `tools/boat_study_net.[ch]` (input/draw paths), so expect small textual conflicts.
 
+Release naming, 2026-10-24: native packages now present **Wake Velocity** with
+`wake_velocity` executables and versioned archive/Actions artifact names. This ships
+package naming independently of promotion step 3 below; the internal `boat_study`
+target and developer commands remain. [Releases](RELEASES.md) owns verification and
+the next packaging checks. Main-program promotion remains deferred.
+
 ## Promotion sequence and ownership
 
 1. **Title slice:** Put menu input, screen state, and rendering behind a small interface

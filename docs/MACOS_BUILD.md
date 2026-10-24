@@ -1,4 +1,4 @@
-# macOS boat study builds
+# macOS Wake Velocity builds
 
 Multiplayer M3 (2026-10-23): native builds fetch the pinned ENet library, and `boat_study`
 links it for the diagnostic `--connect` mode, so the app bundle now carries
@@ -12,21 +12,23 @@ run it yet: [run 40083439307](https://github.com/doomdavve/proteus/actions/runs/
 (2026-10-24, `29d1afb`) stopped at three CI-only test failures before packaging. Their causes
 and fixes are in the [multiplayer handoff](MULTIPLAYER_PLAN.md#packaged-lan-server-handoff--2026-10-24).
 
-The **macOS boat study** GitHub Actions workflow builds a Release Apple Silicon
+The **macOS Wake Velocity** GitHub Actions workflow builds a Release Apple Silicon
 app on `macos-15`, targeting macOS 13 or newer. It runs on pushes and can be
 started manually after the workflow is on the default branch. Intel Macs are
 not included. No Apple Developer membership or signing secrets are required.
 
 ## Download and open
 
-For versioned downloads, get `proteus-boating-macos-arm64.zip` from **Releases**
+For versioned downloads, get `wake_velocity-<version>-macos-arm64.zip` from **Releases**
 once a version is published, extract it, and continue with step 4 below. See
-[automated releases](RELEASES.md). For an ordinary branch build:
+[automated releases](RELEASES.md). Here `<version>` is the release tag (for example
+`v0.1.0`); branch artifacts use
+`dev-<full-commit-sha>`. For an ordinary branch build:
 
-1. Push the changes, then open **Actions → macOS boat study** in GitHub.
-2. Open a successful run and download **proteus-boating-macos-arm64** under **Artifacts**.
-3. Extract the artifact, then extract the enclosed `proteus-boating-macos-arm64.zip`.
-4. Move **Proteus Boating.app** into Applications, or another folder of your choice.
+1. Push the changes, then open **Actions → macOS Wake Velocity** in GitHub.
+2. Open a successful run and download `wake_velocity-<version>-macos-arm64` under **Artifacts**.
+3. Extract the artifact, then extract the enclosed `wake_velocity-<version>-macos-arm64.zip`.
+4. Move **Wake Velocity.app** into Applications, or another folder of your choice.
 5. Open the app. If macOS blocks it, open **System Settings → Privacy & Security**,
    select **Open Anyway** for this app, and confirm the launch.
 
@@ -54,7 +56,7 @@ without current/crossing wake/waves/antialiasing), then applies those arguments.
 For example:
 
 ```sh
-"/Applications/Proteus Boating.app/Contents/MacOS/boat_study" --location eriksberg --gpu-aa
+"/Applications/Wake Velocity.app/Contents/MacOS/wake_velocity" --location eriksberg --gpu-aa
 ```
 
 Music, shaders, textures, the title river backdrop, map attribution, and dependency licenses
@@ -74,8 +76,10 @@ python3 tools/macos/package.py --build-dir build-mac --output-dir build-mac/pack
 Use a fresh output directory when packaging again; the script refuses to overwrite
 an existing app. It checks architecture and system-only dynamic dependencies,
 creates the bundle, ad-hoc signs it, verifies the signature, and creates the ZIP
-with `ditto`. The plist records the executable's minimum macOS version. An optional
-`--raylib-source PATH` supports a custom CMake FetchContent source location.
+with `ditto`. The plist records the executable's minimum macOS version.
+`--version v0.1.0` sets the ZIP name, build record and bundle version; the default
+local version is `dev`. An optional `--raylib-source PATH` supports a custom CMake
+FetchContent source location.
 
 The workflow runs the full display-free CTest suite and checks the extracted app's
 signature and a CPU capture from another working directory. GPU rendering and
@@ -83,6 +87,13 @@ audio playback require a desktop check; CI does not establish those or Gatekeepe
 behavior after a browser download.
 
 ## Implementation status and verification
+
+Release naming, 2026-10-24: The renamed/versioned Mac package was built locally from Debug, signed, extracted
+and checked outside the checkout. CPU/title captures, a short GPU demo, no-argument
+title startup and the bundled server passed; captures were inspected.
+[Releases](RELEASES.md#status-and-verification) owns the complete evidence and limits.
+Next: verify the updated workflow downloads and perform user playback.
+
 
 2026-10-18, Apple Silicon/macOS 26: workflow, relocatable boating assets, preferred
 river launch defaults, bundle packager, ad-hoc signature, ZIP, and checksum implemented.

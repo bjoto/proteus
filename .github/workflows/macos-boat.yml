@@ -1,4 +1,4 @@
-name: macOS boat study
+name: macOS Wake Velocity
 
 on:
   push:
@@ -12,6 +12,8 @@ permissions:
 jobs:
   build:
     runs-on: macos-15
+    env:
+      PACKAGE_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || format('dev-{0}', github.sha) }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
@@ -34,17 +36,17 @@ jobs:
           ctest --test-dir build-mac --output-on-failure
 
       - name: Package and ad-hoc sign
-        run: python3 tools/macos/package.py --build-dir build-mac --output-dir build-mac/package
+        run: python3 tools/macos/package.py --build-dir build-mac --output-dir build-mac/package --version "$PACKAGE_VERSION"
 
       - name: Check extracted app outside the checkout
         shell: bash
         run: |
           mkdir -p "$RUNNER_TEMP/relocated"
-          ditto -x -k build-mac/package/proteus-boating-macos-arm64.zip "$RUNNER_TEMP/relocated"
-          app="$RUNNER_TEMP/relocated/Proteus Boating.app"
+          ditto -x -k "build-mac/package/wake_velocity-${PACKAGE_VERSION}-macos-arm64.zip" "$RUNNER_TEMP/relocated"
+          app="$RUNNER_TEMP/relocated/Wake Velocity.app"
           codesign --verify --deep --strict --verbose=2 "$app"
           cd "$RUNNER_TEMP"
-          "$app/Contents/MacOS/boat_study" --renderer cpu --location eriksberg --time 3 --screenshot relocated.png
+          "$app/Contents/MacOS/wake_velocity" --renderer cpu --location eriksberg --time 3 --screenshot relocated.png
           test -s relocated.png
           "$app/Contents/MacOS/boat_server" --scripted --ticks 240
           test -s "$app/Contents/Resources/assets/music/a-little-boat.xm"
@@ -54,7 +56,7 @@ jobs:
       - name: Upload downloadable app
         uses: actions/upload-artifact@v4
         with:
-          name: proteus-boating-macos-arm64
+          name: wake_velocity-${{ env.PACKAGE_VERSION }}-macos-arm64
           path: |
             build-mac/package/*.zip
             build-mac/package/*.sha256
