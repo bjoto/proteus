@@ -1,3 +1,6 @@
+#if !defined(_WIN32) && !defined(_POSIX_C_SOURCE)
+#define _POSIX_C_SOURCE 200809L // clock_gettime under strict C17 (glibc).
+#endif
 #include "profiler.h"
 
 #include <math.h>
