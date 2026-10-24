@@ -197,6 +197,15 @@ static void snapshot(BoatNetClient *c, const BoatNetMessage *m, double now)
     ++*(c->wake_consistent ? &c->stats.consistent : &c->stats.inconsistent);
     c->snapshot_at = now;
     c->predict_dirty = true;
+    const BoatFleetSlot *own = &state->slots[c->slot];
+    if (c->resetting && own->active && own->life != c->reset_life) {
+        c->resetting = false;
+        ++c->stats.resets;
+        c->stats.max_reset = fmax(c->stats.max_reset, now - c->reset_at);
+    } else if (c->resetting && !own->pending && now - c->reset_at > 1) {
+        c->resetting = false; // Never queued: the request was rate limited or lost.
+        ++c->stats.resets_dropped;
+    }
     boat_remote_history_push(&c->remotes, tick, state->slots);
     ++c->stats.snapshots;
     // The authority sends snapshot n right after tick n: allow half the round trip.
@@ -459,6 +468,11 @@ bool boat_net_client_service(BoatNetClient *c, double now, BoatInput input, bool
             .spawn = { .request = c->reset_request, .life = own->life } };
         send_message(c, &m);
         c->reset_request = 0;
+        if (own->active && !c->resetting) {
+            c->resetting = true;
+            c->reset_life = own->life;
+            c->reset_at = now;
+        }
     }
     return true;
 }
@@ -466,6 +480,15 @@ bool boat_net_client_service(BoatNetClient *c, double now, BoatInput input, bool
 void boat_net_client_request_reset(BoatNetClient *c)
 {
     c->reset_request = ++c->requests ? c->requests : ++c->requests;
+}
+
+BoatNetResetState boat_net_client_reset_state(const BoatNetClient *c, double now, double *seconds)
+{
+    if (seconds)
+        *seconds = c->resetting ? now - c->reset_at : 0;
+    if (!c->resetting)
+        return BOAT_NET_RESET_NONE;
+    return c->fleet.state.slots[c->slot].pending ? BOAT_NET_RESET_WAITING : BOAT_NET_RESET_SENT;
 }
 
 void boat_net_client_leave(BoatNetClient *c)

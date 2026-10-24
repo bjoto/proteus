@@ -161,7 +161,9 @@ corrections blended over about a tenth of a second. Every other boat is drawn sm
 about 100 ms behind the server, and blends toward its predicted position when it comes within
 about 12 m of yours or is about to hit you. Each room slot has its own country on every client:
 1 Sweden, 2 Finland, 3 Denmark, 4 Norway (`--skin` does not apply). On exit `prediction:` and `other boat:` lines report
-the corrections and how the other boat was drawn. `R` asks the server for a new life at a safe spawn. Help and focus loss make
+the corrections and how the other boat was drawn. `R` asks the server for a new life at a safe spawn; `RESETTING` shows until it arrives (with
+the wait when no spawn point is clear yet), and the view fades in at the new spot. On exit a
+`resets:` line reports them. Help and focus loss make
 the server ease your controls to neutral, but the room keeps running. Course, replay, wake, water,
 location, demo and screenshot options are refused with `--connect`. Wrong tokens, version or
 handling mismatches and full rooms are refused with a message. The

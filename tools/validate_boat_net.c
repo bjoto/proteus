@@ -799,13 +799,26 @@ static int authority_rules(void)
     // Reset: one request is one new life; a repeat naming the old life does nothing more.
     life = s->fleet.state.slots[slot].life;
     boat_net_client_request_reset(c);
+    room_run(&room, .002);
+    CHECK(boat_net_client_reset_state(c, room.now, NULL) != BOAT_NET_RESET_NONE);
     room_run(&room, 2);
     CHECK(s->fleet.state.slots[slot].life == life + 1);
+    // The client saw the new life end its reset, within a round trip and a spawn retry.
+    CHECK(boat_net_client_reset_state(c, room.now, NULL) == BOAT_NET_RESET_NONE);
+    CHECK(c->stats.resets == 1 && c->stats.max_reset < .3 && c->stats.resets_dropped == 0);
     inject(&room, i,
         (BoatNetMessage) { .header = { .type = BOAT_NET_SPAWN_REQUEST }, .spawn = { 99, life } });
     room_run(&room, 1);
     CHECK(s->fleet.state.slots[slot].life == life + 1 && !s->fleet.state.slots[slot].pending);
     CHECK(boat_net_client_own(c)->life == life + 1);
+    // A request the authority never queues (rate limited here) stops showing after a second.
+    room.server.peers[room.link[i]].spawn_tokens = 0;
+    boat_net_client_request_reset(c);
+    room_run(&room, .1);
+    CHECK(boat_net_client_reset_state(c, room.now, NULL) == BOAT_NET_RESET_SENT);
+    room_run(&room, 1.2);
+    CHECK(boat_net_client_reset_state(c, room.now, NULL) == BOAT_NET_RESET_NONE);
+    CHECK(c->stats.resets_dropped == 1 && boat_net_client_own(c)->life == life + 1);
 
     // No client transform is accepted: world-state messages from a client are forbidden and
     // change nothing; persistent offenders are disconnected.
@@ -826,7 +839,8 @@ static int authority_rules(void)
     CHECK(s->stats.misbehaving == 1 && s->slot_peer[slot] < 0 && active_boats(s) == 0);
     CHECK(c->phase == BOAT_NET_CLIENT_CLOSED && c->leave == BOAT_NET_LEAVE_MISBEHAVING);
     printf("authority: immutable, late, future, stale-life, stale-sequence and foreign-epoch "
-           "commands handled; inactive neutral; idempotent reset; forged state refused\n");
+           "commands handled; inactive neutral; idempotent reset with client progress; dropped "
+           "reset expires; forged state refused\n");
     room_close(&room);
     return 0;
 }

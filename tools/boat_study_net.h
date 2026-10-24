@@ -19,6 +19,7 @@ typedef struct {
     Boat shown[BOAT_FLEET_SLOTS]; // Drawn poses of the other boats.
     bool own_visible, visible[BOAT_FLEET_SLOTS];
     uint32_t own_life, lives[BOAT_FLEET_SLOTS];
+    double respawned_at; // Clock time of the own boat's latest new life.
     BoatPredictionError offset[BOAT_FLEET_SLOTS]; // Visual correction still being blended.
     uint32_t correction; // Prediction correction serial already folded into the offsets.
     uint64_t presented_tick; // Last tick the presentations were stepped for.
@@ -37,6 +38,10 @@ bool net_study_frame(NetStudy *net, BoatSession *session, BoatInput input, bool 
 void net_study_rivals(const NetStudy *net, double time, BoatRivals *rivals);
 // A slot's skin: the same on every client.
 unsigned net_study_skin(unsigned slot);
+// The own boat's reset or spawn notice (NULL when there is none), and the opacity of the short
+// fade from dark that hides the camera cut to a new life.
+const char *net_study_notice(const NetStudy *net);
+float net_study_fade(const NetStudy *net);
 // One HUD line: slot, players, round trip and staleness.
 const char *net_study_status(const NetStudy *net);
 void net_study_close(NetStudy *net);

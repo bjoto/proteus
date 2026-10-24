@@ -28,15 +28,19 @@ and the [protocol](MULTIPLAYER_PROTOCOL.md). M4 step 1, checkpoint/input replay 
 prediction, `boat_prediction`), is implemented and automatically verified on macOS; the user
 played it beside `boat_bot` on 2026-10-24 ("Works really well!"); see the [M4 prediction handoff](#m4-step-1-client-prediction-handoff--2026-10-23).
 M4 step 2 (wake reconciliation: digest-confirmed provisional records, held corrections, early
-births by identity) is implemented and automatically verified, not yet user-played; see the
+births by identity) is implemented and automatically verified; see the
 [wake handoff](#m4-step-2-wake-reconciliation-handoff--2026-10-24). M4 step 3 (remote
 interpolation 100 ms behind and the proximity blend, `boat_remote_view`) is implemented and
-automatically verified, not yet user-played; see the
+automatically verified; the user played both in the step-4a sessions without targeted checks ("I'm not sure what to look for but I didn't notice anything off") on 2026-10-24; see the
 [remote view handoff](#m4-step-3-remote-view-handoff--2026-10-24). M4 step 4a (fleet rendering
 with the Nordic skins by slot) is implemented and automatically verified; the user played it
 with several boats and bots on 2026-10-24 ("It works!");
-see the [fleet rendering handoff](#m4-step-4a-fleet-rendering-handoff--2026-10-24). Next: M4
-step 4b, the safe reset UI. M5–M8 are pending.
+see the [fleet rendering handoff](#m4-step-4a-fleet-rendering-handoff--2026-10-24). M4 step 4b
+(reset feedback: `RESETTING`, waiting for a clear spot, a short fade into the new life) is
+implemented and automatically verified, not yet user-played; see the
+[reset UI handoff](#m4-step-4b-reset-ui-handoff--2026-10-24). All M4 implementation steps are
+done. Next: the M4 manual acceptance session (two humans, LAN and profile F) and the contact-gap
+measurement it calls for; M5–M8 are pending.
 Numerical budgets below are proposed gates, not measured multiplayer results.
 The final evidence section distinguishes checks performed for this document from future checks.
 
@@ -700,14 +704,17 @@ macOS (2026-10-23); user-played beside `boat_bot`, including its wakes, on 2026-
 [M4 prediction handoff](#m4-step-1-client-prediction-handoff--2026-10-23). Next: step 2, wake
 births/repair and provisional-own reconciliation; then remote interpolation/proximity view,
 fleet rendering and the safe reset UI. Step 2 (wake reconciliation) implemented and automatically
-verified on 2026-10-24, not yet user-played; see the
+verified on 2026-10-24; see the
 [wake handoff](#m4-step-2-wake-reconciliation-handoff--2026-10-24). Step 3 (remote view)
-implemented and automatically verified on 2026-10-24, not yet user-played; see the
+implemented and automatically verified on 2026-10-24; the user played both in the step-4a sessions without targeted checks ("I'm not sure what to look for but I didn't notice anything off"); see the
 [remote view handoff](#m4-step-3-remote-view-handoff--2026-10-24). Step 4a (fleet rendering)
 implemented and automatically verified on 2026-10-24, user-played with several boats and bots the
 same day; see the
-[fleet rendering handoff](#m4-step-4a-fleet-rendering-handoff--2026-10-24). Next: step 4b, the
-safe reset UI.
+[fleet rendering handoff](#m4-step-4a-fleet-rendering-handoff--2026-10-24). Step 4b (reset UI)
+implemented and automatically verified on 2026-10-24, not yet user-played; see the
+[reset UI handoff](#m4-step-4b-reset-ui-handoff--2026-10-24). Next: the manual acceptance session
+above and the contact-gap measurement; the user plans wider play once binaries can go to
+friends (M6).
 
 ### M5 — four-player/session and impairment hardening
 
@@ -1241,7 +1248,7 @@ Started from `c85bf66`. The title-screen row in `docs/README.md` and the untrack
 
 | Implemented | Automated verification | Manual observation | User acceptance |
 | --- | --- | --- | --- |
-| Wake-change metrics, digest-confirmed carry of provisional records, held corrections, early births by identity | `boat_net` (`prediction_wakes` fixture, gated predicting rooms), the full suite | Three agent-run windowed `boat_study --connect` runs beside a bot; no keyboard play | None yet |
+| Wake-change metrics, digest-confirmed carry of provisional records, held corrections, early births by identity | `boat_net` (`prediction_wakes` fixture, gated predicting rooms), the full suite | Three agent-run windowed `boat_study --connect` runs beside a bot; no keyboard play | Not targeted; 2026-10-24 the user played it during step-4a sessions: "I'm not sure what to look for but I didn't notice anything off" |
 
 **Problem measured first.** Snapshots arrive at 30 Hz and births at 10 Hz, so a snapshot often
 counts a birth whose batch is still on the way. The step-1 replay then started from a mirror
@@ -1304,7 +1311,7 @@ Started from `55c1ce1`. The title-screen row in `docs/README.md` and the untrack
 
 | Implemented | Automated verification | Manual observation | User acceptance |
 | --- | --- | --- | --- |
-| `boat_remote_view` snapshot history, interpolation/extrapolation and proximity blend; `boat_study --connect` draws the other boat with it | `boat_net` (`remote_view` fixture, gated predicting rooms), the full suite | Agent-run windowed `boat_study --connect` beside a bot; no keyboard play | None yet |
+| `boat_remote_view` snapshot history, interpolation/extrapolation and proximity blend; `boat_study --connect` draws the other boat with it | `boat_net` (`remote_view` fixture, gated predicting rooms), the full suite | Agent-run windowed `boat_study --connect` beside a bot; no keyboard play | Not targeted; 2026-10-24 the user played it during step-4a sessions: "I'm not sure what to look for but I didn't notice anything off" |
 
 **Module.** `src/boat_remote_view.[ch]` is in `proteus_boat_net` (core boundary). The client keeps
 the last 16 authoritative snapshots' slots (`BoatNetClient.remotes`, about 0.5 s) and exposes
@@ -1401,6 +1408,42 @@ server faults. The connected view itself was not inspected.
 **Limits.** Remote audio stays local-only (no engine sound for other boats). Spray of remote
 boats is capped at 96 pieces. The GPU shadow map still centres on the own boat. User play was
 on one machine (loopback); no two-machine or Windows/browser run.
+
+## M4 step 4b: reset UI handoff — 2026-10-24
+
+Started from `4d36ecf`. The title-screen row in `docs/README.md` and the untracked
+`docs/TITLE_SCREEN_PLAN.md` are not part of this change. Protocol v1 is unchanged: the slot's
+`pending` flag and `life` already travel in every snapshot.
+
+| Implemented | Automated verification | Manual observation | User acceptance |
+| --- | --- | --- | --- |
+| Client reset progress, `boat_study --connect` reset notices and fade | `boat_net` (`authority` reset cases), the full suite | Agent-run windowed `--connect` beside a bot (join fade only; R not pressed) | None yet |
+
+**Client.** `boat_net_client_reset_state()` reports the latest reset: `SENT` once the request
+leaves, `WAITING` while the authority's snapshot shows the slot queued (`pending`), and `NONE`
+when a snapshot shows the own slot in a new life. A request the authority never queues (the
+two-per-second spawn rate limit, or loss) is given up after one second. Stats count completed
+resets, the longest request-to-new-life time and dropped requests.
+
+**HUD.** While a reset is in progress `boat_study --connect` shows `RESETTING` in place of the
+capsize or airborne notice; after half a second still queued it adds `WAITING FOR A CLEAR SPOT`
+and the seconds waited (the authority retries the authored spawns at 10 Hz until one is clear
+of hulls and wakes). Without a boat it still shows `WAITING FOR A SAFE SPAWN`. Each new own
+life, including the first spawn, fades in from the background colour over 0.35 s to hide the
+camera cut. On exit a `resets:` line reports completed and dropped resets.
+
+**Automated verification.** Apple M1 Max/macOS 26.6.2, Apple clang 21.0.0, Debug common recipe
+with `PROTEUS_GPU_TESTS=ON`. Warning-free build; the **104 active CTests pass** (83.08 s), 15
+retired cases disabled. The authority case now checks that a reset is reported in progress
+right after the request, ends with the new life within 0.3 s on the ideal virtual network, and
+that a rate-limited request reads `SENT` then expires after a second without a new life.
+
+**Manual observation (agent).** `boat_server`, one `boat_bot` and a windowed
+`boat_study --connect --frames 900` (GPU, loopback): joined, drew the bot, no faults, clean exit.
+R could not be pressed and the notices and fade were not inspected.
+
+**Limits.** The `WAITING` notice has no automated case with every spawn blocked. Try R in open
+water, after a capsize, and next to another boat at a spawn point; the fade length is a guess.
 
 ## Exact first implementation task
 

@@ -129,6 +129,7 @@ bool net_study_frame(NetStudy *net, BoatSession *session, BoatInput input, bool 
     if (own->active) {
         if (own->life != net->own_life) {
             net->own_life = own->life;
+            net->respawned_at = now;
             boat_presentation_reset(&session->presentation);
         }
         session->boat = shown(net, c->slot);
@@ -191,6 +192,28 @@ void net_study_rivals(const NetStudy *net, double time, BoatRivals *rivals)
     }
 }
 
+const char *net_study_notice(const NetStudy *net)
+{
+    static char text[80];
+    double seconds;
+    BoatNetResetState reset = boat_net_client_reset_state(&net->client, boat_net_clock(), &seconds);
+    if (!net->own_visible)
+        return "WAITING FOR A SAFE SPAWN";
+    if (reset == BOAT_NET_RESET_NONE)
+        return NULL;
+    // A clear spot is normally found within a tick or two; say so only when it is not.
+    if (reset == BOAT_NET_RESET_SENT || seconds < .5)
+        return "RESETTING";
+    snprintf(text, sizeof(text), "RESETTING / WAITING FOR A CLEAR SPOT %.0f s", seconds);
+    return text;
+}
+
+float net_study_fade(const NetStudy *net)
+{
+    double age = boat_net_clock() - net->respawned_at;
+    return net->respawned_at > 0 && age < .35 ? (float)(1 - age / .35) : 0;
+}
+
 const char *net_study_status(const NetStudy *net)
 {
     static char text[160];
@@ -230,6 +253,11 @@ void net_study_close(NetStudy *net)
             100.0 * (double)net->samples[BOAT_REMOTE_EXTRAPOLATED] / (double)net->frames,
             100.0 * (double)net->samples[BOAT_REMOTE_HELD] / (double)net->frames,
             100.0 * (double)net->near_frames / (double)net->frames);
+    const BoatNetClientStats *n = &net->client.stats;
+    if (n->resets || n->resets_dropped)
+        fprintf(stdout, "resets: %llu completed, longest %.0f ms; %llu dropped\n",
+            (unsigned long long)n->resets, n->max_reset * 1000,
+            (unsigned long long)n->resets_dropped);
     boat_net_client_leave(&net->client);
     boat_net_enet_close(net->enet, 1);
     net->enet = NULL;

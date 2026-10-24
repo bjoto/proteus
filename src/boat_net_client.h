@@ -25,6 +25,12 @@ typedef enum {
     BOAT_NET_CLIENT_CLOSED,
 } BoatNetClientPhase;
 
+typedef enum {
+    BOAT_NET_RESET_NONE,
+    BOAT_NET_RESET_SENT, // Requested; the authority has not yet queued it.
+    BOAT_NET_RESET_WAITING, // Queued, waiting for a clear authored spawn.
+} BoatNetResetState;
+
 typedef struct {
     uint64_t snapshots, stale_snapshots, births_applied, births_duplicate, births_held;
     uint64_t births_dropped, bootstraps, bootstrap_failures, resyncs, decode_errors;
@@ -32,6 +38,10 @@ typedef struct {
     uint64_t consistent, inconsistent; // Snapshots whose wake digest matched on arrival.
     uint64_t repaired; // Mismatches later cleared by births.
     double max_mismatch; // Longest repaired mismatch, seconds.
+    uint64_t resets; // Own resets completed (a new life after a request).
+    uint64_t
+        resets_dropped; // Requests the authority never queued (rate limit), given up after 1 s.
+    double max_reset; // Longest time from a reset request to its new life, seconds.
 } BoatNetClientStats;
 
 // The mirror fleet holds the newest authoritative snapshot, rebuilt from a complete checkpoint
@@ -82,6 +92,9 @@ typedef struct {
     unsigned command_count, commands_since_send;
     BoatNetCommand history[BOAT_NET_MAX_COMMANDS]; // Newest last.
     uint32_t reset_request, requests; // Pending reset request ID, and IDs issued.
+    bool resetting; // A sent reset request awaits its new life.
+    uint32_t reset_life; // The life that request replaces.
+    double reset_at; // When it was sent.
     BoatNetClientStats stats;
     BoatPrediction prediction; // Valid once PLAYING when predicting.
     BoatRemoteHistory remotes; // Recent authoritative boat states, for drawing other boats.
@@ -94,6 +107,9 @@ void boat_net_client_init(BoatNetClient *client, BoatNetTransport transport,
 bool boat_net_client_service(BoatNetClient *client, double now, BoatInput input, bool inactive);
 // Ask the authority for a new life at a safe spawn (the R key).
 void boat_net_client_request_reset(BoatNetClient *client);
+// Progress of the latest reset request; SECONDS (may be NULL) receives its age.
+BoatNetResetState boat_net_client_reset_state(
+    const BoatNetClient *client, double now, double *seconds);
 // Graceful leave.
 void boat_net_client_leave(BoatNetClient *client);
 bool boat_net_client_stale(const BoatNetClient *client, double now);

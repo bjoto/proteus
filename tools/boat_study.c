@@ -902,8 +902,20 @@ int main(int argc, char **argv)
         DrawTexturePro(texture,
             (Rectangle) { 0, 0, gpu_enabled ? -WIDTH : WIDTH, gpu_enabled ? -HEIGHT : HEIGHT },
             destination, (Vector2) { 0 }, 0, WHITE);
+        const char *notice = NULL;
+#ifdef PROTEUS_BOAT_NET
+        if (networked) {
+            float fade = net_study_fade(net);
+            if (fade > 0)
+                DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(),
+                    Fade((Color) { 14, 23, 32, 255 }, fade));
+            notice = net_study_notice(net);
+        }
+#endif
         boat_course_hud(&view->course, view->boat.position, GetScreenWidth());
-        if (view->boat.motion_state == BOAT_CAPSIZED)
+        if (notice)
+            DrawText(notice, 12, 36, 20, ORANGE);
+        else if (view->boat.motion_state == BOAT_CAPSIZED)
             DrawText("CAPSIZED / R TO RESTART", 12, 36, 20, ORANGE);
         else if (view->boat.motion_state == BOAT_AIRBORNE)
             DrawText("AIRBORNE", 12, 36, 16, SKYBLUE);
@@ -921,8 +933,6 @@ int main(int argc, char **argv)
         if (networked) {
 #ifdef PROTEUS_BOAT_NET
             DrawText(net_study_status(net), 12, GetScreenHeight() - 24, 12, SKYBLUE);
-            if (!net->own_visible)
-                DrawText("WAITING FOR A SAFE SPAWN", 12, 36, 20, ORANGE);
 #endif
         } else if (!IsWindowFocused())
             DrawText("PAUSED", 12, 12, 20, RAYWHITE);
