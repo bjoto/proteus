@@ -48,17 +48,21 @@ CPU checks may run concurrently; fixture dependencies still govern capture/repla
 
 Every active test carries one of three labels: `cpu` (display-free), `render` (CPU
 captures and checksums) or `gpu` (graphics context). Skin geometry carries both `cpu` and
-`render` labels. The thirteen `core` checks are also
+`render` labels. The eighteen `core` checks are also
 `cpu`:
 - `boat_core` runs `validate_boat_core`, which links only the boating core library.
 - `boat_core_boundary` runs `tools/check_core_boundary.py` over the core sources and archive,
   and `boat_net_boundary` does the same for the core and net libraries together.
 - `boat_fleet` runs `validate_boat_fleet` (multiplayer M2 fleet step, contacts, spawns and
   checkpoints), and `boat_server_scripted` runs the scripted authority for 2400 ticks.
+- `boat_match` runs `validate_boat_match` ([deathmatch](DEATHMATCH_PLAN.md) credit window,
+  self-capsize, grace, respawn, bailout, leavers, rounds and planted-wake capsizes), and
+  `boat_server_scripted_deathmatch` runs a scripted 10 s round through its intermission.
 - `boat_net` and `boat_net_loopback` are the [network checks](#network-checks).
-- Six argument checks expect a failure: `boat_server --scripted` with a room option, an invalid
-  `--port` and an invalid `--bind`, `boat_bot` without a port, `boat_study --connect` combined
-  with `--waves`, and `--name` without `--connect`.
+- Eight argument checks expect a failure: `boat_server --scripted` with a room option, an invalid
+  `--port` and an invalid `--bind`, `--round-seconds` without `--mode deathmatch`, `boat_bot`
+  without a port, `boat_study --connect` combined with `--waves` or `--skin`, and `--name`
+  without `--connect`.
 Select a group with `-L`, for example `ctest --test-dir build -L core`; CTest adds fixture
 setup tests that a selected test requires, whatever their label.
 

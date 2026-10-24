@@ -23,6 +23,9 @@ bool boat_net_server_init(
         || config->max_players > BOAT_FLEET_SLOTS
         || (config->token && strlen(config->token) > BOAT_NET_TOKEN_BYTES))
         return false;
+    BoatMatch match = { 0 };
+    if (config->deathmatch && !boat_match_init(&match, &config->match))
+        return false;
     *server = (BoatNetServer) { .transport = transport, .config = *config };
     text_copy(server->token, config->token, BOAT_NET_TOKEN_BYTES);
     server->config.token = server->token;
@@ -35,6 +38,7 @@ bool boat_net_server_init(
         server->slot_peer[i] = -1;
     server->backlog_since = -1;
     server->next_checkpoint = 1;
+    server->match = match;
     return true;
 }
 
@@ -71,6 +75,16 @@ static void send_roster(BoatNetServer *s)
 }
 
 // Free PEER's slot between ticks; its live wakes stay and expire naturally.
+// Queue the match's spawn requests and keep its events for the caller.
+static void match_output(BoatNetServer *s, const BoatMatchOutput *out)
+{
+    for (unsigned i = 0; i < BOAT_FLEET_SLOTS; ++i)
+        if (out->spawn[i])
+            boat_fleet_request_spawn(&s->fleet, i);
+    for (unsigned i = 0; i < out->count; ++i)
+        s->events[s->event_count++ % BOAT_NET_MATCH_EVENTS] = out->events[i];
+}
+
 static void drop_peer(BoatNetServer *s, unsigned peer, bool disconnect)
 {
     BoatNetServerPeer *p = &s->peers[peer];
@@ -309,8 +323,12 @@ static void message(BoatNetServer *s, unsigned peer, const BoatNetEvent *event, 
         p->spawn_tokens -= 1;
         // Idempotent: a request names the life it resets, so repeats cannot reset twice.
         if (!slot->active || slot->life == m.spawn.life) {
-            boat_fleet_request_spawn(&s->fleet, p->slot);
             ++s->stats.spawn_requests;
+            BoatMatchOutput out = { 0 };
+            // A deathmatch may hold a fresh capsize back or score a bailout first.
+            if (!s->config.deathmatch || boat_match_reset(&s->match, &s->fleet, p->slot, &out))
+                boat_fleet_request_spawn(&s->fleet, p->slot);
+            match_output(s, &out);
         }
         break;
     }
@@ -462,6 +480,11 @@ static void tick(BoatNetServer *s)
         inputs[i] = select_input(s, i, next);
     boat_fleet_step(&s->fleet, inputs);
     s->stats.emission_failures += s->fleet.stats.emission_failures;
+    if (s->config.deathmatch) {
+        BoatMatchOutput out;
+        boat_match_observe(&s->match, &s->fleet, &out);
+        match_output(s, &out);
+    }
     ++s->stats.ticks;
     // Births first, so a lossless link delivers them before the snapshot that counts them.
     if (next % BOAT_NET_BIRTH_TICKS == 0)

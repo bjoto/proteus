@@ -102,13 +102,14 @@ BoatWakeObjectSample boat_wake_objects_query(const BoatWakeObjects *w, Vector2 p
     return boat_wake_objects_query_at(w, p, w ? w->tick : 0);
 }
 
-BoatWakeObjectSample boat_wake_objects_query_at(const BoatWakeObjects *w, Vector2 p, uint64_t tick)
+static BoatWakeObjectSample query_range(
+    const BoatWakeObjects *w, Vector2 p, uint64_t tick, unsigned first, unsigned end)
 {
     BoatWakeObjectSample s = { 0 };
     if (!w || tick < w->tick)
         return s;
     float life = w->life_ticks / 120.0f;
-    for (unsigned i = 0; i < BOAT_OBJECT_CAPACITY; ++i) {
+    for (unsigned i = first; i < end; ++i) {
         const BoatWakeObject *o = &w->objects[i];
         if (!o->amplitude)
             continue;
@@ -158,6 +159,20 @@ BoatWakeObjectSample boat_wake_objects_query_at(const BoatWakeObjects *w, Vector
         s.vertical_velocity += a * window * (envelope_t * shape - envelope * ds * 2.4f);
     }
     return s;
+}
+
+BoatWakeObjectSample boat_wake_objects_query_at(const BoatWakeObjects *w, Vector2 p, uint64_t tick)
+{
+    return query_range(w, p, tick, 0, BOAT_OBJECT_CAPACITY);
+}
+
+BoatWakeObjectSample boat_wake_objects_query_emitter(
+    const BoatWakeObjects *w, unsigned emitter, Vector2 p)
+{
+    if (emitter >= BOAT_OBJECT_BOATS)
+        return (BoatWakeObjectSample) { 0 };
+    return query_range(w, p, w ? w->tick : 0, emitter * BOAT_OBJECT_PER_BOAT,
+        (emitter + 1) * BOAT_OBJECT_PER_BOAT);
 }
 
 int boat_wake_objects_pack(const BoatWakeObjects *w, float *origins, float *parameters)

@@ -40,8 +40,12 @@ see the [fleet rendering handoff](#m4-step-4a-fleet-rendering-handoff--2026-10-2
 implemented and automatically verified, not yet user-played; see the
 [reset UI handoff](#m4-step-4b-reset-ui-handoff--2026-10-24). All M4 implementation steps are
 done. The Mac and Windows packages now carry `boat_server` for LAN rooms (Windows CI pending;
-see the [packaged server handoff](#packaged-lan-server-handoff--2026-10-24)). Next: the M4 manual acceptance session (two humans, LAN and profile F) and the contact-gap
-measurement it calls for; M5–M8 are pending.
+see the [packaged server handoff](#packaged-lan-server-handoff--2026-10-24)). On 2026-10-24 the
+user played across two machines: a Mac hosted `boat_server` and one client, and a Windows machine
+joined over the LAN ("Multiplayer architecture works great!"); profile F and the contact-gap
+measurement were not part of that session. Next: the rest of the M4 manual acceptance session (two humans, LAN and profile F) and the contact-gap
+measurement it calls for; M5–M8 are pending. The [capsize deathmatch](DEATHMATCH_PLAN.md)
+proceeds in parallel (D1 match core implemented 2026-10-24; next task D2).
 Numerical budgets below are proposed gates, not measured multiplayer results.
 The final evidence section distinguishes checks performed for this document from future checks.
 
@@ -76,6 +80,11 @@ landmark. These work by agreement with no new scoring system. A later session-on
 counter can use confirmed outcomes. Accounts, public discovery, matchmaking, competitive
 ranking, elaborate race rules, persistent progression, chat/voice and moderation are outside
 this release. Friends can use their existing voice call.
+
+Superseded in part on 2026-10-24: the user chose a timed capsize deathmatch, with scoring,
+leaderboard and new capsize mechanics, as a server-selected room mode beside free boating. The
+[deathmatch plan](DEATHMATCH_PLAN.md) owns it; the paragraph above is kept as the original
+planning default.
 
 Assumptions: friends trust the host; a room uses one fixed map/settings revision; stable native
 machines can run 120 Hz; initial quality target is RTT <=80 ms with modest jitter/loss.
@@ -713,7 +722,9 @@ implemented and automatically verified on 2026-10-24, user-played with several b
 same day; see the
 [fleet rendering handoff](#m4-step-4a-fleet-rendering-handoff--2026-10-24). Step 4b (reset UI)
 implemented and automatically verified on 2026-10-24, not yet user-played; see the
-[reset UI handoff](#m4-step-4b-reset-ui-handoff--2026-10-24). Next: the manual acceptance session
+[reset UI handoff](#m4-step-4b-reset-ui-handoff--2026-10-24). User-played on two machines
+(Mac host with server and client, Windows client over LAN) on 2026-10-24: "works great". Next:
+the remaining manual acceptance checks (profile F)
 above and the contact-gap measurement; the user plans wider play once binaries can go to
 friends (M6).
 

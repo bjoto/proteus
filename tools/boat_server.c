@@ -4,6 +4,7 @@
  * 120 Hz wall-clock time until --ticks/--seconds elapse or it is interrupted. */
 #include "boat_fleet.h"
 #include "boat_fleet_bots.h"
+#include "boat_match.h"
 #include "boat_net_enet.h"
 #include "boat_net_server.h"
 
@@ -19,15 +20,19 @@ static void usage(FILE *out)
     fprintf(out,
         "usage: boat_server [--bind IPV4] [--port N] [--token TEXT] [--players 1-4] [--waves]\n"
         "                   [--location basin] [--ticks N | --seconds S] [--report-every N]\n"
+        "                   [--mode free|deathmatch] [--round-seconds S]\n"
         "       boat_server --scripted [--ticks N] [--boats 1-4] [--location basin]\n"
-        "                   [--report-every N]\n"
+        "                   [--report-every N] [--mode free|deathmatch] [--round-seconds S]\n"
         "Room (default): listen on --bind (default 127.0.0.1; use a LAN address to accept other\n"
         "machines) and UDP --port (default %d) for up to four boat_study --connect or boat_bot\n"
         "clients. Runs the 120 Hz basin authority until --ticks/--seconds or Ctrl+C. Clients\n"
         "must present the same --token (default empty). A diagnostic: no internet reachability,\n"
         "encryption or authentication.\n"
         "--scripted: bots drive N ticks (default 7200, one minute at 120 Hz) as fast as\n"
-        "possible, then print the fleet hash and per-tick cost; no socket.\n",
+        "possible, then print the fleet hash and per-tick cost; no socket.\n"
+        "--mode deathmatch: timed rounds (--round-seconds, default 300) scoring +1 for capsizing\n"
+        "another boat and -1 for capsizing yourself; capsized boats respawn after 3 s. The\n"
+        "default free mode is shared free boating.\n",
         BOAT_NET_PORT);
 }
 
@@ -54,8 +59,53 @@ static int compare_double(const void *a, const void *b)
     return (x > y) - (x < y);
 }
 
-static int scripted(unsigned long ticks, unsigned long boats, unsigned long report)
+static const char *const cause_names[] = { "self", "contact", "wake" };
+
+static const char *slot_name(const BoatNetServer *server, unsigned slot)
 {
+    static const char *const bots[] = { "bot1", "bot2", "bot3", "bot4" };
+    if (!server)
+        return bots[slot];
+    int peer = server->slot_peer[slot];
+    return peer < 0 ? "-" : server->peers[peer].name;
+}
+
+static void print_event(
+    const BoatNetServer *server, const BoatMatch *match, const BoatMatchEvent *e)
+{
+    if (e->kind == BOAT_MATCH_ROUND_START) {
+        printf("tick %" PRIu64 " round %" PRIu32 " start\n", e->tick, match->round);
+    } else if (e->kind == BOAT_MATCH_ROUND_END) {
+        printf("tick %" PRIu64 " round %" PRIu32 " end:", e->tick, match->round);
+        if (match->phase == BOAT_MATCH_WARMUP)
+            printf(" abandoned (too few players)");
+        for (unsigned i = 0; i < BOAT_FLEET_SLOTS; ++i)
+            if (match->slots[i].present)
+                printf(" %u:%s=%" PRId32 " (#%u, %" PRIu32 " caused, %" PRIu32 " capsized, %" PRIu32
+                       " self)",
+                    i + 1, slot_name(server, i), match->rows[i].score, boat_match_rank(match, i),
+                    match->rows[i].caused, match->rows[i].capsized, match->rows[i].self);
+        printf("\n");
+    } else {
+        printf("tick %" PRIu64 " capsize %u:%s life %" PRIu32, e->tick, e->victim + 1,
+            slot_name(server, e->victim), e->victim_life);
+        if (e->attacker == BOAT_MATCH_NOBODY)
+            printf(" self -1\n");
+        else
+            printf(" by %u:%s %s%s +1\n", e->attacker + 1, slot_name(server, e->attacker),
+                cause_names[e->cause], e->bailout ? " bailout" : "");
+    }
+    fflush(stdout);
+}
+
+static int scripted(
+    unsigned long ticks, unsigned long boats, unsigned long report, const BoatMatchRules *rules)
+{
+    static BoatMatch match;
+    if (rules && !boat_match_init(&match, rules)) {
+        fprintf(stderr, "boat_server: invalid deathmatch rules.\n");
+        return 1;
+    }
     static BoatFleet fleet;
     if (!boat_fleet_init(&fleet, boat_location(BOAT_LOCATION_BASIN), (BoatWater) { 0 },
             BOAT_OBJECT_LIFE_TICKS, 1.8f)) {
@@ -74,13 +124,32 @@ static int scripted(unsigned long ticks, unsigned long boats, unsigned long repo
     unsigned max_passes = 0, max_pair_tests = 0, peak_live = 0, flights = 0;
     for (unsigned long tick = 0; tick < ticks; ++tick) {
         BoatInput inputs[BOAT_FLEET_SLOTS];
-        boat_fleet_bots_drive(&bots, &fleet, inputs);
+        if (rules) {
+            // The match owns recovery: capsized boats wait for its automatic respawn.
+            for (unsigned i = 0; i < BOAT_FLEET_SLOTS; ++i)
+                inputs[i] = fleet.state.slots[i].active ? boat_fleet_bot_input(&bots, &fleet, i)
+                                                        : (BoatInput) { 0 };
+        } else {
+            boat_fleet_bots_drive(&bots, &fleet, inputs);
+        }
         bool airborne[BOAT_FLEET_SLOTS];
         for (unsigned i = 0; i < BOAT_FLEET_SLOTS; ++i)
             airborne[i] = fleet.state.slots[i].boat.motion_state == BOAT_AIRBORNE;
         double started = now_seconds();
         boat_fleet_step(&fleet, inputs);
         cost[tick] = (now_seconds() - started) * 1000;
+        if (rules) {
+            BoatMatchOutput out;
+            boat_match_observe(&match, &fleet, &out);
+            for (unsigned i = 0; i < BOAT_FLEET_SLOTS; ++i)
+                if (out.spawn[i]) {
+                    boat_fleet_request_spawn(&fleet, i);
+                    bots.waypoint[i] = 0;
+                    ++bots.resets;
+                }
+            for (unsigned i = 0; i < out.count; ++i)
+                print_event(NULL, &match, &out.events[i]);
+        }
         const BoatFleetStats *s = &fleet.stats;
         contacts += s->contacts;
         residual += s->residual;
@@ -104,6 +173,13 @@ static int scripted(unsigned long ticks, unsigned long boats, unsigned long repo
         total += cost[i];
     printf("boat_server scripted: boats=%lu ticks=%" PRIu64 " hash=%016" PRIx64 "\n", boats,
         fleet.state.tick, boat_fleet_hash(&fleet.state));
+    if (rules) {
+        printf("deathmatch: round=%" PRIu32 " phase=%d", match.round, (int)match.phase);
+        for (unsigned i = 0; i < boats; ++i)
+            printf(" %u=%" PRId32 "/%" PRIu32 "/%" PRIu32 "/%" PRIu32, i + 1, match.rows[i].score,
+                match.rows[i].caused, match.rows[i].capsized, match.rows[i].self);
+        printf(" (score/caused/capsized/self)\n");
+    }
     printf("wakes: emitted=%" PRIu64 " live=%u peak_live=%u failures=%lu\n",
         fleet.state.wakes.emitted, fleet.state.wakes.live, peak_live, failures);
     printf("contacts: pairs=%lu passes=%lu max_passes=%u max_pair_tests=%u residual=%lu\n",
@@ -134,6 +210,7 @@ typedef struct {
     uint16_t port;
     bool waves;
     unsigned long players, ticks, report;
+    const BoatMatchRules *rules; // Deathmatch rules, or NULL for free play.
 } RoomOptions;
 
 static void print_roster(const BoatNetServer *server)
@@ -164,7 +241,9 @@ static int room(const RoomOptions *options)
     BoatNetServerConfig config = { .token = options->token,
         .waves = options->waves,
         .epoch = epoch ? epoch : 1,
-        .max_players = (unsigned)options->players };
+        .max_players = (unsigned)options->players,
+        .deathmatch = options->rules != NULL,
+        .match = options->rules ? *options->rules : (BoatMatchRules) { 0 } };
     static BoatNetServer server;
     if (!boat_net_server_init(&server, boat_net_enet_transport(enet), &config)) {
         fprintf(stderr, "boat_server: invalid room configuration.\n");
@@ -175,13 +254,15 @@ static int room(const RoomOptions *options)
     server.tick_limit = options->ticks; // --ticks/--seconds run exactly that many ticks.
     signal(SIGINT, request_stop);
     signal(SIGTERM, request_stop);
-    printf("boat_server listening on %s:%u (basin, %s water, protocol %d, handling %d, "
+    printf("boat_server listening on %s:%u (basin, %s water, %s, protocol %d, handling %d, "
            "epoch %08" PRIx32 ", up to %lu players)\n",
-        options->bind, (unsigned)options->port, options->waves ? "wave" : "calm", BOAT_NET_VERSION,
-        BOAT_PHYSICS_REVISION, config.epoch, options->players);
+        options->bind, (unsigned)options->port, options->waves ? "wave" : "calm",
+        options->rules ? "deathmatch" : "free play", BOAT_NET_VERSION, BOAT_PHYSICS_REVISION,
+        config.epoch, options->players);
     fflush(stdout);
     unsigned players = 0;
     unsigned max_mtu = 0;
+    uint64_t events = 0;
     double busy = 0, started = boat_net_clock();
     int result = 0;
     while (!stop_requested && (!options->ticks || server.fleet.state.tick < options->ticks)) {
@@ -201,6 +282,9 @@ static int room(const RoomOptions *options)
             unsigned mtu = peer < 0 ? 0 : boat_net_enet_peer_mtu(enet, (unsigned)peer);
             max_mtu = mtu > max_mtu ? mtu : max_mtu;
         }
+        // Ring overruns between services are impossible: at most 8 ticks, 8 events each, 16 kept.
+        for (; events < server.event_count; ++events)
+            print_event(&server, &server.match, &server.events[events % BOAT_NET_MATCH_EVENTS]);
         if (boat_net_server_players(&server) != players) {
             players = boat_net_server_players(&server);
             print_roster(&server);
@@ -256,7 +340,8 @@ static int room(const RoomOptions *options)
 
 int main(int argc, char **argv)
 {
-    unsigned long ticks = 0, boats = BOAT_FLEET_SLOTS, report = 0, seconds = 0;
+    unsigned long ticks = 0, boats = BOAT_FLEET_SLOTS, report = 0, seconds = 0, round = 0;
+    bool deathmatch = false;
     bool scripted_mode = false, room_option = false;
     RoomOptions room_options
         = { .bind = "127.0.0.1", .token = "", .port = BOAT_NET_PORT, .players = BOAT_FLEET_SLOTS };
@@ -306,6 +391,13 @@ int main(int argc, char **argv)
         } else if (strcmp(argv[i], "--waves") == 0) {
             room_options.waves = true;
             room_option = true;
+        } else if (strcmp(argv[i], "--mode") == 0 && value
+            && (strcmp(value, "free") == 0 || strcmp(value, "deathmatch") == 0)) {
+            deathmatch = strcmp(value, "deathmatch") == 0;
+            ++i;
+        } else if (strcmp(argv[i], "--round-seconds") == 0 && value
+            && parse_count(value, 10, 60ul * 60, &round)) {
+            ++i;
         } else if (strcmp(argv[i], "--location") == 0 && value) {
             if (strcmp(value, "basin") != 0) {
                 fprintf(stderr, "boat_server: only the basin hosts a fleet before M7.\n");
@@ -318,6 +410,13 @@ int main(int argc, char **argv)
             return 2;
         }
     }
+    if (round && !deathmatch) {
+        fprintf(stderr, "boat_server: --round-seconds needs --mode deathmatch.\n");
+        return 2;
+    }
+    BoatMatchRules rules = boat_match_default_rules();
+    if (round)
+        rules.round_ticks = round * BOAT_TICK_HZ;
     if (scripted_mode) {
         if (room_option || seconds) {
             fprintf(stderr,
@@ -326,7 +425,7 @@ int main(int argc, char **argv)
                 "apply.\n");
             return 2;
         }
-        return scripted(ticks ? ticks : 7200, boats, report);
+        return scripted(ticks ? ticks : 7200, boats, report, deathmatch ? &rules : NULL);
     }
     if (boats != BOAT_FLEET_SLOTS) {
         fprintf(stderr, "boat_server: --boats applies to --scripted; rooms use --players.\n");
@@ -338,5 +437,6 @@ int main(int argc, char **argv)
     }
     room_options.ticks = seconds ? seconds * BOAT_TICK_HZ : ticks;
     room_options.report = report;
+    room_options.rules = deathmatch ? &rules : NULL;
     return room(&room_options);
 }

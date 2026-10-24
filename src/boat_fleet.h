@@ -39,6 +39,8 @@ typedef struct {
     unsigned shore_holds; // Separations kept at the previous position instead of crossing land.
     unsigned spawned, spawn_blocked; // Requests placed, and requests left waiting.
     unsigned emission_failures; // Wake capacity contract violations; must stay zero.
+    // Accumulated contact impulse per pair over all passes, pairs (i, j > i) in canonical order.
+    float pair_impulse[BOAT_FLEET_PAIRS];
 } BoatFleetStats;
 
 typedef struct {

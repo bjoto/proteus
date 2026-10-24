@@ -47,6 +47,9 @@ BoatWakeObjectSample boat_wake_objects_query(const BoatWakeObjects *world, Vecto
  * expire by then have already faded to zero. Earlier ticks return a flat sample. */
 BoatWakeObjectSample boat_wake_objects_query_at(
     const BoatWakeObjects *world, Vector2 position, uint64_t tick);
+/* Only EMITTER's records at the world tick: attribution diagnostics, never hull forces. */
+BoatWakeObjectSample boat_wake_objects_query_emitter(
+    const BoatWakeObjects *world, unsigned emitter, Vector2 position);
 /* Pack CAPACITY vec4 slots per output array. Age replaces absolute birth time;
  * the renderer stores these two arrays as rows of a compact object-record texture. */
 int boat_wake_objects_pack(const BoatWakeObjects *world, float *origins, float *parameters);

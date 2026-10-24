@@ -233,6 +233,7 @@ BoatFleetStats boat_fleet_solve(Boat boats[BOAT_FLEET_SLOTS], const bool active[
         }
         memcpy(boats, next, sizeof(next));
     }
+    memcpy(stats.pair_impulse, accumulated, sizeof(accumulated));
     return stats;
 }
 

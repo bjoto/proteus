@@ -39,7 +39,7 @@ set(PROTEUS_WARNINGS $<$<C_COMPILER_ID:AppleClang,Clang,GNU>:-Wall;-Wextra;-Wped
 # windows or audio, or touch files; boat_core_boundary checks its sources and symbols.
 set(PROTEUS_BOAT_CORE_SOURCES
   src/boat.c src/boat.h src/boat_clock.h src/boat_course.c src/boat_course.h
-  src/boat_fleet.c src/boat_fleet.h src/boat_location.c src/boat_location.h src/boat_map.c
+  src/boat_fleet.c src/boat_fleet.h src/boat_match.c src/boat_match.h src/boat_location.c src/boat_location.h src/boat_map.c
   src/boat_map.h
   src/boat_model.c src/boat_model.h src/boat_pose.c src/boat_pose.h
   src/boat_input.h src/boat_throttle.h src/boat_steering.h src/boat_view_state.h src/boat_wake.c src/boat_wake.h src/boat_wake_objects.c
@@ -414,6 +414,9 @@ add_test(NAME boat_core COMMAND validate_boat_core)
 # Multiplayer M2: the local four-boat authority and its scripted server, also core-only.
 add_executable(validate_boat_fleet tools/validate_boat_fleet.c)
 target_link_libraries(validate_boat_fleet PRIVATE proteus_boat_core)
+# Capsize deathmatch rules: credit, respawns, bailouts and rounds over a core-only fleet.
+add_executable(validate_boat_match tools/validate_boat_match.c)
+target_link_libraries(validate_boat_match PRIVATE proteus_boat_core)
 # M3: the authority process and a scripted network client link the ENet transport; the
 # protocol/session validator links only the display- and socket-free net library.
 add_executable(boat_server tools/boat_server.c)
@@ -423,11 +426,19 @@ foreach(target boat_server boat_bot)
 endforeach()
 add_executable(validate_boat_net tools/validate_boat_net.c)
 target_link_libraries(validate_boat_net PRIVATE proteus_boat_net)
-foreach(target validate_boat_fleet boat_server boat_bot validate_boat_net)
+foreach(target validate_boat_fleet validate_boat_match boat_server boat_bot validate_boat_net)
   target_compile_options(${target} PRIVATE ${PROTEUS_WARNINGS})
 endforeach()
 add_test(NAME boat_fleet COMMAND validate_boat_fleet)
 set_tests_properties(boat_fleet PROPERTIES PASS_REGULAR_EXPRESSION "boat_fleet=ok")
+add_test(NAME boat_match COMMAND validate_boat_match)
+set_tests_properties(boat_match PROPERTIES PASS_REGULAR_EXPRESSION "boat_match=ok")
+add_test(NAME boat_server_scripted_deathmatch
+  COMMAND boat_server --scripted --mode deathmatch --round-seconds 10 --ticks 3000)
+set_tests_properties(boat_server_scripted_deathmatch PROPERTIES
+  PASS_REGULAR_EXPRESSION "round 1 end:.*round 2 start.*deathmatch: round=2")
+add_test(NAME boat_server_round_without_deathmatch_rejected
+  COMMAND boat_server --scripted --round-seconds 60)
 add_test(NAME boat_server_scripted COMMAND boat_server --scripted --ticks 2400)
 set_tests_properties(boat_server_scripted PROPERTIES
   PASS_REGULAR_EXPRESSION "boat_server scripted: boats=4 ticks=2400")
@@ -441,7 +452,7 @@ add_test(NAME boat_net_study_name_rejected COMMAND boat_study --name lonely)
 add_test(NAME boat_net_study_skin_rejected
   COMMAND boat_study --connect 127.0.0.1:24680 --skin norway)
 set_tests_properties(boat_server_scripted_room_option_rejected boat_server_port_rejected
-  boat_server_bind_rejected boat_bot_endpoint_rejected boat_net_study_mode_rejected
+  boat_server_bind_rejected boat_server_round_without_deathmatch_rejected boat_bot_endpoint_rejected boat_net_study_mode_rejected
   boat_net_study_name_rejected boat_net_study_skin_rejected PROPERTIES WILL_FAIL TRUE)
 add_test(NAME boat_net COMMAND validate_boat_net)
 set_tests_properties(boat_net PROPERTIES PASS_REGULAR_EXPRESSION "boat_net=ok")
@@ -797,7 +808,7 @@ endforeach()
 get_property(PROTEUS_TESTS DIRECTORY PROPERTY TESTS)
 foreach(test IN LISTS PROTEUS_TESTS)
   get_test_property(${test} LABELS labels)
-  if(test MATCHES "^boat_core|^boat_fleet|^boat_server|^boat_net|^boat_bot")
+  if(test MATCHES "^boat_core|^boat_fleet|^boat_match|^boat_server|^boat_net|^boat_bot")
     set_property(TEST ${test} APPEND PROPERTY LABELS core cpu)
   elseif(labels MATCHES "gpu")
   elseif(test MATCHES "screenshot|checksum|_cpu$")

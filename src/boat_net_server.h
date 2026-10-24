@@ -1,11 +1,13 @@
 #ifndef PROTEUS_BOAT_NET_SERVER_H
 #define PROTEUS_BOAT_NET_SERVER_H
 
+#include "boat_match.h"
 #include "boat_net_transport.h"
 
 #define BOAT_NET_INPUT_RING 256 // Commands buffered per slot, indexed by target tick.
 #define BOAT_NET_REPEAT_TICKS 6 // Repeat a missing command this long (50 ms), then zero.
 #define BOAT_NET_NEUTRAL_TICKS 30 // 250 ms without a command: ease controls to neutral.
+#define BOAT_NET_MATCH_EVENTS 16 // Recent deathmatch events kept for the caller's log.
 #define BOAT_NET_CATCH_UP_TICKS 8 // Ticks per service call at most; never a larger step.
 #define BOAT_NET_MISBEHAVIOUR_LIMIT 16 // Malformed or forbidden messages before disconnecting.
 
@@ -15,6 +17,8 @@ typedef struct {
     uint32_t epoch; // Non-zero session epoch.
     uint32_t first_sequence; // First outgoing sequence on every channel (wrap tests).
     unsigned max_players; // 1..BOAT_FLEET_SLOTS.
+    bool deathmatch; // Capsize deathmatch rounds (docs/DEATHMATCH_PLAN.md) instead of free play.
+    BoatMatchRules match; // Deathmatch rules; ignored in free play.
 } BoatNetServerConfig;
 
 typedef enum {
@@ -76,6 +80,9 @@ typedef struct {
     uint64_t origin_tick;
     uint64_t tick_limit; // Never tick past this (0: no limit), even when catching up.
     uint32_t next_checkpoint;
+    BoatMatch match; // Deathmatch state; untouched in free play.
+    BoatMatchEvent events[BOAT_NET_MATCH_EVENTS]; // Recent match events, a ring.
+    uint64_t event_count; // Match events ever recorded; the newest is (count - 1) % ring size.
     BoatNetServerStats stats;
 } BoatNetServer;
 
