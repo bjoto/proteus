@@ -54,8 +54,9 @@ static void usage(void)
         "--time is screenshot-only (0..60, or 0..600 with --replay); --frames limits a smoke run.\n"
         "--demo drives the screenshot example in a window; R restarts it.\n"
         "--connect HOST:PORT: join a boat_server room (native multiplayer, in progress: the own\n"
-        "  boat is predicted and answers at once; R asks for a new life; the nearest other boat\n"
-        "  is drawn) | --name TEXT | --token TEXT");
+        "  boat is predicted and answers at once; R asks for a new life; every boat is drawn in\n"
+        "  its slot's country: 1 Sweden, 2 Finland, 3 Denmark, 4 Norway) | --name TEXT |\n"
+        "  --token TEXT");
 }
 
 static BoatWater study_water(
@@ -175,6 +176,7 @@ int main(int argc, char **argv)
 #endif
     const char *screenshot = NULL;
     unsigned int skin = BOAT_SKIN_SWEDEN;
+    bool skin_set = false;
     const char *replay_path = NULL, *ghost_path = NULL, *data_dir = NULL, *export_path = NULL;
     float time = 0;
     BoatCamera camera_settings = BOAT_CAMERA_DEFAULT;
@@ -203,6 +205,7 @@ int main(int argc, char **argv)
         } else if (strcmp(argv[i], "--skin") == 0 && i + 1 < argc) {
             if (!boat_skin_parse(argv[++i], &skin))
                 goto invalid;
+            skin_set = true;
         } else if (strcmp(argv[i], "--location") == 0 && i + 1 < argc) {
             location = boat_location_find(argv[++i]);
             if (!location)
@@ -332,6 +335,12 @@ int main(int argc, char **argv)
                 "--connect takes its water, location and wakes from the room; it cannot be "
                 "combined with course, replay, wake, water, location, demo or screenshot "
                 "options.\n");
+            goto invalid;
+        }
+        if (skin_set) {
+            fprintf(stderr,
+                "--skin does not apply with --connect: each room slot has its own country "
+                "(1 Sweden, 2 Finland, 3 Denmark, 4 Norway) on every client.\n");
             goto invalid;
         }
         if (strlen(net_name) > BOAT_NET_NAME_BYTES || strlen(net_token) > BOAT_NET_TOKEN_BYTES) {
@@ -798,6 +807,10 @@ int main(int argc, char **argv)
             view_world = &playback_world;
         }
         live_view.skin = skin;
+#ifdef PROTEUS_BOAT_NET
+        if (net)
+            live_view.skin = net_study_skin(net->client.slot); // Every client agrees.
+#endif
         if (view == &playback)
             playback.skin = skin;
         Vector2 flow = boat_water_current(view_world->water, view->boat.position);
@@ -827,13 +840,10 @@ int main(int argc, char **argv)
             ghost_view_flag = &objects->other_presentation.flag;
             ghost_opacity = 1;
         }
+        BoatRivals rivals = { 0 };
 #ifdef PROTEUS_BOAT_NET
-        if (net && net->other_visible) {
-            other_view = (BoatViewState) { .boat = net->other, .time = live_view.time };
-            ghost_view = &other_view;
-            ghost_view_flag = &net->other_presentation.flag;
-            ghost_opacity = 1;
-        }
+        if (net)
+            net_study_rivals(net, live_view.time, &rivals);
 #endif
         if (course && !session.runs.playing && session.runs.ghost_visible
             && session.runs.opponent.complete) {
@@ -852,14 +862,15 @@ int main(int argc, char **argv)
         metrics.course_replay_ms += (float)((boat_profile_time(true) - ghost_started_at) * 1000.0);
         double scene_started_at = boat_profile_time(true);
         if (gpu_enabled) {
-            boat_gpu_draw_with_ghost(&gpu, view, view_presentation, view_world, camera_settings,
+            boat_gpu_draw_scene(&gpu, view, view_presentation, view_world, camera_settings, &rivals,
                 ghost_view, ghost_view_flag, ghost_opacity);
             if (gpu.failed) {
                 result = 1;
                 break;
             }
-        } else if (!boat_draw_with_ghost(&renderer, pixels, WIDTH, HEIGHT, view, view_presentation,
-                       view_world, camera_settings, ghost_view, ghost_view_flag, ghost_opacity)) {
+        } else if (!boat_draw_scene(&renderer, pixels, WIDTH, HEIGHT, view, view_presentation,
+                       view_world, camera_settings, &rivals, ghost_view, ghost_view_flag,
+                       ghost_opacity)) {
             result = 1;
             break;
         }

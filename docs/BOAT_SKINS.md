@@ -64,10 +64,11 @@ The hull shape suggests speed without changing speed or introducing another game
 class. The outboard keeps its steering transform, and the flag keeps its world-space
 attachment and simulation. Harbor/traffic boat recipes are unchanged.
 
-Multiplayer ownership, skin metadata transport and persistent player loadouts remain for
-the multiplayer integration work. This branch deliberately supplies the rendering API
-without changing protocol files or the other agent's implementation. Until that integration,
-a remote view defaults to Sweden unless its caller assigns a skin.
+In multiplayer (`boat_study --connect`) every client draws room slot 1 as Sweden, 2 Finland,
+3 Denmark and 4 Norway, through the fleet renderer (`BoatRivals`, `boat_draw_scene`,
+`boat_gpu_draw_scene`); `--skin` is refused there. Choosing a country independently of the
+slot and persistent loadouts would need room metadata and are not implemented. See the
+[fleet rendering handoff](MULTIPLAYER_PLAN.md#m4-step-4a-fleet-rendering-handoff--2026-10-24).
 
 ## Verification
 

@@ -1186,6 +1186,35 @@ static void draw_traffic(const WaterfrontGpuScene *scene, Material material,
             scene->plane, material, traffic->wakes[i].pose, traffic->wakes[i].color, false);
 }
 
+typedef struct {
+    Transform3D hull, cabin, engine;
+    unsigned int skin;
+    Mesh flag;
+    const WaterfrontPlayerParticle *particles;
+    int particle_count;
+} BoatDrawParts;
+
+static void draw_boat(
+    const WaterfrontGpuScene *scene, Material material, BoatDrawParts b, bool emissive)
+{
+    unsigned int index = boat_skin_index(b.skin);
+    draw_colored_mesh(scene->player_hull[index], material, b.hull, WHITE, false);
+    draw_colored_mesh(scene->player_cabin[index], material, b.cabin, WHITE, false);
+    draw_colored_mesh(scene->player_engine[index], material, b.engine, WHITE, false);
+    Mesh flag = b.flag;
+    const WaterfrontPlayerParticle *particles = b.particles;
+    int particle_count = b.particle_count;
+    if (flag.vaoId)
+        draw_colored_mesh(flag, material, (Transform3D) { .scale = { 1, 1, 1 } }, WHITE, false);
+    for (int i = 0; i < particle_count; ++i) {
+        // Surface foam receives shadows/depth but does not cast a solid slab shadow.
+        // Airborne spray participates in both the reflection and shadow passes.
+        if (!emissive && !particles[i].spray)
+            continue;
+        draw_colored_mesh(scene->cube, material, particles[i].transform, particles[i].color, false);
+    }
+}
+
 static void draw_life(const WaterfrontGpuScene *scene, Material material,
     const WaterfrontSceneFrame *frame, bool emissive)
 {
@@ -1207,22 +1236,16 @@ static void draw_life(const WaterfrontGpuScene *scene, Material material,
                     LAMP_LENS_COLOR, true);
         }
         const WaterfrontPlayerState *p = &frame->player;
-        draw_colored_mesh(
-            scene->player_hull[boat_skin_index(p->skin)], material, p->hull, WHITE, false);
-        draw_colored_mesh(
-            scene->player_cabin[boat_skin_index(p->skin)], material, p->cabin, WHITE, false);
-        draw_colored_mesh(
-            scene->player_engine[boat_skin_index(p->skin)], material, p->engine, WHITE, false);
-        if (scene->player_flag.vaoId)
-            draw_colored_mesh(
-                scene->player_flag, material, (Transform3D) { .scale = { 1, 1, 1 } }, WHITE, false);
-        for (int i = 0; i < p->particle_count; ++i) {
-            // Surface foam receives shadows/depth but does not cast a solid slab shadow.
-            // Airborne spray participates in both the reflection and shadow passes.
-            if (!emissive && !p->particles[i].spray)
-                continue;
-            draw_colored_mesh(
-                scene->cube, material, p->particles[i].transform, p->particles[i].color, false);
+        draw_boat(scene, material,
+            (BoatDrawParts) { p->hull, p->cabin, p->engine, p->skin, scene->player_flag,
+                p->particles, p->particle_count },
+            emissive);
+        for (int i = 0; i < frame->rival_count; ++i) {
+            const WaterfrontRivalState *r = &frame->rivals[i];
+            draw_boat(scene, material,
+                (BoatDrawParts) { r->hull, r->cabin, r->engine, r->skin, scene->rival_flags[i],
+                    r->particles, r->particle_count },
+                emissive);
         }
         return;
     }
@@ -1517,6 +1540,8 @@ void waterfront_gpu_scene_draw(
         update_flag_mesh(&scene->player_flag, &frame->player.flag, frame->player.skin);
     if (frame->ghost_opacity > 0)
         update_flag_mesh(&scene->ghost_flag, &frame->ghost_flag, frame->ghost_skin);
+    for (int i = 0; frame->player_active && i < frame->rival_count; ++i)
+        update_flag_mesh(&scene->rival_flags[i], &frame->rivals[i].flag, frame->rivals[i].skin);
     Camera3D camera = { .position = frame->camera.position,
         .target = frame->camera.target,
         .up = frame->camera.up,
@@ -1656,6 +1681,9 @@ void waterfront_gpu_scene_destroy(WaterfrontGpuScene *scene)
         UnloadMesh(scene->player_flag);
     if (scene->ghost_flag.vaoId)
         UnloadMesh(scene->ghost_flag);
+    for (int i = 0; i < WATERFRONT_RIVALS; ++i)
+        if (scene->rival_flags[i].vaoId)
+            UnloadMesh(scene->rival_flags[i]);
     for (int skin = 0; skin < BOAT_SKIN_COUNT; ++skin)
         if (scene->player_hull[skin].vaoId != 0)
             UnloadMesh(scene->player_hull[skin]);

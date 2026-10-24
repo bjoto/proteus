@@ -68,7 +68,8 @@ bool net_study_connect(
     net->correction = net->client.prediction.correction;
     attach(net, session);
     boat_presentation_reset(&session->presentation);
-    boat_presentation_reset(&net->other_presentation);
+    for (unsigned i = 0; i < BOAT_FLEET_SLOTS; ++i)
+        boat_presentation_reset(&net->presentations[i]);
     return true;
 }
 
@@ -132,43 +133,32 @@ bool net_study_frame(NetStudy *net, BoatSession *session, BoatInput input, bool 
         }
         session->boat = shown(net, c->slot);
     }
-    float nearest = INFINITY;
-    net->other_visible = false;
-    for (unsigned i = 0; i < BOAT_FLEET_SLOTS; ++i) {
-        const BoatFleetSlot *slot = &view->state.slots[i];
-        float distance = Vector2Distance(slot->boat.position, session->boat.position);
-        if (i != c->slot && slot->active && distance < nearest) {
-            nearest = distance;
-            net->other_slot = i;
-            net->other_visible = true;
-        }
-    }
     // Every remote's proximity mode follows the physical predicted hulls.
     double server_tick = boat_net_client_server_tick(c, now);
-    float dt = fminf(GetFrameTime(), .1f), weight[BOAT_FLEET_SLOTS] = { 0 };
+    float dt = fminf(GetFrameTime(), .1f);
     for (unsigned i = 0; i < BOAT_FLEET_SLOTS; ++i) {
         const BoatFleetSlot *slot = &view->state.slots[i];
-        if (i != c->slot && slot->active && own->active)
-            weight[i] = boat_remote_proximity_update(
-                &net->proximity[i], &own->boat, &slot->boat, slot->life, now, dt);
-    }
-    if (net->other_visible) {
-        unsigned i = net->other_slot;
+        net->visible[i] = i != c->slot && slot->active;
+        if (!net->visible[i])
+            continue;
+        float weight = own->active ? boat_remote_proximity_update(&net->proximity[i], &own->boat,
+                                         &slot->boat, slot->life, now, dt)
+                                   : 0;
         Boat proxy = shown(net, i), past;
-        uint32_t life = view->state.slots[i].life;
+        uint32_t life = slot->life;
         BoatRemoteSample sample = boat_remote_history_pose(
             &c->remotes, i, server_tick - BOAT_REMOTE_DELAY_TICKS, &past, &life);
         ++net->samples[sample];
         ++net->frames;
-        net->near_frames += weight[i] > 0;
+        net->near_frames += weight > 0;
         // A pose of another life than the proxy's is never blended with it.
-        if (sample == BOAT_REMOTE_NONE || life != view->state.slots[i].life)
-            past = proxy, life = view->state.slots[i].life;
-        if (life != net->other_life) {
-            net->other_life = life;
-            boat_presentation_reset(&net->other_presentation);
+        if (sample == BOAT_REMOTE_NONE || life != slot->life)
+            past = proxy, life = slot->life;
+        if (life != net->lives[i]) {
+            net->lives[i] = life;
+            boat_presentation_reset(&net->presentations[i]);
         }
-        net->other = boat_remote_blend(&past, &proxy, weight[i]);
+        net->shown[i] = boat_remote_blend(&past, &proxy, weight);
     }
     uint64_t tick = view->state.tick;
     boat_session_set_tick(session, tick);
@@ -178,11 +168,27 @@ bool net_study_frame(NetStudy *net, BoatSession *session, BoatInput input, bool 
         double time = boat_tick_seconds(net->presented_tick);
         if (net->own_visible)
             boat_presentation_step(&session->presentation, &session->boat, &world, time);
-        if (net->other_visible)
-            boat_presentation_step(&net->other_presentation, &net->other, &world, time);
+        for (unsigned i = 0; i < BOAT_FLEET_SLOTS; ++i)
+            if (net->visible[i])
+                boat_presentation_step(&net->presentations[i], &net->shown[i], &world, time);
     }
     net->presented_tick = tick;
     return true;
+}
+
+unsigned net_study_skin(unsigned slot) { return slot % BOAT_SKIN_COUNT; }
+
+void net_study_rivals(const NetStudy *net, double time, BoatRivals *rivals)
+{
+    rivals->count = 0;
+    for (unsigned i = 0; i < BOAT_FLEET_SLOTS && rivals->count < WATERFRONT_RIVALS; ++i) {
+        if (!net->visible[i])
+            continue;
+        BoatRival *r = &rivals->boats[rivals->count++];
+        *r = (BoatRival) { .view = { .boat = net->shown[i], .time = time },
+            .presentation = &net->presentations[i] };
+        r->view.skin = net_study_skin(i);
+    }
 }
 
 const char *net_study_status(const NetStudy *net)

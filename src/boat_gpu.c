@@ -103,11 +103,19 @@ void boat_gpu_draw_with_ghost(BoatGpu *gpu, const BoatViewState *view,
     const BoatPresentation *presentation, const BoatWorld *world, BoatCamera camera,
     const BoatViewState *ghost, const BoatFlag *ghost_flag, float opacity)
 {
+    boat_gpu_draw_scene(gpu, view, presentation, world, camera, NULL, ghost, ghost_flag, opacity);
+}
+
+void boat_gpu_draw_scene(BoatGpu *gpu, const BoatViewState *view,
+    const BoatPresentation *presentation, const BoatWorld *world, BoatCamera camera,
+    const BoatRivals *rivals, const BoatViewState *ghost, const BoatFlag *ghost_flag, float opacity)
+{
     const Boat *boat = &view->boat;
     gpu->failed = false;
     bool mapped = world->definition->mapped;
-    WaterfrontSceneFrame frame;
+    static WaterfrontSceneFrame frame; // Large; drawing is single-threaded.
     boat_scene_frame(view, presentation, world, camera, &frame);
+    boat_scene_rivals(rivals, world, view->time, &frame);
     if (ghost && opacity > 0) {
         WaterfrontPlayerState pose = { 0 };
         boat_player_pose(ghost, ghost_flag, &pose);

@@ -116,10 +116,11 @@ file links and `git diff --check` passed. Captures/logs are under `build/nordic-
 `/private/tmp/proteus-nordic-ctest.log`. These checks do not establish hands-on driving,
 listening or acceptance of the newly requested national themes.
 
-Next task: the multiplayer agent integrates the accepted skins and consistent per-player
-country assignment using the handoff. Skin IDs remain local; remote views default
-to Sweden unless assigned by their caller. No persistent loadout, network selection, unlocks
-or arbitrary-color UI. Hands-on driving/listening and Windows/browser checks remain pending.
+Integrated into main on 2026-10-24 (`38d76c6`); multiplayer draws room slots 1–4 as Sweden,
+Finland, Denmark and Norway on every client
+([fleet rendering handoff](MULTIPLAYER_PLAN.md#m4-step-4a-fleet-rendering-handoff--2026-10-24)).
+No persistent loadout, network selection, unlocks or arbitrary-color UI. Hands-on
+driving/listening and Windows/browser checks remain pending.
 
 Handoff completed 2026-10-24: the isolated branch is committed for cherry-pick. A merge-tree
 preview against multiplayer `6f26862` auto-merged without conflicts; the combined program

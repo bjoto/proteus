@@ -32,8 +32,11 @@ births by identity) is implemented and automatically verified, not yet user-play
 [wake handoff](#m4-step-2-wake-reconciliation-handoff--2026-10-24). M4 step 3 (remote
 interpolation 100 ms behind and the proximity blend, `boat_remote_view`) is implemented and
 automatically verified, not yet user-played; see the
-[remote view handoff](#m4-step-3-remote-view-handoff--2026-10-24). Next: M4 step 4, fleet
-rendering and the safe reset UI. M5–M8 are pending.
+[remote view handoff](#m4-step-3-remote-view-handoff--2026-10-24). M4 step 4a (fleet rendering
+with the Nordic skins by slot) is implemented and automatically verified; the user played it
+with several boats and bots on 2026-10-24 ("It works!");
+see the [fleet rendering handoff](#m4-step-4a-fleet-rendering-handoff--2026-10-24). Next: M4
+step 4b, the safe reset UI. M5–M8 are pending.
 Numerical budgets below are proposed gates, not measured multiplayer results.
 The final evidence section distinguishes checks performed for this document from future checks.
 
@@ -700,8 +703,11 @@ fleet rendering and the safe reset UI. Step 2 (wake reconciliation) implemented 
 verified on 2026-10-24, not yet user-played; see the
 [wake handoff](#m4-step-2-wake-reconciliation-handoff--2026-10-24). Step 3 (remote view)
 implemented and automatically verified on 2026-10-24, not yet user-played; see the
-[remote view handoff](#m4-step-3-remote-view-handoff--2026-10-24). Next: step 4, fleet rendering
-and the safe reset UI.
+[remote view handoff](#m4-step-3-remote-view-handoff--2026-10-24). Step 4a (fleet rendering)
+implemented and automatically verified on 2026-10-24, user-played with several boats and bots the
+same day; see the
+[fleet rendering handoff](#m4-step-4a-fleet-rendering-handoff--2026-10-24). Next: step 4b, the
+safe reset UI.
 
 ### M5 — four-player/session and impairment hardening
 
@@ -1344,6 +1350,57 @@ inspected.
 **Limits.** Whether 100 ms behind looks right, and whether the proximity blend hides the gap
 before impacts without visible sliding, needs human play: drive alongside and into the bot. No
 two-human, two-machine or non-macOS run.
+
+## M4 step 4a: fleet rendering handoff — 2026-10-24
+
+Started from `6f26862`, after cherry-picking the Nordic speedboat skins (`024041e`, applied as
+`38d76c6`; see [the skin handoff](BOAT_SKINS_HANDOFF.md)). The combined tree built warning-free
+and passed all 102 active CTests before this step. The title-screen row in `docs/README.md` and
+the untracked `docs/TITLE_SCREEN_PLAN.md` are not part of this change.
+
+| Implemented | Automated verification | Manual observation | User acceptance |
+| --- | --- | --- | --- |
+| Rival boats as ordinary hulls on CPU and GPU, every remote slot drawn, slot countries | `boat_fleet_render`, `boat_net_study_skin_rejected`, the full suite, 8/8 identical single-player captures | Agent-inspected CPU/GPU fleet captures; agent-run windowed `--connect` beside two bots | 2026-10-24: the user played with multiple boats plus bots: "It works!" |
+
+**Renderer.** `BoatRivals` (in `boat_view.h`) lists up to three other boats, each a view (pose,
+skin) and an optional presentation (spray, cloth). `boat_draw_scene` and `boat_gpu_draw_scene`
+draw the player, the rivals and the optional race ghost; `boat_draw_with_ghost` and
+`boat_gpu_draw_with_ghost` are now wrappers with no rivals, and single-player output is
+unchanged. The GPU frame gains `WaterfrontRivalState rivals[3]`: hull, cockpit and engine
+transforms, skin, flag surface and at most 96 spray pieces (the player keeps 384). Rivals are
+drawn by the same code as the player inside `draw_life`, so they appear in the colour,
+reflection and shadow passes; each has its own dynamic flag mesh. The CPU path draws their
+meshes, flags and spray. The GPU scene frame in `boat_gpu_draw_scene` is now static rather than
+a large stack object. The ghost stays a dithered colour-pass overlay for race replays and the
+single-player crossing rival.
+
+**Connected view.** `boat_study --connect` draws every other active slot (not only the nearest)
+with the step-3 interpolation and proximity blend. Each slot keeps its own presentation, reset
+on a new life. Slots map to skins on every client: 1 Sweden, 2 Finland, 3 Denmark, 4 Norway
+(`net_study_skin`), so no wire field is needed. `--skin` with `--connect` is refused with that
+explanation. Choosing a country independently of the slot would need room metadata (protocol
+work) and is not done.
+
+**Automated verification.** Apple M1 Max/macOS 26.6.2, Apple clang 21.0.0, Debug common recipe
+with `PROTEUS_GPU_TESTS=ON`. Warning-free build; the **104 active CTests pass** (86.24 s), 15
+retired cases disabled (22 active GPU cases). New: `boat_fleet_render` runs `boat_fleet_review --check`, which steps a
+real four-boat fleet in formation (waves, 3 s) and draws slot 0's view at 320x200 through
+`boat_draw_scene`. Each rival changes the image (943, 639 and 399 pixels), a repeated draw is
+identical, and the fleet hash and presentations are unchanged by drawing.
+`boat_net_study_skin_rejected` checks the refusal. Single-player CPU captures (default,
+crossing, crossing with waves, waves, course, river, Eriksberg, Norway skin) are byte-identical
+to a `38d76c6` build.
+
+**Visual review (agent).** `boat_fleet_review` CPU and GPU captures, calm and waves, show four
+distinct boats (Sweden own, Finland, Denmark, Norway) with spray and wake trails; on GPU the
+rivals sit in the lit water like the own boat. At 320x200 from the follow camera the far flags
+are a few pixels. A windowed `boat_study --connect --frames 1200` beside two bots drew both
+remote boats every frame (99.9% interpolated, 18.7% of boat-frames in proximity mode), with no
+server faults. The connected view itself was not inspected.
+
+**Limits.** Remote audio stays local-only (no engine sound for other boats). Spray of remote
+boats is capped at 96 pieces. The GPU shadow map still centres on the own boat. User play was
+on one machine (loopback); no two-machine or Windows/browser run.
 
 ## Exact first implementation task
 

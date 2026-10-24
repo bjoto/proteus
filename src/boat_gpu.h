@@ -28,5 +28,11 @@ void boat_gpu_destroy(BoatGpu *gpu);
 void boat_gpu_draw_with_ghost(BoatGpu *gpu, const BoatViewState *view,
     const BoatPresentation *presentation, const BoatWorld *world, BoatCamera camera,
     const BoatViewState *ghost, const BoatFlag *ghost_flag, float opacity);
+// The complete scene: the player, RIVALS (may be NULL) as ordinary hulls in every pass, and an
+// optional dithered GHOST in the colour pass.
+void boat_gpu_draw_scene(BoatGpu *gpu, const BoatViewState *view,
+    const BoatPresentation *presentation, const BoatWorld *world, BoatCamera camera,
+    const BoatRivals *rivals, const BoatViewState *ghost, const BoatFlag *ghost_flag,
+    float opacity);
 
 #endif

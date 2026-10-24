@@ -14,6 +14,19 @@ typedef struct {
     bool fixed_fov; // Disable the modest speed lens for a constant 55-degree vertical view.
 } BoatCamera;
 
+// Other boats of a shared session, drawn as ordinary opaque hulls in every pass like the
+// player. VIEW supplies pose and skin (its time is ignored); PRESENTATION (may be NULL)
+// supplies spray, at most WATERFRONT_RIVAL_PARTICLES pieces, and cloth.
+typedef struct {
+    BoatViewState view;
+    const BoatPresentation *presentation;
+} BoatRival;
+
+typedef struct {
+    unsigned count; // At most WATERFRONT_RIVALS.
+    BoatRival boats[WATERFRONT_RIVALS];
+} BoatRivals;
+
 // Views draw a VIEW (live session, replay sample or ghost) at its time in WORLD with its
 // PRESENTATION (particles, cloth and camera follow). Drawing reads only; a ghost contributes
 // its pose and optional cloth.
@@ -26,6 +39,14 @@ void boat_scene_frame(const BoatViewState *view, const BoatPresentation *present
 bool boat_draw(Renderer3D *renderer, Color *pixels, int width, int height,
     const BoatViewState *view, const BoatPresentation *presentation, const BoatWorld *world,
     BoatCamera camera_settings);
+// Add RIVALS (may be NULL) to a frame built by boat_scene_frame at TIME.
+void boat_scene_rivals(
+    const BoatRivals *rivals, const BoatWorld *world, double time, WaterfrontSceneFrame *frame);
+// The complete scene: the player, RIVALS (may be NULL) and an optional dithered GHOST.
+bool boat_draw_scene(Renderer3D *renderer, Color *pixels, int width, int height,
+    const BoatViewState *view, const BoatPresentation *presentation, const BoatWorld *world,
+    BoatCamera camera, const BoatRivals *rivals, const BoatViewState *ghost,
+    const BoatFlag *ghost_flag, float opacity);
 bool boat_draw_with_ghost(Renderer3D *renderer, Color *pixels, int width, int height,
     const BoatViewState *view, const BoatPresentation *presentation, const BoatWorld *world,
     BoatCamera camera, const BoatViewState *ghost, const BoatFlag *ghost_flag, float opacity);

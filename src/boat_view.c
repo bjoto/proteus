@@ -194,6 +194,35 @@ static void basin_scenery(
     environment_visit(view, world, basin_box, frame);
 }
 
+// Live water particles of PRESENTATION as render pieces, at most CAPACITY.
+static int pose_particles(const BoatPresentation *presentation, const BoatWorld *world, double time,
+    WaterfrontPlayerParticle *out, int capacity)
+{
+    int count = 0;
+    for (int i = 0; i < BOAT_WATER_PARTICLES && count < capacity; ++i) {
+        const BoatWaterParticle *water = &presentation->water[i];
+        if (water->lifetime <= 0
+            || (world->definition->mapped && !boat_map_water(water->position, 0)))
+            continue;
+        float size = water_particle_size(water);
+        out[count++] = (WaterfrontPlayerParticle) { .transform
+            = water_particle_pose(time, world, water, size),
+            .color = water_particle_color(world->definition, water),
+            .spray = water->spray };
+    }
+    return count;
+}
+
+static void draw_skinned_boat(Renderer3D *renderer, const WaterfrontPlayerState *boat)
+{
+    renderer3d_draw_mesh(renderer, boat_skin_mesh(boat->skin, BOAT_SKIN_HULL), boat->hull);
+    renderer3d_draw_mesh(renderer, boat_skin_mesh(boat->skin, BOAT_SKIN_COCKPIT), boat->cabin);
+    renderer3d_draw_mesh(renderer, boat_skin_mesh(boat->skin, BOAT_SKIN_ENGINE), boat->engine);
+    BoatFlagMesh flag_storage;
+    Mesh3D flag_mesh = boat_flag_skin_mesh(&boat->flag, boat->skin, &flag_storage);
+    renderer3d_draw_mesh(renderer, &flag_mesh, (Transform3D) { .scale = { 1, 1, 1 } });
+}
+
 void boat_scene_frame(const BoatViewState *view, const BoatPresentation *presentation,
     const BoatWorld *world, BoatCamera camera, WaterfrontSceneFrame *frame)
 {
@@ -214,17 +243,36 @@ void boat_scene_frame(const BoatViewState *view, const BoatPresentation *present
     if (world->definition->mapped)
         waterfront_boating_gulls(
             time, p->hull.position, (Vector3) { -boat->velocity.x, 0, boat->velocity.y }, frame);
-    for (int i = 0; i < BOAT_WATER_PARTICLES; ++i) {
-        const BoatWaterParticle *water = &presentation->water[i];
-        if (water->lifetime <= 0
-            || (world->definition->mapped && !boat_map_water(water->position, 0)))
-            continue;
-        float size = water_particle_size(water);
-        p->particles[p->particle_count++] = (WaterfrontPlayerParticle) { .transform
-            = water_particle_pose(time, world, water, size),
-            .color = water_particle_color(world->definition, water),
-            .spray = water->spray };
+    p->particle_count
+        = pose_particles(presentation, world, time, p->particles, WATERFRONT_PLAYER_PARTICLES);
+}
+
+static int pose_rivals(const BoatRivals *rivals, const BoatWorld *world, double time,
+    WaterfrontRivalState out[WATERFRONT_RIVALS])
+{
+    int count = 0;
+    for (unsigned i = 0; rivals && i < rivals->count && i < WATERFRONT_RIVALS; ++i) {
+        const BoatRival *rival = &rivals->boats[i];
+        static WaterfrontPlayerState pose; // Large; drawing is single-threaded.
+        pose = (WaterfrontPlayerState) { 0 };
+        boat_player_pose(
+            &rival->view, rival->presentation ? &rival->presentation->flag : NULL, &pose);
+        WaterfrontRivalState *r = &out[count++];
+        *r = (WaterfrontRivalState) {
+            .hull = pose.hull, .cabin = pose.cabin, .engine = pose.engine, .skin = pose.skin
+        };
+        r->flag = pose.flag;
+        if (rival->presentation)
+            r->particle_count = pose_particles(
+                rival->presentation, world, time, r->particles, WATERFRONT_RIVAL_PARTICLES);
     }
+    return count;
+}
+
+void boat_scene_rivals(
+    const BoatRivals *rivals, const BoatWorld *world, double time, WaterfrontSceneFrame *frame)
+{
+    frame->rival_count = pose_rivals(rivals, world, time, frame->rivals);
 }
 
 bool boat_draw(Renderer3D *renderer, Color *pixels, int width, int height,
@@ -239,6 +287,15 @@ bool boat_draw_with_ghost(Renderer3D *renderer, Color *pixels, int width, int he
     const BoatViewState *view, const BoatPresentation *presentation, const BoatWorld *world,
     BoatCamera camera_settings, const BoatViewState *ghost, const BoatFlag *ghost_flag,
     float opacity)
+{
+    return boat_draw_scene(renderer, pixels, width, height, view, presentation, world,
+        camera_settings, NULL, ghost, ghost_flag, opacity);
+}
+
+bool boat_draw_scene(Renderer3D *renderer, Color *pixels, int width, int height,
+    const BoatViewState *view, const BoatPresentation *presentation, const BoatWorld *world,
+    BoatCamera camera_settings, const BoatRivals *rivals, const BoatViewState *ghost,
+    const BoatFlag *ghost_flag, float opacity)
 {
     const Boat *boat = &view->boat;
     double time = view->time;
@@ -297,6 +354,12 @@ bool boat_draw_with_ghost(Renderer3D *renderer, Color *pixels, int width, int he
         renderer3d_draw_box(renderer, water_particle_pose(time, world, p, water_particle_size(p)),
             water_particle_color(world->definition, p));
     }
+    static WaterfrontRivalState others[WATERFRONT_RIVALS]; // Drawing is single-threaded.
+    int other_count = pose_rivals(rivals, world, time, others);
+    for (int i = 0; i < other_count; ++i)
+        for (int k = 0; k < others[i].particle_count; ++k)
+            renderer3d_draw_box(
+                renderer, others[i].particles[k].transform, others[i].particles[k].color);
     if (!world->definition->mapped) {
         Color quay = { 148, 151, 137, 255 };
         for (int side = -1; side <= 1; side += 2) {
@@ -315,24 +378,23 @@ bool boat_draw_with_ghost(Renderer3D *renderer, Color *pixels, int width, int he
     }
     environment_visit(view, world, environment_draw, renderer);
     boat_course_draw(&view->course, renderer);
-    WaterfrontPlayerState player = { 0 };
+    static WaterfrontPlayerState player; // Large; drawing is single-threaded.
+    player = (WaterfrontPlayerState) { 0 };
     boat_player_pose(view, &presentation->flag, &player);
-    renderer3d_draw_mesh(renderer, boat_skin_mesh(player.skin, BOAT_SKIN_HULL), player.hull);
-    renderer3d_draw_mesh(renderer, boat_skin_mesh(player.skin, BOAT_SKIN_COCKPIT), player.cabin);
-    renderer3d_draw_mesh(renderer, boat_skin_mesh(player.skin, BOAT_SKIN_ENGINE), player.engine);
-    BoatFlagMesh flag_storage;
-    Mesh3D flag_mesh = boat_flag_skin_mesh(&player.flag, player.skin, &flag_storage);
-    renderer3d_draw_mesh(renderer, &flag_mesh, (Transform3D) { .scale = { 1, 1, 1 } });
+    draw_skinned_boat(renderer, &player);
+    for (int i = 0; i < other_count; ++i) {
+        const WaterfrontRivalState *r = &others[i];
+        player.hull = r->hull;
+        player.cabin = r->cabin;
+        player.engine = r->engine;
+        player.skin = r->skin;
+        player.flag = r->flag;
+        draw_skinned_boat(renderer, &player);
+    }
     if (ghost && opacity > 0) {
         boat_player_pose(ghost, ghost_flag, &player);
         renderer->ghost_opacity = opacity;
-        renderer3d_draw_mesh(renderer, boat_skin_mesh(player.skin, BOAT_SKIN_HULL), player.hull);
-        renderer3d_draw_mesh(
-            renderer, boat_skin_mesh(player.skin, BOAT_SKIN_COCKPIT), player.cabin);
-        renderer3d_draw_mesh(
-            renderer, boat_skin_mesh(player.skin, BOAT_SKIN_ENGINE), player.engine);
-        flag_mesh = boat_flag_skin_mesh(&player.flag, player.skin, &flag_storage);
-        renderer3d_draw_mesh(renderer, &flag_mesh, (Transform3D) { .scale = { 1, 1, 1 } });
+        draw_skinned_boat(renderer, &player);
         renderer->ghost_opacity = 0;
     }
     return true;

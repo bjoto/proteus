@@ -63,6 +63,7 @@ typedef struct {
     Mesh player_hull[BOAT_SKIN_COUNT], player_cabin[BOAT_SKIN_COUNT],
         player_engine[BOAT_SKIN_COUNT];
     Mesh player_flag, ghost_flag; // Dynamic cloth, uploaded once before all scene passes.
+    Mesh rival_flags[WATERFRONT_RIVALS];
     Mesh traffic_boats[WATERFRONT_TRAFFIC_VESSELS];
     Mesh harbor_boats[WATERFRONT_HARBOR_BOATS], harbor_pontoon, harbor_quay;
     Mesh plane;

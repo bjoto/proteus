@@ -33,6 +33,19 @@ typedef struct {
     WaterfrontPlayerParticle particles[WATERFRONT_PLAYER_PARTICLES];
 } WaterfrontPlayerState;
 
+// Other boats in a shared session: ordinary opaque hulls drawn in every pass like the player,
+// each with its own skin, flag and a smaller spray budget. Cosmetic only.
+#define WATERFRONT_RIVALS 3
+#define WATERFRONT_RIVAL_PARTICLES 96
+
+typedef struct {
+    Transform3D hull, cabin, engine;
+    unsigned int skin;
+    BoatFlagSurface flag;
+    int particle_count;
+    WaterfrontPlayerParticle particles[WATERFRONT_RIVAL_PARTICLES];
+} WaterfrontRivalState;
+
 typedef struct {
     int id; // Stable first-headlight ID; the second headlight is id + 1.
     int street;
@@ -65,6 +78,8 @@ typedef struct {
     } scenery[704];
     BoatWater player_water; // Zero for timeline scenes; shared analytic boating parameters.
     WaterfrontPlayerState player;
+    int rival_count;
+    WaterfrontRivalState rivals[WATERFRONT_RIVALS];
     float ghost_opacity;
     unsigned int ghost_skin;
     Transform3D ghost_hull, ghost_cabin, ghost_engine;

@@ -370,8 +370,13 @@ target_link_libraries(validate_boat_skin PRIVATE proteus_render)
 target_compile_options(validate_boat_skin PRIVATE ${PROTEUS_WARNINGS})
 add_test(NAME boat_skin COMMAND validate_boat_skin)
 set_tests_properties(boat_skin PROPERTIES LABELS "render;cpu")
+add_test(NAME boat_fleet_render COMMAND boat_fleet_review --check)
+set_tests_properties(boat_fleet_render PROPERTIES LABELS "render;cpu"
+  PASS_REGULAR_EXPRESSION "boat_fleet_render=ok")
 add_executable(boat_flag_review tools/boat_flag_review.c)
 add_dependencies(boat_flag_review proteus_assets)
+add_executable(boat_fleet_review tools/boat_fleet_review.c)
+add_dependencies(boat_fleet_review proteus_assets)
 foreach(target validate_boat validate_boat_banking validate_boat_turn_entry validate_boat_replay
     validate_boat_environment)
   target_link_libraries(${target} PRIVATE proteus_boat_session)
@@ -379,12 +384,12 @@ endforeach()
 target_link_libraries(validate_boat_profile PRIVATE proteus_boat_drive)
 target_link_libraries(validate_boat_world PRIVATE proteus_boat_drive)
 target_link_libraries(wake_baseline PRIVATE proteus_boat_core)
-foreach(target boat_water_review boat_banking_review boat_flag_review)
+foreach(target boat_water_review boat_banking_review boat_flag_review boat_fleet_review)
   target_link_libraries(${target} PRIVATE proteus_boat_session proteus_gpu)
 endforeach()
 foreach(target validate_boat validate_boat_banking validate_boat_turn_entry validate_boat_profile
     validate_boat_environment validate_boat_replay validate_boat_world wake_baseline
-    boat_water_review boat_banking_review boat_flag_review)
+    boat_water_review boat_banking_review boat_flag_review boat_fleet_review)
   target_compile_options(${target} PRIVATE ${PROTEUS_WARNINGS})
 endforeach()
 # Display-free core gate: links the core library alone and checks its source/symbol boundary.
@@ -419,9 +424,11 @@ add_test(NAME boat_server_bind_rejected COMMAND boat_server --bind not-an-addres
 add_test(NAME boat_bot_endpoint_rejected COMMAND boat_bot --connect 127.0.0.1)
 add_test(NAME boat_net_study_mode_rejected COMMAND boat_study --connect 127.0.0.1:24680 --waves)
 add_test(NAME boat_net_study_name_rejected COMMAND boat_study --name lonely)
+add_test(NAME boat_net_study_skin_rejected
+  COMMAND boat_study --connect 127.0.0.1:24680 --skin norway)
 set_tests_properties(boat_server_scripted_room_option_rejected boat_server_port_rejected
   boat_server_bind_rejected boat_bot_endpoint_rejected boat_net_study_mode_rejected
-  boat_net_study_name_rejected PROPERTIES WILL_FAIL TRUE)
+  boat_net_study_name_rejected boat_net_study_skin_rejected PROPERTIES WILL_FAIL TRUE)
 add_test(NAME boat_net COMMAND validate_boat_net)
 set_tests_properties(boat_net PROPERTIES PASS_REGULAR_EXPRESSION "boat_net=ok")
 add_test(NAME boat_net_loopback COMMAND ${Python3_EXECUTABLE}

@@ -157,9 +157,10 @@ firewall. Internet hosting, NAT traversal, encryption and authentication are not
 
 In `--connect` mode the room decides water, wakes and spawns. Your boat is predicted: it runs
 ahead of the server with your own keys and is corrected when snapshots arrive, with small
-corrections blended over about a tenth of a second. The nearest other boat is drawn smoothly
+corrections blended over about a tenth of a second. Every other boat is drawn smoothly
 about 100 ms behind the server, and blends toward its predicted position when it comes within
-about 12 m of yours or is about to hit you. On exit `prediction:` and `other boat:` lines report
+about 12 m of yours or is about to hit you. Each room slot has its own country on every client:
+1 Sweden, 2 Finland, 3 Denmark, 4 Norway (`--skin` does not apply). On exit `prediction:` and `other boat:` lines report
 the corrections and how the other boat was drawn. `R` asks the server for a new life at a safe spawn. Help and focus loss make
 the server ease your controls to neutral, but the room keeps running. Course, replay, wake, water,
 location, demo and screenshot options are refused with `--connect`. Wrong tokens, version or
