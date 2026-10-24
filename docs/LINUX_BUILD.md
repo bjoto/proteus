@@ -1,9 +1,16 @@
 # Linux boat study checks
 
-Status, 2026-10-24: `.github/workflows/linux-boat.yml` adds an Ubuntu 24.04 X11 build,
-the routine CPU suite and an Xvfb mouse-capture startup/clean-exit smoke run. The workflow
-runs on branch pushes or manual dispatch. Linux CI has compiled and run the CPU suite;
-the full workflow and user acceptance remain pending.
+Status, 2026-10-24: native Wayland is enabled by default in Linux builds, alongside X11.
+The pinned GLFW selects Wayland in a Wayland session and X11 in an X11 session, using
+`XDG_SESSION_TYPE` and the available display environment. With no recognized session type,
+it tries Wayland before X11. No simulation or renderer changes are needed.
+`.github/workflows/linux-boat.yml` builds both backends on Ubuntu 24.04, runs the routine
+CPU suite, checks native Wayland startup/clean exit with headless Weston, and retains the
+Xvfb X11 smoke check. Both checks assert the backend reported by raylib. The workflow runs
+on branch pushes or manual dispatch. Earlier Linux CI compiled and ran the CPU suite;
+the updated workflow, native Wayland execution and user acceptance remain pending.
+
+## Earlier Linux CI findings (before Wayland enablement)
 
 2026-10-24, first run after the merge into `main`: GCC on glibc stopped compiling
 `src/boat_profile.c` and `src/profiler.c` because strict C17 (`CMAKE_C_EXTENSIONS OFF`) hides
@@ -36,22 +43,72 @@ Linux/Clang, Linux ARM64, macOS and Windows. Local documentation links and `git 
 passed. No manual playback was needed for this test-only change; Linux execution and visual
 review of the new baseline remain unverified.
 
-On Ubuntu, install `libasound2-dev libx11-dev libxrandr-dev libxi-dev libxcursor-dev
-libxinerama-dev libgl1-mesa-dev xvfb xauth`, then:
+## Build and launch
+
+On Ubuntu 24.04:
 
 ```sh
-cmake -S . -B build-linux -DCMAKE_BUILD_TYPE=Debug -DPROTEUS_GPU_TESTS=OFF -DGLFW_BUILD_WAYLAND=OFF
+sudo apt-get install libasound2-dev libx11-dev libxrandr-dev libxi-dev libxcursor-dev \
+  libxinerama-dev libgl1-mesa-dev libwayland-dev libxkbcommon-dev libegl1-mesa-dev \
+  wayland-protocols pkg-config weston xvfb xauth
+cmake -S . -B build-linux -DCMAKE_BUILD_TYPE=Debug -DPROTEUS_GPU_TESTS=OFF \
+  -DGLFW_BUILD_WAYLAND=ON -DGLFW_BUILD_X11=ON
 cmake --build build-linux --parallel 2
 ctest --test-dir build-linux -j 4 --output-on-failure
-xvfb-run -a ./build-linux/boat_study --location basin --mouse-steering --frames 120
+./build-linux/boat_study
 ```
+
+Both backend options default to `ON` on fresh Linux configurations. Existing build directories
+retain their cache values; the explicit flags above also enable Wayland in an older X11-only
+build. For a Wayland-only build, set `-DGLFW_BUILD_X11=OFF`. For an X11-only build, set
+`-DGLFW_BUILD_WAYLAND=OFF`. On a desktop with XWayland available, launch with
+`XDG_SESSION_TYPE=x11 ./build-linux/boat_study` to select X11 without rebuilding.
+Add `--verbose` to show graphics/window initialization, including the selected backend
+as `GLFW - Wayland` or `GLFW - X11`.
+
+## Desktop smoke checks
+
+Run from the repository root after building:
+
+```sh
+bash tools/check_wayland.sh build-linux
+XDG_SESSION_TYPE=x11 xvfb-run -a timeout 60s ./build-linux/boat_study \
+  --verbose --location basin --mouse-steering --frames 120
+```
+
+The Wayland script starts an isolated headless Weston compositor with Mesa software rendering,
+unsets `DISPLAY` to prevent XWayland use, launches 120 GPU frames with mouse capture enabled,
+and checks the backend log. It bounds compositor startup and app execution, cleans up the
+compositor/runtime directory, and leaves `weston-smoke.log` and `wayland-smoke.log` in the
+build directory. CI also records `x11-smoke.log` and uploads the logs even on failure.
 
 The [accepted control scheme](BOAT_HUD.md) uses raylib/GLFW for native capture, relative
 movement and vertical scrolling. Shared controller checks run in `boat_handling`; the browser
-event contract also runs when Node.js is available. The Xvfb run checks startup/exit only,
-not real pointer movement, scrolling, audio or window-manager behavior. Wayland is unverified.
+event contract also runs when Node.js is available. Virtual compositor checks cover startup/exit,
+not real pointer movement, scrolling, audio or desktop window-manager behavior. Physical
+Wayland qualification on GNOME and KDE must cover relative steering, capture/release through
+help, focus loss and Escape, scrolling, resizing and integer/fractional display scaling.
+Pointer capture requires compositor support for the relative-pointer and pointer-constraints
+protocols. Audio, connected play and physical desktop checks remain unverified.
 
-Completed task: add repeatable Linux CI/build commands and a scoped Linux CPU checksum
-baseline. Next task: rerun the workflow and review its CPU screenshots, then test physical
-input, help/focus/Esc release, renderer/audio and native multiplayer on Linux.
+Completed task: enable Wayland by default, retain X11 compatibility, and add repeatable
+backend-asserting Weston/Xvfb CI checks and build commands. Next task: run the updated Linux
+workflow and review its CPU screenshots, then qualify physical Wayland desktops and native
+multiplayer on Linux. Local verification of this change is recorded below.
 macOS/browser verification evidence belongs to [the HUD owner](BOAT_HUD.md).
+
+## Wayland change verification, 2026-10-24
+
+On Apple Silicon/macOS, Debug configure/build passed with the existing raylib OpenGL
+deprecation notice; all 110 active CTests passed in 106.77 s with GPU tests enabled and
+15 retired wake-field cases disabled. The sandboxed attempt was interrupted after loopback
+socket denial; the complete run used desktop/loopback access. After adding `--verbose`,
+the boating target rebuilt and an agent-run 120-frame basin GPU/mouse-steering smoke run
+exited successfully, reporting `GLFW - Cocoa` and clean window shutdown. This was a startup
+check, not human input/audio acceptance. Logs are in
+`/private/tmp/proteus-wayland-ctest.log` and `/private/tmp/proteus-wayland-macos-smoke.log`.
+
+Shell syntax, workflow YAML parsing, C formatting, documentation file links and diff whitespace
+checks passed. No Linux toolchain, Weston or container runtime is installed on this Mac;
+Linux dependency installation, compilation and both desktop smoke runs await CI/the Linux
+tester. GNOME/KDE physical controls, display scaling, audio and connected play remain pending.

@@ -210,6 +210,12 @@ unverified. Browser Pages CI now runs the Node contract before its Wasm build. N
 was dispatched, no branch was pushed and no deployment was performed. Next: those platform
 runs and human checks, then multiplayer integration.
 
+2026-10-24 Wayland update: Linux builds now enable native Wayland by default alongside X11.
+CI is configured to assert Wayland startup/exit under headless Weston and X11 under Xvfb;
+the updated workflow has not yet run. Physical steering/capture, scroll, focus/Escape release
+and display scaling on GNOME/KDE remain pending. See the [Linux owner](LINUX_BUILD.md) for
+current commands and verification limits; the preceding platform-check record is historical.
+
 ## Review commands
 
 From the worktree root, build normally, then run the boating view:

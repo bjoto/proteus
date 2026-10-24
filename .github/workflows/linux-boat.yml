@@ -19,11 +19,23 @@ jobs:
       - name: Install desktop build and virtual display dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libasound2-dev libx11-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev libgl1-mesa-dev xvfb xauth
+          sudo apt-get install -y libasound2-dev libx11-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev libgl1-mesa-dev libwayland-dev libxkbcommon-dev libegl1-mesa-dev wayland-protocols pkg-config weston xvfb xauth
       - name: Configure, build and test
         run: |
-          cmake -S . -B build-linux -DCMAKE_BUILD_TYPE=Debug -DPROTEUS_GPU_TESTS=OFF -DGLFW_BUILD_WAYLAND=OFF
+          cmake -S . -B build-linux -DCMAKE_BUILD_TYPE=Debug -DPROTEUS_GPU_TESTS=OFF -DGLFW_BUILD_WAYLAND=ON -DGLFW_BUILD_X11=ON
           cmake --build build-linux --parallel 2
           ctest --test-dir build-linux -j 4 --output-on-failure
+      - name: Check native Wayland startup and clean exit
+        run: bash tools/check_wayland.sh build-linux
       - name: Check mouse capture startup and clean exit under X11
-        run: xvfb-run -a ./build-linux/boat_study --location basin --mouse-steering --frames 120
+        run: |
+          set -o pipefail
+          XDG_SESSION_TYPE=x11 xvfb-run -a timeout 60s ./build-linux/boat_study --verbose --location basin --mouse-steering --frames 120 2>&1 | tee build-linux/x11-smoke.log
+          grep -F 'PLATFORM: DESKTOP (GLFW - X11): Initialized successfully' build-linux/x11-smoke.log
+      - name: Upload desktop smoke logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-desktop-smoke-logs
+          path: build-linux/*smoke.log
+          if-no-files-found: ignore

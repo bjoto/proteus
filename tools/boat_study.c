@@ -38,6 +38,7 @@ static void usage(void)
 {
     puts(
         "Usage: boat_study [--demo] [--frames COUNT] [--screenshot FILE [--time SECONDS]]\n"
+        "--verbose: log graphics/window backend and resource initialization\n"
         "No options (or --title): Wake Velocity title with multiplayer and settings (name, boat,\n"
         "  mouse steering)\n"
         "  Esc in a session returns to it | --title --screenshot FILE: capture the title\n"
@@ -210,6 +211,7 @@ static int study(int argc, char **argv)
     float object_height = BOAT_OBJECT_DEFAULT_HEIGHT;
     bool gpu_enabled = true, gpu_aa = false;
     bool profiler_visible = false;
+    bool verbose = false;
     int frame_limit = 0;
     const char *connect_to = NULL, *net_name = "player", *net_token = "";
     bool networked = false; // Joined a room with --connect (native builds only).
@@ -220,6 +222,8 @@ static int study(int argc, char **argv)
         if (strcmp(argv[i], "--help") == 0) {
             usage();
             return 0;
+        } else if (strcmp(argv[i], "--verbose") == 0) {
+            verbose = true;
         } else if (strcmp(argv[i], "--skin") == 0 && i + 1 < argc) {
             if (!boat_skin_parse(argv[++i], &skin))
                 goto invalid;
@@ -443,7 +447,7 @@ static int study(int argc, char **argv)
     if (!camera_height_set)
         camera_settings.height = camera_default.height;
 
-    SetTraceLogLevel(LOG_WARNING);
+    SetTraceLogLevel(verbose ? LOG_INFO : LOG_WARNING);
     // Legacy mapped-crop selector; mapped W1 passes the definition to map/scene queries.
     waterfront_city_select_river(location->id == BOAT_LOCATION_RIVER);
     enum { WIDTH = 320, HEIGHT = 200 };

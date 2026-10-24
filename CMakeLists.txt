@@ -10,6 +10,13 @@ option(PROTEUS_GPU_TESTS "Enable GPU-context CTest cases and the GPU review targ
 option(PROTEUS_WAKE_FIELD_TESTS "Enable retired physical wake-field and prototype experiments" OFF)
 option(PROTEUS_OPTIMIZE_TESTS "Optimize numerical validators in Debug, retaining assertions" ON)
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT EMSCRIPTEN)
+  # GLFW selects native Wayland in Wayland sessions, with X11 available for X11 desktops.
+  # Keep these cache options overridable for builds targeting only one window system.
+  option(GLFW_BUILD_WAYLAND "Build support for Wayland" ON)
+  option(GLFW_BUILD_X11 "Build support for X11" ON)
+endif()
+
 if(EMSCRIPTEN)
   set(PLATFORM Web CACHE STRING "" FORCE)
   set(OPENGL_VERSION "ES 3.0" CACHE STRING "" FORCE)

@@ -33,6 +33,9 @@ four-on-the-floor drums, bass, minor chords, and a small lead motif.
 The first configure downloads the pinned raylib source and, for native builds, the pinned
 ENet networking library. Later builds are offline.
 
+Linux builds enable native Wayland by default, with X11 support for X11 sessions.
+See [Linux setup and verification](docs/LINUX_BUILD.md) for dependencies and backend options.
+
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
