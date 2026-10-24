@@ -54,6 +54,7 @@ jobs:
           Copy-Item build-win/Release/boat_server.exe $package
           Copy-Item build-win/Release/assets/shaders "$package/assets" -Recurse
           Copy-Item build-win/Release/assets/textures "$package/assets" -Recurse
+          Copy-Item build-win/Release/assets/title "$package/assets" -Recurse
           New-Item -ItemType Directory -Force -Path "$package/assets/music" | Out-Null
           Copy-Item build-win/Release/assets/music/a-little-boat.xm "$package/assets/music"
           New-Item -ItemType Directory -Force -Path "$package/assets/geometry/eriksberg" | Out-Null
@@ -76,6 +77,10 @@ jobs:
             $server = Join-Path (Split-Path $exe) boat_server.exe
             & $server --scripted --ticks 240
             if ($LASTEXITCODE -ne 0) { throw "Relocated boat server failed: $LASTEXITCODE" }
+            $backdrop = Join-Path (Split-Path $exe) assets/title/river-backdrop.png
+            if (-not (Test-Path $backdrop -PathType Leaf)) {
+              throw "Packaged title backdrop is missing: $backdrop"
+            }
           } finally {
             Pop-Location
           }

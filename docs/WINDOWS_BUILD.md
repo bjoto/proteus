@@ -53,7 +53,7 @@ on Windows and double-click `launch.bat`. For an ordinary branch build:
 5. Double-click launch.bat to open the Wake Velocity title (`boat_study.exe` without options).
 
 Artifacts expire after 30 days. build.txt records the source commit. The package
-includes shader/texture assets, background music, and map attribution; geometry is
+includes shader/texture/title assets, background music, and map attribution; geometry is
 compiled into the executable. Asset loading uses the executable directory, so the folder can be moved.
 raylib and the MSVC runtime are statically linked for this workflow.
 
@@ -91,6 +91,12 @@ already set up a GitHub SSH key. Pushes upload committed files only.
 See [GitHub's artifact download instructions](https://docs.github.com/en/actions/managing-workflow-runs/downloading-workflow-artifacts).
 
 ## Current status and verification
+
+Static package review, 2026-10-24: the Windows workflow copied shaders, textures, music, and
+map attribution but omitted `assets/title/river-backdrop.png`. Since `launch.bat` starts the
+no-argument title screen, this matched the packaged macOS startup failure. The workflow now
+copies `assets/title/` and checks that the backdrop is in the relocated package. This change
+has not yet run on Windows; CI and interactive Windows startup remain to be verified.
 
 2026-10-20: the [Windows boat study run](https://github.com/doomdavve/proteus/actions/runs/39309664424/job/118255664525)
 failed while compiling the newly added Windows monotonic-clock code in `profiler.c`. Including
