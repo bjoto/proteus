@@ -7,8 +7,9 @@
 // boat_study --connect (multiplayer M4 in progress): the session's boat, clock and water show
 // the client's predicted fleet, so the own boat answers the keys at once. Corrections move the
 // physical state immediately; the drawn poses blend small ones away over about 120 ms. The
-// nearest other boat is drawn from the same predicted fleet through the ghost path until the
-// remote interpolation and fleet renderer steps.
+// nearest other boat is drawn from authoritative snapshots about 100 ms behind the estimated
+// server time and, close to the own boat, blended toward its predicted collision proxy. It
+// still uses the ghost path until the fleet renderer step.
 typedef struct {
     BoatNetEnet *enet;
     BoatNetClient client;
@@ -20,6 +21,8 @@ typedef struct {
     BoatPredictionError offset[BOAT_FLEET_SLOTS]; // Visual correction still being blended.
     uint32_t correction; // Prediction correction serial already folded into the offsets.
     uint64_t presented_tick; // Last tick the presentations were stepped for.
+    BoatRemoteProximity proximity[BOAT_FLEET_SLOTS];
+    uint64_t samples[BOAT_REMOTE_HELD + 1], near_frames, frames; // Other-boat diagnostics.
 } NetStudy;
 
 // Connect, handshake and install the world (blocking, at most ten seconds). On failure print

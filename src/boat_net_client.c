@@ -153,6 +153,9 @@ static void install(BoatNetClient *c, double now)
     check_wakes(c, now);
     if (c->predict && c->phase != BOAT_NET_CLIENT_PLAYING)
         boat_prediction_reset(&c->prediction, &c->fleet, c->inputs, c->slot);
+    if (c->phase != BOAT_NET_CLIENT_PLAYING)
+        boat_remote_history_reset(&c->remotes);
+    boat_remote_history_push(&c->remotes, state.tick, state.slots);
     c->predict_dirty = true;
     BoatNetMessage m
         = { .header = { .type = BOAT_NET_READY, .tick = state.tick }, .checkpoint = b->checkpoint };
@@ -194,6 +197,7 @@ static void snapshot(BoatNetClient *c, const BoatNetMessage *m, double now)
     ++*(c->wake_consistent ? &c->stats.consistent : &c->stats.inconsistent);
     c->snapshot_at = now;
     c->predict_dirty = true;
+    boat_remote_history_push(&c->remotes, tick, state->slots);
     ++c->stats.snapshots;
     // The authority sends snapshot n right after tick n: allow half the round trip.
     double sample = (double)tick + c->rtt * .5 * BOAT_TICK_HZ - now * BOAT_TICK_HZ;
@@ -326,6 +330,11 @@ const BoatFleetSlot *boat_net_client_own(const BoatNetClient *c)
     if (c->phase != BOAT_NET_CLIENT_PLAYING || !c->fleet.state.slots[c->slot].active)
         return NULL;
     return &c->fleet.state.slots[c->slot];
+}
+
+double boat_net_client_server_tick(const BoatNetClient *c, double now)
+{
+    return c->offset_valid ? now * BOAT_TICK_HZ + c->offset : (double)mirror_tick(c);
 }
 
 const BoatFleet *boat_net_client_view(const BoatNetClient *c)

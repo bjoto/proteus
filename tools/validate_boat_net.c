@@ -9,6 +9,7 @@
 #include "boat_fleet_bots.h"
 #include "boat_net_client.h"
 #include "boat_net_server.h"
+#include "raymath.h"
 
 #include <inttypes.h>
 #include <math.h>
@@ -406,6 +407,13 @@ typedef struct {
     double now;
     uint64_t history_tick[ROOM_HISTORY], history_hash[ROOM_HISTORY];
     uint64_t checked[ROOM_CLIENTS];
+    // Authoritative boat positions by tick, and each predicting client's view of another boat.
+    Vector2 history_position[ROOM_HISTORY][BOAT_FLEET_SLOTS];
+    uint32_t history_life[ROOM_HISTORY][BOAT_FLEET_SLOTS];
+    BoatRemoteProximity proximity[ROOM_CLIENTS];
+    uint64_t remote_samples[ROOM_CLIENTS][BOAT_REMOTE_HELD + 1], remote_checked[ROOM_CLIENTS];
+    uint64_t near_steps[ROOM_CLIENTS], view_steps[ROOM_CLIENTS];
+    double remote_error[ROOM_CLIENTS], remote_max_error[ROOM_CLIENTS], delay[ROOM_CLIENTS];
     unsigned checks, matches, mismatches;
 } Room;
 
@@ -436,6 +444,45 @@ static unsigned room_join(Room *room, const char *name, const char *token, uint3
     return i;
 }
 
+// What a predicting client would draw for the first other boat: the interpolated pose,
+// checked against the authority's position at the drawn tick, and the proximity weight.
+static void room_view_remote(Room *room, unsigned i, uint64_t tick, double dt)
+{
+    const BoatNetClient *c = &room->clients[i];
+    const BoatFleet *view = boat_net_client_view(c);
+    unsigned other = BOAT_FLEET_SLOTS;
+    for (unsigned k = 0; k < BOAT_FLEET_SLOTS && other == BOAT_FLEET_SLOTS; ++k)
+        if (k != c->slot && view->state.slots[k].active)
+            other = k;
+    const BoatFleetSlot *own = &view->state.slots[c->slot];
+    if (other == BOAT_FLEET_SLOTS || !own->active)
+        return;
+    double shown = boat_net_client_server_tick(c, room->now) - BOAT_REMOTE_DELAY_TICKS;
+    Boat pose;
+    uint32_t life;
+    BoatRemoteSample sample = boat_remote_history_pose(&c->remotes, other, shown, &pose, &life);
+    ++room->remote_samples[i][sample];
+    ++room->view_steps[i];
+    room->delay[i] += (double)tick - shown;
+    const BoatFleetSlot *remote = &view->state.slots[other];
+    room->near_steps[i] += boat_remote_proximity_update(&room->proximity[i], &own->boat,
+                               &remote->boat, remote->life, room->now, (float)dt)
+        > 0;
+    uint64_t a = (uint64_t)floor(shown);
+    // Across a respawn the view shows the new life up to one snapshot early, by design.
+    if (sample != BOAT_REMOTE_INTERPOLATED || room->history_tick[a % ROOM_HISTORY] != a
+        || room->history_tick[(a + 1) % ROOM_HISTORY] != a + 1
+        || room->history_life[a % ROOM_HISTORY][other] != life
+        || room->history_life[(a + 1) % ROOM_HISTORY][other] != life)
+        return;
+    Vector2 truth = Vector2Lerp(room->history_position[a % ROOM_HISTORY][other],
+        room->history_position[(a + 1) % ROOM_HISTORY][other], (float)(shown - (double)a));
+    double error = Vector2Distance(truth, pose.position);
+    room->remote_error[i] += error;
+    room->remote_max_error[i] = fmax(room->remote_max_error[i], error);
+    ++room->remote_checked[i];
+}
+
 static void room_step(Room *room, double dt)
 {
     room->now += dt;
@@ -444,6 +491,11 @@ static void room_step(Room *room, double dt)
     uint64_t tick = room->server.fleet.state.tick;
     room->history_tick[tick % ROOM_HISTORY] = tick;
     room->history_hash[tick % ROOM_HISTORY] = boat_fleet_hash(&room->server.fleet.state);
+    for (unsigned k = 0; k < BOAT_FLEET_SLOTS; ++k) {
+        room->history_position[tick % ROOM_HISTORY][k]
+            = room->server.fleet.state.slots[k].boat.position;
+        room->history_life[tick % ROOM_HISTORY][k] = room->server.fleet.state.slots[k].life;
+    }
     for (unsigned i = 0; i < room->count; ++i) {
         BoatNetClient *c = &room->clients[i];
         if (!room->live[i])
@@ -460,6 +512,8 @@ static void room_step(Room *room, double dt)
         clock_t started = clock();
         room->live[i] = boat_net_client_service(c, room->now, input, room->inactive[i]);
         room->service_seconds[i] += (double)(clock() - started) / CLOCKS_PER_SEC;
+        if (c->predict && c->phase == BOAT_NET_CLIENT_PLAYING)
+            room_view_remote(room, i, tick, dt);
         // At birth-batch ticks a lossless link has delivered every birth the snapshot names.
         uint64_t mirror = c->fleet.state.tick;
         if (c->phase == BOAT_NET_CLIENT_PLAYING && mirror != room->checked[i]
@@ -1089,6 +1143,99 @@ static int prediction_wakes(void)
     return 0;
 }
 
+// Remote view rules on hand-built snapshots and poses.
+static int remote_view(void)
+{
+    static BoatRemoteHistory h;
+    BoatFleetSlot slots[BOAT_FLEET_SLOTS] = { 0 };
+    boat_remote_history_reset(&h);
+    Boat pose;
+    uint32_t life;
+    CHECK(boat_remote_history_pose(&h, 1, 100, &pose, &life) == BOAT_REMOTE_NONE);
+    slots[1] = (BoatFleetSlot) { .active = true, .life = 1, .boat = { .heading = 3.1f } };
+    boat_remote_history_push(&h, 100, slots);
+    slots[1].boat = (Boat) { .position = { 4, 0 }, .heading = -3.1f, .pitch = 7 };
+    boat_remote_history_push(&h, 104, slots);
+    boat_remote_history_push(&h, 104, slots); // Not newer: ignored.
+    CHECK(h.count == 2);
+    CHECK(boat_remote_history_pose(&h, 1, 102, &pose, &life) == BOAT_REMOTE_INTERPOLATED);
+    // Halfway, heading the short way across the wrap, pitch continuous (a flip is not undone).
+    CHECK(fabsf(pose.position.x - 2) < 1e-5f && fabsf(fabsf(pose.heading) - PI) < 1e-3f);
+    CHECK(fabsf(pose.pitch - 3.5f) < 1e-5f && life == 1);
+    slots[1] = (BoatFleetSlot) {
+        .active = true, .life = 2, .boat = { .position = { 50, 0 }, .velocity = { 6, 0 } }
+    };
+    boat_remote_history_push(&h, 108, slots);
+    // Never blended across lives: the newer life is shown.
+    CHECK(boat_remote_history_pose(&h, 1, 106, &pose, &life) == BOAT_REMOTE_INTERPOLATED);
+    CHECK(life == 2 && pose.position.x == 50);
+    CHECK(boat_remote_history_pose(&h, 1, 110, &pose, &life) == BOAT_REMOTE_EXTRAPOLATED);
+    CHECK(fabsf(pose.position.x - 50.1f) < 1e-4f);
+    CHECK(boat_remote_history_pose(&h, 1, 130, &pose, &life) == BOAT_REMOTE_HELD);
+    CHECK(fabsf(pose.position.x - 50.6f) < 1e-4f); // 100 ms of extrapolation, then held.
+    // Before the history: the oldest pose of the current life.
+    CHECK(boat_remote_history_pose(&h, 1, 90, &pose, &life) == BOAT_REMOTE_HELD);
+    CHECK(life == 2 && pose.position.x == 50);
+    slots[1].boat.position.x = 65; // A jump over the teleport distance is not blended.
+    boat_remote_history_push(&h, 112, slots);
+    CHECK(boat_remote_history_pose(&h, 1, 110, &pose, &life) == BOAT_REMOTE_INTERPOLATED);
+    CHECK(pose.position.x == 65);
+    for (uint64_t t = 116; t < 400; t += 4)
+        boat_remote_history_push(&h, t, slots);
+    CHECK(h.count == BOAT_REMOTE_HISTORY);
+    slots[1].active = false;
+    boat_remote_history_push(&h, 400, slots);
+    CHECK(boat_remote_history_pose(&h, 1, 398, &pose, &life) == BOAT_REMOTE_NONE);
+
+    // Proximity: enter within 12 m over 100 ms, stay up to 16 m, leave after 0.5 s beyond it.
+    BoatRemoteProximity x = { 0 };
+    Boat own = { 0 }, remote = { .position = { 20, 0 } };
+    double now = 0;
+    const float dt = 1 / 120.0f;
+    CHECK(boat_remote_proximity_update(&x, &own, &remote, 1, now, dt) == 0);
+    remote.position.x = 10;
+    float w = 0;
+    for (unsigned k = 0; k < 6; ++k)
+        w = boat_remote_proximity_update(&x, &own, &remote, 1, now += dt, dt);
+    CHECK(w > .45f && w < .55f);
+    for (unsigned k = 0; k < 7; ++k)
+        w = boat_remote_proximity_update(&x, &own, &remote, 1, now += dt, dt);
+    CHECK(w == 1);
+    remote.position.x = 14;
+    for (unsigned k = 0; k < 120; ++k)
+        w = boat_remote_proximity_update(&x, &own, &remote, 1, now += dt, dt);
+    CHECK(w == 1 && x.near);
+    remote.position.x = 20;
+    for (unsigned k = 0; k < 59; ++k)
+        w = boat_remote_proximity_update(&x, &own, &remote, 1, now += dt, dt);
+    CHECK(w == 1 && x.near);
+    for (unsigned k = 0; k < 14; ++k)
+        w = boat_remote_proximity_update(&x, &own, &remote, 1, now += dt, dt);
+    CHECK(!x.near && w == 0);
+    // A closing boat 25 m away enters before it is near; a new life starts outside.
+    remote = (Boat) { .position = { 25, 0 }, .velocity = { -60, 0 } };
+    CHECK(boat_remote_proximity_update(&x, &own, &remote, 1, now += dt, dt) > 0 && x.near);
+    CHECK(
+        boat_remote_proximity_update(&x, &own, &(Boat) { .position = { 40, 0 } }, 2, now, dt) == 0);
+    printf("remote view: interpolation, wrap, flips, lives, teleports, extrapolation, holds "
+           "and proximity hysteresis behave as specified\n");
+    return 0;
+}
+
+static void report_remote(const char *label, const Room *room, unsigned i)
+{
+    double steps = (double)room->view_steps[i];
+    printf("%s: client %u other boat drawn %.0f ms behind the authority; %.1f%% interpolated, "
+           "%.1f%% extrapolated, %.1f%% held; position error mean %.3f m max %.3f m over %" PRIu64
+           " samples; %.1f%% in proximity mode\n",
+        label, i, room->delay[i] / steps * 1000 / BOAT_TICK_HZ,
+        100 * (double)room->remote_samples[i][BOAT_REMOTE_INTERPOLATED] / steps,
+        100 * (double)room->remote_samples[i][BOAT_REMOTE_EXTRAPOLATED] / steps,
+        100 * (double)room->remote_samples[i][BOAT_REMOTE_HELD] / steps,
+        room->remote_error[i] / (double)room->remote_checked[i], room->remote_max_error[i],
+        room->remote_checked[i], 100 * (double)room->near_steps[i] / steps);
+}
+
 static void report_prediction(const char *label, const Room *room, unsigned i)
 {
     const BoatNetClient *c = &room->clients[i];
@@ -1148,6 +1295,12 @@ static int prediction_network(void)
             CHECK(ps->wakes_vanished <= 5 && ps->visible_vanished == 0);
             CHECK(ps->visible_appeared == 0 && ps->incomplete_corrections <= 5);
             report_prediction(keys ? "prediction F keys" : "prediction F", &room, i);
+            report_remote(keys ? "remote F keys" : "remote F", &room, i);
+            double steps = (double)room.view_steps[i];
+            double delay = room.delay[i] / steps / BOAT_TICK_HZ;
+            CHECK(room.remote_samples[i][BOAT_REMOTE_INTERPOLATED] > steps * .99);
+            CHECK(room.remote_checked[i] > 5000 && room.remote_max_error[i] < .05);
+            CHECK(delay > .09 && delay < .125 && room.near_steps[i] > 0);
         }
         CHECK(room.server.stats.emission_failures == 0 && room.server.stats.output_faults == 0);
         room_close(&room);
@@ -1168,6 +1321,7 @@ int main(void)
     RUN(resync());
     RUN(prediction_replay());
     RUN(prediction_wakes());
+    RUN(remote_view());
     RUN(prediction_network());
     printf("boat_net=ok\n");
     return 0;

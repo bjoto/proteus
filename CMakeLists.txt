@@ -89,7 +89,7 @@ if(NOT EMSCRIPTEN)
   set(PROTEUS_BOAT_NET_SOURCES
     src/boat_net_client.c src/boat_net_client.h src/boat_net_memory.c src/boat_net_protocol.c
     src/boat_net_protocol.h src/boat_net_server.c src/boat_net_server.h src/boat_net_transport.h
-    src/boat_prediction.c src/boat_prediction.h)
+    src/boat_prediction.c src/boat_prediction.h src/boat_remote_view.c src/boat_remote_view.h)
   add_library(proteus_boat_net STATIC ${PROTEUS_BOAT_NET_SOURCES})
   target_link_libraries(proteus_boat_net PUBLIC proteus_boat_core)
   target_compile_options(proteus_boat_net PRIVATE ${PROTEUS_WARNINGS})

@@ -143,13 +143,32 @@ bool net_study_frame(NetStudy *net, BoatSession *session, BoatInput input, bool 
             net->other_visible = true;
         }
     }
+    // Every remote's proximity mode follows the physical predicted hulls.
+    double server_tick = boat_net_client_server_tick(c, now);
+    float dt = fminf(GetFrameTime(), .1f), weight[BOAT_FLEET_SLOTS] = { 0 };
+    for (unsigned i = 0; i < BOAT_FLEET_SLOTS; ++i) {
+        const BoatFleetSlot *slot = &view->state.slots[i];
+        if (i != c->slot && slot->active && own->active)
+            weight[i] = boat_remote_proximity_update(
+                &net->proximity[i], &own->boat, &slot->boat, slot->life, now, dt);
+    }
     if (net->other_visible) {
-        const BoatFleetSlot *other = &view->state.slots[net->other_slot];
-        if (other->life != net->other_life) {
-            net->other_life = other->life;
+        unsigned i = net->other_slot;
+        Boat proxy = shown(net, i), past;
+        uint32_t life = view->state.slots[i].life;
+        BoatRemoteSample sample = boat_remote_history_pose(
+            &c->remotes, i, server_tick - BOAT_REMOTE_DELAY_TICKS, &past, &life);
+        ++net->samples[sample];
+        ++net->frames;
+        net->near_frames += weight[i] > 0;
+        // A pose of another life than the proxy's is never blended with it.
+        if (sample == BOAT_REMOTE_NONE || life != view->state.slots[i].life)
+            past = proxy, life = view->state.slots[i].life;
+        if (life != net->other_life) {
+            net->other_life = life;
             boat_presentation_reset(&net->other_presentation);
         }
-        net->other = shown(net, net->other_slot);
+        net->other = boat_remote_blend(&past, &proxy, weight[i]);
     }
     uint64_t tick = view->state.tick;
     boat_session_set_tick(session, tick);
@@ -196,6 +215,15 @@ void net_study_close(NetStudy *net)
             p->max_remote_error, (unsigned long long)p->snaps, (unsigned long long)p->held_ticks,
             (unsigned long long)p->wakes_vanished, (unsigned long long)p->visible_vanished,
             (unsigned long long)p->carried, (unsigned long long)p->incomplete_corrections);
+    if (net->frames)
+        fprintf(stdout,
+            "other boat: %llu frames, %.1f%% interpolated, %.1f%% extrapolated, %.1f%% held, "
+            "%.1f%% in proximity mode\n",
+            (unsigned long long)net->frames,
+            100.0 * (double)net->samples[BOAT_REMOTE_INTERPOLATED] / (double)net->frames,
+            100.0 * (double)net->samples[BOAT_REMOTE_EXTRAPOLATED] / (double)net->frames,
+            100.0 * (double)net->samples[BOAT_REMOTE_HELD] / (double)net->frames,
+            100.0 * (double)net->near_frames / (double)net->frames);
     boat_net_client_leave(&net->client);
     boat_net_enet_close(net->enet, 1);
     net->enet = NULL;

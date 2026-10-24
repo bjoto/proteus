@@ -29,8 +29,11 @@ prediction, `boat_prediction`), is implemented and automatically verified on mac
 played it beside `boat_bot` on 2026-10-24 ("Works really well!"); see the [M4 prediction handoff](#m4-step-1-client-prediction-handoff--2026-10-23).
 M4 step 2 (wake reconciliation: digest-confirmed provisional records, held corrections, early
 births by identity) is implemented and automatically verified, not yet user-played; see the
-[wake handoff](#m4-step-2-wake-reconciliation-handoff--2026-10-24). Next: M4 step 3, remote
-interpolation and the proximity view. M5–M8 are pending.
+[wake handoff](#m4-step-2-wake-reconciliation-handoff--2026-10-24). M4 step 3 (remote
+interpolation 100 ms behind and the proximity blend, `boat_remote_view`) is implemented and
+automatically verified, not yet user-played; see the
+[remote view handoff](#m4-step-3-remote-view-handoff--2026-10-24). Next: M4 step 4, fleet
+rendering and the safe reset UI. M5–M8 are pending.
 Numerical budgets below are proposed gates, not measured multiplayer results.
 The final evidence section distinguishes checks performed for this document from future checks.
 
@@ -695,7 +698,10 @@ macOS (2026-10-23); user-played beside `boat_bot`, including its wakes, on 2026-
 births/repair and provisional-own reconciliation; then remote interpolation/proximity view,
 fleet rendering and the safe reset UI. Step 2 (wake reconciliation) implemented and automatically
 verified on 2026-10-24, not yet user-played; see the
-[wake handoff](#m4-step-2-wake-reconciliation-handoff--2026-10-24). Next: step 3.
+[wake handoff](#m4-step-2-wake-reconciliation-handoff--2026-10-24). Step 3 (remote view)
+implemented and automatically verified on 2026-10-24, not yet user-played; see the
+[remote view handoff](#m4-step-3-remote-view-handoff--2026-10-24). Next: step 4, fleet rendering
+and the safe reset UI.
 
 ### M5 — four-player/session and impairment hardening
 
@@ -1284,6 +1290,60 @@ reproduce it, so the cause is unexplained. The view itself was not inspected.
 
 **Limits.** Bots seldom drive through each other's fresh wakes, so jump-on-remote-wake feel is
 unmeasured; user play is the check. No two-human, two-machine or non-macOS run.
+
+## M4 step 3: remote view handoff — 2026-10-24
+
+Started from `55c1ce1`. The title-screen row in `docs/README.md` and the untracked
+`docs/TITLE_SCREEN_PLAN.md` are not part of this change.
+
+| Implemented | Automated verification | Manual observation | User acceptance |
+| --- | --- | --- | --- |
+| `boat_remote_view` snapshot history, interpolation/extrapolation and proximity blend; `boat_study --connect` draws the other boat with it | `boat_net` (`remote_view` fixture, gated predicting rooms), the full suite | Agent-run windowed `boat_study --connect` beside a bot; no keyboard play | None yet |
+
+**Module.** `src/boat_remote_view.[ch]` is in `proteus_boat_net` (core boundary). The client keeps
+the last 16 authoritative snapshots' slots (`BoatNetClient.remotes`, about 0.5 s) and exposes
+`boat_net_client_server_tick()`. `boat_remote_history_pose` returns a slot's pose at a fractional
+tick: interpolated between the bracketing snapshots (heading the short way round, pitch and roll
+linearly so flips stay continuous, discrete state from the nearer snapshot); never blended
+across a life change or a jump over 10 m, where the newer snapshot is shown; extrapolated with
+the newest velocities for up to 12 ticks (100 ms), then held. `boat_remote_proximity_update`
+enters proximity mode when the predicted hulls are within 12 m, or when their closest approach
+at current velocities is under 8 m within 0.5 s, and leaves after 0.5 s beyond 16 m; the weight
+moves over 100 ms, and a new life starts outside. These poses are display only.
+
+**View.** The other boat is drawn at the estimated server tick minus 12 ticks (100 ms), blended
+by the proximity weight toward its predicted pose (with the step-1 visual correction), which is
+the pose the prediction collides with. The own boat and the water stay at the predicted tick.
+On exit `boat_study` prints the share of frames interpolated, extrapolated, held and in
+proximity mode.
+
+**Deviations, for review.** The delay is fixed at 12 ticks, not adaptive between 67 and 150 ms.
+The contact test uses current velocities, not a swept hull test. Only the nearest other boat is
+drawn, still through the ghost path (step 4). The measurable contact-gap gate is not yet built.
+
+**Automated verification.** Apple M1 Max/macOS 26.6.2, Apple clang 21.0.0, Debug common recipe
+with `PROTEUS_GPU_TESTS=ON`. Warning-free build; the **101 active CTests pass** (21 GPU), 15
+retired cases disabled.
+- `remote_view` fixture: halfway interpolation, heading across the ±π wrap, pitch through a flip,
+  no blend across lives or a teleport, 100 ms of extrapolation then hold, the oldest pose of the
+  current life before the history, stale pushes ignored, the 16-entry bound, an inactive slot,
+  and the proximity entry, 12–16 m hysteresis, 0.5 s exit, closing-contact entry and life reset.
+- Profile F rooms (two bots, waves, 60 s, smooth and keyboard-style): the other boat was drawn
+  106 ms behind the authority on average; 99.8–99.9% of frames interpolated, 0.1–0.2%
+  extrapolated, none held; against the authority's real position at the drawn tick, mean error
+  under 1 mm and max 5 mm over about 7640 samples per client (samples that straddle a respawn,
+  where the new life is shown up to one snapshot early by design, are excluded); 5.9% of frames
+  in proximity mode. The rooms gate on at least 99% interpolated, max error under 5 cm, a delay
+  of 90–125 ms and some proximity time.
+
+**Manual observation (agent).** `boat_server --waves`, one `boat_bot` and a windowed
+`boat_study --connect --frames 1200` (GPU, loopback): 99.9% interpolated, 0.1% held, no proximity
+mode (the own boat idled while the bot lapped), no faults, clean exit. The view was not
+inspected.
+
+**Limits.** Whether 100 ms behind looks right, and whether the proximity blend hides the gap
+before impacts without visible sliding, needs human play: drive alongside and into the bot. No
+two-human, two-machine or non-macOS run.
 
 ## Exact first implementation task
 

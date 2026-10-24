@@ -3,6 +3,7 @@
 
 #include "boat_net_transport.h"
 #include "boat_prediction.h"
+#include "boat_remote_view.h"
 
 #define BOAT_NET_PENDING_BIRTHS 64 // Births held until their tick's snapshot or the baseline.
 #define BOAT_NET_STALE 0.25 // Seconds without a snapshot before the view is marked stale.
@@ -83,6 +84,7 @@ typedef struct {
     uint32_t reset_request, requests; // Pending reset request ID, and IDs issued.
     BoatNetClientStats stats;
     BoatPrediction prediction; // Valid once PLAYING when predicting.
+    BoatRemoteHistory remotes; // Recent authoritative boat states, for drawing other boats.
 } BoatNetClient;
 
 void boat_net_client_init(BoatNetClient *client, BoatNetTransport transport,
@@ -97,6 +99,8 @@ void boat_net_client_leave(BoatNetClient *client);
 bool boat_net_client_stale(const BoatNetClient *client, double now);
 // The client's own slot, or NULL before the baseline or while it has no boat.
 const BoatFleetSlot *boat_net_client_own(const BoatNetClient *client);
+// Estimated current authoritative tick (fractional), or the mirror's before a clock estimate.
+double boat_net_client_server_tick(const BoatNetClient *client, double now);
 // The fleet to draw: the speculative one when predicting, else the mirror.
 const BoatFleet *boat_net_client_view(const BoatNetClient *client);
 // Text for a rejection or close, for the console.

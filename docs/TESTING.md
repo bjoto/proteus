@@ -76,7 +76,9 @@ about two seconds. It covers:
   authority bit for bit, and predicting rooms (steady 30 ms, profile F both ways with smooth
   and keyboard-style bots) that print correction sizes and replay cost;
 - wake reconciliation: digest-confirmed carry of missing births, held and incomplete
-  corrections, early births by identity, and gated wake-change counts in the predicting rooms.
+  corrections, early births by identity, and gated wake-change counts in the predicting rooms;
+- remote view: interpolation, life and teleport rules, extrapolation limits and proximity
+  hysteresis, plus the drawn delay and position error against the authority in the rooms.
 
 `boat_net_loopback` runs `tools/boat_net_smoke.py`, which starts real `boat_server` and
 `boat_bot` processes on a free 127.0.0.1 UDP port for about 10 s. Two bots drive and a
