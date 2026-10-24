@@ -14,7 +14,9 @@ next tasks, and the [Gothenburg boating design](docs/BOATING_PLAN.md).
 boating world, starting with two players colliding and jumping each other's wakes. Native
 builds can now join a [diagnostic room](#multiplayer-diagnostic-room) on one machine or a LAN.
 Your boat is now predicted and answers the keys at once, but the other boat, wakes and
-rendering are still diagnostic; it is not the finished multiplayer game. Packaged and browser builds remain single-player.
+rendering are still diagnostic; it is not the finished multiplayer game. The Mac and Windows
+packages carry `boat_server` for [LAN rooms](#hosting-from-a-package); browser builds remain
+single-player.
 
 ## Generate the original sample pack and starter XM (archived sketch)
 
@@ -184,6 +186,21 @@ handling mismatches and full rooms are refused with a message. The
 [M3](docs/MULTIPLAYER_PLAN.md#m3-protocol-and-transport-handoff--2026-10-23) and
 [M4 prediction](docs/MULTIPLAYER_PLAN.md#m4-step-1-client-prediction-handoff--2026-10-23)
 handoffs describe the details and limits.
+
+#### Hosting from a package
+
+Since 2026-10-24 the Mac app and the Windows ZIP include `boat_server`. On Windows, double-click
+`host.bat`, which opens a room on every interface (`--bind 0.0.0.0`) and passes extra options
+through, and allow it through Windows Firewall. On a Mac, run it from Terminal:
+
+```sh
+"/Applications/Proteus Boating.app/Contents/MacOS/boat_server" --bind 0.0.0.0
+```
+
+Friends choose MULTIPLAYER on the title and enter the host's LAN address with port 24680. The
+title has no token field, so leave `--token` off rooms meant for it. Internet play needs UDP port
+forwarding or a VPN; [M6](docs/MULTIPLAYER_PLAN.md#m6--friends-over-the-internet-and-native-packaging)
+owns that guidance, a Host button and a standalone Linux server.
 
 T5 tuning lets the bank ease out sooner as turning load fades. Deterministic presentation/
 replay fixtures cover banked poses, straightening and paused seeking. The

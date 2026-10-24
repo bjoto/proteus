@@ -39,7 +39,8 @@ see the [fleet rendering handoff](#m4-step-4a-fleet-rendering-handoff--2026-10-2
 (reset feedback: `RESETTING`, waiting for a clear spot, a short fade into the new life) is
 implemented and automatically verified, not yet user-played; see the
 [reset UI handoff](#m4-step-4b-reset-ui-handoff--2026-10-24). All M4 implementation steps are
-done. Next: the M4 manual acceptance session (two humans, LAN and profile F) and the contact-gap
+done. The Mac and Windows packages now carry `boat_server` for LAN rooms (Windows CI pending;
+see the [packaged server handoff](#packaged-lan-server-handoff--2026-10-24)). Next: the M4 manual acceptance session (two humans, LAN and profile F) and the contact-gap
 measurement it calls for; M5–M8 are pending.
 Numerical budgets below are proposed gates, not measured multiplayer results.
 The final evidence section distinguishes checks performed for this document from future checks.
@@ -739,7 +740,9 @@ Depends on M5. Likely `tools/boat_server.c`, Host launcher/client connection UI,
 packagers/workflows, CMake server-only Linux configuration, README, platform/release/test guides.
 Deliver direct host/port plus room token, graceful exit/disconnect, child-process Host lifecycle,
 firewall/NAT help and a minimal dedicated service/run guide. Prefer a standalone server package
-for Linux; existing macOS/Windows player package paths remain stable. Include ENet license and
+for Linux; existing macOS/Windows player package paths remain stable. (Since 2026-10-24 those
+packages already carry the diagnostic `boat_server`; see the
+[packaged server handoff](#packaged-lan-server-handoff--2026-10-24).) Include ENet license and
 protocol/content IDs in build metadata. Do not publish/deploy as part of implementation tests.
 
 Automated: macOS/Windows core+codec/loopback CI, Linux server build/run without display/audio
@@ -1444,6 +1447,28 @@ R could not be pressed and the notices and fade were not inspected.
 
 **Limits.** The `WAITING` notice has no automated case with every spawn blocked. Try R in open
 water, after a capsize, and next to another boat at a spawn point; the fade length is a guess.
+
+## Packaged LAN server handoff — 2026-10-24
+
+Pulled forward from M6 so friends can host from release packages before the M4 acceptance
+session. `tools/macos/package.py` copies `boat_server` into `Contents/MacOS`, checks its
+architecture and system-only dependencies and signs it before the bundle; the macOS workflow
+runs it relocated with `--scripted --ticks 240`. The Windows workflow builds `boat_server`,
+`boat_bot` and `validate_boat_net`, adds `boat_server_scripted`, `boat_net` and
+`boat_net_loopback` to its tests, and packages `boat_server.exe` with `tools/windows/host.bat`.
+Unchanged: no Host button, no Linux server package, no internet/firewall guide beyond the
+README note; the title has no token field.
+
+Verification, M1 Max/macOS 26.6.2, Debug build: `package.py` produced and verified the app
+(`codesign --verify --deep --strict`); from the extracted ZIP outside the checkout the packaged
+`boat_server --scripted --ticks 240` and the Eriksberg CPU capture passed, and
+`tools/boat_net_smoke.py` against the packaged server printed `boat_net_loopback=ok`. Neither
+workflow has run these changes; MSVC compilation of ENet, `boat_net_enet.c` and the server is
+unverified. No LAN session between two machines has been played from packages.
+
+The first Windows run of the M3+ code (run 40082682785, before these package changes) failed on
+the `windows.h`/raylib name clash in `boat_net_enet.c`; the fix and its limits are in the
+[Windows guide](WINDOWS_BUILD.md).
 
 ## Exact first implementation task
 

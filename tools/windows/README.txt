@@ -4,6 +4,15 @@ Extract the entire ZIP, then double-click launch.bat (or boat_study.exe) to open
 the Wake Velocity title. Pick NAME and BOAT, then SINGLE PLAYER for the river, or
 MULTIPLAYER to type a room's HOST:PORT address and connect. Esc in a session
 returns to the title. Keep assets beside boat_study.exe.
+
+To host a room for friends on the same network, double-click host.bat and allow
+boat_server.exe through Windows Firewall when asked. Friends choose MULTIPLAYER
+and type this PC's local address with port 24680 (for example 192.168.1.20:24680;
+run ipconfig to find it). Up to four boats. host.bat passes options through, for
+example: host.bat --waves
+Hosting over the internet needs UDP port forwarding or a VPN; rooms have no
+encryption or accounts.
+
 Requires a GPU/driver supporting OpenGL 3.3. The build uses static raylib
 and the static MSVC runtime.
 
@@ -32,4 +41,4 @@ whether the problem also happens without --gpu-aa.
 Map data (c) OpenStreetMap contributors, ODbL 1.0:
 https://www.openstreetmap.org/copyright
 Source details: assets/geometry/eriksberg/manifest.json
-raylib and GLFW license notices are included alongside this file.
+raylib, GLFW and ENet license notices are included alongside this file.

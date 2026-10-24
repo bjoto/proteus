@@ -46,6 +46,7 @@ jobs:
           cd "$RUNNER_TEMP"
           "$app/Contents/MacOS/boat_study" --renderer cpu --location eriksberg --time 3 --screenshot relocated.png
           test -s relocated.png
+          "$app/Contents/MacOS/boat_server" --scripted --ticks 240
           test -s "$app/Contents/Resources/assets/music/a-little-boat.xm"
           test -s "$app/Contents/Resources/assets/shaders/waterfront_city.fs"
 

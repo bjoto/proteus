@@ -33,11 +33,16 @@ def main():
     minimum_os = re.search(r"\bminos (\S+)", run("otool", "-l", str(executable)))
     if not minimum_os:
         raise SystemExit("Could not determine executable's minimum macOS version")
-    dependencies = run("otool", "-L", str(executable))
-    for line in dependencies.splitlines()[1:]:
-        library = line.strip().split(" (", 1)[0]
-        if not library.startswith(("/System/Library/", "/usr/lib/")):
-            raise SystemExit(f"Unbundled dependency: {library}")
+    # boat_server is the headless room authority that boat_study's MULTIPLAYER entry joins.
+    server = build / "boat_server"
+    if run("lipo", "-archs", str(server)) != architectures:
+        raise SystemExit(f"boat_server architecture differs from boat_study: {server}")
+    for binary in (executable, server):
+        dependencies = run("otool", "-L", str(binary))
+        for line in dependencies.splitlines()[1:]:
+            library = line.strip().split(" (", 1)[0]
+            if not library.startswith(("/System/Library/", "/usr/lib/")):
+                raise SystemExit(f"Unbundled dependency of {binary.name}: {library}")
     commit = run("git", "-C", str(root), "rev-parse", "HEAD")
     dirty = bool(run("git", "-C", str(root), "status", "--porcelain"))
     contents = app / "Contents"
@@ -45,6 +50,7 @@ def main():
     (contents / "MacOS").mkdir(parents=True)
     resources.mkdir()
     shutil.copy2(executable, contents / "MacOS" / "boat_study")
+    shutil.copy2(server, contents / "MacOS" / "boat_server")
     assets = resources / "assets"
     assets.mkdir()
     for directory in ("shaders", "textures"):
@@ -73,6 +79,8 @@ def main():
             "NSHighResolutionCapable": True,
             "LSMinimumSystemVersion": minimum_os.group(1),
         }, stream)
+    # Nested executables are signed before the bundle that seals them.
+    run("codesign", "--force", "--sign", "-", str(contents / "MacOS" / "boat_server"))
     run("codesign", "--force", "--sign", "-", str(app))
     run("codesign", "--verify", "--deep", "--strict", "--verbose=2", str(app))
     archive = output / "proteus-boating-macos-arm64.zip"

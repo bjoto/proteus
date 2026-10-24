@@ -2,8 +2,10 @@
 
 Multiplayer M3 (2026-10-23): native builds fetch the pinned ENet library, and `boat_study`
 links it for the diagnostic `--connect` mode, so the app bundle now carries
-`enet-LICENSE.txt`. The package does not include `boat_server` or `boat_bot` and has no Host
-control. Since 2026-10-24 the title's MULTIPLAYER entry joins a room by address (not yet
+`enet-LICENSE.txt`. Since 2026-10-24 the bundle also carries the room authority at
+`Contents/MacOS/boat_server`, ad-hoc signed before the app, and CI runs it relocated with
+`--scripted`; see [hosting from a package](../README.md#hosting-from-a-package). There is no
+`boat_bot` and no Host control. Since 2026-10-24 the title's MULTIPLAYER entry joins a room by address (not yet
 re-run through the packaged app or CI). The plan's M6 owns server packaging, firewall guidance and a child-process Host
 option. The package script change was run locally on a Debug build; the CI workflow has not
 run it yet.
