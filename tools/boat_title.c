@@ -274,9 +274,10 @@ BoatTitleChoice boat_title_run(BoatTitleSettings *s)
     SetWindowTitle("Wake Velocity");
     BoatTitleChoice choice = BOAT_TITLE_EXIT;
     bool chosen = false;
+    bool accept_escape = false;
     while (!chosen && !WindowShouldClose()) {
         t.time += GetFrameTime();
-        bool activate = false, back = IsKeyPressed(KEY_ESCAPE);
+        bool activate = false, back = accept_escape && IsKeyPressed(KEY_ESCAPE);
         int step = 0;
         if (t.editing) {
             bool name = t.editing == s->name;
@@ -347,6 +348,7 @@ BoatTitleChoice boat_title_run(BoatTitleSettings *s)
         snprintf(status, sizeof(status), "CONNECTING TO %s ...", s->address);
         draw_screen(&t, s, choice == BOAT_TITLE_JOIN ? status : NULL);
         present(&t);
+        accept_escape = true;
     }
     close_title(&t);
     return choice;

@@ -101,8 +101,9 @@ the menu table above remains a later proposal.
 - `tools/boat_study.c`: the former `main` is `study(argc, argv)`; it reuses an open window and
   leaves it open. The new `main` shows the title only for no arguments or `--title`, runs
   SINGLE PLAYER as the former macOS app arguments plus `--skin`, and MULTIPLAYER as
-  `--connect ADDRESS --name NAME`. Escape in a session returns to the title. Explicit
-  options behave exactly as before. The web build bypasses the title.
+  `--connect ADDRESS --name NAME`. Escape in a session returns to the title; the title
+  ignores the just-pressed Escape event on its first frame so it cannot immediately close
+  the app. Explicit options behave exactly as before. The web build bypasses the title.
 - Skins: protocol v1 has no livery field and every client colours slots 1–4 Sweden,
   Finland, Denmark, Norway, so BOAT applies to single player only and the title says so.
   A per-player livery would need a protocol revision; not done.
