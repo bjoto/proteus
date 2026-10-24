@@ -53,7 +53,7 @@ def main():
     shutil.copy2(server, contents / "MacOS" / "boat_server")
     assets = resources / "assets"
     assets.mkdir()
-    for directory in ("shaders", "textures"):
+    for directory in ("shaders", "textures", "title"):
         shutil.copytree(build / "assets" / directory, assets / directory)
     (assets / "music").mkdir()
     shutil.copy2(build / "assets/music/a-little-boat.xm", assets / "music")

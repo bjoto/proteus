@@ -57,8 +57,8 @@ For example:
 "/Applications/Proteus Boating.app/Contents/MacOS/boat_study" --location eriksberg --gpu-aa
 ```
 
-Music, shaders, textures, map attribution, and dependency licenses are inside the
-bundle. Personal bests remain in `~/Library/Application Support/Proteus/`.
+Music, shaders, textures, the title river backdrop, map attribution, and dependency licenses
+are inside the bundle. Personal bests remain in `~/Library/Application Support/Proteus/`.
 
 ## Build locally
 
@@ -108,3 +108,9 @@ upload steps; the Apple Silicon artifact was available when checked on 2026-10-1
 Next: download through a browser and verify the Open Anyway path and interactive
 playback. Browser-download Gatekeeper behavior, user acceptance, macOS 13 execution,
 Intel support, and notarization remain unverified or out of scope.
+
+Startup asset fix, 2026-10-24: the packaged app omitted `assets/title/`, so its no-argument
+launch exited when `boat_study` could not load `title/river-backdrop.png`. The macOS packager
+now copies the title assets and its workflow checks that the backdrop is present in the
+relocated bundle. This fix has not yet been run through macOS packaging CI or an interactive
+launch. Next: verify the workflow artifact and launch it from Finder.
