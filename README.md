@@ -139,6 +139,18 @@ impacts. Two seconds after capsizing it asks for a reset and returns at a basin 
 is calm and clear of both boats. See the
 [arcade review implementation](docs/WAKE_ARCADE_IMPLEMENTATION.md) for rules and limits.
 
+### Title screen
+
+`./build/boat_study` without options (and the packaged macOS app and Windows `launch.bat`)
+opens the **Wake Velocity** title: SINGLE PLAYER, MULTIPLAYER, NAME, BOAT and EXIT. Up/Down or
+W/S select, Enter/Space or a click activates, Left/Right change BOAT, and Enter on NAME starts
+typing (Enter keeps, Esc cancels). SINGLE PLAYER starts the river with current, crossing wake
+and waves in the chosen livery. MULTIPLAYER asks for a `HOST:PORT` address and joins that
+`boat_server` room under NAME; rooms colour boats by slot, so BOAT applies to single player
+only. Esc in a session returns to the title, and a failed or lost connection shows why there.
+NAME, BOAT and the address are remembered in `title.txt` in the personal-best data directory.
+Any explicit option skips the title; `--title --screenshot FILE` captures it.
+
 ### Multiplayer diagnostic room
 
 Multiplayer M3 runs the basin as a separate headless authority, `boat_server`, which up to four
@@ -153,7 +165,8 @@ native clients join over UDP:
 The server runs until Ctrl+C, `--seconds` or `--ticks`. `--waves` gives the room gentle waves,
 `--players 1-4` caps it, and `--token TEXT` requires the same `--token` from clients. To accept
 other machines, bind a LAN address (`--bind 192.168.1.20`) and allow the UDP port through the
-firewall. Internet hosting, NAT traversal, encryption and authentication are not provided.
+firewall (`--bind 0.0.0.0` accepts every interface). Internet hosting, NAT traversal,
+encryption and authentication are not provided. The room's players are listed at the top right.
 
 In `--connect` mode the room decides water, wakes and spawns. Your boat is predicted: it runs
 ahead of the server with your own keys and is corrected when snapshots arrive, with small
@@ -307,7 +320,7 @@ repeatable CPU/GPU captures.
 Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), ODbL 1.0.
 See the bundled [source manifest](assets/geometry/eriksberg/manifest.json) for provenance.
 
-Run `./build/boat_study` for the first handling prototype: a small craft in a simple basin,
+Run `./build/boat_study --location basin` for the first handling prototype: a small craft in a simple basin,
 viewed by a third-person camera following behind and above the boat. The basin is 240x160 world
 units (four times wider and deeper than the original). The camera follows position immediately,
 smooths heading changes, and looks ahead along the course. Hold left/right (or A/D) to turn the

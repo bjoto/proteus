@@ -1,4 +1,4 @@
 @echo off
 cd /d "%~dp0"
-boat_study.exe --location eriksberg --gpu --gpu-aa
+boat_study.exe
 if errorlevel 1 pause

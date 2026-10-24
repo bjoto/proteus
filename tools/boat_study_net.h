@@ -25,6 +25,7 @@ typedef struct {
     uint64_t presented_tick; // Last tick the presentations were stepped for.
     BoatRemoteProximity proximity[BOAT_FLEET_SLOTS];
     uint64_t samples[BOAT_REMOTE_HELD + 1], near_frames, frames; // Other-boat diagnostics.
+    char failure[200]; // Why connecting failed or the connection ended (also printed).
 } NetStudy;
 
 // Connect, handshake and install the world (blocking, at most ten seconds). On failure print
@@ -44,5 +45,7 @@ const char *net_study_notice(const NetStudy *net);
 float net_study_fade(const NetStudy *net);
 // One HUD line: slot, players, round trip and staleness.
 const char *net_study_status(const NetStudy *net);
+// The room's players, one right-aligned line each in their slot's hull colour.
+void net_study_draw_roster(const NetStudy *net, int right, int top);
 void net_study_close(NetStudy *net);
 #endif

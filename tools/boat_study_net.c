@@ -1,6 +1,9 @@
 #include "boat_study_net.h"
+#include "boat_skin.h"
+#include "raylib.h"
 #include "raymath.h"
 #include <math.h>
+#include <stdarg.h>
 #include <stdio.h>
 
 static const char *phase_text(BoatNetClientPhase phase)
@@ -8,6 +11,16 @@ static const char *phase_text(BoatNetClientPhase phase)
     static const char *names[]
         = { "connecting", "handshake", "loading world", "playing", "rejected", "closed" };
     return names[phase];
+}
+
+// Keep the reason for the title screen as well as the console.
+static void fail(NetStudy *net, const char *format, ...)
+{
+    va_list arguments;
+    va_start(arguments, format);
+    vsnprintf(net->failure, sizeof(net->failure), format, arguments);
+    va_end(arguments);
+    fprintf(stderr, "%s\n", net->failure);
 }
 
 static void attach(NetStudy *net, BoatSession *session)
@@ -23,19 +36,16 @@ bool net_study_connect(
     uint16_t port;
     *net = (NetStudy) { 0 };
     if (!boat_net_parse_endpoint(endpoint, host, sizeof(host), &port)) {
-        fprintf(stderr,
-            "--connect needs HOST:PORT with an IPv4 address or name and a port "
-            "1-65535, for example 127.0.0.1:%d\n",
-            BOAT_NET_PORT);
+        fail(net, "The address needs HOST:PORT, for example 127.0.0.1:%d", BOAT_NET_PORT);
         return false;
     }
     if (!boat_net_enet_startup()) {
-        fprintf(stderr, "Cannot initialize networking.\n");
+        fail(net, "Cannot initialize networking.");
         return false;
     }
     net->enet = boat_net_enet_connect(host, port, error, sizeof(error));
     if (!net->enet) {
-        fprintf(stderr, "Cannot connect: %s\n", error);
+        fail(net, "Cannot connect: %s", error);
         boat_net_enet_cleanup();
         return false;
     }
@@ -47,14 +57,16 @@ bool net_study_connect(
     fflush(stdout);
     while (net->client.phase < BOAT_NET_CLIENT_PLAYING) {
         if (!boat_net_client_service(&net->client, boat_net_clock(), (BoatInput) { 0 }, true)) {
-            fprintf(stderr, "Cannot join %s:%u: %s (while %s).\n", host, (unsigned)port,
-                boat_net_client_failure(&net->client),
-                net->client.phase == BOAT_NET_CLIENT_REJECTED ? "in the handshake" : "connecting");
             if (net->client.phase == BOAT_NET_CLIENT_REJECTED)
-                fprintf(stderr, "Server: protocol %u, handling revision %u; this build: %d, %d.\n",
+                fail(net,
+                    "Rejected by %s:%u: %s (server protocol %u, revision %u; this build %d, %d)",
+                    host, (unsigned)port, boat_net_client_failure(&net->client),
                     (unsigned)net->client.reject.version,
                     (unsigned)net->client.reject.physics_revision, BOAT_NET_VERSION,
                     BOAT_PHYSICS_REVISION);
+            else
+                fail(net, "Cannot join %s:%u: %s", host, (unsigned)port,
+                    boat_net_client_failure(&net->client));
             net_study_close(net);
             return false;
         }
@@ -117,7 +129,7 @@ bool net_study_frame(NetStudy *net, BoatSession *session, BoatInput input, bool 
     if (reset && active)
         boat_net_client_request_reset(c);
     if (!boat_net_client_service(c, now, input, !active)) {
-        fprintf(stderr, "Disconnected: %s.\n", boat_net_client_failure(c));
+        fail(net, "Disconnected: %s.", boat_net_client_failure(c));
         return false;
     }
     boat_net_enet_flush(net->enet);
@@ -226,6 +238,21 @@ const char *net_study_status(const NetStudy *net)
         boat_net_client_stale(c, boat_net_clock()) ? " / STALE" : "",
         c->wake_consistent ? "" : " / WAKES REPAIRING");
     return text;
+}
+
+void net_study_draw_roster(const NetStudy *net, int right, int top)
+{
+    const BoatNetClient *c = &net->client;
+    for (unsigned i = 0; i < BOAT_FLEET_SLOTS; ++i) {
+        if (c->roster.slots[i].state == BOAT_NET_ROSTER_EMPTY)
+            continue;
+        const char *line = TextFormat("%s %s%s", c->roster.slots[i].name,
+            TextToUpper(boat_skin_name(net_study_skin(i))), i == c->slot ? " (YOU)" : "");
+        int x = right - MeasureText(line, 12);
+        DrawRectangle(x - 4, top - 2, right - x + 8, 15, Fade(BLACK, .45f));
+        DrawText(line, x, top, 12, i == c->slot ? RAYWHITE : LIGHTGRAY);
+        top += 14;
+    }
 }
 
 void net_study_close(NetStudy *net)

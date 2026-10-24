@@ -2,9 +2,9 @@
 
 Multiplayer M3 (2026-10-23): native builds fetch the pinned ENet library, and `boat_study`
 links it for the diagnostic `--connect` mode, so the app bundle now carries
-`enet-LICENSE.txt`. The package does not include `boat_server` or `boat_bot`, and has no Host
-or Join controls. Packaged play stays single-player unless launched from a terminal with
-`--connect`. The plan's M6 owns server packaging, firewall guidance and a child-process Host
+`enet-LICENSE.txt`. The package does not include `boat_server` or `boat_bot` and has no Host
+control. Since 2026-10-24 the title's MULTIPLAYER entry joins a room by address (not yet
+re-run through the packaged app or CI). The plan's M6 owns server packaging, firewall guidance and a child-process Host
 option. The package script change was run locally on a Debug build; the CI workflow has not
 run it yet.
 
@@ -34,9 +34,11 @@ the ZIP; it checks archive integrity, not publisher identity. Artifacts expire a
 30 days. `Contents/Resources/build.txt` records the source commit and whether the
 checkout had uncommitted changes when packaged.
 
-Double-clicking the app launches the preferred river setup: current, crossing wake,
-gentle waves, GPU antialiasing, camera distance 12, and camera height 6. This is
-equivalent to:
+Double-clicking the app opens the Wake Velocity title (2026-10-24), as does `boat_study`
+without options. Its SINGLE PLAYER starts the preferred river setup: current, crossing
+wake, gentle waves, GPU antialiasing, camera distance 12, and camera height 6, in the
+chosen BOAT livery. MULTIPLAYER joins a `boat_server` room by HOST:PORT with the chosen
+NAME. The single-player setup is equivalent to:
 
 ```sh
 ./build/boat_study --current --crossing-wake --location river --waves --gpu-aa --camera-distance 12 --camera-height 6

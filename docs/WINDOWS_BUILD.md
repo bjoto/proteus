@@ -22,7 +22,7 @@ on Windows and double-click `launch.bat`. For an ordinary branch build:
 2. Open the repository's **Actions** tab and select **Windows boat study**.
 3. Open the successful run and download **boat-study-windows-x64** under **Artifacts**.
 4. Transfer the ZIP to Windows and extract it completely before running it.
-5. Double-click launch.bat to run boat_study.exe --location eriksberg --gpu --gpu-aa.
+5. Double-click launch.bat to open the Wake Velocity title (`boat_study.exe` without options).
 
 Artifacts expire after 30 days. build.txt records the source commit. The package
 includes shader/texture assets, background music, and map attribution; geometry is

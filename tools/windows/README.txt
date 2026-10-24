@@ -1,7 +1,9 @@
 Proteus boat study - Windows x64
 
-Extract the entire ZIP, then double-click launch.bat to explore Eriksberg
-with GPU rendering and 4x4 supersampling. Keep assets beside boat_study.exe.
+Extract the entire ZIP, then double-click launch.bat (or boat_study.exe) to open
+the Wake Velocity title. Pick NAME and BOAT, then SINGLE PLAYER for the river, or
+MULTIPLAYER to type a room's HOST:PORT address and connect. Esc in a session
+returns to the title. Keep assets beside boat_study.exe.
 Requires a GPU/driver supporting OpenGL 3.3. The build uses static raylib
 and the static MSVC runtime.
 
@@ -12,10 +14,10 @@ R: reset boat
 PageUp/PageDown: camera height
 C: reset camera
 F3: toggle profiler overlay
-Esc: quit
+Esc: back to the title (Esc again on the title quits)
 
-To compare performance without supersampling, run from PowerShell:
-  .\boat_study.exe --location eriksberg --gpu
+Explicit options skip the title. Eriksberg with 4x4 supersampling, from PowerShell:
+  .\boat_study.exe --location eriksberg --gpu --gpu-aa
 
 If GPU startup fails, launch from PowerShell to read the diagnostic output.
 CPU rendering is also available:

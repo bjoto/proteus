@@ -10,6 +10,7 @@
 #ifdef PROTEUS_BOAT_NET
 #include "boat_study_net.h"
 #endif
+#include "boat_title.h"
 #include "boat_water_mesh.h"
 #include "profiler.h"
 #include "raymath.h"
@@ -24,6 +25,8 @@ static void usage(void)
 {
     puts(
         "Usage: boat_study [--demo] [--frames COUNT] [--screenshot FILE [--time SECONDS]]\n"
+        "No options (or --title): Wake Velocity title with name, boat and multiplayer address;\n"
+        "  Esc in a session returns to it | --title --screenshot FILE: capture the title\n"
         "Left/Right or A/D: adjust wheel | Up/Down or W/S: adjust thrust (-100..100%)\n"
         "Wheel springs to centre when released; thrust holds. R: reset and centre wheel | Esc: "
         "close\n"
@@ -158,22 +161,14 @@ static void course_runs_hud(
     }
 }
 
-int main(int argc, char **argv)
-{
-#if defined(__APPLE__)
-    // Finder launches the app without arguments; explicit CLI invocations keep their defaults.
-    char bundle_assets[4096];
-    int bundle_length = snprintf(
-        bundle_assets, sizeof(bundle_assets), "%s../Resources/assets", GetApplicationDirectory());
-    if (argc == 1 && bundle_length > 0 && (size_t)bundle_length < sizeof(bundle_assets)
-        && DirectoryExists(bundle_assets)) {
-        static char *app_arguments[]
-            = { "boat_study", "--current", "--crossing-wake", "--location", "river", "--waves",
-                  "--gpu-aa", "--camera-distance", "12", "--camera-height", "6", NULL };
-        argc = (int)(sizeof(app_arguments) / sizeof(app_arguments[0])) - 1;
-        argv = app_arguments;
-    }
+#ifdef PROTEUS_BOAT_NET
+static NetStudy net_study; // Outlives a session so the title can show why it ended.
 #endif
+
+// One session with explicit options. Uses the title's window when one is open and then leaves it
+// open; Escape ends the session.
+static int study(int argc, char **argv)
+{
     const char *screenshot = NULL;
     unsigned int skin = BOAT_SKIN_SWEDEN;
     bool skin_set = false;
@@ -195,7 +190,6 @@ int main(int argc, char **argv)
     const char *connect_to = NULL, *net_name = "player", *net_token = "";
     bool networked = false; // Joined a room with --connect (native builds only).
 #ifdef PROTEUS_BOAT_NET
-    static NetStudy net_study;
     NetStudy *net = NULL;
 #endif
     for (int i = 1; i < argc; ++i) {
@@ -433,7 +427,7 @@ int main(int argc, char **argv)
     Renderer3D renderer = { 0 };
     BoatGpu gpu = { 0 };
     Texture2D texture = { 0 };
-    bool window_ready = false;
+    bool window_ready = false, window_owned = false;
     BoatAudio audio = { 0 };
     Music music = { 0 };
     bool music_ready = false;
@@ -560,17 +554,20 @@ int main(int argc, char **argv)
         goto cleanup;
     }
 
+    if (!IsWindowReady()) {
 #if defined(__EMSCRIPTEN__)
-    // The page scales a fixed 8:5 canvas; raylib's web resize fills the entire viewport.
-    SetConfigFlags(0);
+        // The page scales a fixed 8:5 canvas; raylib's web resize fills the entire viewport.
+        SetConfigFlags(0);
 #else
-    SetConfigFlags(screenshot ? FLAG_WINDOW_HIDDEN : FLAG_WINDOW_RESIZABLE);
+        SetConfigFlags(screenshot ? FLAG_WINDOW_HIDDEN : FLAG_WINDOW_RESIZABLE);
 #endif
-    InitWindow(WIDTH * 3, HEIGHT * 3, "Proteus / boating sketch");
-    if (!IsWindowReady())
-        goto cleanup;
+        InitWindow(WIDTH * 3, HEIGHT * 3, "Proteus / boating sketch");
+        if (!IsWindowReady())
+            goto cleanup;
+        window_owned = true;
+        SetWindowMinSize(WIDTH, HEIGHT);
+    }
     window_ready = true;
-    SetWindowMinSize(WIDTH, HEIGHT);
     SetTargetFPS(60);
     if (gpu_enabled) {
         if (!boat_gpu_init(&gpu, gpu_aa)) {
@@ -933,6 +930,7 @@ int main(int argc, char **argv)
         if (networked) {
 #ifdef PROTEUS_BOAT_NET
             DrawText(net_study_status(net), 12, GetScreenHeight() - 24, 12, SKYBLUE);
+            net_study_draw_roster(net, GetScreenWidth() - 12, 12);
 #endif
         } else if (!IsWindowFocused())
             DrawText("PAUSED", 12, 12, 20, RAYWHITE);
@@ -992,7 +990,8 @@ cleanup:
             boat_gpu_destroy(&gpu);
         else if (texture.id)
             UnloadTexture(texture);
-        CloseWindow();
+        if (window_owned)
+            CloseWindow();
     }
     boat_water_mesh_destroy();
     boat_map_destroy();
@@ -1002,4 +1001,72 @@ cleanup:
 invalid:
     usage();
     return 1;
+}
+
+// Single player from the title: free boating on the river, as the macOS app used to start.
+static int title_single(const BoatTitleSettings *settings)
+{
+    char *arguments[] = { "boat_study", "--current", "--crossing-wake", "--location", "river",
+        "--waves", "--gpu-aa", "--camera-distance", "12", "--camera-height", "6", "--skin",
+        (char *)boat_skin_name(settings->skin), NULL };
+    return study((int)(sizeof(arguments) / sizeof(arguments[0])) - 1, arguments);
+}
+
+#ifdef PROTEUS_BOAT_NET
+static int title_join(BoatTitleSettings *settings)
+{
+    char *arguments[]
+        = { "boat_study", "--connect", settings->address, "--name", settings->name, NULL };
+    net_study.failure[0] = 0;
+    int result = study((int)(sizeof(arguments) / sizeof(arguments[0])) - 1, arguments);
+    if (net_study.failure[0])
+        snprintf(settings->message, sizeof(settings->message), "%s", net_study.failure);
+    else if (result)
+        snprintf(settings->message, sizeof(settings->message), "Could not join that address.");
+    return result;
+}
+#endif
+
+// A launch without arguments (including Finder) opens the title; it returns there after each
+// session. Explicit options enter their session directly, keeping scripted checks unchanged.
+int main(int argc, char **argv)
+{
+#if defined(__EMSCRIPTEN__)
+    return study(argc, argv);
+#else
+    bool capture = argc == 4 && !strcmp(argv[1], "--title") && !strcmp(argv[2], "--screenshot");
+    if (argc != 1 && !(argc == 2 && !strcmp(argv[1], "--title")) && !capture)
+        return study(argc, argv);
+    BoatTitleSettings settings;
+    boat_title_load(&settings);
+    SetTraceLogLevel(LOG_WARNING);
+    SetConfigFlags(capture ? FLAG_WINDOW_HIDDEN : FLAG_WINDOW_RESIZABLE);
+    InitWindow(320 * 3, 200 * 3, "Wake Velocity");
+    if (!IsWindowReady())
+        return 1;
+    if (capture) {
+        bool ok = boat_title_screenshot(&settings, 2.5, argv[3]);
+        CloseWindow();
+        return ok ? 0 : 1;
+    }
+    SetWindowMinSize(320, 200);
+    SetTargetFPS(60);
+    SetExitKey(KEY_NULL);
+    for (BoatTitleChoice choice; (choice = boat_title_run(&settings)) != BOAT_TITLE_EXIT;) {
+        boat_title_save(&settings);
+        if (choice == BOAT_TITLE_SINGLE && title_single(&settings))
+            snprintf(settings.message, sizeof(settings.message), "Single player stopped.");
+#ifdef PROTEUS_BOAT_NET
+        if (choice == BOAT_TITLE_JOIN)
+            title_join(&settings);
+#else
+        if (choice == BOAT_TITLE_JOIN)
+            snprintf(settings.message, sizeof(settings.message), "No multiplayer in this build.");
+#endif
+        if (WindowShouldClose())
+            break;
+    }
+    CloseWindow();
+    return 0;
+#endif
 }
