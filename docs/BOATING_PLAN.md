@@ -155,12 +155,14 @@ to preserve the flag, simple geometry, handling and nearest-neighbour presentati
 
 ## Marine HUD — 2026-10-24
 
-Implemented in the isolated `boat-marine-hud` branch: compact thrust, speed-in-knots and
-steering instruments, with restrained marine materials and a smaller numeric strip for
-short windows. [The HUD handoff](BOAT_HUD.md) owns API, integration notes, review commands,
+Implemented in the isolated `boat-marine-hud` branch: vertical thrust, speed and steering
+range indicators without units or numbers. A slightly translucent marine case sits at the bottom of the
+scene, with all instrument pixels sharing the scene's 320x200 grid.
+[The HUD handoff](BOAT_HUD.md) owns API, integration notes, review commands,
 verification and limitations. Completed: presentation module and local view integration.
-Next: user visual review, then integration with the main multiplayer branch. User
-acceptance and connected HUD review remain pending.
+The user prefers this shared-pixel, visual-only direction. Next: review bottom placement
+and transparency, then integrate with the main multiplayer branch. Spring-to-neutral
+thrust remains undecided; held-thrust behavior is unchanged. Connected HUD review is pending.
 
 ## Window presentation — 2026-10-19 (historical instrument-free baseline)
 

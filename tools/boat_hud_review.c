@@ -59,21 +59,32 @@ int main(int argc, char **argv)
         }
         SetTextureFilter(scene, TEXTURE_FILTER_POINT);
     }
+    RenderTexture2D native = LoadRenderTexture(320, 200);
     RenderTexture2D target = LoadRenderTexture(width, height);
-    if (!IsRenderTextureValid(target)) {
+    if (!IsRenderTextureValid(native) || !IsRenderTextureValid(target)) {
+        if (native.id)
+            UnloadRenderTexture(native);
+        if (target.id)
+            UnloadRenderTexture(target);
         if (scene.id)
             UnloadTexture(scene);
         CloseWindow();
         return 1;
     }
+    SetTextureFilter(native.texture, TEXTURE_FILTER_POINT);
     int result = 0;
     for (int frame = 0; frame < frames && !WindowShouldClose(); ++frame) {
-        BeginTextureMode(target);
+        BeginTextureMode(native);
         ClearBackground((Color) { 55, 91, 104, 255 });
         if (scene.id)
             DrawTexturePro(scene, (Rectangle) { 0, 0, (float)scene.width, (float)scene.height },
-                (Rectangle) { 0, 0, (float)width, (float)height }, (Vector2) { 0 }, 0, WHITE);
-        boat_hud_draw(telemetry, width, height);
+                (Rectangle) { 0, 0, 320, 200 }, (Vector2) { 0 }, 0, WHITE);
+        boat_hud_draw(telemetry, 320, 200);
+        EndTextureMode();
+        BeginTextureMode(target);
+        ClearBackground(BLACK);
+        DrawTexturePro(native.texture, (Rectangle) { 0, 0, 320, -200 },
+            (Rectangle) { 0, 0, (float)width, (float)height }, (Vector2) { 0 }, 0, WHITE);
         EndTextureMode();
         BeginDrawing();
         ClearBackground(BLACK);
@@ -87,6 +98,7 @@ int main(int argc, char **argv)
             UnloadImage(capture);
         }
     }
+    UnloadRenderTexture(native);
     UnloadRenderTexture(target);
     if (scene.id)
         UnloadTexture(scene);

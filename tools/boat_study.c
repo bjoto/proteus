@@ -428,6 +428,7 @@ static int study(int argc, char **argv)
     Renderer3D renderer = { 0 };
     BoatGpu gpu = { 0 };
     Texture2D texture = { 0 };
+    RenderTexture2D frame_target = { 0 };
     bool window_ready = false, window_owned = false;
     BoatAudio audio = { 0 };
     Music music = { 0 };
@@ -598,6 +599,10 @@ static int study(int argc, char **argv)
             goto cleanup;
     }
     SetTextureFilter(texture, TEXTURE_FILTER_POINT);
+    frame_target = LoadRenderTexture(WIDTH, HEIGHT);
+    if (!IsRenderTextureValid(frame_target))
+        goto cleanup;
+    SetTextureFilter(frame_target.texture, TEXTURE_FILTER_POINT);
     boat_audio_init(&audio, BOAT_ENGINE_DEFAULT);
     char music_path[4096];
     if (!boat_asset_path(music_path, sizeof(music_path), "music/a-little-boat.xm"))
@@ -895,16 +900,21 @@ static int study(int argc, char **argv)
             next_snapshot_time = current_frame_started_at + 0.25;
         }
         double present_started_at = boat_profile_time(true);
-        BeginDrawing();
+        BeginTextureMode(frame_target);
         ClearBackground((Color) { 14, 23, 32, 255 });
         DrawTexturePro(texture,
             (Rectangle) { 0, 0, gpu_enabled ? -WIDTH : WIDTH, gpu_enabled ? -HEIGHT : HEIGHT },
-            destination, (Vector2) { 0 }, 0, WHITE);
+            (Rectangle) { 0, 0, WIDTH, HEIGHT }, (Vector2) { 0 }, 0, WHITE);
         boat_hud_draw(
             (BoatHudTelemetry) { .speed_mps = hypotf(view->boat.velocity.x, view->boat.velocity.y),
                 .thrust = view->boat.throttle,
                 .steering = view->boat.wheel },
-            GetScreenWidth(), GetScreenHeight());
+            WIDTH, HEIGHT);
+        EndTextureMode();
+        BeginDrawing();
+        ClearBackground((Color) { 14, 23, 32, 255 });
+        DrawTexturePro(frame_target.texture, (Rectangle) { 0, 0, WIDTH, -HEIGHT }, destination,
+            (Vector2) { 0 }, 0, WHITE);
         const char *notice = NULL;
 #ifdef PROTEUS_BOAT_NET
         if (networked) {
@@ -926,16 +936,17 @@ static int study(int argc, char **argv)
             DrawText("LANDING", 12, 36, 16, SKYBLUE);
         if (wake)
             DrawText(TextFormat("WAKE FIELD / REVIEW %d", BOAT_WAKE_SOURCE_REVISION), 12,
-                GetScreenHeight() - 24, 12, SKYBLUE);
+                (int)destination.y + (HEIGHT - 48) * scale - 16, 12, SKYBLUE);
         if (objects)
             DrawText(TextFormat("WAKE OBJECTS / %u LIVE / %.1f m / %u TICKS",
                          object_study_wakes(objects)->live, object_height, object_life),
-                12, GetScreenHeight() - 24, 12, SKYBLUE);
+                12, (int)destination.y + (HEIGHT - 48) * scale - 16, 12, SKYBLUE);
         if (course)
             course_runs_hud(&session.runs, view, ghost_view, GetScreenWidth());
         if (networked) {
 #ifdef PROTEUS_BOAT_NET
-            DrawText(net_study_status(net), 12, GetScreenHeight() - 24, 12, SKYBLUE);
+            DrawText(net_study_status(net), 12, (int)destination.y + (HEIGHT - 48) * scale - 16, 12,
+                SKYBLUE);
             net_study_draw_roster(net, GetScreenWidth() - 12, 12);
 #endif
         } else if (!IsWindowFocused())
@@ -992,6 +1003,8 @@ cleanup:
     boat_session_flush(&session);
     boat_session_destroy(&session);
     if (window_ready) {
+        if (frame_target.id)
+            UnloadRenderTexture(frame_target);
         if (gpu_enabled)
             boat_gpu_destroy(&gpu);
         else if (texture.id)

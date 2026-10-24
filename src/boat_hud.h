@@ -8,8 +8,9 @@ typedef struct {
     float steering; // Wheel setting: -1 port, +1 starboard (not yaw or hull heading).
 } BoatHudTelemetry;
 
-// Draw inside the current raylib drawing pass. Integer-scaled, bottom-centred; reserve
-// the bottom 28 screen pixels for connection/review status. No resources or retained state.
+// Draw at scene resolution (320x200) in a render texture, then present with the scene
+// destination and nearest filtering. Composite over the scene before scaling so case
+// transparency blends correctly. Anchored to the bottom edge. No retained state.
 void boat_hud_draw(BoatHudTelemetry telemetry, int width, int height);
 
 #endif

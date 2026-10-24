@@ -349,8 +349,9 @@ turn quicker while retaining progressive steering and hull inertia. Hold up/W to
 holds the setting. Full-range adjustment takes four seconds. Passing through neutral is deliberate
 and smooth; R resets to neutral thrust and centres the wheel. Esc closes the window.
 The scene uses the full window with a compact [marine instrument panel](docs/BOAT_HUD.md)
-showing held thrust, ground speed in knots, and port/starboard steering. Small windows use
-a shallow numeric strip; larger windows include a speed dial and steering needle. Press `?` for a
+showing vertical held thrust, a speed needle, and port/starboard steering as visual ranges
+without numbers or units. Its slightly translucent case sits at the bottom of the scene;
+all HUD pixels share the scene's 320x200 grid and integer scaling. Press `?` for a
 modal keyboard guide; `?` or Esc dismisses it. Boating and audio pause while help is open or the
 window loses focus. The view remains 320x200 with integer scaling and letterboxing as needed.
 Press `F3` to toggle the debug profiler overlay, or pass `--profiler` to show it on startup.

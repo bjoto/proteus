@@ -3,15 +3,16 @@
 
 #include <math.h>
 #include <stdlib.h>
+#include <string.h>
 
-static const Color face = { 20, 34, 39, 255 };
+static const Color face = { 20, 34, 39, 170 };
 static const Color ink = { 218, 223, 202, 255 };
 static const Color muted = { 133, 158, 153, 255 };
 static const Color ahead = { 118, 196, 178, 255 };
 static const Color amber = { 233, 180, 104, 255 };
 
 typedef struct {
-    int x, y, scale;
+    int x, y;
 } Panel;
 
 static float bounded(float value, float low, float high)
@@ -21,28 +22,65 @@ static float bounded(float value, float low, float high)
 
 static void box(Panel p, int x, int y, int w, int h, Color color)
 {
-    DrawRectangle(p.x + x * p.scale, p.y + y * p.scale, w * p.scale, h * p.scale, color);
+    DrawRectangle(p.x + x, p.y + y, w, h, color);
 }
 
+// Rasterize on whole framebuffer pixels, including diagonal needles and circular bezels.
 static void line(Panel p, int x, int y, int end_x, int end_y, Color color)
 {
-    DrawLineEx((Vector2) { (float)(p.x + x * p.scale), (float)(p.y + y * p.scale) },
-        (Vector2) { (float)(p.x + end_x * p.scale), (float)(p.y + end_y * p.scale) },
-        (float)p.scale, color);
+    int dx = abs(end_x - x), sx = x < end_x ? 1 : -1;
+    int dy = -abs(end_y - y), sy = y < end_y ? 1 : -1;
+    int error = dx + dy;
+    for (;;) {
+        box(p, x, y, 1, 1, color);
+        if (x == end_x && y == end_y)
+            break;
+        int twice = 2 * error;
+        if (twice >= dy) {
+            error += dy;
+            x += sx;
+        }
+        if (twice <= dx) {
+            error += dx;
+            y += sy;
+        }
+    }
 }
 
 static void circle(Panel p, int x, int y, int radius, Color color)
 {
-    DrawCircle(p.x + x * p.scale, p.y + y * p.scale, (float)(radius * p.scale), color);
+    for (int row = -radius; row <= radius; ++row) {
+        int half = (int)sqrtf((float)(radius * radius - row * row));
+        box(p, x - half, y + row, half * 2 + 1, 1, color);
+    }
 }
 
+// Three-by-five lettering: each row is a three-bit mask. Every stroke is one scene pixel.
 static void label(Panel p, const char *text, int x, int y, Color color)
 {
-    int size = 10 * p.scale;
-    DrawText(text, p.x + x * p.scale - MeasureText(text, size) / 2, p.y + y * p.scale, size, color);
+    static const struct {
+        char character;
+        const char *rows;
+    } glyphs[] = { { '0', "75557" }, { '1', "26227" }, { '2', "71247" }, { '3', "71217" },
+        { '4', "55711" }, { '5', "74717" }, { '6', "74757" }, { '7', "71111" }, { '8', "75757" },
+        { '9', "75717" }, { '.', "00002" }, { '%', "51451" }, { '+', "02720" }, { '-', "00700" },
+        { 'C', "74447" }, { 'D', "65556" }, { 'E', "74647" }, { 'F', "74644" }, { 'H', "55755" },
+        { 'K', "55655" }, { 'N', "57775" }, { 'P', "75544" }, { 'R', "75655" }, { 'S', "74717" },
+        { 'T', "72222" }, { 'U', "55557" } };
+    int left = x - ((int)strlen(text) * 4 - 1) / 2;
+    for (const char *c = text; *c; ++c, left += 4) {
+        for (size_t i = 0; i < sizeof(glyphs) / sizeof(glyphs[0]); ++i) {
+            if (glyphs[i].character != *c)
+                continue;
+            for (int row = 0; row < 5; ++row)
+                for (int col = 0; col < 3; ++col)
+                    if ((glyphs[i].rows[row] - '0') & (4 >> col))
+                        box(p, left + col, y + row, 1, 1, color);
+            break;
+        }
+    }
 }
 
-// Angle increases clockwise from twelve o'clock, matching positive starboard steering.
 static void radial(Panel p, int x, int y, float angle, int inner, int outer, Color color)
 {
     float radians = angle * .01745329252f;
@@ -52,86 +90,55 @@ static void radial(Panel p, int x, int y, float angle, int inner, int outer, Col
 
 void boat_hud_draw(BoatHudTelemetry telemetry, int width, int height)
 {
-    if (width < 256 || height < 180)
+    if (width < 168 || height < 80)
         return;
-    int scale = width >= 1000 && height >= 720 ? 2 : 1;
-    bool compact = height < 360;
-    int panel_height = compact ? 40 : 76;
-    Panel p = { (width - 240 * scale) / 2, height - 28 - (panel_height + 2) * scale, scale };
+    Panel p = { (width - 166) / 2, height - 46 };
     float thrust = bounded(telemetry.thrust, -1, 1);
     float steering = bounded(telemetry.steering, -1, 1);
     float knots = bounded(telemetry.speed_mps, 0, 999) * 1.94384449f;
     Color thrust_color = thrust < -.005f ? amber : ahead;
 
-    // A shallow, sealed instrument case: shadow, metal lip, enamel and flush screw heads.
-    box(p, 2, 3, 238, panel_height, (Color) { 4, 11, 15, 110 });
-    box(p, 0, 0, 240, panel_height, (Color) { 56, 74, 77, 245 });
-    box(p, 1, 1, 238, 1, (Color) { 153, 166, 157, 255 });
-    box(p, 2, 3, 236, panel_height - 6, face);
-    box(p, 2, panel_height - 3, 236, 1, (Color) { 9, 19, 24, 255 });
-    for (int x = 6; x <= 234; x += 228) {
-        for (int y = 7; y <= panel_height - 7; y += panel_height - 14) {
-            circle(p, x, y, 2, muted);
+    box(p, 1, 2, 166, 44, (Color) { 4, 11, 15, 110 });
+    box(p, 0, 0, 166, 44, (Color) { 56, 74, 77, 130 });
+    box(p, 1, 1, 164, 1, (Color) { 153, 166, 157, 255 });
+    box(p, 2, 3, 162, 38, face);
+    for (int x = 4; x <= 162; x += 158)
+        for (int y = 5; y <= 39; y += 34) {
+            box(p, x - 1, y - 1, 3, 3, muted);
             line(p, x - 1, y + 1, x + 1, y - 1, face);
         }
-    }
-    line(p, 77, 12, 77, panel_height - 12, (Color) { 43, 61, 65, 255 });
-    line(p, 163, 12, 163, panel_height - 12, (Color) { 43, 61, 65, 255 });
+    line(p, 54, 8, 54, 36, (Color) { 43, 61, 65, 255 });
+    line(p, 112, 8, 112, 36, (Color) { 43, 61, 65, 255 });
 
-    // At the minimum 320x200 window, keep the boat visible above a shallow readout strip.
-    if (compact) {
-        int percent = (int)roundf(thrust * 100);
-        int rudder = (int)roundf(fabsf(steering) * 100);
-        label(p, "THRUST", 39, 6, muted);
-        label(p, percent == 0 ? "N 0%" : TextFormat("%+d%%", percent), 39, 23,
-            percent == 0 ? ink : thrust_color);
-        label(p, "SPEED", 120, 6, muted);
-        label(p, TextFormat("%.1f kn", knots), 120, 23, ink);
-        label(p, "STEERING", 201, 6, muted);
-        label(p, rudder == 0 ? "CENTRE" : TextFormat("%s %d%%", steering < 0 ? "P" : "S", rudder),
-            201, 23, ink);
-        return;
-    }
+    label(p, "THRUST", 28, 7, muted);
+    // Vertical telegraph: ahead above neutral, reverse below. This only displays
+    // the held command; a future spring-to-neutral decision belongs to input/physics.
+    box(p, 26, 14, 5, 23, (Color) { 8, 20, 25, 255 });
+    int travel = (int)roundf(-thrust * 11);
+    box(p, 28, travel < 0 ? 25 + travel : 25, 1, abs(travel), thrust_color);
+    for (int y = 14; y <= 36; y += 11)
+        line(p, 20, y, 23, y, muted);
+    line(p, 24, 25, 33, 25, muted);
+    box(p, 24, 24 + travel, 9, 3, ink);
+    box(p, 25, 25 + travel, 7, 1, thrust_color);
+    label(p, "F", 39, 12, ahead);
+    label(p, "N", 39, 23, muted);
+    label(p, "R", 39, 34, amber);
 
-    // Signed throttle telegraph. Neutral stays fixed; the fill grows ahead or astern.
-    label(p, "THRUST", 39, 9, muted);
-    box(p, 20, 36, 38, 6, (Color) { 8, 20, 25, 255 });
-    int travel = (int)roundf(thrust * 18);
-    box(p, travel < 0 ? 39 + travel : 39, 38, abs(travel), 2, thrust_color);
-    for (int x = 21; x <= 57; x += 9)
-        line(p, x, 32, x, x == 39 ? 44 : 34, muted);
-    box(p, 38 + travel, 36, 3, 6, ink);
-    label(p, "R", 15, 35, amber);
-    label(p, "F", 65, 35, ahead);
-    int percent = (int)roundf(thrust * 100);
-    label(p, percent == 0 ? "N  0%" : TextFormat("%+d%%", percent), 39, 54,
-        percent == 0 ? ink : thrust_color);
-
-    // Ground-speed log: 0..60 kn sweep with a precise numeric inset below the spindle.
-    circle(p, 120, 37, 34, (Color) { 108, 128, 126, 255 });
-    circle(p, 120, 37, 32, (Color) { 8, 21, 26, 255 });
-    circle(p, 120, 37, 30, face);
+    circle(p, 83, 22, 20, muted);
+    circle(p, 83, 22, 19, (Color) { 8, 21, 26, 255 });
+    circle(p, 83, 22, 17, face);
     for (int tick = 0; tick <= 12; ++tick)
-        radial(p, 120, 37, -130 + tick * (260.0f / 12), tick % 2 ? 27 : 24, 29, muted);
-    label(p, "0", 99, 51, muted);
-    label(p, "30", 120, 11, muted);
-    label(p, "60", 141, 51, muted);
-    label(p, "SPEED", 120, 25, muted);
-    radial(p, 120, 37, -130 + bounded(knots / 60, 0, 1) * 260, -5, 23, amber);
-    circle(p, 120, 37, 3, ink);
-    box(p, 105, 45, 30, 12, (Color) { 8, 21, 26, 255 });
-    label(p, TextFormat("%.1f", knots), 120, 46, ink);
-    label(p, "kn", 120, 59, muted);
+        radial(p, 83, 22, -130 + tick * (260.0f / 12), tick % 2 ? 17 : 15, 18, muted);
+    label(p, "SPEED", 83, 12, muted);
+    radial(p, 83, 22, -130 + bounded(knots / 60, 0, 1) * 260, -3, 14, amber);
+    circle(p, 83, 22, 2, ink);
 
-    // Rudder indicator reads the spring-centred wheel, even when stationary or in reverse.
-    label(p, "STEERING", 201, 9, muted);
+    label(p, "STEER", 139, 7, muted);
     for (int tick = -2; tick <= 2; ++tick)
-        radial(p, 201, 51, tick * 32.0f, 19, 23, muted);
-    radial(p, 201, 51, steering * 64, 0, 21, ahead);
-    circle(p, 201, 51, 3, ink);
-    label(p, "P", 175, 37, muted);
-    label(p, "S", 227, 37, muted);
-    int rudder = (int)roundf(fabsf(steering) * 100);
-    label(p, rudder == 0 ? "CENTRE" : TextFormat("%s %d%%", steering < 0 ? "P" : "S", rudder), 201,
-        59, ink);
+        radial(p, 139, 27, tick * 32.0f, 10, 12, muted);
+    radial(p, 139, 27, steering * 64, 0, 11, ahead);
+    circle(p, 139, 27, 1, ink);
+    label(p, "P", 122, 22, muted);
+    label(p, "S", 156, 22, muted);
 }
