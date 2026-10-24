@@ -1462,8 +1462,14 @@ README note; the title has no token field.
 CI, 2026-10-24: Windows [run 40083439355](https://github.com/doomdavve/proteus/actions/runs/40083439355)
 at `29d1afb` passed every step, including the net tests and the relocated `boat_server.exe`.
 macOS [run 40083439307](https://github.com/doomdavve/proteus/actions/runs/40083439307) failed in
-its test step (CTest exit 8); the log was not readable here and the same Release configuration
-passes all 83 of its tests locally, so the failing test is unknown.
+its test step (CTest exit 8). From the log the user supplied, three tests failed there while
+passing locally; all three were test or tool defects, fixed after the HUD merge:
+`boat_net_loopback` saw 1082 server ticks for `--seconds 9` because one late service caught up
+past the limit (now `BoatNetServer.tick_limit`, checked deterministically in `boat_net`);
+`boat_replay` compared padded `BoatReplaySample` arrays with `memcmp` (now field by field);
+`boat_skin` called `boat_skin_generate` inside an `assert` that Release removed, then read the
+uninitialized model (the call is now outside, and the validator keeps assertions in Release).
+The CI-equivalent Release configuration passes all 84 active tests locally; not yet rerun on CI.
 
 Verification, M1 Max/macOS 26.6.2, Debug build: `package.py` produced and verified the app
 (`codesign --verify --deep --strict`); from the extracted ZIP outside the checkout the packaged

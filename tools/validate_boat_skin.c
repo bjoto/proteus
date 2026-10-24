@@ -3,6 +3,8 @@
 #include "boat_skin.h"
 #include "raymath.h"
 
+// Keep the checks in Release builds, where CI runs this validator.
+#undef NDEBUG
 #include <assert.h>
 #include <math.h>
 #include <stdio.h>
@@ -112,7 +114,8 @@ int main(void)
     BoatModel custom;
     BoatSkinPalette palette = boat_skin_palette(0);
     palette.hull = (Color) { 3, 7, 11, 255 };
-    assert(boat_skin_generate(&custom, palette, BOAT_SKIN_HULL));
+    bool generated = boat_skin_generate(&custom, palette, BOAT_SKIN_HULL);
+    assert(generated);
     bool found = false;
     for (size_t i = 0; i < custom.mesh.triangle_count; ++i)
         found |= memcmp(&custom.triangles[i].color, &palette.hull, sizeof(Color)) == 0;

@@ -74,6 +74,7 @@ typedef struct {
     bool started, overloaded;
     double origin, backlog_since;
     uint64_t origin_tick;
+    uint64_t tick_limit; // Never tick past this (0: no limit), even when catching up.
     uint32_t next_checkpoint;
     BoatNetServerStats stats;
 } BoatNetServer;
@@ -83,7 +84,8 @@ bool boat_net_server_init(
     BoatNetServer *server, BoatNetTransport transport, const BoatNetServerConfig *config);
 // Handle waiting messages, then run the ticks due at monotonic time NOW (seconds; the first
 // call starts the clock): at most BOAT_NET_CATCH_UP_TICKS, sending snapshots and births on
-// their cadence. False once the room is overloaded (500 ms behind for a second).
+// their cadence, stopping at tick_limit when set. False once the room is overloaded (500 ms
+// behind for a second).
 bool boat_net_server_service(BoatNetServer *server, double now);
 // Monotonic time of the next tick, for the caller's wait.
 double boat_net_server_next_tick(const BoatNetServer *server);

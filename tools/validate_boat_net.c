@@ -638,6 +638,23 @@ static uint8_t raw_hello(Room *room, const uint8_t *bytes, size_t size, BoatNetM
     return 0;
 }
 
+// A late service catches up several ticks at once; it must still stop exactly at the limit.
+static int tick_limit(void)
+{
+    static Room room;
+    CHECK(room_open(&room, 3, (BoatNetServerConfig) { 0 }));
+    room.server.tick_limit = 10;
+    CHECK(boat_net_server_service(&room.server, 0));
+    CHECK(boat_net_server_service(&room.server, 8.0 / BOAT_TICK_HZ));
+    CHECK(room.server.fleet.state.tick == 8);
+    CHECK(boat_net_server_service(&room.server, 14.0 / BOAT_TICK_HZ));
+    CHECK(room.server.fleet.state.tick == 10);
+    CHECK(boat_net_server_service(&room.server, 1));
+    CHECK(room.server.fleet.state.tick == 10);
+    room_close(&room);
+    return 0;
+}
+
 static int rejections(void)
 {
     static Room room;
@@ -1366,6 +1383,7 @@ int main(void)
     RUN(codec());
     RUN(checkpoints());
     RUN(lossless());
+    RUN(tick_limit());
     RUN(rejections());
     RUN(authority_rules());
     RUN(wrap_and_flood());

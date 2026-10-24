@@ -491,6 +491,8 @@ bool boat_net_server_service(BoatNetServer *s, double now)
         }
     }
     uint64_t due = s->origin_tick + (uint64_t)floor((now - s->origin) * BOAT_TICK_HZ);
+    if (s->tick_limit && due > s->tick_limit)
+        due = s->tick_limit;
     for (unsigned n = 0; n < BOAT_NET_CATCH_UP_TICKS && s->fleet.state.tick < due; ++n)
         tick(s);
     uint64_t backlog = due > s->fleet.state.tick ? due - s->fleet.state.tick : 0;

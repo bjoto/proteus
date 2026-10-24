@@ -16,6 +16,22 @@
         }                                                                                          \
     } while (0)
 
+// Field by field: BoatReplaySample has padding before world_time, which memcmp would compare.
+static bool same_samples(const BoatReplaySample *a, const BoatReplaySample *b, size_t count)
+{
+    for (size_t i = 0; i < count; ++i) {
+        const BoatReplaySample *x = &a[i], *y = &b[i];
+        if (x->at != y->at || x->position.x != y->position.x || x->position.y != y->position.y
+            || x->velocity.x != y->velocity.x || x->velocity.y != y->velocity.y
+            || x->heading != y->heading || x->height != y->height || x->pitch != y->pitch
+            || x->roll != y->roll || x->engine_angle != y->engine_angle || x->wheel != y->wheel
+            || x->throttle != y->throttle || x->engine_response != y->engine_response
+            || x->camera_heading != y->camera_heading || x->world_time != y->world_time)
+            return false;
+    }
+    return true;
+}
+
 static int clock_contracts(void)
 {
     const uint64_t ticks[] = { 0, 1, 28800, 72000, 432000 };
@@ -324,7 +340,7 @@ static int banked_course(const char *directory)
     // Session-owned recording is the manual recording, sample for sample.
     const BoatReplay *own = &session.runs.last;
     CHECK(session.runs.finished && own->complete && own->count == live.count);
-    CHECK(memcmp(own->samples, live.samples, live.count * sizeof(*live.samples)) == 0);
+    CHECK(same_samples(own->samples, live.samples, live.count));
     CHECK(memcmp(own->splits, live.splits, sizeof(live.splits)) == 0);
     CHECK(session.runs.save_best && !FileExists(best));
     for (int tick = 0; tick < 120; ++tick) // Finished: further ticks neither record nor save.

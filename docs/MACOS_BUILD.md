@@ -8,7 +8,9 @@ links it for the diagnostic `--connect` mode, so the app bundle now carries
 `boat_bot` and no Host control. Since 2026-10-24 the title's MULTIPLAYER entry joins a room by address (not yet
 re-run through the packaged app or CI). The plan's M6 owns server packaging, firewall guidance and a child-process Host
 option. The package script change was run locally on a Debug build; the CI workflow has not
-run it yet.
+run it yet: [run 40083439307](https://github.com/doomdavve/proteus/actions/runs/40083439307)
+(2026-10-24, `29d1afb`) stopped at three CI-only test failures before packaging. Their causes
+and fixes are in the [multiplayer handoff](MULTIPLAYER_PLAN.md#packaged-lan-server-handoff--2026-10-24).
 
 The **macOS boat study** GitHub Actions workflow builds a Release Apple Silicon
 app on `macos-15`, targeting macOS 13 or newer. It runs on pushes and can be

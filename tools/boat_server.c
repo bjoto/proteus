@@ -172,6 +172,7 @@ static int room(const RoomOptions *options)
         boat_net_enet_cleanup();
         return 1;
     }
+    server.tick_limit = options->ticks; // --ticks/--seconds run exactly that many ticks.
     signal(SIGINT, request_stop);
     signal(SIGTERM, request_stop);
     printf("boat_server listening on %s:%u (basin, %s water, protocol %d, handling %d, "
