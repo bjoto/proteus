@@ -11,6 +11,11 @@ Status, 2026-10-22: the user requested a quick routine suite and suspension of t
 retired physical wake-field tests until that research resumes. Arcade wakes, handling,
 course/replay, environment, audio and renderer checks remain active.
 
+The cosmetic player skin check `boat_skin` runs `validate_boat_skin`: matching geometry
+across liveries, valid triangles, custom palette generation, footprint and ID fallback;
+national flag field/cross colors, Norway's white border and independent render storage.
+It is device-free; visual review commands live in [the skin guide](BOAT_SKINS.md).
+
 ## Routine checks
 
 ```sh
@@ -23,12 +28,13 @@ ctest --test-dir build -j 4 --output-on-failure
 disabled, covering the owned field, refinement, cadence, candidate sources/boats/GPU,
 compact packets and Python prototypes. CTest lists them as disabled, not failed. Their
 sources, targets and manual diagnostic commands remain available. All arcade-object tests
-stay enabled. With `PROTEUS_GPU_TESTS=ON`, the normal suite runs 101 checks as of 2026-10-23
-(after multiplayer M3; counted from the generated CTest file). GPU cases retain serial scheduling while independent
+stay enabled. With `PROTEUS_GPU_TESTS=ON`, this speedboat worktree runs 102 active checks as of 2026-10-24
+(including the new skin validator; counted from the generated CTest file). GPU cases retain serial scheduling while independent
 CPU checks may run concurrently; fixture dependencies still govern capture/replay comparisons.
 
-Every active test carries one of three labels: `cpu` (57, display-free), `render` (23, CPU
-captures and checksums) or `gpu` (21, graphics context). The thirteen `core` checks are also
+Every active test carries one of three labels: `cpu` (display-free), `render` (CPU
+captures and checksums) or `gpu` (graphics context). Skin geometry carries both `cpu` and
+`render` labels. The thirteen `core` checks are also
 `cpu`:
 - `boat_core` runs `validate_boat_core`, which links only the boating core library.
 - `boat_core_boundary` runs `tools/check_core_boundary.py` over the core sources and archive,

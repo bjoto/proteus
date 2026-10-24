@@ -31,7 +31,21 @@ Vector3 boat_flag_attachment(Transform3D hull, int row);
 // Fixed 120 Hz cloth integration. Hull scale is one; attachments are in physical metres.
 void boat_flag_reset(BoatFlag *flag, Transform3D hull, Vector3 velocity, double time);
 void boat_flag_step(BoatFlag *flag, Transform3D hull, Vector3 velocity, double time);
-// Two-sided Swedish cross geometry; returned view borrows the snapshot and static topology.
+// Render-only subdivisions give Norway's blue cross its white border without adding
+// simulation particles or changing any cloth forces. Every skin uses the same topology.
+#define BOAT_FLAG_MESH_COLS (BOAT_FLAG_COLS + 2)
+#define BOAT_FLAG_MESH_ROWS (BOAT_FLAG_ROWS + 2)
+#define BOAT_FLAG_MESH_POINTS (BOAT_FLAG_MESH_COLS * BOAT_FLAG_MESH_ROWS)
+#define BOAT_FLAG_MESH_TRIANGLES ((BOAT_FLAG_MESH_COLS - 1) * (BOAT_FLAG_MESH_ROWS - 1) * 4)
+typedef struct {
+    Vector3 vertices[BOAT_FLAG_MESH_POINTS];
+    Triangle3D triangles[BOAT_FLAG_MESH_TRIANGLES];
+} BoatFlagMesh;
+
+// Caller-owned render scratch: safe for simultaneous players and ghosts. Unknown skins
+// fall back to Sweden. The source cloth snapshot is never changed.
+Mesh3D boat_flag_skin_mesh(const BoatFlagSurface *surface, unsigned int skin, BoatFlagMesh *mesh);
+// Legacy two-sided Swedish cross geometry; returned view borrows the snapshot and static topology.
 Mesh3D boat_flag_mesh(const BoatFlagSurface *surface);
 
 #endif

@@ -108,7 +108,13 @@ Explore the bundled Eriksberg waterfront with the same boat and controls:
 ./build/boat_study --renderer cpu --location eriksberg --screenshot build/eriksberg-boat.png --time 3
 ```
 
-The player boat carries a Swedish flag on a stern staff. A light breeze moves the cloth
+The player craft is a simple speedboat with a pointed bow and low swept windscreen.
+Choose a cosmetic livery with `--skin sweden|finland|denmark|norway` (default `sweden`), for example
+`./build/boat_study --skin finland --location river`. Every livery has identical geometry and
+handling. The choice is local; multiplayer skin synchronization remains pending.
+See [player skins](docs/BOAT_SKINS.md) for palette customization and close review commands.
+
+Each skin carries its matching Swedish, Finnish, Danish or Norwegian flag on the stern staff. A light breeze moves the cloth
 at rest; apparent wind and moving attachments make it stream aft, flutter, and lag through
 turns. Playback and ghosts animate it too. See [the flag guide](docs/BOAT_FLAG.md) for
 model limits and close inspection commands, including

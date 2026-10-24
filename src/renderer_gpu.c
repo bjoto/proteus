@@ -170,9 +170,10 @@ static bool build_source_mesh(Mesh *mesh, const Mesh3D *source)
     return mesh->vaoId != 0;
 }
 
-static void update_flag_mesh(Mesh *mesh, const BoatFlagSurface *surface)
+static void update_flag_mesh(Mesh *mesh, const BoatFlagSurface *surface, unsigned int skin)
 {
-    Mesh3D source = boat_flag_mesh(surface);
+    BoatFlagMesh storage;
+    Mesh3D source = boat_flag_skin_mesh(surface, skin, &storage);
     if (!mesh->vaoId) {
         if (!build_source_mesh(mesh, &source))
             return;
@@ -189,10 +190,12 @@ static void update_flag_mesh(Mesh *mesh, const BoatFlagSurface *surface)
             memcpy(
                 &mesh->vertices[v * 3], &source.vertices[triangle->vertices[j]], sizeof(Vector3));
             memcpy(&mesh->normals[v * 3], &normal, sizeof(Vector3));
+            memcpy(&mesh->colors[v * 4], &triangle->color, sizeof(Color));
         }
     }
     UpdateMeshBuffer(*mesh, 0, mesh->vertices, mesh->vertexCount * 3 * (int)sizeof(float), 0);
     UpdateMeshBuffer(*mesh, 2, mesh->normals, mesh->vertexCount * 3 * (int)sizeof(float), 0);
+    UpdateMeshBuffer(*mesh, 3, mesh->colors, mesh->vertexCount * 4, 0);
 }
 
 typedef enum {
@@ -631,10 +634,13 @@ bool waterfront_gpu_scene_init(WaterfrontGpuScene *scene, const char *fragment_s
     for (int part = 0; part < WATERFRONT_GULL_PARTS; ++part)
         if (!build_source_mesh(&scene->gull[part], waterfront_gull_mesh(part)))
             goto failed;
-    if (!build_source_mesh(&scene->player_hull, waterfront_player_hull_mesh())
-        || !build_source_mesh(&scene->player_cabin, waterfront_player_cabin_mesh())
-        || !build_source_mesh(&scene->player_engine, waterfront_player_engine_mesh()))
-        goto failed;
+    for (unsigned int skin = 0; skin < BOAT_SKIN_COUNT; ++skin)
+        if (!build_source_mesh(&scene->player_hull[skin], boat_skin_mesh(skin, BOAT_SKIN_HULL))
+            || !build_source_mesh(
+                &scene->player_cabin[skin], boat_skin_mesh(skin, BOAT_SKIN_COCKPIT))
+            || !build_source_mesh(
+                &scene->player_engine[skin], boat_skin_mesh(skin, BOAT_SKIN_ENGINE)))
+            goto failed;
     for (int i = 0; i < WATERFRONT_TRAFFIC_VESSELS; ++i)
         if (!build_source_mesh(&scene->traffic_boats[i], waterfront_traffic_mesh(i)))
             goto failed;
@@ -1132,9 +1138,12 @@ static void draw_ghost(const WaterfrontGpuScene *scene, Material material,
     float scale = (float)width / 320;
     SetShaderValue(material.shader, pixel_scale, &scale, SHADER_UNIFORM_FLOAT);
     SetShaderValue(material.shader, opacity, &frame->ghost_opacity, SHADER_UNIFORM_FLOAT);
-    draw_colored_mesh(scene->player_hull, material, frame->ghost_hull, WHITE, true);
-    draw_colored_mesh(scene->player_cabin, material, frame->ghost_cabin, WHITE, true);
-    draw_colored_mesh(scene->player_engine, material, frame->ghost_engine, WHITE, true);
+    draw_colored_mesh(scene->player_hull[boat_skin_index(frame->ghost_skin)], material,
+        frame->ghost_hull, WHITE, true);
+    draw_colored_mesh(scene->player_cabin[boat_skin_index(frame->ghost_skin)], material,
+        frame->ghost_cabin, WHITE, true);
+    draw_colored_mesh(scene->player_engine[boat_skin_index(frame->ghost_skin)], material,
+        frame->ghost_engine, WHITE, true);
     if (scene->ghost_flag.vaoId)
         draw_colored_mesh(
             scene->ghost_flag, material, (Transform3D) { .scale = { 1, 1, 1 } }, WHITE, true);
@@ -1198,9 +1207,12 @@ static void draw_life(const WaterfrontGpuScene *scene, Material material,
                     LAMP_LENS_COLOR, true);
         }
         const WaterfrontPlayerState *p = &frame->player;
-        draw_colored_mesh(scene->player_hull, material, p->hull, WHITE, false);
-        draw_colored_mesh(scene->player_cabin, material, p->cabin, WHITE, false);
-        draw_colored_mesh(scene->player_engine, material, p->engine, WHITE, false);
+        draw_colored_mesh(
+            scene->player_hull[boat_skin_index(p->skin)], material, p->hull, WHITE, false);
+        draw_colored_mesh(
+            scene->player_cabin[boat_skin_index(p->skin)], material, p->cabin, WHITE, false);
+        draw_colored_mesh(
+            scene->player_engine[boat_skin_index(p->skin)], material, p->engine, WHITE, false);
         if (scene->player_flag.vaoId)
             draw_colored_mesh(
                 scene->player_flag, material, (Transform3D) { .scale = { 1, 1, 1 } }, WHITE, false);
@@ -1502,9 +1514,9 @@ void waterfront_gpu_scene_draw(
     WaterfrontGpuScene *scene, const WaterfrontSceneFrame *frame, int width, int height)
 {
     if (frame->player_active)
-        update_flag_mesh(&scene->player_flag, &frame->player.flag);
+        update_flag_mesh(&scene->player_flag, &frame->player.flag, frame->player.skin);
     if (frame->ghost_opacity > 0)
-        update_flag_mesh(&scene->ghost_flag, &frame->ghost_flag);
+        update_flag_mesh(&scene->ghost_flag, &frame->ghost_flag, frame->ghost_skin);
     Camera3D camera = { .position = frame->camera.position,
         .target = frame->camera.target,
         .up = frame->camera.up,
@@ -1644,12 +1656,15 @@ void waterfront_gpu_scene_destroy(WaterfrontGpuScene *scene)
         UnloadMesh(scene->player_flag);
     if (scene->ghost_flag.vaoId)
         UnloadMesh(scene->ghost_flag);
-    if (scene->player_hull.vaoId != 0)
-        UnloadMesh(scene->player_hull);
-    if (scene->player_cabin.vaoId != 0)
-        UnloadMesh(scene->player_cabin);
-    if (scene->player_engine.vaoId != 0)
-        UnloadMesh(scene->player_engine);
+    for (int skin = 0; skin < BOAT_SKIN_COUNT; ++skin)
+        if (scene->player_hull[skin].vaoId != 0)
+            UnloadMesh(scene->player_hull[skin]);
+    for (int skin = 0; skin < BOAT_SKIN_COUNT; ++skin)
+        if (scene->player_cabin[skin].vaoId != 0)
+            UnloadMesh(scene->player_cabin[skin]);
+    for (int skin = 0; skin < BOAT_SKIN_COUNT; ++skin)
+        if (scene->player_engine[skin].vaoId != 0)
+            UnloadMesh(scene->player_engine[skin]);
     if (scene->plane.vaoId != 0)
         UnloadMesh(scene->plane);
     if (scene->city_material.maps != NULL) {

@@ -1,5 +1,6 @@
 #include "boat_flag.h"
 #include "boat_clock.h"
+#include "boat_skin.h"
 #include "raymath.h"
 
 #include <math.h>
@@ -172,4 +173,63 @@ Mesh3D boat_flag_mesh(const BoatFlagSurface *surface)
         initialized = true;
     }
     return (Mesh3D) { surface->points, triangles, sizeof(triangles) / sizeof(triangles[0]) };
+}
+
+// Keep the accepted Swedish cloth shape for every country. The national cross artwork is
+// adapted to that common canvas; these are cosmetic ensigns, not flag manufacturing templates.
+Mesh3D boat_flag_skin_mesh(const BoatFlagSurface *surface, unsigned int skin, BoatFlagMesh *mesh)
+{
+    const float u[BOAT_FLAG_MESH_COLS]
+        = { 0, .15625f, .3125f, .35416667f, .39583333f, .4375f, .55f, .6625f, .775f, .8875f, 1 };
+    const float v[BOAT_FLAG_MESH_ROWS] = { 0, .2f, .4f, .46666667f, .53333333f, .6f, .8f, 1 };
+    const Color white = { 250, 246, 237, 255 };
+    Color field, cross;
+    skin = boat_skin_index(skin);
+    switch (skin) {
+    case BOAT_SKIN_FINLAND:
+        field = white;
+        cross = (Color) { 0, 53, 128, 255 };
+        break;
+    case BOAT_SKIN_DENMARK:
+        field = (Color) { 198, 12, 48, 255 };
+        cross = white;
+        break;
+    case BOAT_SKIN_NORWAY:
+        field = (Color) { 186, 12, 47, 255 };
+        cross = white;
+        break;
+    default:
+        field = (Color) { 0, 106, 167, 255 };
+        cross = (Color) { 255, 205, 0, 255 };
+        break;
+    }
+    for (int y = 0; y < BOAT_FLAG_MESH_ROWS; ++y)
+        for (int x = 0; x < BOAT_FLAG_MESH_COLS; ++x) {
+            int col = 0;
+            while (col < BOAT_FLAG_COLS - 2 && u[x] > columns[col + 1])
+                ++col;
+            int row = (int)fminf(v[y] * (BOAT_FLAG_ROWS - 1), BOAT_FLAG_ROWS - 2);
+            float tx = (u[x] - columns[col]) / (columns[col + 1] - columns[col]);
+            float ty = v[y] * (BOAT_FLAG_ROWS - 1) - row;
+            int a = row * BOAT_FLAG_COLS + col;
+            Vector3 top = Vector3Lerp(surface->points[a], surface->points[a + 1], tx);
+            Vector3 bottom = Vector3Lerp(
+                surface->points[a + BOAT_FLAG_COLS], surface->points[a + BOAT_FLAG_COLS + 1], tx);
+            mesh->vertices[y * BOAT_FLAG_MESH_COLS + x] = Vector3Lerp(top, bottom, ty);
+        }
+    size_t count = 0;
+    for (int y = 0; y < BOAT_FLAG_MESH_ROWS - 1; ++y)
+        for (int x = 0; x < BOAT_FLAG_MESH_COLS - 1; ++x) {
+            unsigned int a = y * BOAT_FLAG_MESH_COLS + x, b = a + 1;
+            unsigned int c = b + BOAT_FLAG_MESH_COLS, d = a + BOAT_FLAG_MESH_COLS;
+            bool band = (x >= 2 && x <= 4) || (y >= 2 && y <= 4);
+            Color color = band ? cross : field;
+            if (skin == BOAT_SKIN_NORWAY && (x == 3 || y == 3))
+                color = (Color) { 0, 32, 91, 255 };
+            mesh->triangles[count++] = (Triangle3D) { { a, b, c }, color };
+            mesh->triangles[count++] = (Triangle3D) { { a, c, d }, color };
+            mesh->triangles[count++] = (Triangle3D) { { c, b, a }, color };
+            mesh->triangles[count++] = (Triangle3D) { { d, c, a }, color };
+        }
+    return (Mesh3D) { mesh->vertices, mesh->triangles, count };
 }

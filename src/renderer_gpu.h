@@ -60,7 +60,8 @@ typedef struct {
     Mesh crane;
     Mesh bridge;
     Mesh cube;
-    Mesh player_hull, player_cabin, player_engine;
+    Mesh player_hull[BOAT_SKIN_COUNT], player_cabin[BOAT_SKIN_COUNT],
+        player_engine[BOAT_SKIN_COUNT];
     Mesh player_flag, ghost_flag; // Dynamic cloth, uploaded once before all scene passes.
     Mesh traffic_boats[WATERFRONT_TRAFFIC_VESSELS];
     Mesh harbor_boats[WATERFRONT_HARBOR_BOATS], harbor_pontoon, harbor_quay;

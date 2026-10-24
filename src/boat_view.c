@@ -18,6 +18,7 @@ void boat_player_pose(
     const BoatViewState *view, const BoatFlag *flag, WaterfrontPlayerState *player)
 {
     const Boat *boat = &view->boat;
+    player->skin = boat_skin_index(view->skin);
     double time = view->time;
     if (flag && flag->initialized) {
         player->flag = flag->surface;
@@ -316,18 +317,21 @@ bool boat_draw_with_ghost(Renderer3D *renderer, Color *pixels, int width, int he
     boat_course_draw(&view->course, renderer);
     WaterfrontPlayerState player = { 0 };
     boat_player_pose(view, &presentation->flag, &player);
-    renderer3d_draw_mesh(renderer, waterfront_player_hull_mesh(), player.hull);
-    renderer3d_draw_mesh(renderer, waterfront_player_cabin_mesh(), player.cabin);
-    renderer3d_draw_mesh(renderer, waterfront_player_engine_mesh(), player.engine);
-    Mesh3D flag_mesh = boat_flag_mesh(&player.flag);
+    renderer3d_draw_mesh(renderer, boat_skin_mesh(player.skin, BOAT_SKIN_HULL), player.hull);
+    renderer3d_draw_mesh(renderer, boat_skin_mesh(player.skin, BOAT_SKIN_COCKPIT), player.cabin);
+    renderer3d_draw_mesh(renderer, boat_skin_mesh(player.skin, BOAT_SKIN_ENGINE), player.engine);
+    BoatFlagMesh flag_storage;
+    Mesh3D flag_mesh = boat_flag_skin_mesh(&player.flag, player.skin, &flag_storage);
     renderer3d_draw_mesh(renderer, &flag_mesh, (Transform3D) { .scale = { 1, 1, 1 } });
     if (ghost && opacity > 0) {
         boat_player_pose(ghost, ghost_flag, &player);
         renderer->ghost_opacity = opacity;
-        renderer3d_draw_mesh(renderer, waterfront_player_hull_mesh(), player.hull);
-        renderer3d_draw_mesh(renderer, waterfront_player_cabin_mesh(), player.cabin);
-        renderer3d_draw_mesh(renderer, waterfront_player_engine_mesh(), player.engine);
-        flag_mesh = boat_flag_mesh(&player.flag);
+        renderer3d_draw_mesh(renderer, boat_skin_mesh(player.skin, BOAT_SKIN_HULL), player.hull);
+        renderer3d_draw_mesh(
+            renderer, boat_skin_mesh(player.skin, BOAT_SKIN_COCKPIT), player.cabin);
+        renderer3d_draw_mesh(
+            renderer, boat_skin_mesh(player.skin, BOAT_SKIN_ENGINE), player.engine);
+        flag_mesh = boat_flag_skin_mesh(&player.flag, player.skin, &flag_storage);
         renderer3d_draw_mesh(renderer, &flag_mesh, (Transform3D) { .scale = { 1, 1, 1 } });
         renderer->ghost_opacity = 0;
     }

@@ -1,15 +1,19 @@
-# Swedish ensign and apparent wind
+# Nordic ensigns and apparent wind
 
 Implemented 2026-10-20 for the player boat in `boat_study`, including course playback
 and its ghost. The [boating plan](BOATING_PLAN.md#swedish-ensign--2026-10-20) owns task
-status, verification, remaining review, and acceptance. Harbor/traffic recipes and the
+status and acceptance for the original Swedish ensign. The [speedboat skin record](BOATING_PLAN.md#speedboat-skins--2026-10-24)
+owns the 2026-10-24 addition of Finnish, Danish and Norwegian artwork. Harbor/traffic recipes and the
 main demo's gull journey retain their existing models.
 
 ## Wind and cloth
 
 `src/boat_flag.[ch]` owns a 54-particle cloth sheet, 0.64 × 0.40 m, on a wooden
 0.75 m starboard stern staff raked about 11° aft. Cross boundaries are mesh edges at the Swedish
-flag's 5:2:9 horizontal and 4:2:4 vertical divisions. Both faces have the blue/yellow pattern.
+flag's 5:2:9 horizontal and 4:2:4 vertical divisions. Both faces show the selected skin's
+Nordic-cross pattern: Sweden blue/yellow, Finland white/blue, Denmark red/white, or Norway
+red with a white-bordered navy cross. All countries use the accepted common fabric size and
+cloth grid; their artwork is adapted to it, not a simulation of different flag proportions.
 The hoist is fixed along the staff; the remaining fabric responds to forces.
 
 World-space air has a prevailing 0.35 m/s X and 0.10 m/s Z component, with gentle,
@@ -37,9 +41,13 @@ never affect handling, course timing, or the recording physics revision.
 
 ## Rendering and playback
 
-`Boat` owns the live cloth history. `WaterfrontPlayerState` copies world-space vertices
+`BoatPresentation` owns the live cloth history. `WaterfrontPlayerState` copies world-space vertices
 into the frame snapshot, which owns its data and has no pointers into the simulation.
-CPU and GPU use the same two-sided triangle topology. GPU vertex/normal buffers update
+CPU and GPU use the same two-sided triangle topology. `boat_flag_skin_mesh` adds two render
+columns and rows inside the cross bands (88 render vertices, 280 two-sided triangles),
+interpolating the unchanged 54-particle cloth to resolve Norway's white border. Its output
+uses caller-owned `BoatFlagMesh` scratch; the legacy `boat_flag_mesh` accessor still returns
+the original 160-triangle Swedish mesh. GPU vertex/normal/color buffers update
 once per scene frame and are reused for color, reflection, and shadow passes. The
 stippled ghost has its own dynamic mesh and retains the existing ghost pass rules.
 No image textures, additional shaders, or external assets are needed.
@@ -81,3 +89,9 @@ near-vertical idle drape and settling after a stop; teleport recovery; and cross
 checks fixed-tick equivalence at different playback frame rates, pause stability, seek
 repeatability, and exact interpolated hoist attachment. `boat_flag_cpu` and opt-in
 `boat_flag_gpu` capture the close inspection fixtures.
+
+## Speedboat review
+
+The [player speedboat skins](BOAT_SKINS.md) select their matching flag while retaining these attachments. The close
+review tool additionally accepts `--skin sweden|finland|denmark|norway` and
+`--angle front|side|rear`; the default remains Sweden viewed from the rear quarter.

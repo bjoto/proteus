@@ -1,0 +1,83 @@
+# Player speedboat skins
+
+Implemented 2026-10-24 in the isolated `boat-speedboat-skins` worktree. The player craft
+has a fine pointed bow, simple faceted V hull, flared shoulders, a dark rub rail, a broad
+foredeck stripe, low swept windscreen, open two-seat cockpit and compact outboard.
+The user accepted the speedboat look and requested Sweden, Finland, Denmark and Norway.
+Each livery now has its matching Nordic-cross flag; the accepted staff and cloth simulation
+remain in place.
+CPU and GPU use the same meshes, including reflections, shadows, replay and ghost views.
+Nearest-neighbour presentation remains unchanged.
+
+The owning status and acceptance record is in [the boating plan](BOATING_PLAN.md#speedboat-skins--2026-10-24).
+The 2026-10-20 cabin refinement proposal is superseded by this speedboat direction.
+
+## Try the four liveries
+
+| Boat / local ID | Selection | Boat colors | Flag |
+| --- | --- | --- | --- |
+| 1 / 0 (default) | `sweden` | Blue hull/deck, yellow stripe | Yellow cross on blue |
+| 2 / 1 | `finland` | White hull/deck, blue stripe | Blue cross on white |
+| 3 / 2 | `denmark` | Red hull/deck, white stripe | White cross on red |
+| 4 / 3 | `norway` | Red hull, white deck, navy stripe | White-bordered navy cross on red |
+
+From the worktree root:
+
+```sh
+./build/boat_study --skin finland --location river --waves --gpu-aa
+./build/boat_study --skin denmark --renderer cpu --screenshot build/skin-follow.png --time 5
+./build/boat_flag_review --skin sweden --angle front --screenshot build/skin-front.png
+./build/boat_flag_review --skin norway --angle side --low-resolution --screenshot build/skin-side.png
+./build/boat_flag_review --skin finland --renderer gpu --scenario turn --frames 180
+```
+
+`--skin` selects the local appearance, including when viewing a saved replay. It is not
+saved in recordings or transmitted to other clients. The review tool also accepts
+`--angle front|side|rear` (default rear) and the existing idle/cruise/turn/reverse scenarios.
+GPU modes need a desktop graphics context; CPU screenshots do not open a window.
+
+## Customization boundary
+
+`src/boat_skin.[ch]` belongs to the presentation library. `BoatSkinPalette` exposes hull,
+deck, accent and upholstery colors; `boat_skin_generate` builds caller-owned geometry
+for a palette, while `boat_skin_mesh` caches the four immutable presets for rendering.
+The legacy `waterfront_player_*_mesh` accessors return Sweden for existing review callers.
+The existing pose transforms remain intact; the legacy `cabin` transform now carries
+the cockpit and windscreen.
+
+Set `BoatViewState.skin` after constructing a view. The selected ID flows into
+`WaterfrontPlayerState.skin`; GPU ghost views use `WaterfrontSceneFrame.ghost_skin`.
+Zero selects Sweden and unknown IDs fall back to Sweden. Each actor can select its own preset
+without recoloring another actor's cached mesh. Custom palettes currently require a code
+change and GPU upload; there is no palette editor or runtime arbitrary-color picker.
+
+The same view ID selects the national flag in CPU and GPU, including ghosts. Render scratch
+for `boat_flag_skin_mesh` is caller-owned, so drawing another country cannot recolor a retained
+mesh. GPU flag colors refresh along with vertices, including when a mesh is reused for a new
+skin. Nordic-cross artwork is fitted to the common 0.64 × 0.40 m cloth canvas; country-specific
+fabric proportions are not simulated. Render-only subdivisions preserve Norway's white border
+without changing the 54 simulation particles, forces or staff attachment.
+
+All presets have identical vertices and topology. No skin enters `Boat`, physics,
+contacts, thrust, wake generation, audio tuning, course rules or network serialization.
+The hull shape suggests speed without changing speed or introducing another gameplay
+class. The outboard keeps its steering transform, and the flag keeps its world-space
+attachment and simulation. Harbor/traffic boat recipes are unchanged.
+
+Multiplayer ownership, skin metadata transport and persistent player loadouts remain for
+the multiplayer integration work. This branch deliberately supplies the rendering API
+without changing protocol files or the other agent's implementation. Until that integration,
+a remote view defaults to Sweden unless its caller assigns a skin.
+
+## Verification
+
+`validate_boat_skin` checks matching geometry across all four palettes, nondegenerate and
+finite triangles, the existing footprint, arbitrary palette generation, name parsing and
+invalid-ID fallback. Flag checks additionally probe the field and cross colors, all four
+sides of Norway's white border, matching topology, independent storage and unchanged source cloth. The normal core-boundary gates still enforce the simulation/rendering
+separation. See the owning plan for the dated build, full-suite and visual review results.
+
+The speedboat shape and Nordic color/flag pass are user-accepted. The
+[multiplayer handoff](BOAT_SKINS_HANDOFF.md) records the completed package and remaining
+integration work. Hands-on driving, Windows and browser review remain unverified.
+Scripted desktop playback is a smoke check, not a manual driving or audio assessment.

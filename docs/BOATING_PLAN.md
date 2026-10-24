@@ -69,8 +69,8 @@ Playback and ghosts animate the flag without changing recording files or handlin
 Completed task: implement wind-driven cloth, renderer integration, playback history,
 and close idle/cruise/turn/reverse inspection fixtures; revised idle drape, size, and
 aft rake after user feedback, then shortened the staff by 46%. The user accepted the
-flag on 2026-10-20: "I like it a lot!" Next task: the saved
-[boat visual improvement proposal](#boat-visual-improvement--saved-2026-10-20);
+flag on 2026-10-20: "I like it a lot!" The subsequent visual pass is recorded under
+[speedboat skins](#speedboat-skins--2026-10-24);
 no further handling tuning is queued.
 
 Verification, 2026-10-20, macOS: Debug configure/build completed. Cloth dynamics and
@@ -87,28 +87,70 @@ Flag appearance is user-accepted. Hands-on controls/audio assessment, Windows/br
 verification, and exhaustive wind-relative headings remain unverified. The small solver has no
 self-collision or hull/cabin collision; seek cloth reconstructs bounded history.
 
-## Boat visual improvement — saved 2026-10-20
+## Speedboat skins — 2026-10-24
 
-Status: saved proposal for a future boat improvement pass; implementation has not started.
-The user likes the flag but finds the existing boat too crude beside its fabric and motion.
-The proposed direction is a small improvement in shape, proportions, and material cues
-while preserving the low-poly, toy-like character and the accepted flag.
+Status: the user accepted the speedboat look on 2026-10-24 ("I like the look!") and then
+requested four Nordic countries. The isolated `boat-speedboat-skins` worktree now implements
+Sweden, Finland, Denmark and Norway in that order, with matching liveries and animated flags.
+The user accepted the Nordic versions ("Great!") and requested integration handoff.
+The cosmetic work is complete; [the multiplayer handoff](BOAT_SKINS_HANDOFF.md) records the
+branch, APIs, likely conflicts and remaining integration checks.
 
-Proposed sequence:
+Completed: pointed foredeck, faceted V hull, low swept windscreen, two-seat open cockpit,
+compact steering outboard, and country palettes: Swedish blue/yellow, Finnish white/blue,
+Danish red/white and Norwegian red/white/navy. The same per-view skin ID selects the flag
+for CPU/GPU color, reflection, shadow, replay and ghost rendering. Norway's white-bordered
+blue cross uses render-only subdivisions; all skins share the accepted cloth size, simulation,
+boat geometry and gameplay class. No physics, contact, wake, audio, protocol or recording
+format changes. [The skin guide](BOAT_SKINS.md) owns commands and the integration boundary.
 
-1. Refine the cabin silhouette with a slightly raked windscreen, narrower roof overhang,
-   and a few chamfered corners.
-2. Give the hull a clearer bow flare, shaped transom, and more deliberate gunwale.
-3. Simplify the palette around cream and teal, with fewer competing yellow/red accents;
-   let the Swedish flag remain the strongest color accent.
-4. Reassess the flag alongside the improved boat. Reduce its subdivisions slightly only
-   if it still feels too refined, preserving the accepted hanging and wind response.
+Nordic-pass verification on macOS, 2026-10-24: warning-clean Debug build; extended skin checks
+pass for country colors, both flag faces, Norway's border, independent mesh storage and
+unchanged input cloth. CPU cruise captures for all four countries were inspected at 960x600 and native 320x200,
+as was the Norway follow-camera frame. GPU side captures confirm Finland's blue cross and
+Norway's white border. A 180-frame Sweden GPU+AA/waves demo and a 180-frame Norway GPU
+turning/flag review ran as scripted motion smoke checks. All 102 active CTests passed in
+83.21 seconds with `PROTEUS_GPU_TESTS=ON`, `PROTEUS_WAKE_FIELD_TESTS=OFF`, desktop graphics
+and localhost access; 15 retired experiments remain disabled. Formatting, changed local
+file links and `git diff --check` passed. Captures/logs are under `build/nordic-*` and
+`/private/tmp/proteus-nordic-ctest.log`. These checks do not establish hands-on driving,
+listening or acceptance of the newly requested national themes.
 
-Next task: a focused silhouette-and-proportions pass, followed by side-by-side captures
-at native resolution in the normal boating cameras. Favor shaped geometry over extra
-accessories or textures. Keep the current handling and nearest-neighbor presentation.
-The future implementation needs CPU/GPU still-frame inspection and motion review before
-user acceptance; no audiovisual verification is claimed for this unimplemented proposal.
+Next task: the multiplayer agent integrates the accepted skins and consistent per-player
+country assignment using the handoff. Skin IDs remain local; remote views default
+to Sweden unless assigned by their caller. No persistent loadout, network selection, unlocks
+or arbitrary-color UI. Hands-on driving/listening and Windows/browser checks remain pending.
+
+Handoff completed 2026-10-24: the isolated branch is committed for cherry-pick. A merge-tree
+preview against multiplayer `6f26862` auto-merged without conflicts; the combined program
+has not been built/tested. The final branch-only Debug build and all 102 active CTests passed
+again (80.70 seconds, same GPU/wake options). See the handoff for commands and evidence.
+
+### First speedboat pass — verified 2026-10-24, look accepted
+
+The initial Tide/Ember/Cobalt/Orchid palettes are superseded by the country choices above.
+The following is verification history for that initial geometry pass, not the Nordic revision.
+
+Verification on macOS, 2026-10-24: Debug build passed without compiler warnings. The skin
+validator checks shared geometry, palette customization, valid triangles, bounds and fallback.
+CPU front/rear/side and native 320x200 follow/close captures were inspected across all four
+liveries; a GPU turning capture was inspected. A depth artifact on the windscreen was found
+and corrected with thin solid panes. The post-fix GPU capture was inspected and the artifact is gone. All 102 active CTests
+passed with `PROTEUS_GPU_TESTS=ON` and `PROTEUS_WAKE_FIELD_TESTS=OFF` (15 retired experiments
+disabled), including core/network boundaries and ENet loopback, in 83.20 seconds with desktop
+and localhost access. The earlier sandbox run could not bind the loopback socket; rerunning
+with the needed access resolved that environmental failure. A 180-frame Orchid GPU/waves
+boating demo and 180-frame Ember close turning/flag review exited successfully; the close
+review was repeated after the pane fix. This is scripted motion smoke evidence. Formatting,
+`git diff --check` and changed local documentation links passed. Local captures and smoke logs
+are under `build/skin-*`; full test output is `/private/tmp/proteus-skins-ctest-gpu.log`.
+
+
+### Historical cabin proposal — saved 2026-10-20, superseded
+
+The earlier proposal refined the boxy cabin, roof, gunwale and cream/teal palette. It was
+not implemented before the user chose the low speedboat direction on 2026-10-24. Its intent
+to preserve the flag, simple geometry, handling and nearest-neighbour presentation remains.
 
 ## Window presentation — 2026-10-19
 

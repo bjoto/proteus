@@ -18,10 +18,13 @@ static void advance(BoatSession *session, const char *scenario, int tick)
         session, (BoatInput) { Clamp((steering - boat->wheel) / BOAT_STEP, -1, 1), 0 });
 }
 
-static View3D camera_for(const Boat *boat)
+static View3D camera_for(const Boat *boat, const char *angle)
 {
     Vector3 target = { -boat->position.x, boat->height + 1.15f, boat->position.y + .4f };
-    Vector3 offset = Vector3Transform((Vector3) { 4.5f, 2.2f, 4.5f }, MatrixRotateY(boat->heading));
+    Vector3 eye = strcmp(angle, "front") == 0 ? (Vector3) { 4.5f, 2.5f, -5.5f }
+        : strcmp(angle, "side") == 0          ? (Vector3) { 6.5f, 1.3f, 0 }
+                                              : (Vector3) { 4.5f, 2.2f, 4.5f };
+    Vector3 offset = Vector3Transform(eye, MatrixRotateY(boat->heading));
     return (View3D) { .position = Vector3Add(target, offset),
         .target = target,
         .up = { 0, 1, 0 },
@@ -34,6 +37,8 @@ int main(int argc, char **argv)
 {
     const char *scenario = "idle", *screenshot = NULL;
     bool gpu = false;
+    unsigned int skin = BOAT_SKIN_SWEDEN;
+    const char *angle = "rear";
     int frames = 0, width = 960, height = 600;
     float time = 5;
     for (int i = 1; i < argc; ++i) {
@@ -41,6 +46,11 @@ int main(int argc, char **argv)
             scenario = argv[++i];
         else if (strcmp(argv[i], "--screenshot") == 0 && i + 1 < argc)
             screenshot = argv[++i];
+        else if (strcmp(argv[i], "--skin") == 0 && i + 1 < argc) {
+            if (!boat_skin_parse(argv[++i], &skin))
+                return 2;
+        } else if (strcmp(argv[i], "--angle") == 0 && i + 1 < argc)
+            angle = argv[++i];
         else if (strcmp(argv[i], "--time") == 0 && i + 1 < argc)
             time = strtof(argv[++i], NULL);
         else if (strcmp(argv[i], "--frames") == 0 && i + 1 < argc)
@@ -57,11 +67,13 @@ int main(int argc, char **argv)
             fprintf(stderr,
                 "Usage: boat_flag_review [--scenario idle|cruise|turn|reverse] "
                 "[--renderer cpu|gpu] [--time 0..60] [--screenshot FILE] "
-                "[--frames COUNT] [--low-resolution]\n");
+                "[--frames COUNT] [--low-resolution] [--skin sweden|finland|denmark|norway] "
+                "[--angle front|side|rear]\n");
             return 2;
         }
     }
-    if ((!screenshot && frames <= 0) || !isfinite(time) || time < 0 || time > 60
+    if ((strcmp(angle, "front") && strcmp(angle, "side") && strcmp(angle, "rear"))
+        || (!screenshot && frames <= 0) || !isfinite(time) || time < 0 || time > 60
         || (strcmp(scenario, "idle") && strcmp(scenario, "cruise") && strcmp(scenario, "turn")
             && strcmp(scenario, "reverse")))
         return 2;
@@ -78,7 +90,7 @@ int main(int argc, char **argv)
     RenderTexture2D target = { 0 };
     if (gpu || !screenshot) {
         SetConfigFlags(screenshot ? FLAG_WINDOW_HIDDEN : 0);
-        InitWindow(width, height, "Swedish ensign: breeze / apparent wind review");
+        InitWindow(width, height, "Nordic speedboats: ensign / apparent wind review");
         if (!IsWindowReady())
             return 1;
         SetTargetFPS(60);
@@ -92,12 +104,13 @@ int main(int argc, char **argv)
     int count = screenshot ? 1 : frames;
     for (int f = 0; f < count && (screenshot || !WindowShouldClose()); ++f) {
         WaterfrontPlayerState player = { 0 };
-        boat_player_pose(SESSION_VIEW(&boat), &boat.presentation.flag, &player);
-        View3D camera = camera_for(&boat.boat);
+        BoatViewState view = boat_session_view(&boat);
+        view.skin = skin;
+        boat_player_pose(&view, &boat.presentation.flag, &player);
+        View3D camera = camera_for(&boat.boat, angle);
         if (gpu) {
             WaterfrontSceneFrame frame;
-            boat_scene_frame(
-                SESSION_VIEW(&boat), &boat.presentation, &boat.world, BOAT_CAMERA_DEFAULT, &frame);
+            boat_scene_frame(&view, &boat.presentation, &boat.world, BOAT_CAMERA_DEFAULT, &frame);
             frame.camera = camera;
             frame.scenery_count = 0;
             frame.gull_count = 0;
@@ -112,10 +125,11 @@ int main(int argc, char **argv)
                 pixels[i] = (Color) { 56, 78, 91, 255 };
             if (!renderer3d_begin(&cpu, pixels, width, height, camera, (Vector3) { -1, 3, 2 }))
                 return 1;
-            renderer3d_draw_mesh(&cpu, waterfront_player_hull_mesh(), player.hull);
-            renderer3d_draw_mesh(&cpu, waterfront_player_cabin_mesh(), player.cabin);
-            renderer3d_draw_mesh(&cpu, waterfront_player_engine_mesh(), player.engine);
-            Mesh3D flag = boat_flag_mesh(&player.flag);
+            renderer3d_draw_mesh(&cpu, boat_skin_mesh(skin, BOAT_SKIN_HULL), player.hull);
+            renderer3d_draw_mesh(&cpu, boat_skin_mesh(skin, BOAT_SKIN_COCKPIT), player.cabin);
+            renderer3d_draw_mesh(&cpu, boat_skin_mesh(skin, BOAT_SKIN_ENGINE), player.engine);
+            BoatFlagMesh flag_storage;
+            Mesh3D flag = boat_flag_skin_mesh(&player.flag, skin, &flag_storage);
             renderer3d_draw_mesh(&cpu, &flag, (Transform3D) { .scale = { 1, 1, 1 } });
         }
         if (screenshot) {

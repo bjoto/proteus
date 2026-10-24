@@ -2,6 +2,7 @@
 #define PROTEUS_WATERFRONT_SCENE_H
 
 #include "boat_flag.h"
+#include "boat_skin.h"
 #include "boat_water.h"
 #include "renderer3d.h"
 #include "waterfront_city.h"
@@ -26,6 +27,7 @@ typedef struct {
 
 typedef struct {
     Transform3D hull, cabin, engine;
+    unsigned int skin; // Cosmetic preset, shared across all render passes.
     BoatFlagSurface flag;
     int particle_count;
     WaterfrontPlayerParticle particles[WATERFRONT_PLAYER_PARTICLES];
@@ -64,6 +66,7 @@ typedef struct {
     BoatWater player_water; // Zero for timeline scenes; shared analytic boating parameters.
     WaterfrontPlayerState player;
     float ghost_opacity;
+    unsigned int ghost_skin;
     Transform3D ghost_hull, ghost_cabin, ghost_engine;
     BoatFlagSurface ghost_flag;
     double time; // World seconds; GPU uploads only reduced float phases and bounded clocks.

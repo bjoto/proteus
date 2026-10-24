@@ -133,3 +133,9 @@ hull/cabin/mast bounds, or the pontoon/quay height interval. Horizontal envelope
 forgiving. Shoreline and basin limits remain intentional boundaries at any flight height.
 The boats are still kinematic; [arcade implementation](WAKE_ARCADE_IMPLEMENTATION.md)
 owns the dynamic basin rival, contact tests and limitations.
+
+## Player cosmetics
+
+The playable craft now uses a separate [speedboat skin](BOAT_SKINS.md) presentation recipe.
+Its four liveries share geometry and the existing handling/contact class; this does not adopt
+the harbor presets as playable performance classes or change the moored fleet.

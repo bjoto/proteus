@@ -1,0 +1,32 @@
+#ifndef PROTEUS_BOAT_SKIN_H
+#define PROTEUS_BOAT_SKIN_H
+
+#include "boat_model.h"
+
+// Cosmetic only. All skins share the same hull, attachments and gameplay class.
+// IDs are local presentation choices, not protocol values or performance presets.
+typedef enum {
+    BOAT_SKIN_SWEDEN,
+    BOAT_SKIN_FINLAND,
+    BOAT_SKIN_DENMARK,
+    BOAT_SKIN_NORWAY,
+    BOAT_SKIN_COUNT
+} BoatSkinId;
+
+typedef enum { BOAT_SKIN_HULL, BOAT_SKIN_COCKPIT, BOAT_SKIN_ENGINE } BoatSkinPart;
+
+typedef struct {
+    Color hull, deck, accent, upholstery;
+} BoatSkinPalette;
+
+unsigned int boat_skin_index(unsigned int skin);
+const char *boat_skin_name(unsigned int skin);
+bool boat_skin_parse(const char *name, unsigned int *skin);
+BoatSkinPalette boat_skin_palette(unsigned int skin);
+// Caller-owned geometry using the existing boat_pose_parts transforms. Palette edits
+// never enter Boat, collision bounds, wakes, recordings or the authority simulation.
+bool boat_skin_generate(BoatModel *model, BoatSkinPalette palette, BoatSkinPart part);
+// Immutable cached presets for CPU and GPU upload; invalid IDs fall back to Sweden.
+const Mesh3D *boat_skin_mesh(unsigned int skin, BoatSkinPart part);
+
+#endif

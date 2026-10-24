@@ -112,6 +112,7 @@ void boat_gpu_draw_with_ghost(BoatGpu *gpu, const BoatViewState *view,
         WaterfrontPlayerState pose = { 0 };
         boat_player_pose(ghost, ghost_flag, &pose);
         frame.ghost_opacity = opacity;
+        frame.ghost_skin = pose.skin;
         frame.ghost_hull = pose.hull;
         frame.ghost_cabin = pose.cabin;
         frame.ghost_engine = pose.engine;

@@ -35,6 +35,7 @@ static void usage(void)
         "--wake-life-ticks 240..1920 (default 1920) | --wake-height 0.1..3 (default 1.8 m)\n"
         "--player-wake: legacy D3 trail | --no-player-wake: visual-only player trail\n"
         "--current / --crossing-wake: opt-in authored tests in all locations; R restarts passage\n"
+        "--skin sweden|finland|denmark|norway: cosmetic speedboat livery (default sweden)\n"
         "--camera-distance UNITS: 8..48 (default 20; river 32)\n"
         "--camera-height UNITS: 4..36 (default 14; river 6)\n"
         "--fixed-fov: keep the 55-degree view instead of widening gently with speed\n"
@@ -173,6 +174,7 @@ int main(int argc, char **argv)
     }
 #endif
     const char *screenshot = NULL;
+    unsigned int skin = BOAT_SKIN_SWEDEN;
     const char *replay_path = NULL, *ghost_path = NULL, *data_dir = NULL, *export_path = NULL;
     float time = 0;
     BoatCamera camera_settings = BOAT_CAMERA_DEFAULT;
@@ -198,6 +200,9 @@ int main(int argc, char **argv)
         if (strcmp(argv[i], "--help") == 0) {
             usage();
             return 0;
+        } else if (strcmp(argv[i], "--skin") == 0 && i + 1 < argc) {
+            if (!boat_skin_parse(argv[++i], &skin))
+                goto invalid;
         } else if (strcmp(argv[i], "--location") == 0 && i + 1 < argc) {
             location = boat_location_find(argv[++i]);
             if (!location)
@@ -512,6 +517,9 @@ int main(int argc, char **argv)
             demo_step(&session, tick, NULL, wake, objects);
     }
     live_view = boat_session_view(&session);
+    live_view.skin = skin;
+    if (view == &playback)
+        playback.skin = skin;
     // Course attempts record from here on; screenshots above never save a run.
     session.record_runs = course;
     BoatViewState ghost, other_view;
@@ -789,6 +797,9 @@ int main(int argc, char **argv)
             view_presentation = &playback_presentation;
             view_world = &playback_world;
         }
+        live_view.skin = skin;
+        if (view == &playback)
+            playback.skin = skin;
         Vector2 flow = boat_water_current(view_world->water, view->boat.position);
         float water_speed = hypotf(view->boat.velocity.x - flow.x, view->boat.velocity.y - flow.y);
         BoatAudioInput audio_input = { .thrust = view->boat.engine_response,

@@ -55,7 +55,7 @@ target_compile_options(proteus_boat_core PRIVATE ${PROTEUS_WARNINGS})
 
 # Presentation: cosmetic simulation, CPU renderer, boat/course views, water meshes and scenes.
 add_library(proteus_render STATIC
-  src/boat_course_view.c src/boat_flag.c src/boat_presentation.c src/boat_view.c
+  src/boat_skin.c src/boat_skin.h src/boat_course_view.c src/boat_flag.c src/boat_presentation.c src/boat_view.c
   src/boat_water_mesh.c src/renderer3d.c src/waterfront.c src/waterfront_corner.c
   src/waterfront_scene.c)
 target_link_libraries(proteus_render PUBLIC proteus_boat_core)
@@ -365,6 +365,11 @@ add_executable(boat_water_review tools/boat_water_review.c)
 add_dependencies(boat_water_review proteus_assets)
 add_executable(boat_banking_review tools/boat_banking_review.c)
 add_dependencies(boat_banking_review proteus_assets)
+add_executable(validate_boat_skin tools/validate_boat_skin.c)
+target_link_libraries(validate_boat_skin PRIVATE proteus_render)
+target_compile_options(validate_boat_skin PRIVATE ${PROTEUS_WARNINGS})
+add_test(NAME boat_skin COMMAND validate_boat_skin)
+set_tests_properties(boat_skin PROPERTIES LABELS "render;cpu")
 add_executable(boat_flag_review tools/boat_flag_review.c)
 add_dependencies(boat_flag_review proteus_assets)
 foreach(target validate_boat validate_boat_banking validate_boat_turn_entry validate_boat_replay
