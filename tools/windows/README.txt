@@ -16,14 +16,15 @@ encryption or accounts.
 Requires a GPU/driver supporting OpenGL 3.3. The build uses static raylib
 and the static MSVC runtime.
 
-A/D or Left/Right: adjust held wheel setting
-W/S or Up/Down: adjust held thrust, including reverse
+A/D or Left/Right: steer (the wheel springs back to centre when released)
+W/S, Up/Down or the scroll wheel: step thrust (4 forward / neutral / 2 reverse)
+M: capture the mouse for steering (move to turn, stop to hold); M or Esc releases
 R: reset boat
 +/-: camera distance
 PageUp/PageDown: camera height
 C: reset camera
 F3: toggle profiler overlay
-Esc: back to the title (Esc again on the title quits)
+Esc: release the mouse, then back to the title (Esc again on the title quits)
 
 Explicit options skip the title. Eriksberg with 4x4 supersampling, from PowerShell:
   .\boat_study.exe --location eriksberg --gpu --gpu-aa

@@ -355,7 +355,8 @@ is hidden and horizontal movement accumulates wheel angle: move right/left to tu
 then stop moving to hold that setting. About 300 mouse pixels moves the requested wheel from
 centre to full lock, independently of window size. Move back to straighten it; R resets both
 wheel and thrust. The steering needle shows the actual wheel as it follows the target smoothly.
-M or Esc releases the pointer and returns to keyboard steering; another Esc closes the window.
+M or Esc releases the pointer and returns to keyboard steering; another Esc returns to the title
+(or closes the window when started with explicit options).
 Help and focus loss release capture. Desktop builds resume capture on return; browsers may
 need a canvas click or M to capture again. Browsers that deny or lack capture show a keyboard
 fallback message. Mouse mode is inactive during scripted demos and replay playback.

@@ -1,7 +1,10 @@
 # Marine boat instruments
 
-Status, 2026-10-24: implemented in isolated branch `boat-marine-hud` at
-`/private/tmp/proteus-boat-hud`. The bottom-anchored translucent instrument panel now accompanies
+Status, 2026-10-24: implemented in branch `boat-marine-hud`, then cherry-picked onto `main` after
+`29d1afb` (title screen, M4 reset feedback, packaged `boat_server`). In the merge the HUD draws into
+the 320x200 frame and the reset fade, notices and room roster stay in screen space; Esc releases
+the mouse first, then leaves the session for the title. Native macOS checks after the merge: Debug
+build and all 105 active CTests; the merged controls were not hand-played. The bottom-anchored translucent instrument panel now accompanies
 stepped keyboard/scroll thrust and captured, stateful mouse steering. The initial absolute
 pointer prototype is superseded following user feedback. The user accepted captured/stateful
 steering with scroll thrust on 2026-10-24. Native macOS and browser qualification is recorded
