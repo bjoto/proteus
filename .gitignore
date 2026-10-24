@@ -1,6 +1,9 @@
 build/
 build-profile/
 build-web/
+# Left by a CMake configure run in the source root.
+/CMakeFiles/
+/_deps/
 .cache/
 __pycache__/
 *.pyc
