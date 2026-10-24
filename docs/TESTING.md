@@ -48,7 +48,7 @@ CPU checks may run concurrently; fixture dependencies still govern capture/repla
 
 Every active test carries one of three labels: `cpu` (display-free), `render` (CPU
 captures and checksums) or `gpu` (graphics context). Skin geometry carries both `cpu` and
-`render` labels. The eighteen `core` checks are also
+`render` labels. The nineteen `core` checks are also
 `cpu`:
 - `boat_core` runs `validate_boat_core`, which links only the boating core library.
 - `boat_core_boundary` runs `tools/check_core_boundary.py` over the core sources and archive,
@@ -58,7 +58,8 @@ captures and checksums) or `gpu` (graphics context). Skin geometry carries both 
 - `boat_match` runs `validate_boat_match` ([deathmatch](DEATHMATCH_PLAN.md) credit window,
   self-capsize, grace, respawn, bailout, leavers, rounds and planted-wake capsizes), and
   `boat_server_scripted_deathmatch` runs a scripted 10 s round through its intermission.
-- `boat_net` and `boat_net_loopback` are the [network checks](#network-checks).
+- `boat_net`, `boat_net_loopback` and `boat_net_deathmatch` are the
+  [network checks](#network-checks).
 - Eight argument checks expect a failure: `boat_server --scripted` with a room option, an invalid
   `--port` and an invalid `--bind`, `--round-seconds` without `--mode deathmatch`, `boat_bot`
   without a port, `boat_study --connect` combined with `--waves` or `--skin`, and `--name`
@@ -108,7 +109,10 @@ about two seconds. It covers:
 - wake reconciliation: digest-confirmed carry of missing births, held and incomplete
   corrections, early births by identity, and gated wake-change counts in the predicting rooms;
 - remote view: interpolation, life and teleport rules, extrapolation limits and proximity
-  hysteresis, plus the drawn delay and position error against the authority in the rooms.
+  hysteresis, plus the drawn delay and position error against the authority in the rooms;
+- a deathmatch room (protocol v2): every client, including a mid-round joiner, holds the
+  authority's scoreboard through capsizes, a round end and a leaver, and names both boats of a
+  credited capsize in its kill feed.
 
 `boat_net_loopback` runs `tools/boat_net_smoke.py`, which starts real `boat_server` and
 `boat_bot` processes on a free 127.0.0.1 UDP port for about 10 s. Two bots drive and a
@@ -123,7 +127,17 @@ server has already run cannot be used; a fixed 90% ratio failed macOS CI at 0.74
 python3 tools/boat_net_smoke.py --server build/boat_server --bot build/boat_bot
 ```
 
-Neither test impairs a real network interface, and neither replaces the
+`boat_net_deathmatch` runs the same script with `--deathmatch`: a deathmatch room with a 10 s
+round and two `boat_bot --hunt` clients for 16 s (about 20 s in all). Each bot's received
+scoreboard for round 1 must equal the server log's round-end line, and each must have received
+the round start, every logged capsize and the round end. Whether the hunters capsize anyone in a
+given run varies; the check is that clients agree with the authority. Run it alone with:
+
+```sh
+python3 tools/boat_net_smoke.py --deathmatch --server build/boat_server --bot build/boat_bot
+```
+
+None of these tests impairs a real network interface, and none replaces the
 [planned matrix](MULTIPLAYER_PLAN.md#verification-matrix-and-telemetry).
 
 ## Core boundary gate

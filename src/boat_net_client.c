@@ -253,6 +253,17 @@ static void page(BoatNetClient *c, const BoatNetWorldPage *p)
     ++c->pages_received;
 }
 
+static void match_event(BoatNetClient *c, const BoatNetMessage *m, double now)
+{
+    const BoatNetMatchEvent *e = &m->match_event;
+    BoatNetFeedEntry *entry = &c->feed[c->feed_count++ % BOAT_NET_MATCH_FEED];
+    *entry = (BoatNetFeedEntry) { .event = *e, .tick = m->header.tick, .at = now };
+    if (e->victim < BOAT_FLEET_SLOTS)
+        copy_text(entry->victim, c->roster.slots[e->victim].name, BOAT_NET_NAME_BYTES);
+    if (e->attacker < BOAT_FLEET_SLOTS)
+        copy_text(entry->attacker, c->roster.slots[e->attacker].name, BOAT_NET_NAME_BYTES);
+}
+
 static void message(BoatNetClient *c, const BoatNetEvent *event, double now)
 {
     static BoatNetMessage m;
@@ -327,6 +338,15 @@ static void message(BoatNetClient *c, const BoatNetEvent *event, double now)
         }
         break;
     }
+    case BOAT_NET_MATCH_STATE:
+        c->match = m.match;
+        c->match_valid = true;
+        if (m.match.phase == BOAT_MATCH_INTERMISSION && m.match.round != c->result.round)
+            c->result = m.match;
+        break;
+    case BOAT_NET_MATCH_EVENT:
+        match_event(c, &m, now);
+        break;
     case BOAT_NET_DISCONNECT:
         c->leave = m.leave;
         c->phase = BOAT_NET_CLIENT_CLOSED;

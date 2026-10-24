@@ -45,7 +45,8 @@ user played across two machines: a Mac hosted `boat_server` and one client, and 
 joined over the LAN ("Multiplayer architecture works great!"); profile F and the contact-gap
 measurement were not part of that session. Next: the rest of the M4 manual acceptance session (two humans, LAN and profile F) and the contact-gap
 measurement it calls for; M5–M8 are pending. The [capsize deathmatch](DEATHMATCH_PLAN.md)
-proceeds in parallel (D1 match core implemented 2026-10-24; next task D2).
+proceeds in parallel (D1 match core and D2 protocol v2 with the in-game HUD implemented
+2026-10-24; next: D2 play, then D3). The live protocol is now [v2](MULTIPLAYER_PROTOCOL.md).
 Numerical budgets below are proposed gates, not measured multiplayer results.
 The final evidence section distinguishes checks performed for this document from future checks.
 

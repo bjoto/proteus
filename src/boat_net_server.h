@@ -81,6 +81,7 @@ typedef struct {
     uint64_t tick_limit; // Never tick past this (0: no limit), even when catching up.
     uint32_t next_checkpoint;
     BoatMatch match; // Deathmatch state; untouched in free play.
+    BoatNetMatchState match_sent; // The scoreboard clients last received.
     BoatMatchEvent events[BOAT_NET_MATCH_EVENTS]; // Recent match events, a ring.
     uint64_t event_count; // Match events ever recorded; the newest is (count - 1) % ring size.
     BoatNetServerStats stats;

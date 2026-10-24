@@ -1,13 +1,15 @@
-# Multiplayer protocol v1
+# Multiplayer protocol v2
 
-Written 2026-10-23 with multiplayer M3. This document owns the byte layout, delivery classes,
+Written 2026-10-23 with multiplayer M3 (v1); v2, 2026-10-24, adds the
+[deathmatch](DEATHMATCH_PLAN.md) room mode in Accept and the MatchState and MatchEvent messages. This document owns the byte layout, delivery classes,
 validation rules and version policy of the boating network protocol. Task status, decisions
 and acceptance stay in the [multiplayer plan](MULTIPLAYER_PLAN.md); the codec is
 [`src/boat_net_protocol.[ch]`](../src/boat_net_protocol.h) and its fixtures are in
 [`tools/validate_boat_net.c`](../tools/validate_boat_net.c).
 
-v1 is a diagnostic protocol for one basin room of up to four players. M4 client prediction
-uses only the fields listed here. There is no encryption or authentication: a room token is a
+v2 is a diagnostic protocol for one basin room of up to four players. M4 client prediction
+uses only the fields listed here; v1's layouts are unchanged apart from the version number and
+Accept's former reserved byte. There is no encryption or authentication: a room token is a
 shared word, not a secret.
 
 ## Conventions
@@ -32,8 +34,8 @@ shared word, not a secret.
 | Offset | Type | Field | Rule |
 | ---: | --- | --- | --- |
 | 0 | u32 | magic | `0x50424e54` ("PBNT") |
-| 4 | u16 | version | 1. Any other value is a version mismatch (a Hello gets Reject `VERSION`) |
-| 6 | u8 | type | 1–16, below |
+| 4 | u16 | version | 2. Any other value is a version mismatch (a Hello gets Reject `VERSION`) |
+| 6 | u8 | type | 1–18, below |
 | 7 | u8 | flags | 0 |
 | 8 | u32 | epoch | Room session epoch from Accept; 0 in Hello |
 | 12 | u32 | sequence | Per sender and channel, starting anywhere, wrapping modulo 2³² |
@@ -51,10 +53,10 @@ traffic from an earlier session never reaches a room.
 
 | Channel | ENet delivery | Carries |
 | ---: | --- | --- |
-| 0 control | reliable, ordered | Hello, Accept, Reject, Roster, Ready, SpawnRequest, ResyncRequest, Disconnect |
+| 0 control | reliable, ordered | Hello, Accept, Reject, Roster, Ready, SpawnRequest, ResyncRequest, Disconnect, MatchState, MatchEvent |
 | 1 state | unreliable, sequenced | InputBatch (up), Snapshot (down), Ping, Pong |
 | 2 births | unreliable, sequenced | WakeBirths |
-| 3 registry | unreliable, unsequenced | Reserved for wake registry pages (M4/M5); unused in v1 |
+| 3 registry | unreliable, unsequenced | Reserved for wake registry pages (M4/M5); unused in v2 |
 | 4 bootstrap | reliable, ordered | WorldBegin, WorldPage, WorldEnd |
 
 A message on the wrong channel is discarded. Reliable bootstrap traffic cannot hold up new
@@ -82,6 +84,8 @@ snapshots, because they travel on a different channel.
 | 14 | Pong | S→C | room tick | 8 |
 | 15 | ResyncRequest | C→S | client's mirror tick | 12 |
 | 16 | Disconnect | both | sender's tick | 4 |
+| 17 | MatchState | S→C | room tick | 104 |
+| 18 | MatchEvent | S→C | event tick | 16 |
 
 ### Hello, Accept, Reject
 
@@ -98,7 +102,8 @@ token, free slot. The first failure is answered with Reject and a disconnect, be
 or boat exists.
 
 Accept: `u8` slot (0–3), `u8` waves (0/1), `u8` snapshot interval (4), `u8` birth interval (12),
-`u8` input interval (2), `u8` commands per batch (12), `u8` future window (24), `u8` reserved,
+`u8` input interval (2), `u8` commands per batch (12), `u8` future window (24), `u8` room mode
+(0 free, 1 deathmatch; v1 reserved),
 `u16` tick rate (must be 120), `u16` reserved, `u32` wake lifetime ticks (240–1920),
 `f32` crest height (0.1–3). The header epoch is the room's epoch.
 
@@ -209,6 +214,38 @@ immutable, so repeated copies in later batches cannot change them.
 - ResyncRequest: `u8` reason (1 wake digest mismatch, 2 other), three reserved, `u64` mirror tick.
 - Disconnect: `u8` reason (1 quit, 2 timeout, 3 shutdown, 4 misbehaving), three reserved.
 
+### MatchState and MatchEvent (deathmatch rooms)
+
+Only a room whose Accept says deathmatch sends these; free rooms never do. The authority alone
+decides credit and scores ([rules](DEATHMATCH_PLAN.md#rules)); clients display them and never
+predict them.
+
+MatchState is the whole scoreboard and round clock. The authority sends it to a joining peer
+right after Roster (before the checkpoint, so a mid-round joiner sees the round at once) and to
+every peer whenever any field changes: a phase change, a score, a join or a leave.
+
+| Offset | Type | Field |
+| ---: | --- | --- |
+| 0 | u8 | phase: 0 warmup, 1 playing, 2 intermission |
+| 1 | u8 | reserved |
+| 2 | u16 | automatic respawn delay, ticks |
+| 4 | u16 | earliest R after a capsize, ticks (≤ respawn delay) |
+| 6 | u16 | reserved |
+| 8 | u32 | rounds started (> 0 unless warmup) |
+| 12 | u32 | round length, ticks (> 0) |
+| 16 | u64 | tick the phase ends; 0 exactly in warmup |
+| 24 | 4 × 20 | rows in slot order: `u8` present (0/1), three reserved, `i32` score, `u32` capsizes caused, `u32` times capsized, `u32` self-capsizes (≤ times capsized); an absent row is all zero |
+
+During the intermission the rows are the finished round's result; the next round start resets
+them.
+
+MatchEvent: `u8` kind (0 capsize, 1 round start, 2 round end), `u8` victim slot, `u8` attacker
+slot, `u8` cause (0 none, 1 contact, 2 wake), `u8` flags (bit 0 bailout: R while upright after a
+touch), three reserved, `u32` victim life, `u32` round (> 0). A capsize names a victim < 4 and
+either an attacker < 4 other than the victim with cause contact or wake, or attacker 255 (a
+self-capsize, −1) with cause none and no bailout flag. Round events carry 255 in both slots,
+cause none, no flags and life 0. Within a tick, events precede the MatchState that counts them.
+
 ## Authority rules carried by the protocol
 
 - **No client state.** Clients never send positions, impacts, launches, landings, capsizes or
@@ -240,21 +277,26 @@ must not exceed their capacities, and expired ≤ emitted.
 ## Version rules
 
 - Any change to a byte layout, a message type, a channel or a rule above increments the
-  protocol version. v1 rejects every other version; there is no negotiation or migration.
+  protocol version. v2 rejects every other version, v1 included; there is no negotiation or
+  migration.
 - A handling change increments `BOAT_PHYSICS_REVISION`; a change to the basin definition or the
   fleet/wake contract changes the content digest. Either is rejected at Hello.
-- Registry pages, prediction acknowledgements and remote-input history arrive with M4/M5 and
-  will be protocol v2.
+- Registry pages, prediction acknowledgements and remote-input history, if M5 needs them, will
+  be a later version.
 
 ## Fixtures
 
 `validate_boat_net` pins:
 
-- golden bytes of a Ping, an InputBatch and a Hello payload;
+- golden bytes of a Ping, an InputBatch, a Hello, a MatchState and a MatchEvent payload;
 - the snapshot size (752), slot field offsets and an FNV-1a 64 digest of a hand-built
-  snapshot's bytes (`57447ded5b742cfe`);
-- round trips of all 16 types, rejection of every truncation, and a declared extra byte;
-- header, field, non-finite and range faults;
+  snapshot's bytes (`c02fda7dbe1ffe1b`; with the version byte set back to 1 the v1 digest
+  `57447ded5b742cfe`, so v2 left the snapshot unchanged);
+- round trips of all 18 types, rejection of every truncation, and a declared extra byte;
+- header, field, non-finite and range faults, including the room mode and the MatchState and
+  MatchEvent consistency rules;
+- a deathmatch room on the in-memory transport whose clients, including a mid-round joiner,
+  hold the authority's MatchState through capsizes, a round end and a leaver;
 - checkpoints of busy four-boat fleets (calm and waves) that decode to the same fleet hash,
   re-encode byte for byte and resume 600 ticks bit-identically.
 

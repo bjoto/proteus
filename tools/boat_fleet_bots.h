@@ -29,6 +29,35 @@ static inline BoatInput boat_fleet_bot_input(
         Clamp((throttle - boat->throttle) / (.5f * BOAT_STEP), -1, 1) };
 }
 
+// Deathmatch hunter (boat_bot --hunt): full throttle at a point just ahead of the nearest
+// other boat, so it rams it or lays its wake across the target's path. Falls back to the route
+// when it is alone.
+static inline BoatInput boat_fleet_bot_hunt_input(
+    BoatFleetBots *bots, const BoatFleet *fleet, unsigned slot)
+{
+    const Boat *boat = &fleet->state.slots[slot].boat;
+    const Boat *prey = NULL;
+    float nearest = INFINITY;
+    for (unsigned i = 0; i < BOAT_FLEET_SLOTS; ++i) {
+        const BoatFleetSlot *other = &fleet->state.slots[i];
+        float distance = Vector2Distance(other->boat.position, boat->position);
+        if (i != slot && other->active && other->boat.motion_state != BOAT_CAPSIZED
+            && distance < nearest) {
+            nearest = distance;
+            prey = &other->boat;
+        }
+    }
+    if (!prey)
+        return boat_fleet_bot_input(bots, fleet, slot);
+    Vector2 aim = Vector2Add(prey->position, Vector2Scale(prey->velocity, .6f));
+    Vector2 delta = Vector2Subtract(aim, boat->position);
+    float target = atan2f(delta.x, -delta.y);
+    float error = remainderf(target - boat->heading, 2 * PI);
+    float wheel = Clamp(2 * error - boat->yaw_velocity, -1, 1);
+    return (BoatInput) { Clamp((wheel - boat->wheel) / BOAT_STEP, -1, 1),
+        Clamp((1 - boat->throttle) / (.5f * BOAT_STEP), -1, 1) };
+}
+
 // Inputs for every slot, then recovery requests for boats capsized for two seconds.
 static inline void boat_fleet_bots_drive(
     BoatFleetBots *bots, BoatFleet *fleet, BoatInput inputs[BOAT_FLEET_SLOTS])

@@ -20,6 +20,8 @@ typedef struct {
     bool own_visible, visible[BOAT_FLEET_SLOTS];
     uint32_t own_life, lives[BOAT_FLEET_SLOTS];
     double respawned_at; // Clock time of the own boat's latest new life.
+    uint32_t capsized_life; // Own life last seen capsized, and the mirror tick it was first seen.
+    uint64_t capsized_tick;
     BoatPredictionError offset[BOAT_FLEET_SLOTS]; // Visual correction still being blended.
     uint32_t correction; // Prediction correction serial already folded into the offsets.
     uint64_t presented_tick; // Last tick the presentations were stepped for.
@@ -40,13 +42,19 @@ bool net_study_frame(NetStudy *net, BoatSession *session, BoatInput input, float
 void net_study_rivals(const NetStudy *net, double time, BoatRivals *rivals);
 // A slot's skin: the same on every client.
 unsigned net_study_skin(unsigned slot);
-// The own boat's reset or spawn notice (NULL when there is none), and the opacity of the short
-// fade from dark that hides the camera cut to a new life.
+// The own boat's reset, spawn or (in a deathmatch) capsize notice (NULL when there is none), and
+// the opacity of the short fade from dark that hides the camera cut to a new life.
 const char *net_study_notice(const NetStudy *net);
 float net_study_fade(const NetStudy *net);
 // One HUD line: slot, players, round trip and staleness.
 const char *net_study_status(const NetStudy *net);
-// The room's players, one right-aligned line each in their slot's hull colour.
-void net_study_draw_roster(const NetStudy *net, int right, int top);
+// The room's players, one right-aligned line each; returns the y below the last line.
+int net_study_draw_roster(const NetStudy *net, int right, int top);
+// A deathmatch room (docs/DEATHMATCH_PLAN.md) has sent its scoreboard.
+bool net_study_deathmatch(const NetStudy *net);
+// Deathmatch HUD at window resolution: round clock and own score at the top centre, a kill feed
+// below FEED_TOP at the right, and the scoreboard while SCOREBOARD is held or between rounds.
+void net_study_draw_match(
+    const NetStudy *net, int width, int height, int feed_top, bool scoreboard);
 void net_study_close(NetStudy *net);
 #endif

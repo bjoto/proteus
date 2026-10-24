@@ -91,7 +91,7 @@ static int golden(void)
         bytes);
     CHECK(size == 40);
     CHECK(same_bytes(bytes, size,
-        "50424e5400010d0001020304a0b0c0d01122334455667788000800000000000001020304050607"
+        "50424e5400020d0001020304a0b0c0d01122334455667788000800000000000001020304050607"
         "08"));
     BoatNetMessage input = { .header = { .type = BOAT_NET_INPUT_BATCH, .epoch = 9, .tick = 200 },
         .input = { .life = 7, .count = 2, .snapshot_tick = 100 } };
@@ -100,7 +100,7 @@ static int golden(void)
     size = encode(input, bytes);
     CHECK(size == 56);
     CHECK(same_bytes(bytes, size,
-        "50424e54000109000000000900000000000000000000"
+        "50424e54000209000000000900000000000000000000"
         "00c80018000000000000"
         "00000007020000000000000000000064" // Life, count, latest snapshot tick.
         "7f810000" // Steering +1, throttle -1.
@@ -118,6 +118,28 @@ static int golden(void)
         "026162"
         "00"
         "0178"));
+    // Match messages (v2): a scoreboard row with a negative score and a credited bailout.
+    BoatNetMessage board = { .header = { .type = BOAT_NET_MATCH_STATE, .tick = 1 },
+        .match = { .phase = BOAT_MATCH_INTERMISSION,
+            .respawn_ticks = 360,
+            .skip_ticks = 120,
+            .round = 1,
+            .round_ticks = 1200,
+            .phase_end = 2400 } };
+    board.match.slots[1].present = true;
+    board.match.slots[1].row = (BoatMatchRow) { -1, 0, 1, 1 };
+    size = encode(board, bytes);
+    CHECK(size == 32 + 104);
+    CHECK(same_bytes(bytes + 32, 64,
+        "0200016800780000" // Phase, reserved, respawn and skip ticks, reserved.
+        "00000001000004b00000000000000960" // Round, round ticks, phase end.
+        "0000000000000000000000000000000000000000" // Slot 0 absent.
+        "01000000ffffffff000000000000000100000001")); // Score -1, 1 capsized, 1 self.
+    BoatNetMessage event = { .header = { .type = BOAT_NET_MATCH_EVENT, .tick = 2 },
+        .match_event = { BOAT_MATCH_CAPSIZE, 3, 1, BOAT_MATCH_CONTACT, true, 9, 1 } };
+    size = encode(event, bytes);
+    CHECK(size == 48);
+    CHECK(same_bytes(bytes + 32, 16, "00030101010000000000000900000001"));
     // Snapshot layout: sizes and a pinned digest of a hand-built state's bytes.
     BoatFleetState state = { .tick = 1000, .next_request = 5 };
     BoatNetSlotInput records[BOAT_FLEET_SLOTS]
@@ -147,7 +169,9 @@ static int golden(void)
     CHECK(bytes[32 + 32 + 29] == 0xc0); // -64 as a two's-complement byte.
     uint64_t digest = boat_net_bytes_digest(bytes, size);
     printf("golden: snapshot digest %016" PRIx64 "\n", digest);
-    CHECK(digest == UINT64_C(0x57447ded5b742cfe));
+    CHECK(digest == UINT64_C(0xc02fda7dbe1ffe1b));
+    bytes[5] = 1; // The v1 bytes: v2 left the snapshot layout unchanged.
+    CHECK(boat_net_bytes_digest(bytes, size) == UINT64_C(0x57447ded5b742cfe));
     // Command quantization: keyboard values survive exactly.
     for (float value = -1; value <= 1; value += 1) {
         BoatInput back = boat_net_command_input(boat_net_command((BoatInput) { value, value }, 0));
@@ -158,7 +182,7 @@ static int golden(void)
     CHECK(boat_net_sequence_newer(0, UINT32_MAX) && !boat_net_sequence_newer(UINT32_MAX, 0));
     CHECK(!boat_net_sequence_newer(5, 5) && !boat_net_sequence_newer(UINT32_C(0x80000000), 0));
     CHECK(boat_net_sequence_newer(UINT32_C(0x7fffffff), 0));
-    printf("golden: header, input, hello and snapshot layouts pinned\n");
+    printf("golden: header, input, hello, match and snapshot layouts pinned\n");
     return 0;
 }
 
@@ -177,7 +201,7 @@ static unsigned samples(Sample *out)
     m[0] = (BoatNetMessage) { .header = { .type = BOAT_NET_HELLO },
         .hello = { BOAT_PHYSICS_REVISION, 42, "name", "token", "build" } };
     m[1] = (BoatNetMessage) { .header = { .type = BOAT_NET_ACCEPT, .epoch = 3 },
-        .accept = { 2, true, 4, 12, 2, 12, 24, 120, 1920, 1.8f } };
+        .accept = { 2, true, BOAT_NET_MODE_DEATHMATCH, 4, 12, 2, 12, 24, 120, 1920, 1.8f } };
     m[2] = (BoatNetMessage) { .header = { .type = BOAT_NET_REJECT },
         .reject = { BOAT_NET_REJECT_TOKEN, 1, 6, 42 } };
     m[3] = (BoatNetMessage) { .header = { .type = BOAT_NET_ROSTER, .epoch = 3 } };
@@ -209,6 +233,18 @@ static unsigned samples(Sample *out)
         .resync = { 1, 30 } };
     m[15] = (BoatNetMessage) { .header = { .type = BOAT_NET_DISCONNECT, .epoch = 3 },
         .leave = BOAT_NET_LEAVE_QUIT };
+    m[16] = (BoatNetMessage) { .header = { .type = BOAT_NET_MATCH_STATE, .epoch = 3, .tick = 80 },
+        .match = { .phase = BOAT_MATCH_PLAYING,
+            .respawn_ticks = 360,
+            .skip_ticks = 120,
+            .round = 2,
+            .round_ticks = 36000,
+            .phase_end = 36080 } };
+    m[16].match.slots[0].present = m[16].match.slots[2].present = true;
+    m[16].match.slots[0].row = (BoatMatchRow) { -2, 1, 4, 3 };
+    m[16].match.slots[2].row = (BoatMatchRow) { 3, 3, 0, 0 };
+    m[17] = (BoatNetMessage) { .header = { .type = BOAT_NET_MATCH_EVENT, .epoch = 3, .tick = 80 },
+        .match_event = { BOAT_MATCH_CAPSIZE, 0, 2, BOAT_MATCH_WAKE, true, 7, 2 } };
     for (unsigned i = 0; i < BOAT_NET_TYPE_LIMIT - 1; ++i) {
         out[n].size = boat_net_encode(&m[i], out[n].bytes);
         if (!out[n].size) {
@@ -257,7 +293,7 @@ static int codec(void)
         size_t at;
         uint8_t value;
         BoatNetError error;
-    } header_faults[] = { { 0, 0x51, BOAT_NET_BAD_MAGIC }, { 5, 2, BOAT_NET_BAD_VERSION },
+    } header_faults[] = { { 0, 0x51, BOAT_NET_BAD_MAGIC }, { 5, 1, BOAT_NET_BAD_VERSION },
         { 6, 0, BOAT_NET_BAD_TYPE }, { 6, BOAT_NET_TYPE_LIMIT, BOAT_NET_BAD_TYPE },
         { 7, 1, BOAT_NET_BAD_HEADER }, { 26, 1, BOAT_NET_BAD_HEADER },
         { 31, 1, BOAT_NET_BAD_HEADER }, { 24, 0xff, BOAT_NET_BAD_HEADER } };
@@ -328,7 +364,15 @@ static int codec(void)
         { 4, 40, 7 }, { 2, 32, 0 }, { 2, 32, BOAT_NET_REJECT_LIMIT }, { 0, 44, 0x01 },
         { 0, 46, 0x7f }, { 0, 44, 17 }, { 1, 32, BOAT_FLEET_SLOTS }, { 1, 33, 2 }, { 1, 41, 0 },
         { 3, 32 + 19, 3 }, { 3, 32 + 20, 17 }, { 3, 32 + 21 + 15, 'x' }, { 14, 32, 3 },
-        { 15, 32, 0 }, { 6, 36, 1 } };
+        { 15, 32, 0 }, { 6, 36, 1 }, { 1, 39, BOAT_NET_MODE_LIMIT },
+        // Match state: phase, reserved, skip beyond respawn, warmup with an end tick, a bad
+        // presence flag, more self-capsizes than capsizes and a score on an absent slot.
+        { 16, 32, 3 }, { 16, 33, 1 }, { 16, 38, 0x7f }, { 16, 32, BOAT_MATCH_WARMUP },
+        { 16, 56, 2 }, { 16, 75, 9 }, { 16, 83, 1 },
+        // Match event: kind, victim as attacker, slot range, credited cause, flags, reserved,
+        // round zero and a bailout without an attacker.
+        { 17, 32, 3 }, { 17, 33, 2 }, { 17, 34, 4 }, { 17, 35, 0 }, { 17, 36, 2 }, { 17, 37, 1 },
+        { 17, 47, 0 }, { 17, 34, BOAT_MATCH_NOBODY } };
     for (size_t i = 0; i < sizeof(field_faults) / sizeof(*field_faults); ++i) {
         const Sample *s = &sample[field_faults[i].sample];
         memcpy(b, s->bytes, s->size);
@@ -567,6 +611,7 @@ static int lossless(void)
         CHECK(c->roster.slots[0].state == BOAT_NET_ROSTER_PLAYING);
         CHECK(c->roster.slots[1].state == BOAT_NET_ROSTER_PLAYING);
         CHECK(strcmp(c->roster.slots[1].name, "beta") == 0);
+        CHECK(c->accept.mode == BOAT_NET_MODE_FREE && !c->match_valid && !c->feed_count);
     }
     CHECK(room.clients[a].slot == 0 && room.clients[b].slot == 1);
     CHECK(active_boats(s) == 2);
@@ -678,9 +723,9 @@ static int rejections(void)
     BoatNetMessage hello = { .header = { .type = BOAT_NET_HELLO },
         .hello = { BOAT_PHYSICS_REVISION, boat_net_content_digest(basin()), "x", "room", "" } };
     size_t size = boat_net_encode(&hello, bytes);
-    bytes[5] = 2; // Protocol version 2.
+    bytes[5] = 1; // A v1 client meets a v2 room.
     CHECK(raw_hello(&room, bytes, size, &reply) == BOAT_NET_REJECT);
-    CHECK(reply.reject.reason == BOAT_NET_REJECT_VERSION && reply.reject.version == 1);
+    CHECK(reply.reject.reason == BOAT_NET_REJECT_VERSION && reply.reject.version == 2);
     hello.hello.physics_revision = BOAT_PHYSICS_REVISION + 1;
     size = boat_net_encode(&hello, bytes);
     CHECK(raw_hello(&room, bytes, size, &reply) == BOAT_NET_REJECT);
@@ -691,7 +736,7 @@ static int rejections(void)
     size = boat_net_encode(&hello, bytes);
     CHECK(raw_hello(&room, bytes, size, &reply) == BOAT_NET_REJECT);
     CHECK(reply.reject.reason == BOAT_NET_REJECT_CONTENT);
-    uint8_t garbage[40] = { 0x50, 0x42, 0x4e, 0x54, 0, 1, BOAT_NET_HELLO };
+    uint8_t garbage[40] = { 0x50, 0x42, 0x4e, 0x54, 0, BOAT_NET_VERSION, BOAT_NET_HELLO };
     CHECK(raw_hello(&room, garbage, sizeof(garbage), &reply) == BOAT_NET_REJECT);
     CHECK(reply.reject.reason == BOAT_NET_REJECT_MALFORMED);
     const BoatNetServerStats *s = &room.server.stats;
@@ -721,6 +766,97 @@ static void inject(Room *room, unsigned i, BoatNetMessage m)
     size_t size = boat_net_encode(&m, bytes);
     if (size)
         boat_net_send(&c->transport, 0, channel, bytes, size);
+}
+
+// Turn slot I upside down on the authority; the ordinary capsize rule latches it.
+static void overturn(BoatNetServer *server, unsigned i)
+{
+    Boat *boat = &server->fleet.state.slots[i].boat;
+    boat->roll = PI;
+    boat->roll_velocity = 0;
+}
+
+static bool same_match(const BoatNetClient *c, const BoatNetServer *s)
+{
+    BoatNetMatchState state;
+    boat_net_match_state_of(&s->match, &state);
+    return c->match_valid && boat_net_match_state_equal(&c->match, &state);
+}
+
+// Deathmatch rooms (protocol v2): scoreboards and events reach every client, including one that
+// joins mid-round, and a capsize credited by the authority appears in each kill feed by name.
+static int deathmatch(void)
+{
+    static Room room;
+    BoatMatchRules rules = boat_match_default_rules();
+    rules.round_ticks = 8 * BOAT_TICK_HZ;
+    rules.intermission_ticks = 2 * BOAT_TICK_HZ;
+    CHECK(room_open(&room, 11, (BoatNetServerConfig) { .deathmatch = true, .match = rules }));
+    BoatNetServer *s = &room.server;
+    unsigned a = room_join(&room, "alpha", NULL, 0);
+    room_run(&room, 1);
+    CHECK(room.clients[a].accept.mode == BOAT_NET_MODE_DEATHMATCH);
+    CHECK(same_match(&room.clients[a], s) && room.clients[a].match.phase == BOAT_MATCH_WARMUP);
+    unsigned b = room_join(&room, "beta", NULL, 0);
+    room_run(&room, 3); // Past the new lives' credit grace.
+    CHECK(s->match.phase == BOAT_MATCH_PLAYING && s->match.round == 1);
+    for (unsigned i = 0; i < 2; ++i) {
+        const BoatNetClient *c = &room.clients[i];
+        CHECK(same_match(c, s) && c->feed_count == 1);
+        CHECK(c->feed[0].event.kind == BOAT_MATCH_ROUND_START && c->feed[0].event.round == 1);
+    }
+    // Beta capsizes after a wake touch by alpha: +1 alpha, and both feeds name them.
+    s->match.slots[1].touch
+        = (BoatMatchTouch) { .tick = s->fleet.state.tick, .slot = 0, .cause = BOAT_MATCH_WAKE };
+    overturn(s, 1);
+    room_run(&room, 1.5);
+    CHECK(s->match.rows[0].score == 1 && s->match.rows[1].capsized == 1);
+    for (unsigned i = 0; i < 2; ++i) {
+        const BoatNetClient *c = &room.clients[i];
+        const BoatNetFeedEntry *e = &c->feed[(c->feed_count - 1) % BOAT_NET_MATCH_FEED];
+        CHECK(same_match(c, s) && c->feed_count == 2);
+        CHECK(e->event.kind == BOAT_MATCH_CAPSIZE && e->event.victim == 1);
+        CHECK(e->event.attacker == 0 && e->event.cause == BOAT_MATCH_WAKE);
+        CHECK(e->event.victim_life == s->fleet.state.slots[1].life);
+        CHECK(strcmp(e->victim, "beta") == 0 && strcmp(e->attacker, "alpha") == 0);
+    }
+    // A mid-round joiner receives the scoreboard during bootstrap and sees alpha's capsize.
+    unsigned c3 = room_join(&room, "gamma", NULL, 0);
+    room_run(&room, .5);
+    CHECK(room.clients[c3].phase == BOAT_NET_CLIENT_PLAYING && same_match(&room.clients[c3], s));
+    CHECK(room.clients[c3].match.slots[0].row.score == 1 && room.clients[c3].feed_count == 0);
+    overturn(s, 0);
+    room_run(&room, 1.5);
+    CHECK(s->match.rows[0].capsized == 1); // Credited to whoever touched alpha last, if anyone.
+    for (unsigned i = 0; i < 3; ++i) {
+        const BoatNetClient *c = &room.clients[i];
+        const BoatNetFeedEntry *e = &c->feed[(c->feed_count - 1) % BOAT_NET_MATCH_FEED];
+        CHECK(same_match(c, s) && e->event.kind == BOAT_MATCH_CAPSIZE && e->event.victim == 0);
+        CHECK((e->event.attacker == BOAT_MATCH_NOBODY) == (s->match.rows[0].self == 1));
+    }
+    // The round ends: every client keeps the announced result through the intermission.
+    room_run(&room, 2.5);
+    CHECK(s->match.phase == BOAT_MATCH_INTERMISSION);
+    BoatNetMatchState final;
+    boat_net_match_state_of(&s->match, &final);
+    for (unsigned i = 0; i < 3; ++i) {
+        const BoatNetClient *c = &room.clients[i];
+        CHECK(same_match(c, s) && boat_net_match_state_equal(&c->result, &final));
+        CHECK(
+            c->feed[(c->feed_count - 1) % BOAT_NET_MATCH_FEED].event.kind == BOAT_MATCH_ROUND_END);
+        CHECK(c->stats.decode_errors == 0);
+    }
+    // A leaver's row goes at once; the next round starts with the two who stayed.
+    boat_net_client_leave(&room.clients[b]);
+    room.live[b] = false;
+    room_run(&room, 3);
+    CHECK(s->match.phase == BOAT_MATCH_PLAYING && s->match.round == 2);
+    CHECK(same_match(&room.clients[a], s) && !room.clients[a].match.slots[1].present);
+    CHECK(s->stats.output_faults == 0 && room.mismatches == 0);
+    printf("deathmatch: 3 clients matched the authority's scoreboard through two capsizes, "
+           "a mid-round join, a round end and a leaver\n");
+    room_close(&room);
+    return 0;
 }
 
 static int authority_rules(void)
@@ -1383,6 +1519,7 @@ int main(void)
     RUN(codec());
     RUN(checkpoints());
     RUN(lossless());
+    RUN(deathmatch());
     RUN(tick_limit());
     RUN(rejections());
     RUN(authority_rules());

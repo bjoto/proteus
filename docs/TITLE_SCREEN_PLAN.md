@@ -104,7 +104,7 @@ the menu table above remains a later proposal.
   `--connect ADDRESS --name NAME`. Escape in a session returns to the title; the title
   ignores the just-pressed Escape event on its first frame so it cannot immediately close
   the app. Explicit options behave exactly as before. The web build bypasses the title.
-- Skins: protocol v1 has no livery field and every client colours slots 1–4 Sweden,
+- Skins: protocol v1 (and v2) has no livery field and every client colours slots 1–4 Sweden,
   Finland, Denmark, Norway, so BOAT applies to single player only and the title says so.
   A per-player livery would need a protocol revision; not done.
 - Nicks were already sent in the hello but never shown; `net_study_draw_roster` now lists

@@ -139,6 +139,10 @@ bool net_study_frame(NetStudy *net, BoatSession *session, BoatInput input, float
     const BoatFleet *view = boat_net_client_view(c);
     const BoatFleetSlot *own = &view->state.slots[c->slot];
     net->own_visible = own->active;
+    if (own->active && own->boat.motion_state == BOAT_CAPSIZED && own->life != net->capsized_life) {
+        net->capsized_life = own->life;
+        net->capsized_tick = c->fleet.state.tick;
+    }
     if (own->active) {
         if (own->life != net->own_life) {
             net->own_life = own->life;
@@ -205,6 +209,42 @@ void net_study_rivals(const NetStudy *net, double time, BoatRivals *rivals)
     }
 }
 
+// The newest feed entry reporting the own boat's capsize on LIFE, or NULL.
+static const BoatNetFeedEntry *own_capsize(const BoatNetClient *c, uint32_t life)
+{
+    for (uint64_t n = c->feed_count; n > 0 && c->feed_count - n < BOAT_NET_MATCH_FEED; --n) {
+        const BoatNetFeedEntry *e = &c->feed[(n - 1) % BOAT_NET_MATCH_FEED];
+        if (e->event.kind == BOAT_MATCH_CAPSIZE && e->event.victim == c->slot
+            && e->event.victim_life == life)
+            return e;
+    }
+    return NULL;
+}
+
+// "CAPSIZED BY NAME / RESPAWN 2": the authority respawns a capsized boat by itself; R skips
+// the rest of the wait after skip_ticks.
+static const char *capsize_notice(const NetStudy *net, const Boat *boat, uint32_t life)
+{
+    static char text[96];
+    const BoatNetClient *c = &net->client;
+    if (boat->motion_state != BOAT_CAPSIZED)
+        return NULL;
+    const BoatNetFeedEntry *e = own_capsize(c, life);
+    uint64_t since = e ? e->tick : net->capsized_tick;
+    double left = ((double)since + c->match.respawn_ticks
+                      - boat_net_client_server_tick(c, boat_net_clock()))
+        / BOAT_TICK_HZ;
+    double waited = boat_net_client_server_tick(c, boat_net_clock()) - (double)since;
+    char who[48] = "CAPSIZED";
+    if (e && e->event.attacker != BOAT_MATCH_NOBODY)
+        snprintf(who, sizeof(who), "CAPSIZED BY %s", e->attacker);
+    else if (e)
+        snprintf(who, sizeof(who), "CAPSIZED / -1");
+    snprintf(text, sizeof(text), "%s / RESPAWN %.0f%s", who, ceil(fmax(0, left)),
+        waited >= c->match.skip_ticks ? " / R TO SKIP" : "");
+    return text;
+}
+
 const char *net_study_notice(const NetStudy *net)
 {
     static char text[80];
@@ -212,6 +252,13 @@ const char *net_study_notice(const NetStudy *net)
     BoatNetResetState reset = boat_net_client_reset_state(&net->client, boat_net_clock(), &seconds);
     if (!net->own_visible)
         return "WAITING FOR A SAFE SPAWN";
+    if (net_study_deathmatch(net)) {
+        const BoatFleetSlot *own
+            = &boat_net_client_view(&net->client)->state.slots[net->client.slot];
+        const char *capsized = capsize_notice(net, &own->boat, own->life);
+        if (capsized)
+            return capsized;
+    }
     if (reset == BOAT_NET_RESET_NONE)
         return NULL;
     // A clear spot is normally found within a tick or two; say so only when it is not.
@@ -241,7 +288,7 @@ const char *net_study_status(const NetStudy *net)
     return text;
 }
 
-void net_study_draw_roster(const NetStudy *net, int right, int top)
+int net_study_draw_roster(const NetStudy *net, int right, int top)
 {
     const BoatNetClient *c = &net->client;
     for (unsigned i = 0; i < BOAT_FLEET_SLOTS; ++i) {
@@ -254,6 +301,138 @@ void net_study_draw_roster(const NetStudy *net, int right, int top)
         DrawText(line, x, top, 12, i == c->slot ? RAYWHITE : LIGHTGRAY);
         top += 14;
     }
+    return top;
+}
+
+bool net_study_deathmatch(const NetStudy *net)
+{
+    return net->client.accept.mode == BOAT_NET_MODE_DEATHMATCH && net->client.match_valid;
+}
+
+static unsigned rank(const BoatNetMatchState *m, unsigned slot)
+{
+    unsigned place = 1;
+    for (unsigned i = 0; i < BOAT_FLEET_SLOTS; ++i)
+        place += m->slots[i].present && m->slots[i].row.score > m->slots[slot].row.score;
+    return place;
+}
+
+static const char *clock_text(double seconds)
+{
+    int whole = (int)ceil(fmax(0, seconds));
+    return TextFormat("%d:%02d", whole / 60, whole % 60);
+}
+
+static void backed_text(const char *text, int x, int y, int size, Color color)
+{
+    DrawRectangle(x - 6, y - 3, MeasureText(text, size) + 12, size + 6, Fade(BLACK, .45f));
+    DrawText(text, x, y, size, color);
+}
+
+static const char *feed_text(const BoatNetFeedEntry *e)
+{
+    const BoatNetMatchEvent *v = &e->event;
+    if (v->kind == BOAT_MATCH_ROUND_START)
+        return TextFormat("ROUND %u START", (unsigned)v->round);
+    if (v->kind == BOAT_MATCH_ROUND_END)
+        return TextFormat("ROUND %u OVER", (unsigned)v->round);
+    if (v->attacker == BOAT_MATCH_NOBODY)
+        return TextFormat("%s CAPSIZED  -1", e->victim);
+    return TextFormat("%s CAPSIZED %s  %s", e->attacker, e->victim,
+        v->bailout                        ? "BAILOUT"
+            : v->cause == BOAT_MATCH_WAKE ? "WAKE"
+                                          : "HIT");
+}
+
+static void draw_feed(const BoatNetClient *c, int right, int top, double now)
+{
+    // The four newest entries younger than five seconds, oldest first.
+    uint64_t first = c->feed_count > 4 ? c->feed_count - 4 : 0;
+    for (uint64_t n = first; n < c->feed_count; ++n) {
+        const BoatNetFeedEntry *e = &c->feed[n % BOAT_NET_MATCH_FEED];
+        if (now - e->at > 5)
+            continue;
+        const BoatNetMatchEvent *v = &e->event;
+        Color color = v->victim == c->slot ? ORANGE
+            : v->attacker == c->slot       ? (Color) { 120, 220, 140, 255 }
+                                           : LIGHTGRAY;
+        const char *line = feed_text(e);
+        int x = right - MeasureText(line, 12);
+        DrawRectangle(x - 4, top - 2, right - x + 8, 15, Fade(BLACK, .45f));
+        DrawText(line, x, top, 12, color);
+        top += 14;
+    }
+}
+
+static void draw_scoreboard(const BoatNetClient *c, int width, int height, double server_tick)
+{
+    const BoatNetMatchState *m = &c->match;
+    unsigned order[BOAT_FLEET_SLOTS], count = 0;
+    for (unsigned i = 0; i < BOAT_FLEET_SLOTS; ++i)
+        if (m->slots[i].present)
+            order[count++] = i;
+    for (unsigned i = 1; i < count; ++i) // Highest score first; slot order breaks ties.
+        for (unsigned j = i;
+            j > 0 && m->slots[order[j]].row.score > m->slots[order[j - 1]].row.score; --j) {
+            unsigned swap = order[j];
+            order[j] = order[j - 1];
+            order[j - 1] = swap;
+        }
+    // Column starts in font sizes; the widest heading, CAPSIZED, is about nine.
+    static const int columns[] = { 0, 2, 11, 17, 25, 36 };
+    int font = width >= 42 * 20 && height >= 500 ? 20 : 10, line = font + font / 2;
+    int panel = 42 * font, x = (width - panel) / 2 + font;
+    int y = (height - (int)(count + 3) * line) / 2;
+    DrawRectangle(x - font, y - font, panel, (int)(count + 3) * line + font, Fade(BLACK, .7f));
+    const char *title = m->phase == BOAT_MATCH_INTERMISSION
+        ? TextFormat("ROUND %u RESULT / NEXT IN %s", (unsigned)m->round,
+              clock_text(((double)m->phase_end - server_tick) / BOAT_TICK_HZ))
+        : m->phase == BOAT_MATCH_PLAYING ? TextFormat("ROUND %u", (unsigned)m->round)
+                                         : "WARMUP";
+    DrawText(title, x, y, font, RAYWHITE);
+    y += line + line / 2;
+    const char *headings[] = { "#", "PLAYER", "SCORE", "CAUSED", "CAPSIZED", "SELF" };
+    for (unsigned k = 0; k < 6; ++k)
+        DrawText(headings[k], x + columns[k] * font, y, font, GRAY);
+    y += line;
+    for (unsigned n = 0; n < count; ++n, y += line) {
+        unsigned i = order[n];
+        const BoatMatchRow *row = &m->slots[i].row;
+        Color color = i == c->slot ? RAYWHITE : LIGHTGRAY;
+        // Own buffers: TextFormat reuses only a few.
+        char cells[6][32];
+        snprintf(cells[0], sizeof(cells[0]), "%u", rank(m, i));
+        snprintf(cells[1], sizeof(cells[1]), "%s%s", c->roster.slots[i].name,
+            i == c->slot ? " (YOU)" : "");
+        snprintf(cells[2], sizeof(cells[2]), "%d", (int)row->score);
+        snprintf(cells[3], sizeof(cells[3]), "%u", (unsigned)row->caused);
+        snprintf(cells[4], sizeof(cells[4]), "%u", (unsigned)row->capsized);
+        snprintf(cells[5], sizeof(cells[5]), "%u", (unsigned)row->self);
+        for (unsigned k = 0; k < 6; ++k)
+            DrawText(cells[k], x + columns[k] * font, y, font, color);
+    }
+}
+
+void net_study_draw_match(const NetStudy *net, int width, int height, int feed_top, bool scoreboard)
+{
+    if (!net_study_deathmatch(net))
+        return;
+    const BoatNetClient *c = &net->client;
+    const BoatNetMatchState *m = &c->match;
+    double now = boat_net_clock();
+    double server_tick = boat_net_client_server_tick(c, now);
+    double left = ((double)m->phase_end - server_tick) / BOAT_TICK_HZ;
+    const char *top = m->phase == BOAT_MATCH_PLAYING
+        ? TextFormat("ROUND %u  %s   SCORE %d  #%u", (unsigned)m->round, clock_text(left),
+              (int)m->slots[c->slot].row.score, rank(m, c->slot))
+        : m->phase == BOAT_MATCH_INTERMISSION
+        ? TextFormat("ROUND %u OVER / NEXT IN %s", (unsigned)m->round, clock_text(left))
+        : "WARMUP / WAITING FOR ANOTHER PLAYER";
+    backed_text(top, (width - MeasureText(top, 20)) / 2, 12, 20,
+        m->phase == BOAT_MATCH_PLAYING && left < 30 ? ORANGE : RAYWHITE);
+    draw_feed(c, width - 12, feed_top, now);
+    if (scoreboard || m->phase == BOAT_MATCH_INTERMISSION)
+        draw_scoreboard(c, width, height, server_tick);
 }
 
 void net_study_close(NetStudy *net)

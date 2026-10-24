@@ -5,6 +5,10 @@ real ENet/UDP on 127.0.0.1.
 Two bots join and drive for a few seconds; a third presents the wrong room token and must be
 refused; a second server on the same port must fail with a clear message. Checks exit codes,
 summaries, message/datagram/MTU bounds and that every process stops within a bounded time.
+
+With --deathmatch (protocol v2): a deathmatch room with a 10 s round and two hunting bots that
+stay through the intermission. Each bot's received scoreboard for round 1 must equal the
+server log's, and each must have received every round event and capsize the server logged.
 """
 
 import argparse
@@ -28,12 +32,91 @@ def fields(text, prefix):
     raise AssertionError(f"missing '{prefix}' in output:\n{text}")
 
 
+def server_round(out, number):
+    """Round NUMBER's final rows from the server log, and the capsizes logged before it ended."""
+    capsizes = 0
+    for line in out.splitlines():
+        if " capsize " in line:
+            capsizes += 1
+        if f" round {number} end:" in line:
+            rows = re.findall(r" (\d):\S+=(-?\d+) \(#\d+, (\d+) caused, (\d+) capsized, (\d+) self\)",
+                line)
+            return {slot: "/".join(values) for slot, *values in rows}, capsizes
+    raise AssertionError(f"server never ended round {number}:\n{out}")
+
+
+def bot_round(out, number):
+    for line in out.splitlines():
+        if line.startswith(f"boat_bot round {number} end:"):
+            return dict(re.findall(r" (\d)=(-?\d+/\d+/\d+/\d+)", line))
+    raise AssertionError(f"bot never saw round {number} end:\n{out}")
+
+
+def deathmatch(args):
+    port = free_port()
+    endpoint = f"127.0.0.1:{port}"
+    bot_seconds = 16  # The round starts within a second of joining and lasts 10 s.
+    server_seconds = bot_seconds + 4
+    server = subprocess.Popen(
+        [args.server, "--port", str(port), "--mode", "deathmatch", "--round-seconds", "10",
+         "--seconds", str(server_seconds)],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    problems = []
+    try:
+        line = server.stdout.readline()
+        if "deathmatch" not in line:
+            raise AssertionError(f"server did not start a deathmatch room: {line!r}")
+        print(line.strip())
+        bots = [subprocess.Popen([args.bot, "--connect", endpoint, "--name", name, "--hunt",
+                    "--seconds", str(bot_seconds)],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                for name in ("hunt-a", "hunt-b")]
+        outputs = []
+        for bot in bots:
+            out, err = bot.communicate(timeout=bot_seconds + 20)
+            print(out.strip())
+            if bot.returncode != 0:
+                problems.append(f"bot exit {bot.returncode}: {err}")
+            outputs.append(out)
+        out, err = server.communicate(timeout=server_seconds + 15)
+        print(out.strip())
+        if server.returncode != 0:
+            problems.append(f"server exit {server.returncode}: {err}")
+        if not problems:
+            rows, capsizes = server_round(out, 1)
+            for text in outputs:
+                match = fields(text, "match:")
+                summary = fields(text, "boat_bot summary:")
+                checks = {
+                    "scoreboard": bot_round(text, 1) == rows,
+                    # Round start, every capsize, round end; the bot leaves in the intermission.
+                    "events": int(match["events"]) == capsizes + 2,
+                    "no resyncs": int(summary["resyncs"]) == 0,
+                    "no decode errors": int(fields(text, "control:")["decode_errors"]) == 0,
+                }
+                problems += [f"bot check failed: {k}" for k, ok in checks.items() if not ok]
+            faults = fields(out, "faults:")
+            if not all(faults[k] == "0" for k in ("malformed", "forbidden", "output", "emission")):
+                problems.append(f"server faults: {faults}")
+            print(f"round 1: {rows} after {capsizes} capsizes")
+    finally:
+        if server.poll() is None:
+            server.kill()
+    for problem in problems:
+        print(problem)
+    print("boat_net_deathmatch=" + ("fail" if problems else "ok"))
+    return 1 if problems else 0
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--server", required=True)
     parser.add_argument("--bot", required=True)
     parser.add_argument("--seconds", type=int, default=4)
+    parser.add_argument("--deathmatch", action="store_true")
     args = parser.parse_args()
+    if args.deathmatch:
+        return deathmatch(args)
     port = free_port()
     endpoint = f"127.0.0.1:{port}"
     server_seconds = args.seconds + 5

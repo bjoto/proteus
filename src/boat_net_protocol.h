@@ -2,16 +2,17 @@
 #define PROTEUS_BOAT_NET_PROTOCOL_H
 
 #include "boat_fleet.h"
+#include "boat_match.h"
 
 #include <stddef.h>
 #include <stdint.h>
 
-// Multiplayer protocol v1 (M3). docs/MULTIPLAYER_PROTOCOL.md owns the byte tables. Every
-// multi-byte field is big-endian; floats travel as IEEE-754 binary32 bit patterns. Encoders
+// Multiplayer protocol v2 (M3, deathmatch D2). docs/MULTIPLAYER_PROTOCOL.md owns the byte tables.
+// Every multi-byte field is big-endian; floats travel as IEEE-754 binary32 bit patterns. Encoders
 // never copy structs, padding, bool or enum representations; decoders validate every field
 // and never write the destination on failure.
 #define BOAT_NET_MAGIC 0x50424e54u // "PBNT"
-#define BOAT_NET_VERSION 1
+#define BOAT_NET_VERSION 2
 #define BOAT_NET_HEADER_BYTES 32
 #define BOAT_NET_MAX_MESSAGE 1100 // Whole message; the transport MTU allows for its headers.
 #define BOAT_NET_MAX_PAYLOAD (BOAT_NET_MAX_MESSAGE - BOAT_NET_HEADER_BYTES)
@@ -37,7 +38,7 @@
 
 // Delivery classes. ENet maps each to one channel; the in-memory adapter models the same rules.
 typedef enum {
-    BOAT_NET_CONTROL, // Reliable, ordered: handshake, roster, spawn, resync, leave.
+    BOAT_NET_CONTROL, // Reliable, ordered: handshake, roster, spawn, resync, leave, match.
     BOAT_NET_STATE, // Unreliable, sequenced: commands up, snapshots down, ping/pong.
     BOAT_NET_BIRTHS, // Unreliable, sequenced: recent wake births.
     BOAT_NET_REGISTRY, // Unreliable, unsequenced: reserved for registry pages (M4/M5).
@@ -62,6 +63,8 @@ typedef enum {
     BOAT_NET_PONG = 14,
     BOAT_NET_RESYNC_REQUEST = 15,
     BOAT_NET_DISCONNECT = 16,
+    BOAT_NET_MATCH_STATE = 17,
+    BOAT_NET_MATCH_EVENT = 18,
     BOAT_NET_TYPE_LIMIT
 } BoatNetType;
 
@@ -134,9 +137,12 @@ typedef struct {
     char build[BOAT_NET_BUILD_BYTES + 1];
 } BoatNetHello;
 
+typedef enum { BOAT_NET_MODE_FREE, BOAT_NET_MODE_DEATHMATCH, BOAT_NET_MODE_LIMIT } BoatNetRoomMode;
+
 typedef struct {
     uint8_t slot;
     bool waves;
+    uint8_t mode; // BoatNetRoomMode.
     uint8_t snapshot_ticks, birth_ticks, input_ticks, max_commands, max_future;
     uint16_t tick_hz;
     uint32_t wake_life_ticks;
@@ -194,6 +200,28 @@ typedef struct {
     BoatNetSlotInput inputs[BOAT_FLEET_SLOTS];
 } BoatNetSnapshot;
 
+// Deathmatch scoreboard and round clock (docs/DEATHMATCH_PLAN.md); deathmatch rooms only.
+typedef struct {
+    uint8_t phase; // BoatMatchPhase.
+    uint16_t respawn_ticks, skip_ticks; // Automatic respawn; R skips the rest after skip_ticks.
+    uint32_t round; // Rounds started.
+    uint32_t round_ticks;
+    uint64_t phase_end; // Tick the phase ends; zero in warmup.
+    struct {
+        bool present;
+        BoatMatchRow row; // All zero for an absent slot.
+    } slots[BOAT_FLEET_SLOTS];
+} BoatNetMatchState;
+
+// A capsize or round boundary; the header tick is the event's tick.
+typedef struct {
+    uint8_t kind; // BoatMatchKind.
+    uint8_t victim, attacker; // BOAT_MATCH_NOBODY for none (rounds; attacker of a self-capsize).
+    uint8_t cause; // BoatMatchCause.
+    bool bailout;
+    uint32_t victim_life, round;
+} BoatNetMatchEvent;
+
 typedef struct {
     uint8_t slot; // Pool slot; slot / BOAT_OBJECT_PER_BOAT is the emitter.
     BoatWakeObject record;
@@ -226,8 +254,15 @@ typedef struct {
             uint64_t snapshot_tick;
         } resync;
         uint8_t leave; // BoatNetLeaveReason.
+        BoatNetMatchState match;
+        BoatNetMatchEvent match_event;
     };
 } BoatNetMessage;
+
+// The wire match state of MATCH, and the event for EVENT.
+void boat_net_match_state_of(const BoatMatch *match, BoatNetMatchState *state);
+BoatNetMatchEvent boat_net_match_event_of(const BoatMatch *match, const BoatMatchEvent *event);
+bool boat_net_match_state_equal(const BoatNetMatchState *a, const BoatNetMatchState *b);
 
 // Encode MESSAGE (its header payload length is computed) into OUT. Returns the byte count, or
 // zero for a message that does not satisfy the decoder's own validation.

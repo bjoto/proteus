@@ -170,12 +170,16 @@ other machines, bind a LAN address (`--bind 192.168.1.20`) and allow the UDP por
 firewall (`--bind 0.0.0.0` accepts every interface). Internet hosting, NAT traversal,
 encryption and authentication are not provided. The room's players are listed at the top right.
 
-`--mode deathmatch` (first slice, 2026-10-24) runs timed capsize rounds once two players are
+`--mode deathmatch` (2026-10-24) runs timed capsize rounds once two players are
 in: capsizing another boat with your wake or a hit within the last 5 s scores +1, capsizing
 yourself −1, and resetting with `R` right after a hit still counts for the hitter. Capsized boats
 respawn after 3 s (`R` after 1 s). `--round-seconds S` (default 300) sets the round, followed by
-a 10 s intermission. Scores and capsizes are only printed in the server log so far; the in-game
-scoreboard is planned in the [deathmatch plan](docs/DEATHMATCH_PLAN.md).
+a 10 s intermission. In `boat_study --connect` the top of the screen shows the round clock, your
+score and place, a kill feed under the player list names who capsized whom, and a capsized boat
+says who did it and when it respawns. Hold Tab for the scoreboard; it also stays up between
+rounds. The server log prints every capsize and each round's result. `boat_bot --hunt` drives
+at the nearest boat to give you something to play against. The new capsize mechanics are still
+to come; see the [deathmatch plan](docs/DEATHMATCH_PLAN.md).
 
 In `--connect` mode the room decides water, wakes and spawns. Your boat is predicted: it runs
 ahead of the server with your own keys and is corrected when snapshots arrive, with small

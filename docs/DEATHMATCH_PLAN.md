@@ -1,15 +1,18 @@
 # Capsize deathmatch: multiplayer game mode plan
 
-Prepared 2026-10-24 against `7a072c6`. **D1, the authority-side match core, is implemented;
-clients do not yet see scores.**
+Prepared 2026-10-24 against `7a072c6`. **D1 (match core) and D2 (protocol v2 and the in-game
+HUD) are implemented; no human has played a deathmatch yet.**
 This document owns the deathmatch rules, phases, verification and acceptance. The
 [multiplayer plan](MULTIPLAYER_PLAN.md) owns transport, prediction and room hosting; the
 [physics](BOAT_PHYSICS_PLAN.md) and [wake](WAKE_REWRITE_PLAN.md) plans own handling and wake
 feel, including tuning of the new mechanics below.
 
 Status: D1 (match core, `boat_server --mode deathmatch`) implemented and automatically verified
-on 2026-10-24, not user-played; see the [D1 handoff](#d1-match-core-handoff--2026-10-24). Next:
-D2, protocol v2 and the in-game HUD. D3–D6 are pending. The M4 manual acceptance session
+on 2026-10-24; see the [D1 handoff](#d1-match-core-handoff--2026-10-24). D2 (protocol v2, round
+clock, kill feed, scoreboard, capsize notice, `boat_bot --hunt`) implemented and automatically
+verified on 2026-10-24, agent-run in a window against two hunting bots, not user-played; see the
+[D2 handoff](#d2-protocol-v2-and-hud-handoff--2026-10-24). Next: the D2 manual check (the user
+against `boat_bot --hunt`, then two humans), then D3, side-ram roll. D3–D6 are pending. The M4 manual acceptance session
 continues in parallel by the user's choice; the deathmatch does not wait for it.
 
 ## Product decision
@@ -184,3 +187,62 @@ Verification, 2026-10-24, M1 Max/macOS 26.6.2, Debug:
 Not verified: no human play, no `boat_study --connect` session against a deathmatch room, no
 Windows/Linux build. That bots' capsizes are all credited suggests the wake threshold may be
 generous; credit fairness needs human play (D2).
+
+### D2 protocol v2 and HUD handoff — 2026-10-24
+
+Implemented:
+
+- [Protocol v2](MULTIPLAYER_PROTOCOL.md#matchstate-and-matchevent-deathmatch-rooms): Accept's
+  reserved byte carries the room mode; MatchState (type 17, 104-byte payload: phase, respawn and
+  skip delays, round, round length, phase end, four score rows) and MatchEvent (type 18,
+  16 bytes) travel on the reliable control channel. v1 clients and servers are refused with the
+  existing version Reject. Snapshot, checkpoint and birth layouts are unchanged.
+- `boat_net_server`: events are broadcast as they happen, followed by MatchState whenever it
+  changed; a joining peer gets MatchState right after Roster, before the checkpoint.
+- `boat_net_client`: `match`, `result` (the finished round's scoreboard as first announced) and a
+  six-entry feed that keeps the roster names of the moment, so a leaver's name survives.
+- `boat_study --connect` in deathmatch rooms (`tools/boat_study_net.c`): round clock, own score
+  and place at the top centre (orange under 30 s), a four-line kill feed under the player list
+  (5 s per entry; orange when you were capsized, green when you scored), `CAPSIZED BY <name> /
+  RESPAWN n` (or `/ -1` for a self-capsize, and `/ R TO SKIP` once R may skip the wait), a
+  scoreboard while Tab is held and throughout the intermission, and a help line. Free rooms
+  draw nothing new.
+- `boat_bot --hunt` (`boat_fleet_bot_hunt_input`): full throttle at a point 0.6 s ahead of the
+  nearest upright boat. In deathmatch rooms bots leave recovery to the match. The bot prints
+  each finished round's scoreboard and a `match:` summary.
+
+Deviations and choices:
+
+- The room mode lives in Accept, not MatchState; free rooms send no match messages at all.
+- The HUD is drawn at window resolution beside the roster and network line in
+  `tools/boat_study_net.c`, not in the 320×200 `boat_hud.c` panel, so it has no display-free
+  CPU/GPU capture; it was inspected in screen captures of a windowed run instead.
+- The capsize countdown uses the event's tick, or for an unscored capsize (warmup, intermission)
+  the mirror tick the client first saw it capsized.
+- Rows are cleared when a player leaves, also during the intermission, so a leaver drops off the
+  shown result; `result` on the client keeps the announced version.
+
+Verification, 2026-10-24, M1 Max/macOS 26.6.2, Debug:
+
+- Build warning-free; all 109 active CTests pass, including the new `boat_net_deathmatch` and
+  the core and net boundary checks with `boat_match.h` now included by the protocol header.
+- `boat_net`: golden MatchState and MatchEvent bytes; v2 snapshot digest `c02fda7dbe1ffe1b`, which
+  with the version byte set back to 1 is still the v1 digest; 18 types round-trip, all
+  truncations and 16 new field faults rejected; a v1 Hello gets Reject `VERSION`; a seeded
+  in-memory deathmatch room in which three clients (one joining mid-round) match the authority's
+  MatchState through a planted-touch capsize, a second capsize, the round end and a leaver, with
+  names in each feed.
+- New `boat_net_deathmatch` (ENet loopback, 10 s round, two hunting bots): both bots' round-1
+  scoreboards equal the server log's. Agent runs on 2026-10-24 credited one or two wake capsizes
+  per round.
+- Agent-run windowed `boat_study --connect` (GPU renderer, 960×600) beside two `boat_bot --hunt`
+  clients and a 20 s round, inspected in screen captures: round clock and place, a two-entry
+  kill feed with both wake capsizes, the intermission scoreboard matching the server log, and
+  the capsize notice. The first run showed scoreboard cells overwritten by raylib's
+  `TextFormat` buffer rotation and overlapping columns; both were fixed and rechecked. Tab was
+  not pressed (no keyboard input in the agent run).
+
+Not verified: no human play; Tab-held scoreboard, capsize notice after a credited capsize of the
+own boat and the bailout feed line were not seen on screen; no Windows/Linux build. Free mode
+physics is untouched by D2 (match code runs only in deathmatch rooms), but no before/after
+capture diff was made for this slice.

@@ -9,6 +9,7 @@
 #define BOAT_NET_STALE 0.25 // Seconds without a snapshot before the view is marked stale.
 #define BOAT_NET_RESYNC_AFTER 1.0 // Seconds of wake digest mismatch before a resync request.
 #define BOAT_NET_HOLD_INCOMPLETE 0.1 // Seconds a prediction correction waits for missing births.
+#define BOAT_NET_MATCH_FEED 6 // Recent deathmatch events kept for the kill feed.
 
 typedef struct {
     const char *name, *token, *build;
@@ -44,6 +45,14 @@ typedef struct {
     double max_reset; // Longest time from a reset request to its new life, seconds.
 } BoatNetClientStats;
 
+// A deathmatch event as received, with the roster names of that moment (leavers keep theirs).
+typedef struct {
+    BoatNetMatchEvent event;
+    uint64_t tick;
+    double at; // Local receipt time.
+    char victim[BOAT_NET_NAME_BYTES + 1], attacker[BOAT_NET_NAME_BYTES + 1];
+} BoatNetFeedEntry;
+
 // The mirror fleet holds the newest authoritative snapshot, rebuilt from a complete checkpoint
 // plus births. With prediction, every snapshot or applied birth batch corrects the speculative
 // fleet, which each command advances to its target tick; the caller draws that instead.
@@ -62,6 +71,12 @@ typedef struct {
     uint32_t epoch;
     unsigned slot;
     BoatNetRoster roster;
+    // Deathmatch rooms: the authority's scoreboard and events, never predicted.
+    bool match_valid;
+    BoatNetMatchState match;
+    BoatNetMatchState result; // The latest finished round's scoreboard, as first announced.
+    BoatNetFeedEntry feed[BOAT_NET_MATCH_FEED];
+    uint64_t feed_count; // Events ever received; the newest is (count - 1) % ring size.
     // Authoritative mirror: valid once PLAYING.
     BoatFleet fleet;
     BoatNetSlotInput inputs[BOAT_FLEET_SLOTS];

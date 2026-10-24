@@ -145,6 +145,12 @@ static void expect(Reader *r, bool valid)
         fail(r, BOAT_NET_BAD_FIELD);
 }
 
+static int32_t get_i32(Reader *r)
+{
+    uint32_t bits = get32(r);
+    return bits < UINT32_C(0x80000000) ? (int32_t)bits : (int32_t)((int64_t)bits - 4294967296);
+}
+
 static int8_t get_rate(Reader *r)
 {
     uint8_t byte = get8(r);
@@ -389,7 +395,7 @@ static size_t encode_payload(const BoatNetMessage *m, Writer *w)
         put8(w, m->accept.input_ticks);
         put8(w, m->accept.max_commands);
         put8(w, m->accept.max_future);
-        put8(w, 0);
+        put8(w, m->accept.mode);
         put16(w, m->accept.tick_hz);
         put16(w, 0);
         put32(w, m->accept.wake_life_ticks);
@@ -485,6 +491,41 @@ static size_t encode_payload(const BoatNetMessage *m, Writer *w)
         put8(w, 0);
         put16(w, 0);
         break;
+    case BOAT_NET_MATCH_STATE: {
+        const BoatNetMatchState *ms = &m->match;
+        put8(w, ms->phase);
+        put8(w, 0);
+        put16(w, ms->respawn_ticks);
+        put16(w, ms->skip_ticks);
+        put16(w, 0);
+        put32(w, ms->round);
+        put32(w, ms->round_ticks);
+        put64(w, ms->phase_end);
+        for (unsigned i = 0; i < BOAT_FLEET_SLOTS; ++i) {
+            const BoatMatchRow *row = &ms->slots[i].row;
+            put8(w, ms->slots[i].present ? 1 : 0);
+            put8(w, 0);
+            put16(w, 0);
+            put32(w, (uint32_t)row->score);
+            put32(w, row->caused);
+            put32(w, row->capsized);
+            put32(w, row->self);
+        }
+        break;
+    }
+    case BOAT_NET_MATCH_EVENT: {
+        const BoatNetMatchEvent *e = &m->match_event;
+        put8(w, e->kind);
+        put8(w, e->victim);
+        put8(w, e->attacker);
+        put8(w, e->cause);
+        put8(w, e->bailout ? 1 : 0);
+        put8(w, 0);
+        put16(w, 0);
+        put32(w, e->victim_life);
+        put32(w, e->round);
+        break;
+    }
     default:
         w->overflow = true;
     }
@@ -582,7 +623,8 @@ static void decode_payload(Reader *r, BoatNetMessage *m)
         a->max_future = get8(r);
         expect(r, a->snapshot_ticks && a->birth_ticks && a->input_ticks);
         expect(r, a->max_commands && a->max_commands <= BOAT_NET_MAX_COMMANDS);
-        reserved(r, 1);
+        a->mode = get8(r);
+        expect(r, a->mode < BOAT_NET_MODE_LIMIT);
         a->tick_hz = get16(r);
         expect(r, a->tick_hz == BOAT_TICK_HZ);
         reserved(r, 2);
@@ -704,6 +746,63 @@ static void decode_payload(Reader *r, BoatNetMessage *m)
         expect(r, m->leave && m->leave < BOAT_NET_LEAVE_LIMIT);
         reserved(r, 3);
         break;
+    case BOAT_NET_MATCH_STATE: {
+        BoatNetMatchState *ms = &m->match;
+        ms->phase = get8(r);
+        expect(r, ms->phase <= BOAT_MATCH_INTERMISSION);
+        reserved(r, 1);
+        ms->respawn_ticks = get16(r);
+        ms->skip_ticks = get16(r);
+        expect(r, ms->skip_ticks <= ms->respawn_ticks);
+        reserved(r, 2);
+        ms->round = get32(r);
+        ms->round_ticks = get32(r);
+        expect(r, ms->round_ticks > 0);
+        ms->phase_end = get64(r);
+        expect(r, (ms->phase_end == 0) == (ms->phase == BOAT_MATCH_WARMUP));
+        expect(r, ms->phase == BOAT_MATCH_WARMUP || ms->round > 0);
+        for (unsigned i = 0; i < BOAT_FLEET_SLOTS; ++i) {
+            BoatMatchRow *row = &ms->slots[i].row;
+            uint8_t present = get8(r);
+            expect(r, present <= 1);
+            ms->slots[i].present = present;
+            reserved(r, 3);
+            row->score = get_i32(r);
+            row->caused = get32(r);
+            row->capsized = get32(r);
+            row->self = get32(r);
+            expect(r, row->self <= row->capsized);
+            expect(r, present || (!row->score && !row->caused && !row->capsized));
+        }
+        break;
+    }
+    case BOAT_NET_MATCH_EVENT: {
+        BoatNetMatchEvent *e = &m->match_event;
+        e->kind = get8(r);
+        e->victim = get8(r);
+        e->attacker = get8(r);
+        e->cause = get8(r);
+        uint8_t flags = get8(r);
+        expect(r, flags <= 1);
+        e->bailout = flags;
+        reserved(r, 3);
+        e->victim_life = get32(r);
+        e->round = get32(r);
+        expect(r, e->round > 0);
+        if (e->kind == BOAT_MATCH_CAPSIZE) {
+            bool self = e->attacker == BOAT_MATCH_NOBODY;
+            expect(r, e->victim < BOAT_FLEET_SLOTS && e->attacker != e->victim);
+            expect(r, self || e->attacker < BOAT_FLEET_SLOTS);
+            expect(r,
+                self ? e->cause == BOAT_MATCH_CAUSE_NONE && !e->bailout
+                     : e->cause == BOAT_MATCH_CONTACT || e->cause == BOAT_MATCH_WAKE);
+        } else {
+            expect(r, e->kind == BOAT_MATCH_ROUND_START || e->kind == BOAT_MATCH_ROUND_END);
+            expect(r, e->victim == BOAT_MATCH_NOBODY && e->attacker == BOAT_MATCH_NOBODY);
+            expect(r, e->cause == BOAT_MATCH_CAUSE_NONE && !e->bailout && !e->victim_life);
+        }
+        break;
+    }
     default:
         fail(r, BOAT_NET_BAD_TYPE);
     }
@@ -956,4 +1055,47 @@ BoatNetError boat_net_checkpoint_decode(const uint8_t *data, size_t size, BoatFl
     *state = decoded;
     memcpy(inputs, records, sizeof(records));
     return BOAT_NET_OK;
+}
+
+void boat_net_match_state_of(const BoatMatch *match, BoatNetMatchState *state)
+{
+    const BoatMatchRules *rules = &match->rules;
+    *state = (BoatNetMatchState) { .phase = (uint8_t)match->phase,
+        .respawn_ticks
+        = (uint16_t)(rules->respawn_ticks < UINT16_MAX ? rules->respawn_ticks : UINT16_MAX),
+        .skip_ticks = (uint16_t)(rules->skip_ticks < UINT16_MAX ? rules->skip_ticks : UINT16_MAX),
+        .round = match->round,
+        .round_ticks = (uint32_t)rules->round_ticks,
+        .phase_end = match->phase == BOAT_MATCH_WARMUP ? 0 : match->phase_end };
+    for (unsigned i = 0; i < BOAT_FLEET_SLOTS; ++i)
+        if (match->slots[i].present) {
+            state->slots[i].present = true;
+            state->slots[i].row = match->rows[i];
+        }
+}
+
+BoatNetMatchEvent boat_net_match_event_of(const BoatMatch *match, const BoatMatchEvent *event)
+{
+    return (BoatNetMatchEvent) { .kind = event->kind,
+        .victim = event->victim,
+        .attacker = event->attacker,
+        .cause = event->cause,
+        .bailout = event->bailout,
+        .victim_life = event->kind == BOAT_MATCH_CAPSIZE ? event->victim_life : 0,
+        .round = match->round };
+}
+
+bool boat_net_match_state_equal(const BoatNetMatchState *a, const BoatNetMatchState *b)
+{
+    if (a->phase != b->phase || a->respawn_ticks != b->respawn_ticks
+        || a->skip_ticks != b->skip_ticks || a->round != b->round
+        || a->round_ticks != b->round_ticks || a->phase_end != b->phase_end)
+        return false;
+    for (unsigned i = 0; i < BOAT_FLEET_SLOTS; ++i) {
+        const BoatMatchRow *x = &a->slots[i].row, *y = &b->slots[i].row;
+        if (a->slots[i].present != b->slots[i].present || x->score != y->score
+            || x->caused != y->caused || x->capsized != y->capsized || x->self != y->self)
+            return false;
+    }
+    return true;
 }

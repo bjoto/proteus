@@ -86,7 +86,7 @@ static BoatWater study_water(
     return water;
 }
 
-static void draw_help(bool course, bool mapped)
+static void draw_help(bool course, bool mapped, bool deathmatch)
 {
     int width = GetScreenWidth(), height = GetScreenHeight();
     const char *lines[] = {
@@ -100,6 +100,7 @@ static void draw_help(bool course, bool mapped)
         "Thrust: 4 forward / neutral / 2 reverse",
         "Tap thrust: one step; release holds",
         "R: reset boat / restart demo",
+        deathmatch ? "Hold Tab: deathmatch scoreboard" : "",
         "+/-: zoom | PgUp/PgDn: height",
         "C: reset camera | F3: profiler",
 #if defined(__EMSCRIPTEN__)
@@ -1057,7 +1058,9 @@ static int study(int argc, char **argv)
 #ifdef PROTEUS_BOAT_NET
             DrawText(net_study_status(net), 12, (int)destination.y + (HEIGHT - 48) * scale - 16, 12,
                 SKYBLUE);
-            net_study_draw_roster(net, GetScreenWidth() - 12, 12);
+            int feed_top = net_study_draw_roster(net, GetScreenWidth() - 12, 12);
+            net_study_draw_match(net, GetScreenWidth(), GetScreenHeight(), feed_top + 8,
+                active && IsKeyDown(KEY_TAB));
 #endif
         } else if (!IsWindowFocused())
             DrawText("PAUSED", 12, 12, 20, RAYWHITE);
@@ -1065,8 +1068,13 @@ static int study(int argc, char **argv)
             profiler_draw(&profiler, &snapshot, size);
         if (profiler_visible)
             boat_profile_draw(&boat_snapshot, 12, 355);
-        if (help_visible)
-            draw_help(course, location->mapped);
+        if (help_visible) {
+            bool deathmatch = false;
+#ifdef PROTEUS_BOAT_NET
+            deathmatch = networked && net_study_deathmatch(net);
+#endif
+            draw_help(course, location->mapped, deathmatch);
+        }
         EndDrawing();
         metrics.present_ms = (float)((boat_profile_time(true) - present_started_at) * 1000.0);
         metrics.frame_ms = (float)((boat_profile_time(true) - frame_started_at) * 1000.0);

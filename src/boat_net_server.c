@@ -39,6 +39,8 @@ bool boat_net_server_init(
     server->backlog_since = -1;
     server->next_checkpoint = 1;
     server->match = match;
+    if (config->deathmatch)
+        boat_net_match_state_of(&server->match, &server->match_sent);
     return true;
 }
 
@@ -74,16 +76,42 @@ static void send_roster(BoatNetServer *s)
             send_message(s, peer, &m);
 }
 
-// Free PEER's slot between ticks; its live wakes stay and expire naturally.
-// Queue the match's spawn requests and keep its events for the caller.
+static void broadcast(BoatNetServer *s, BoatNetMessage *m)
+{
+    for (unsigned peer = 0; peer < BOAT_NET_MAX_PEERS; ++peer)
+        if (s->peers[peer].phase >= BOAT_NET_PEER_BOOTSTRAP)
+            send_message(s, peer, m);
+}
+
+static BoatNetMessage match_state(const BoatNetServer *s)
+{
+    BoatNetMessage m = { .header = { .type = BOAT_NET_MATCH_STATE, .tick = s->fleet.state.tick } };
+    boat_net_match_state_of(&s->match, &m.match);
+    return m;
+}
+
+// Queue the match's spawn requests, keep its events for the caller and tell the clients:
+// events first, then the scoreboard whenever it changed.
 static void match_output(BoatNetServer *s, const BoatMatchOutput *out)
 {
     for (unsigned i = 0; i < BOAT_FLEET_SLOTS; ++i)
         if (out->spawn[i])
             boat_fleet_request_spawn(&s->fleet, i);
-    for (unsigned i = 0; i < out->count; ++i)
+    for (unsigned i = 0; i < out->count; ++i) {
         s->events[s->event_count++ % BOAT_NET_MATCH_EVENTS] = out->events[i];
+        BoatNetMessage m
+            = { .header = { .type = BOAT_NET_MATCH_EVENT, .tick = out->events[i].tick },
+                  .match_event = boat_net_match_event_of(&s->match, &out->events[i]) };
+        broadcast(s, &m);
+    }
+    BoatNetMessage m = match_state(s);
+    if (!boat_net_match_state_equal(&m.match, &s->match_sent)) {
+        s->match_sent = m.match;
+        broadcast(s, &m);
+    }
 }
+
+// Free PEER's slot between ticks; its live wakes stay and expire naturally.
 
 static void drop_peer(BoatNetServer *s, unsigned peer, bool disconnect)
 {
@@ -198,10 +226,15 @@ static void hello(BoatNetServer *s, unsigned peer, const BoatNetHello *h)
             .max_commands = BOAT_NET_MAX_COMMANDS,
             .max_future = BOAT_NET_MAX_FUTURE_TICKS,
             .tick_hz = BOAT_TICK_HZ,
+            .mode = s->config.deathmatch ? BOAT_NET_MODE_DEATHMATCH : BOAT_NET_MODE_FREE,
             .wake_life_ticks = s->fleet.state.wakes.life_ticks,
             .crest_height = s->fleet.state.wakes.crest_height } };
     send_message(s, peer, &m);
     send_roster(s);
+    if (s->config.deathmatch) {
+        m = match_state(s); // Join in progress: the current round and scores.
+        send_message(s, peer, &m);
+    }
     send_checkpoint(s, peer);
 }
 
@@ -328,7 +361,8 @@ static void message(BoatNetServer *s, unsigned peer, const BoatNetEvent *event, 
             // A deathmatch may hold a fresh capsize back or score a bailout first.
             if (!s->config.deathmatch || boat_match_reset(&s->match, &s->fleet, p->slot, &out))
                 boat_fleet_request_spawn(&s->fleet, p->slot);
-            match_output(s, &out);
+            if (s->config.deathmatch)
+                match_output(s, &out);
         }
         break;
     }
