@@ -62,6 +62,12 @@ captures and checksums) or `gpu` (graphics context). Skin geometry carries both 
 Select a group with `-L`, for example `ctest --test-dir build -L core`; CTest adds fixture
 setup tests that a selected test requires, whatever their label.
 
+`cube_render_checksum` checks the opening CPU frame against an exact platform baseline:
+`80d44611b75ac3fb` by default, and `a920a253d6c6aa0a` for Linux/GCC on x86-64, recorded
+by Ubuntu 24.04 CI on 2026-10-24. Floating-point rendering is not a cross-platform byte
+identity contract. Each configuration accepts only its selected hash; the Linux value has
+not yet received visual review. See [Linux verification status](LINUX_BUILD.md).
+
 `PROTEUS_OPTIMIZE_TESTS=ON` compiles the long numerical validators and the shared boating
 libraries (core, render, session and drive) at `-O2` even in Clang/GCC Debug builds. The
 validators are boat handling, banking, turn entry, environment, replay, clock, world isolation,

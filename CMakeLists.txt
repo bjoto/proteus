@@ -660,12 +660,20 @@ set_tests_properties(interactive_timeline_options PROPERTIES
   PASS_REGULAR_EXPRESSION "Usage:"
 )
 
-# Reviewed daytime CPU reference with harbor vessels in the opening five-gull follow shot.
+# Daytime CPU reference with harbor vessels in the opening five-gull follow shot.
+# Exact floating-point rasterization is toolchain/platform specific. Keep the macOS/Windows
+# reference and the Ubuntu 24.04 x86-64 GCC CI reference separate; do not accept either hash
+# indiscriminately on every platform. Linux reference: Actions run 40087174088.
+set(PROTEUS_CUBE_CHECKSUM "80d44611b75ac3fb")
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_C_COMPILER_ID STREQUAL "GNU"
+    AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$")
+  set(PROTEUS_CUBE_CHECKSUM "a920a253d6c6aa0a")
+endif()
 add_test(NAME cube_render_checksum
   COMMAND proteus --renderer cpu --profile cube --frames 1 --warmup 0
 )
 set_tests_properties(cube_render_checksum PROPERTIES
-  PASS_REGULAR_EXPRESSION "final_framebuffer_checksum=80d44611b75ac3fb"
+  PASS_REGULAR_EXPRESSION "final_framebuffer_checksum=${PROTEUS_CUBE_CHECKSUM}"
 )
 
 add_test(NAME cube_start_screenshot
