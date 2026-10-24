@@ -33,6 +33,11 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(raylib)
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT EMSCRIPTEN AND GLFW_BUILD_WAYLAND)
+  include(cmake/PatchGlfwWayland.cmake)
+  proteus_patch_glfw_wayland("${raylib_SOURCE_DIR}/src/external/glfw/src/wl_init.c")
+endif()
+
 if(APPLE)
   link_libraries("-framework Accelerate") # Double cosine backend; portable FFT elsewhere.
 endif()

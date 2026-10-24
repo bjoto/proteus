@@ -8,7 +8,8 @@ it tries Wayland before X11. No simulation or renderer changes are needed.
 CPU suite, checks native Wayland startup/clean exit with headless Weston, and retains the
 Xvfb X11 smoke check. Both checks assert the backend reported by raylib. The workflow runs
 on branch pushes or manual dispatch. Earlier Linux CI compiled and ran the CPU suite;
-the updated workflow, native Wayland execution and user acceptance remain pending.
+the native Wayland CI smoke run now reaches a startup crash described below. A targeted
+GLFW backport is implemented; its Linux rerun and user acceptance remain pending.
 
 ## Earlier Linux CI findings (before Wayland enablement)
 
@@ -91,10 +92,11 @@ help, focus loss and Escape, scrolling, resizing and integer/fractional display 
 Pointer capture requires compositor support for the relative-pointer and pointer-constraints
 protocols. Audio, connected play and physical desktop checks remain unverified.
 
-Completed task: enable Wayland by default, retain X11 compatibility, and add repeatable
-backend-asserting Weston/Xvfb CI checks and build commands. Next task: run the updated Linux
-workflow and review its CPU screenshots, then qualify physical Wayland desktops and native
-multiplayer on Linux. Local verification of this change is recorded below.
+Completed task: enable Wayland by default, retain X11 compatibility, add backend-asserting
+Weston/Xvfb CI checks, and backport the bundled GLFW no-seat initialization fix. Next task:
+rerun Linux CI to verify the backport under headless Weston and the X11 smoke check, review
+CPU screenshots, then qualify physical Wayland desktops and native multiplayer on Linux.
+Local verification is recorded below.
 macOS/browser verification evidence belongs to [the HUD owner](BOAT_HUD.md).
 
 ## Wayland change verification, 2026-10-24
@@ -112,3 +114,37 @@ Shell syntax, workflow YAML parsing, C formatting, documentation file links and 
 checks passed. No Linux toolchain, Weston or container runtime is installed on this Mac;
 Linux dependency installation, compilation and both desktop smoke runs await CI/the Linux
 tester. GNOME/KDE physical controls, display scaling, audio and connected play remain pending.
+
+## Headless Weston startup crash, 2026-10-24
+
+The reported CI Wayland smoke run segfaulted after raylib listed its modules, before the
+platform initialization success message. The pinned raylib 6.0 GLFW source unconditionally
+calls `wl_seat_get_version(_glfw.wl.seat)` during `_glfwInitWayland`. Headless Weston
+intentionally advertises no input seat, leaving that pointer null. This matches
+[GLFW issue 2517](https://github.com/glfw/glfw/issues/2517), including its upstream backtrace;
+the supplied Proteus log contains no backtrace, so the exact failing stack remains inferred.
+
+`cmake/PatchGlfwWayland.cmake` backports the null-seat guard to the fetched GLFW source when
+configuring native Linux with Wayland enabled. It runs on every configure, accepts the already
+patched form without rewriting it, and fails clearly if neither expected form exists. This
+also covers existing build directories. The pinned raylib version and the native Wayland smoke
+check remain in place. Remove the backport once a dependency update includes the upstream fix.
+The seatless smoke check cannot exercise real pointer input; physical controls still need the
+desktop qualification above.
+
+Local patch checks on Apple Silicon/macOS passed against a temporary copy of the pinned source:
+exact one-condition replacement, repeat configure without rewriting, and rejection of unexpected
+source without modification. Linux/Weston execution remains unavailable on this Mac; CI must
+confirm that startup completes after the fix.
+
+On 2026-10-24, Apple Silicon/macOS Debug configure/build passed, and all 110 active CTests
+passed in 105.77 s (GPU tests enabled; 15 retired cases disabled). The initial sandboxed
+suite hit loopback permission errors and was stopped; the complete passing rerun used
+desktop/loopback access. An agent-run 120-frame basin GPU/mouse-steering launch exited
+successfully with `GLFW - Cocoa` and clean shutdown; this is startup evidence, not human
+input/audio acceptance or execution of the Linux-only patch. Shell syntax, changed local
+documentation file links and `git diff --check` passed. Logs:
+`/private/tmp/proteus-wayland-fix-configure.log`,
+`/private/tmp/proteus-wayland-fix-build.log`,
+`/private/tmp/proteus-wayland-fix-ctest-desktop.log` and
+`/private/tmp/proteus-wayland-fix-macos-smoke.log`.
