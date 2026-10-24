@@ -14,6 +14,7 @@
 #define BOAT_PREDICTION_REMOTE_TICKS 24 // Remote rates repeat 200 ms past their state, then zero.
 #define BOAT_PREDICTION_SNAP_DISTANCE 2.0f // Larger corrections snap instead of blending.
 #define BOAT_PREDICTION_SNAP_ANGLE 0.5235988f // 30 degrees.
+#define BOAT_PREDICTION_VISIBLE_TICKS 36 // A record this old has outgrown its 0.3 s birth fade.
 
 // Speculative minus corrected pose of one slot at the same tick; the view blends it away.
 typedef struct {
@@ -28,6 +29,14 @@ typedef struct {
     float max_error, total_error; // Own slot's position corrections, metres.
     float max_remote_error, total_remote_error; // Other active slots', metres.
     uint64_t remote_errors; // Remote corrections counted in total_remote_error.
+    // Speculative wake records a correction removed, added or reshaped, by (pool slot, birth
+    // tick) identity; the visible ones were past their birth fade at the predicted tick.
+    uint64_t wakes_vanished, wakes_appeared, wakes_reshaped;
+    uint64_t visible_vanished, visible_appeared, visible_reshaped;
+    uint64_t carried; // Speculative records kept because they completed the authority's digest.
+    uint64_t held_corrections; // Deferred while births the digest counts were missing.
+    uint64_t incomplete_corrections; // Applied with an incomplete pool after the hold.
+    uint64_t early_applied; // Early authoritative births that replaced a speculative record.
 } BoatPredictionStats;
 
 typedef struct {
@@ -56,9 +65,21 @@ void boat_prediction_record(
 // Step the speculative fleet toward TICK, never beyond BOAT_PREDICTION_MAX_AHEAD past the
 // authority. Returns the ticks stepped.
 unsigned boat_prediction_advance(BoatPrediction *prediction, uint64_t tick);
+// What the client knows of the authority's wakes beyond the state it restores.
+typedef struct {
+    uint64_t digest; // boat_net_wake_digest() of the authority's live records at its tick.
+    const BoatNetBirth *early; // Authoritative births after that tick, not yet applicable.
+    unsigned early_count;
+    bool hold_incomplete; // Refuse to correct while the pool cannot be completed.
+} BoatPredictionWakes;
+
 // Restore AUTHORITY and its INPUTS, then replay to the previous speculative tick (or adopt the
-// authority's when it is newer). Records each slot's correction in prediction->error.
-void boat_prediction_correct(BoatPrediction *prediction, const BoatFleet *authority,
-    const BoatNetSlotInput inputs[BOAT_FLEET_SLOTS]);
+// authority's when it is newer). Records each slot's correction in prediction->error. With
+// WAKES (may be NULL): when the restored pool lacks births that the digest counts, speculative
+// records of the same pool slots are kept if, and only if, they complete the digest exactly;
+// and an early birth replaces the speculative record of the same slot and birth tick when the
+// replay reaches it. An incomplete pool with hold_incomplete changes nothing and returns false.
+bool boat_prediction_correct(BoatPrediction *prediction, const BoatFleet *authority,
+    const BoatNetSlotInput inputs[BOAT_FLEET_SLOTS], const BoatPredictionWakes *wakes);
 
 #endif

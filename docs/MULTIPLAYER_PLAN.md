@@ -27,7 +27,10 @@ is not yet user-played; see the [M3 handoff](#m3-protocol-and-transport-handoff-
 and the [protocol](MULTIPLAYER_PROTOCOL.md). M4 step 1, checkpoint/input replay (client
 prediction, `boat_prediction`), is implemented and automatically verified on macOS; the user
 played it beside `boat_bot` on 2026-10-24 ("Works really well!"); see the [M4 prediction handoff](#m4-step-1-client-prediction-handoff--2026-10-23).
-Next: M4 step 2, wake births/repair and provisional-own reconciliation. M5–M8 are pending.
+M4 step 2 (wake reconciliation: digest-confirmed provisional records, held corrections, early
+births by identity) is implemented and automatically verified, not yet user-played; see the
+[wake handoff](#m4-step-2-wake-reconciliation-handoff--2026-10-24). Next: M4 step 3, remote
+interpolation and the proximity view. M5–M8 are pending.
 Numerical budgets below are proposed gates, not measured multiplayer results.
 The final evidence section distinguishes checks performed for this document from future checks.
 
@@ -690,7 +693,9 @@ Status, 2026-10-24: step 1 (checkpoint/input replay) implemented and automatical
 macOS (2026-10-23); user-played beside `boat_bot`, including its wakes, on 2026-10-24; see the
 [M4 prediction handoff](#m4-step-1-client-prediction-handoff--2026-10-23). Next: step 2, wake
 births/repair and provisional-own reconciliation; then remote interpolation/proximity view,
-fleet rendering and the safe reset UI.
+fleet rendering and the safe reset UI. Step 2 (wake reconciliation) implemented and automatically
+verified on 2026-10-24, not yet user-played; see the
+[wake handoff](#m4-step-2-wake-reconciliation-handoff--2026-10-24). Next: step 3.
 
 ### M5 — four-player/session and impairment hardening
 
@@ -1216,6 +1221,69 @@ keyboard driving.
 - The user's play was one human beside a bot on one machine (macOS loopback); no two-human,
   two-machine or Windows/Linux/browser run.
 - The replay cost was measured in the Debug validator only; no Instruments capture.
+
+## M4 step 2: wake reconciliation handoff — 2026-10-24
+
+Started from `c85bf66`. The title-screen row in `docs/README.md` and the untracked
+`docs/TITLE_SCREEN_PLAN.md` are not part of this change.
+
+| Implemented | Automated verification | Manual observation | User acceptance |
+| --- | --- | --- | --- |
+| Wake-change metrics, digest-confirmed carry of provisional records, held corrections, early births by identity | `boat_net` (`prediction_wakes` fixture, gated predicting rooms), the full suite | Three agent-run windowed `boat_study --connect` runs beside a bot; no keyboard play | None yet |
+
+**Problem measured first.** Snapshots arrive at 30 Hz and births at 10 Hz, so a snapshot often
+counts a birth whose batch is still on the way. The step-1 replay then started from a mirror
+whose emitter had passed that birth: the speculative record vanished and came back when the
+batch arrived. A new per-correction comparison by (pool slot, birth tick) identity counted
+about 50 vanished and 50 re-added records per client in 60 s of profile F (two bots, waves),
+all younger than the 0.3 s birth fade (none "visible", which the metric defines as at least 36
+ticks old at the predicted tick). Reshaped records (same identity, different values) were
+about 80–100, also all young: remote boats' speculative births replaced by the authority's.
+
+**Changes.**
+- When the restored mirror lacks births that the snapshot's wake digest counts, the
+  correction tries the speculative records of the same pool slots, first for every emitter and
+  then for each smaller subset of emitters, and keeps a combination only when it reproduces
+  the digest exactly (so it equals the authority's set). A guess never replaces a missing record.
+- Otherwise the client holds the correction for up to 100 ms (`BOAT_NET_HOLD_INCOMPLETE`) while
+  the redundant birth batches arrive; after that it corrects with the incomplete set and counts
+  it.
+- Births that arrive before their snapshot (held by the client) replace the replay's own record
+  of the same pool slot and birth tick when the replay reaches that tick. They never replace a
+  nearby record or fill an empty slot, so the speculative emitter cursor stays consistent.
+- `boat_study --connect` adds the wake counts to its exit summary. No protocol change: a
+  snapshot carrying recent births (protocol v2) was considered and not needed by these numbers.
+
+**Decision, for review.** Remote speculative boats still emit provisional births into the
+speculative pool. They are never durable: every correction restores the mirror, and the
+authority's record takes the same pool slot. Keeping them makes replays exact when the remote
+guess is right; suppressing them would change own-boat physics in the 0.3 s fade without a
+visible gain. This differs from the design text above.
+
+**Automated verification.** Apple M1 Max/macOS 26.6.2, Apple clang 21.0.0, Debug common recipe
+with `PROTEUS_GPU_TESTS=ON`. Warning-free build; the **101 active CTests pass** (21 GPU), 15
+retired cases disabled.
+- `prediction_wakes` (one bot slot, calm): a mirror missing the birth at tick 604 (pool slot 7)
+  is completed from the speculative record and matches the authority's hash bit for bit; a
+  damaged speculative record cannot complete the digest, so the correction is held, then
+  applied without it (one vanished record), and the repaired mirror restores the hash; an early
+  authoritative birth, sent twice, replaces the replay's differing record exactly.
+- Profile F rooms, 60 s, smooth and keyboard-style bots: vanished records 0–1 per client (was
+  about 50), none visible; 31–79 records carried; 0–2 incomplete corrections; 1–3 early births
+  applied; own error max 0.004 m, remote max 0.030 m, no held ticks. The rooms now gate on at
+  most 5 vanished, no visible vanished or appeared, and at most 5 incomplete corrections.
+- Steady 30 ms single player: no wake changes at all. The bot's births fall on the 12-tick
+  batch phase there, so this case does not exercise the fix.
+
+**Manual observation (agent).** Three runs of `boat_server --waves`, one `boat_bot` and a
+windowed `boat_study --connect --frames 1200` (GPU, loopback), plus a 200-frame run. All exited
+cleanly with no vanished wakes and no snaps. One 1200-frame run carried 80 records and
+reported **310 held ticks** (the prediction reached its 32-tick limit past the authority and
+paused); the other runs held none. Neither validator stalls of 0.1–0.6 s nor the profile F rooms
+reproduce it, so the cause is unexplained. The view itself was not inspected.
+
+**Limits.** Bots seldom drive through each other's fresh wakes, so jump-on-remote-wake feel is
+unmeasured; user play is the check. No two-human, two-machine or non-macOS run.
 
 ## Exact first implementation task
 

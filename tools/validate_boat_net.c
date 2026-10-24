@@ -961,7 +961,7 @@ static int prediction_replay(void)
         CHECK(boat_prediction_advance(&p, a + 24) == 16);
         CHECK(boat_fleet_hash(&p.fleet.state) == hash24);
         boat_fleet_restore(&base, &at16);
-        boat_prediction_correct(&p, &base, inputs16);
+        boat_prediction_correct(&p, &base, inputs16, NULL);
         CHECK(p.fleet.state.tick == a + 24 && p.stats.max_replay == 8);
         CHECK(boat_fleet_hash(&p.fleet.state) == hash24);
         for (unsigned i = 0; i < BOAT_FLEET_SLOTS; ++i) {
@@ -987,19 +987,127 @@ static int prediction_replay(void)
     return 0;
 }
 
+// One bot-driven slot: a birth the mirror lacks is kept from the speculative pool only when it
+// completes the snapshot digest; a wrong one holds the correction, then corrects without it,
+// and the repaired mirror restores bit-identity; an early authoritative birth (even repeated)
+// replaces the replay's own version of that pool slot and tick.
+#define WAKE_TICKS 2400
+static int prediction_wakes(void)
+{
+    static BoatFleet fleet, mirror;
+    static BoatFleetState base, before_birth, at_n, history[WAKE_TICKS];
+    static BoatNetCommand commands[WAKE_TICKS];
+    static BoatPrediction p;
+    boat_fleet_init(&fleet, basin(), boat_world_test_water(basin(), false, false, false),
+        BOAT_OBJECT_LIFE_TICKS, 1.8f);
+    boat_fleet_request_spawn(&fleet, 0);
+    BoatFleetBots bots = { 0 };
+    BoatNetSlotInput used[BOAT_FLEET_SLOTS] = { 0 };
+    uint64_t born = 0;
+    unsigned slot = 0;
+    while (fleet.state.tick + 1 < WAKE_TICKS) {
+        BoatInput inputs[BOAT_FLEET_SLOTS] = { 0 };
+        uint64_t emitted = fleet.state.wakes.emitted;
+        commands[fleet.state.tick + 1] = boat_net_command(
+            fleet.state.slots[0].active ? boat_fleet_bot_input(&bots, &fleet, 0) : inputs[0], 0);
+        inputs[0] = boat_net_command_input(commands[fleet.state.tick + 1]);
+        boat_fleet_step(&fleet, inputs);
+        history[fleet.state.tick] = fleet.state;
+        if (!born && fleet.state.tick > 600 && fleet.state.wakes.emitted != emitted) {
+            born = fleet.state.tick;
+            for (unsigned i = 0; i < BOAT_OBJECT_PER_BOAT; ++i)
+                if (fleet.state.wakes.objects[i].born == born)
+                    slot = i;
+        }
+    }
+    CHECK(born && born + 12 < WAKE_TICKS);
+    base = history[born - 4];
+    before_birth = history[born - 1];
+    at_n = history[born + 4];
+    uint64_t digest = boat_net_wake_digest(&at_n.wakes);
+    uint64_t target = boat_fleet_hash(&history[born + 12]);
+    mirror = fleet;
+    // The mirror at born + 4 whose birth batch has not arrived: slot as it was before.
+    BoatFleetState missing = at_n;
+    missing.wakes.objects[slot] = before_birth.wakes.objects[slot];
+    CHECK(boat_net_wake_digest(&missing.wakes) != digest);
+#define PREDICT_FROM(state)                                                                        \
+    do {                                                                                           \
+        boat_fleet_restore(&mirror, &(state));                                                     \
+        boat_prediction_reset(&p, &mirror, used, 0);                                               \
+        for (uint64_t t = (state).tick + 1; t <= born + 12; ++t)                                   \
+            boat_prediction_record(&p, t, (state).slots[0].life, commands[t]);                     \
+        boat_prediction_advance(&p, born + 12);                                                    \
+    } while (0)
+    PREDICT_FROM(base);
+    CHECK(boat_fleet_hash(&p.fleet.state) == target);
+    boat_fleet_restore(&mirror, &missing);
+    BoatPredictionWakes wakes = { digest, NULL, 0, true };
+    CHECK(boat_prediction_correct(&p, &mirror, used, &wakes));
+    CHECK(p.stats.carried == 1 && p.stats.wakes_vanished == 0);
+    CHECK(boat_fleet_hash(&p.fleet.state) == target);
+
+    // A speculative record that differs cannot complete the digest: hold, then correct.
+    PREDICT_FROM(base);
+    p.fleet.state.wakes.objects[slot].amplitude *= .9f;
+    uint32_t serial = p.correction;
+    boat_fleet_restore(&mirror, &missing);
+    CHECK(!boat_prediction_correct(&p, &mirror, used, &wakes));
+    CHECK(p.correction == serial && p.stats.held_corrections == 1 && p.stats.carried == 0);
+    wakes.hold_incomplete = false;
+    CHECK(boat_prediction_correct(&p, &mirror, used, &wakes));
+    CHECK(p.stats.incomplete_corrections == 1 && p.stats.wakes_vanished == 1);
+    CHECK(p.fleet.state.wakes.objects[slot].born != born);
+    // The repaired mirror (its birth batch arrived) restores bit-identity.
+    boat_fleet_restore(&mirror, &at_n);
+    CHECK(boat_prediction_correct(&p, &mirror, used, &wakes));
+    CHECK(boat_fleet_hash(&p.fleet.state) == target && p.stats.wakes_appeared == 1);
+
+    // Early birth: the mirror is before the birth, and the client's commands near it differ
+    // from what the authority integrated, so its replayed record differs.
+    PREDICT_FROM(base);
+    for (uint64_t t = born - 2; t <= born; ++t) {
+        BoatNetCommand wrong = commands[t];
+        wrong.steering = (int8_t)(wrong.steering > 0 ? wrong.steering - 60 : wrong.steering + 60);
+        boat_prediction_record(&p, t, base.slots[0].life, wrong);
+    }
+    BoatNetBirth early[2] = { { (uint8_t)slot, history[born].wakes.objects[slot] } };
+    early[1] = early[0]; // A duplicate copy changes nothing.
+    boat_fleet_restore(&mirror, &history[born - 3]);
+    BoatPredictionWakes ahead = { boat_net_wake_digest(&history[born - 3].wakes), early, 2, true };
+    CHECK(boat_prediction_correct(&p, &mirror, used, &ahead));
+    const BoatWakeObject *o = &p.fleet.state.wakes.objects[slot];
+    CHECK(p.stats.early_applied >= 1 && o->born == born);
+    const BoatWakeObject *e = &early[0].record;
+    CHECK(o->position.x == e->position.x && o->position.y == e->position.y
+        && o->direction.x == e->direction.x && o->length == e->length
+        && o->amplitude == e->amplitude && o->inverse_speed == e->inverse_speed);
+    printf("prediction wakes: a missing birth carried only when it completes the digest; a "
+           "wrong one held, then corrected without it and repaired bit-identically; an early "
+           "birth (duplicated) replaced the replayed record of slot %u tick %" PRIu64 "\n",
+        slot, born);
+    return 0;
+}
+
 static void report_prediction(const char *label, const Room *room, unsigned i)
 {
     const BoatNetClient *c = &room->clients[i];
     const BoatPredictionStats *p = &c->prediction.stats;
     printf("%s: client %u rtt %.0f ms lead %u, %" PRIu64 " corrections replaying %.1f ticks "
            "(max %u), own error mean %.3f m max %.3f m, remote mean %.3f m max %.3f m, %" PRIu64
-           " snaps, %" PRIu64 " held ticks, service %.3f ms per correction\n",
+           " snaps, %" PRIu64 " held ticks, service %.3f ms per correction; wakes vanished %" PRIu64
+           " (%" PRIu64 " visible), appeared %" PRIu64 " (%" PRIu64 "), reshaped %" PRIu64
+           " (%" PRIu64 "); carried %" PRIu64 ", held %" PRIu64 ", incomplete %" PRIu64
+           ", early %" PRIu64 "\n",
         label, i, c->rtt * 1000, c->lead, p->corrections,
         (double)p->replayed_ticks / (double)p->corrections, p->max_replay,
         p->total_error / (double)p->corrections, p->max_error,
         p->remote_errors ? p->total_remote_error / (double)p->remote_errors : 0,
         p->max_remote_error, p->snaps, p->held_ticks,
-        room->service_seconds[i] * 1000 / (double)p->corrections);
+        room->service_seconds[i] * 1000 / (double)p->corrections, p->wakes_vanished,
+        p->visible_vanished, p->wakes_appeared, p->visible_appeared, p->wakes_reshaped,
+        p->visible_reshaped, p->carried, p->held_corrections, p->incomplete_corrections,
+        p->early_applied);
 }
 
 static int prediction_network(void)
@@ -1034,7 +1142,11 @@ static int prediction_network(void)
         for (unsigned i = 0; i < 2; ++i) {
             c = &room.clients[i];
             CHECK(c->phase == BOAT_NET_CLIENT_PLAYING && c->stats.resyncs <= 3);
-            CHECK(c->prediction.stats.max_replay <= BOAT_PREDICTION_MAX_AHEAD);
+            const BoatPredictionStats *ps = &c->prediction.stats;
+            CHECK(ps->max_replay <= BOAT_PREDICTION_MAX_AHEAD);
+            // Held corrections wait for births instead of dropping and re-adding records.
+            CHECK(ps->wakes_vanished <= 5 && ps->visible_vanished == 0);
+            CHECK(ps->visible_appeared == 0 && ps->incomplete_corrections <= 5);
             report_prediction(keys ? "prediction F keys" : "prediction F", &room, i);
         }
         CHECK(room.server.stats.emission_failures == 0 && room.server.stats.output_faults == 0);
@@ -1055,6 +1167,7 @@ int main(void)
     RUN(impaired());
     RUN(resync());
     RUN(prediction_replay());
+    RUN(prediction_wakes());
     RUN(prediction_network());
     printf("boat_net=ok\n");
     return 0;

@@ -430,9 +430,13 @@ bool boat_net_client_service(BoatNetClient *c, double now, BoatInput input, bool
             .resync = { .reason = 1, .snapshot_tick = mirror_tick(c) } };
         send_message(c, &m);
     }
-    if (c->predict && c->predict_dirty)
-        boat_prediction_correct(&c->prediction, &c->fleet, c->inputs);
-    c->predict_dirty = false;
+    if (c->predict && c->predict_dirty) {
+        // Births travel at 10 Hz: hold a correction up to BOAT_NET_HOLD_INCOMPLETE for births
+        // the snapshot counts rather than replay a wake set known to be incomplete.
+        bool hold = c->mismatch_since >= 0 && now - c->mismatch_since < BOAT_NET_HOLD_INCOMPLETE;
+        BoatPredictionWakes wakes = { c->wake_digest, c->pending, c->pending_count, hold };
+        c->predict_dirty = !boat_prediction_correct(&c->prediction, &c->fleet, c->inputs, &wakes);
+    }
     if (c->input_clock == 0 || now - c->input_clock > .25)
         c->input_clock = now; // Never replay a backlog of held keys after a stall.
     BoatNetCommand next = boat_net_command(input, inactive ? BOAT_NET_COMMAND_INACTIVE : 0);

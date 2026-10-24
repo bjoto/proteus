@@ -188,11 +188,14 @@ void net_study_close(NetStudy *net)
     if (p->corrections)
         fprintf(stdout,
             "prediction: %llu corrections replaying %.1f ticks (max %u); own error mean %.3f m "
-            "max %.3f m; remote mean %.3f m max %.3f m; %llu snaps; %llu held ticks\n",
+            "max %.3f m; remote mean %.3f m max %.3f m; %llu snaps; %llu held ticks; wakes "
+            "vanished %llu (%llu visible), carried %llu, incomplete %llu\n",
             (unsigned long long)p->corrections, (double)p->replayed_ticks / (double)p->corrections,
             p->max_replay, p->total_error / (double)p->corrections, p->max_error,
             p->remote_errors ? p->total_remote_error / (double)p->remote_errors : 0,
-            p->max_remote_error, (unsigned long long)p->snaps, (unsigned long long)p->held_ticks);
+            p->max_remote_error, (unsigned long long)p->snaps, (unsigned long long)p->held_ticks,
+            (unsigned long long)p->wakes_vanished, (unsigned long long)p->visible_vanished,
+            (unsigned long long)p->carried, (unsigned long long)p->incomplete_corrections);
     boat_net_client_leave(&net->client);
     boat_net_enet_close(net->enet, 1);
     net->enet = NULL;

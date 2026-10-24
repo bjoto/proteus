@@ -74,7 +74,9 @@ about two seconds. It covers:
 - client mirrors that reproduce the authority's `boat_fleet_hash`;
 - client prediction: replays from mid-flight, landing and capsized checkpoints that match the
   authority bit for bit, and predicting rooms (steady 30 ms, profile F both ways with smooth
-  and keyboard-style bots) that print correction sizes and replay cost.
+  and keyboard-style bots) that print correction sizes and replay cost;
+- wake reconciliation: digest-confirmed carry of missing births, held and incomplete
+  corrections, early births by identity, and gated wake-change counts in the predicting rooms.
 
 `boat_net_loopback` runs `tools/boat_net_smoke.py`, which starts real `boat_server` and
 `boat_bot` processes on a free 127.0.0.1 UDP port for about 10 s. Two bots drive and a
