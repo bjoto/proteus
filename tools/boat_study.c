@@ -2,6 +2,7 @@
 #include "boat_audio.h"
 #include "boat_course_view.h"
 #include "boat_gpu.h"
+#include "boat_hud.h"
 #include "boat_map.h"
 #include "boat_profile.h"
 #include "boat_replay.h"
@@ -899,6 +900,11 @@ static int study(int argc, char **argv)
         DrawTexturePro(texture,
             (Rectangle) { 0, 0, gpu_enabled ? -WIDTH : WIDTH, gpu_enabled ? -HEIGHT : HEIGHT },
             destination, (Vector2) { 0 }, 0, WHITE);
+        boat_hud_draw(
+            (BoatHudTelemetry) { .speed_mps = hypotf(view->boat.velocity.x, view->boat.velocity.y),
+                .thrust = view->boat.throttle,
+                .steering = view->boat.wheel },
+            GetScreenWidth(), GetScreenHeight());
         const char *notice = NULL;
 #ifdef PROTEUS_BOAT_NET
         if (networked) {

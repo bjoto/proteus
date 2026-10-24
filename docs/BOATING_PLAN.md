@@ -1,6 +1,6 @@
 # Gothenburg boating playground
 
-Status: updated 2026-10-23. `boat_study` implements free boating in basin, Eriksberg,
+Status: updated 2026-10-24. `boat_study` implements free boating in basin, Eriksberg,
 and river locations, reverse/docking, planing, buoyancy, optional gentle waves, opt-in
 current/scripted-wake options in all locations, default bounded arcade wakes in free boating,
 and a timed S course with recordings, persistent personal bests, ghosts, and replay controls. The study
@@ -153,7 +153,16 @@ The earlier proposal refined the boxy cabin, roof, gunwale and cream/teal palett
 not implemented before the user chose the low speedboat direction on 2026-10-24. Its intent
 to preserve the flag, simple geometry, handling and nearest-neighbour presentation remains.
 
-## Window presentation — 2026-10-19
+## Marine HUD — 2026-10-24
+
+Implemented in the isolated `boat-marine-hud` branch: compact thrust, speed-in-knots and
+steering instruments, with restrained marine materials and a smaller numeric strip for
+short windows. [The HUD handoff](BOAT_HUD.md) owns API, integration notes, review commands,
+verification and limitations. Completed: presentation module and local view integration.
+Next: user visual review, then integration with the main multiplayer branch. User
+acceptance and connected HUD review remain pending.
+
+## Window presentation — 2026-10-19 (historical instrument-free baseline)
 
 Implemented: the 320x200 scene uses the entire window's integer-scaled presentation area,
 with letterboxing when needed. The dashboard, wheel, speed/thrust instruments, and persistent
@@ -162,7 +171,8 @@ simulation, replay, and audio and blocks driving/camera/replay controls. Esc out
 Course timing, route map, and replay progress remain visible in course mode. Map attribution
 moves to help. The optional F3 profiler remains available.
 
-Next: user review of window presentation and help; instruments may return in a later design.
+The marine HUD above supersedes the instrument-free layout; full-window scene scaling and
+modal help remain. The following evidence records the original 2026-10-19 change.
 Verification on 2026-10-19, macOS: Debug configure/build and all 69 CTests
 (including 18 GPU checks) passed. A default GPU
 `--demo --frames 120` desktop smoke run exited successfully; a 600-frame preview was captured
@@ -279,7 +289,8 @@ Release centring initially unwound faster than explicitly countersteering. The f
 therefore improves correction response while keeping the existing hull forces and gradual turn-in.
 
 Other findings: the 55° lens was identical at docking and cruise; the river follow view is distant
-at 32/6 and the basin/Eriksberg view is high at 20/14. The full-window pass removed thrust feedback,
+at 32/6 and the basin/Eriksberg view is high at 20/14. The historical full-window pass removed thrust
+feedback (restored by the marine HUD),
 so persistent throttle and the neutral crossing now depend on boat/wash response. Reverse is still
 a four-second full-range throttle adjustment, which supports deliberate docking but deserves a
 separate usability test. Accepted stern foam, spray, waves and quiet audio already provide useful
@@ -306,7 +317,7 @@ Only the first row is implemented and user-accepted in this pass. The remaining 
 | 1 | Accepted quicker countersteering and small speed view; `--fixed-fov` for comparison | Catch the S turn with less correction delay; keep docking precision, readable boat and comfortable horizon. See physics H1/H2. |
 | 2 | Compare a closer, lower follow view using existing `--camera-distance 18 --camera-height 6` | Stronger nearby water/scenery motion and clearer hull attitude without hiding upcoming buoys. Test camera positioning before more FOV or camera shake. No new default selected yet. |
 | 3 | A short course with a broad sweeper, one S, an exit straight and an optional tighter line | Meaningful throttle/line choices and rapid R retries; measure clean completion and voluntary retries, not just best time. Retain forgiving contacts; new gate layouts require a course revision. |
-| 4 | Brief neutral/thrust feedback after adjustment, consistent with the clean full-window direction | Know when the persistent throttle crosses neutral without opening help or restoring the removed dashboard. Prototype only after play confirms the need. |
+| 4 | Superseded by the [marine HUD](BOAT_HUD.md) | Persistent thrust/neutral feedback is now implemented in the isolated HUD branch; visual review and multiplayer integration remain. |
 | 5 | Put an existing crossable wake where its approach and alternate line are visible | Choosing to ease off or cross at an angle is enjoyable and recoverable. Use current wave physics; avoid invisible impulses or required jumps. |
 | 6 | Restrained gate/finish confirmation and readable split improvement | Completing a clean line feels rewarding; preserve the accepted peaceful audio balance. Sound changes need listening review. |
 
