@@ -1469,7 +1469,14 @@ past the limit (now `BoatNetServer.tick_limit`, checked deterministically in `bo
 `boat_replay` compared padded `BoatReplaySample` arrays with `memcmp` (now field by field);
 `boat_skin` called `boat_skin_generate` inside an `assert` that Release removed, then read the
 uninitialized model (the call is now outside, and the validator keeps assertions in Release).
-The CI-equivalent Release configuration passes all 84 active tests locally; not yet rerun on CI.
+The CI-equivalent Release configuration passes all 84 active tests locally. The rerun
+([40085540313](https://github.com/doomdavve/proteus/actions/runs/40085540313), `4c9c7c8`) passed
+those three except `boat_net_loopback`, now on its "commands used" check: both bots sent only about
+385 of 481 commands and the server used 74% of ticks. Sleeping the bot 50-200 ms locally reproduces
+it, so the runner descheduled the processes. The check now compares `received_ratio` to the share
+of ticks the bot sent (see [testing](TESTING.md#network-checks)). Not yet rerun on CI. The client
+also jumps ahead after a stall of 4+ ticks, dropping a few commands the server could still use;
+a gap-filling re-aim is a possible later improvement, not made here.
 
 Verification, M1 Max/macOS 26.6.2, Debug build: `package.py` produced and verified the app
 (`codesign --verify --deep --strict`); from the extracted ZIP outside the checkout the packaged

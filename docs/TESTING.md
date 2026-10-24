@@ -103,7 +103,11 @@ about two seconds. It covers:
 `boat_net_loopback` runs `tools/boat_net_smoke.py`, which starts real `boat_server` and
 `boat_bot` processes on a free 127.0.0.1 UDP port for about 10 s. Two bots drive and a
 wrong-token bot is refused. A second server on the same port must fail, and the message,
-datagram and MTU bounds plus a bounded exit are checked. Run it alone with:
+datagram and MTU bounds plus a bounded exit are checked. Each bot must send commands for over
+half of its ticks, and the server must use more than 85% of that share (`received_ratio` against
+command coverage). Busy CI runners deschedule processes for 50-200 ms, and commands for ticks the
+server has already run cannot be used; a fixed 90% ratio failed macOS CI at 0.74 for that reason
+(2026-10-24, reproduced locally by sleeping the bot). Run it alone with:
 
 ```sh
 python3 tools/boat_net_smoke.py --server build/boat_server --bot build/boat_bot

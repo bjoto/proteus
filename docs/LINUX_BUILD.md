@@ -11,6 +11,11 @@ runs on branch pushes or manual dispatch. No Linux execution or user acceptance 
 No glibc toolchain was available locally (macOS, no container runtime), so the fix is verified
 only by macOS Debug/Release builds and CTest; further Linux errors may surface on the next run.
 
+The next run ([40085540407](https://github.com/doomdavve/proteus/actions/runs/40085540407), `4c9c7c8`)
+compiled, then failed `boat_core_boundary` and `boat_net_boundary`: GCC's Debug build calls libm
+`nearbyint` (used by `boat_clock.h`), which Clang inlines, and the symbol allowlist lacked it. It
+is now allowed with the other libm rounding functions; not yet rerun on Linux.
+
 On Ubuntu, install `libasound2-dev libx11-dev libxrandr-dev libxi-dev libxcursor-dev
 libxinerama-dev libgl1-mesa-dev xvfb xauth`, then:
 
