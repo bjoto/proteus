@@ -1,12 +1,16 @@
 # Boat physics: learnable handling
 
+2026-10-24 current tuning: [arcade stability and steering roll](ARCADE_STABILITY.md) reduces
+the default object wake to 1.2 m, adds object-world recovery and lets steering command
+air roll. Handling revision is now 7; user play/acceptance of this first candidate is pending.
+
 2026-10-23: the user enjoys the current jumping, landing and capsizing. Preserve this
 arcade handling baseline in the [multiplayer plan](MULTIPLAYER_PLAN.md), which owns shared
 authority, prediction and fleet contact scheduling. A diagnostic network room exists since M3
 (server-driven, no prediction); it reuses the fleet step and changes no handling. Multiplayer
 M2 (2026-10-23) adds a simultaneous fleet contact solver used only by fleet worlds (the
 `--wake-objects-crossing` rival and `boat_server`). Single-player handling, `boat_collide_pair`
-arithmetic and replays are unchanged, so `BOAT_PHYSICS_REVISION` stays 6. Future
+arithmetic and replays were unchanged at that checkpoint, so `BOAT_PHYSICS_REVISION` stayed 6. Future
 clock/contact changes must record their physical effects and compatibility revision here;
 successful network tests will not substitute for human handling acceptance.
 

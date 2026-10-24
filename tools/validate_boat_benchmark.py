@@ -21,6 +21,7 @@ with tempfile.TemporaryDirectory() as directory:
         report = json.loads(prefix.with_suffix('.json').read_text())
         reports.append(report)
         assert report['schema_revision'] == report['scenario_revision'] == 1
+        assert isinstance(report['physics_revision'], int) and report['physics_revision'] > 0
         assert report['mode'] == 'simulation' and report['renderer'] == 'none'
         assert report['presentation'] == 'on'
         assert report['frames'] == 800 and report['warmup_frames'] == 10

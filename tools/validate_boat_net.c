@@ -457,10 +457,13 @@ typedef struct {
     // Authoritative boat positions by tick, and each predicting client's view of another boat.
     Vector2 history_position[ROOM_HISTORY][BOAT_FLEET_SLOTS];
     uint32_t history_life[ROOM_HISTORY][BOAT_FLEET_SLOTS];
+    bool history_contact[ROOM_HISTORY];
     BoatRemoteProximity proximity[ROOM_CLIENTS];
     uint64_t remote_samples[ROOM_CLIENTS][BOAT_REMOTE_HELD + 1], remote_checked[ROOM_CLIENTS];
     uint64_t near_steps[ROOM_CLIENTS], view_steps[ROOM_CLIENTS];
     double remote_error[ROOM_CLIENTS], remote_max_error[ROOM_CLIENTS], delay[ROOM_CLIENTS];
+    double remote_smooth_max_error[ROOM_CLIENTS], remote_contact_max_error[ROOM_CLIENTS];
+    uint64_t remote_contact_samples[ROOM_CLIENTS];
     unsigned checks, matches, mismatches;
 } Room;
 
@@ -525,6 +528,18 @@ static void room_view_remote(Room *room, unsigned i, uint64_t tick, double dt)
     Vector2 truth = Vector2Lerp(room->history_position[a % ROOM_HISTORY][other],
         room->history_position[(a + 1) % ROOM_HISTORY][other], (float)(shown - (double)a));
     double error = Vector2Distance(truth, pose.position);
+    // A 30 Hz snapshot chord cannot reproduce a 120 Hz contact impulse's sharp corner.
+    // Keep the smooth-motion gate strict and report contact-adjacent samples separately.
+    bool contact = false;
+    uint64_t first = a > BOAT_NET_SNAPSHOT_TICKS ? a - BOAT_NET_SNAPSHOT_TICKS : 0;
+    for (uint64_t k = first; k <= a + BOAT_NET_SNAPSHOT_TICKS; ++k)
+        contact
+            |= room->history_tick[k % ROOM_HISTORY] == k && room->history_contact[k % ROOM_HISTORY];
+    if (contact) {
+        room->remote_contact_max_error[i] = fmax(room->remote_contact_max_error[i], error);
+        ++room->remote_contact_samples[i];
+    } else
+        room->remote_smooth_max_error[i] = fmax(room->remote_smooth_max_error[i], error);
     room->remote_error[i] += error;
     room->remote_max_error[i] = fmax(room->remote_max_error[i], error);
     ++room->remote_checked[i];
@@ -538,6 +553,7 @@ static void room_step(Room *room, double dt)
     uint64_t tick = room->server.fleet.state.tick;
     room->history_tick[tick % ROOM_HISTORY] = tick;
     room->history_hash[tick % ROOM_HISTORY] = boat_fleet_hash(&room->server.fleet.state);
+    room->history_contact[tick % ROOM_HISTORY] = room->server.fleet.stats.contacts > 0;
     for (unsigned k = 0; k < BOAT_FLEET_SLOTS; ++k) {
         room->history_position[tick % ROOM_HISTORY][k]
             = room->server.fleet.state.slots[k].boat.position;
@@ -1468,13 +1484,16 @@ static void report_remote(const char *label, const Room *room, unsigned i)
     double steps = (double)room->view_steps[i];
     printf("%s: client %u other boat drawn %.0f ms behind the authority; %.1f%% interpolated, "
            "%.1f%% extrapolated, %.1f%% held; position error mean %.3f m max %.3f m over %" PRIu64
-           " samples; %.1f%% in proximity mode\n",
+           " samples; smooth max %.3f m, contact max %.3f m (%" PRIu64
+           " samples); %.1f%% in proximity mode\n",
         label, i, room->delay[i] / steps * 1000 / BOAT_TICK_HZ,
         100 * (double)room->remote_samples[i][BOAT_REMOTE_INTERPOLATED] / steps,
         100 * (double)room->remote_samples[i][BOAT_REMOTE_EXTRAPOLATED] / steps,
         100 * (double)room->remote_samples[i][BOAT_REMOTE_HELD] / steps,
         room->remote_error[i] / (double)room->remote_checked[i], room->remote_max_error[i],
-        room->remote_checked[i], 100 * (double)room->near_steps[i] / steps);
+        room->remote_checked[i], room->remote_smooth_max_error[i],
+        room->remote_contact_max_error[i], room->remote_contact_samples[i],
+        100 * (double)room->near_steps[i] / steps);
 }
 
 static void report_prediction(const char *label, const Room *room, unsigned i)
@@ -1540,7 +1559,9 @@ static int prediction_network(void)
             double steps = (double)room.view_steps[i];
             double delay = room.delay[i] / steps / BOAT_TICK_HZ;
             CHECK(room.remote_samples[i][BOAT_REMOTE_INTERPOLATED] > steps * .99);
-            CHECK(room.remote_checked[i] > 5000 && room.remote_max_error[i] < .05);
+            CHECK(room.remote_checked[i] > 5000 && room.remote_smooth_max_error[i] < .05);
+            CHECK(room.remote_contact_max_error[i] < .15);
+            CHECK(room.remote_error[i] / (double)room.remote_checked[i] < .005);
             CHECK(delay > .09 && delay < .125 && room.near_steps[i] > 0);
         }
         CHECK(room.server.stats.emission_failures == 0 && room.server.stats.output_faults == 0);

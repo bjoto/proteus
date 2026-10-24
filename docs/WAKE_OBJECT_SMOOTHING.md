@@ -1,5 +1,9 @@
 # Arcade wake continuity follow-up
 
+2026-10-24 current tuning: [stability and steering roll](ARCADE_STABILITY.md) lowers the
+default scale to 1.2 m and adds deliberate air-roll control. The 1.8 m results below are
+the dated continuity baseline; the first stability candidate awaits user play.
+
 2026-10-22. Owner: [wake plan](WAKE_REWRITE_PLAN.md). The user enjoys the initial
 arcade mode and its huge waves, but notices the individual pieces. This revision
 tries shorter source spans and smoother joins while retaining the 1.8 m crest

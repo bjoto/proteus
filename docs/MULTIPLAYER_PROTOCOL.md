@@ -89,7 +89,7 @@ snapshots, because they travel on a different channel.
 
 ### Hello, Accept, Reject
 
-Hello: `u32` handling revision (`BOAT_PHYSICS_REVISION`, currently 6), `u64` content digest,
+Hello: `u32` handling revision (`BOAT_PHYSICS_REVISION`, currently 7), `u64` content digest,
 then the name (≤16), room token (≤32) and build label (≤32) strings.
 
 The content digest is FNV-1a 64 over the location's identity, mapped flag, basin half-extents,

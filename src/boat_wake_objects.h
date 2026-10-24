@@ -9,6 +9,7 @@
 #define BOAT_OBJECT_CAPACITY (BOAT_OBJECT_BOATS * BOAT_OBJECT_PER_BOAT)
 #define BOAT_OBJECT_EMIT_TICKS 60
 #define BOAT_OBJECT_LIFE_TICKS 1920
+#define BOAT_OBJECT_DEFAULT_HEIGHT 1.2f
 
 typedef struct {
     Vector2 position, direction;

@@ -6,6 +6,11 @@ That review remains a dated baseline; its findings are not descriptions of this 
 
 ## Current status and rules
 
+2026-10-24: the [stability and steering-roll study](ARCADE_STABILITY.md) supersedes the
+unassisted object-mode air attitude and 1.8 m default described in the dated baseline below.
+It targets fewer accidental capsizes, a 1.2 m default and deliberate steering air rolls;
+the first candidate remains pending user play.
+
 User feedback, 2026-10-23: boating is fun, particularly jumping, landing and capsizing.
 The [multiplayer plan](MULTIPLAYER_PLAN.md) preserves that baseline and owns the new planning
 request. This establishes the desired feel; it does not establish a tight-turn fix, multiplayer

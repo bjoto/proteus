@@ -32,7 +32,7 @@ bool boat_net_server_init(
     server->content_digest = boat_net_content_digest(basin());
     if (!boat_fleet_init(&server->fleet, basin(),
             boat_world_test_water(basin(), config->waves, false, false), BOAT_OBJECT_LIFE_TICKS,
-            1.8f))
+            BOAT_OBJECT_DEFAULT_HEIGHT))
         return false;
     for (unsigned i = 0; i < BOAT_FLEET_SLOTS; ++i)
         server->slot_peer[i] = -1;

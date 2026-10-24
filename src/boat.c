@@ -57,6 +57,12 @@ static const float ROLL_GUARD_START = 25 * DEG2RAD;
 static const float ROLL_GUARD_BLEND = 5 * DEG2RAD;
 static const float ROLL_GUARD_STIFFNESS = 180;
 static const float ROLL_GUARD_DAMPING = 12;
+// Arcade tuning: preserve deliberate steering rolls, resist uncommanded wake tumbles.
+static const float ARCADE_AIR_ROLL_SPEED = 4.5f;
+static const float ARCADE_AIR_ROLL_RESPONSE = 6;
+static const float ARCADE_AIR_ROLL_RECOVERY = 12;
+static const float ARCADE_WET_ROLL_RECOVERY = 14;
+static const float ARCADE_WET_ROLL_DAMPING = 5;
 // Contact samples form an intentionally simple, forgiving hull footprint.
 static const float HULL_BOW = 2.0f;
 static const float HULL_STERN = 1.6f;
@@ -378,11 +384,32 @@ static void buoyancy_step(Boat *boat, const BoatWorld *world, double time, float
     guard_mix = guard_mix * guard_mix * (3 - 2 * guard_mix);
     float guard = -ROLL_GUARD_STIFFNESS * excess * copysignf(1, bank)
         - ROLL_GUARD_DAMPING * guard_mix * boat->roll_velocity;
-    // Assistance belongs to ordinary wet turns. Fade it out before sideways/inverted poses;
-    // never right an airborne hull or pull an unwrapped angle back toward zero.
+    float wet = hull_wet(boat, world, time);
+    // The ordinary turn guard belongs to wet, upright turns. Arcade air control is separate
+    // below; both use wrapped angles so complete rotations do not accumulate spring torque.
     float upright = Clamp((boat_pose_up(boat) - .5f) / .25f, 0, 1);
-    guard *= (hull_wet(boat, world, time) > 0) * upright * (boat->motion_state != BOAT_CAPSIZED);
+    guard *= (wet > 0) * upright * (boat->motion_state != BOAT_CAPSIZED);
     float acceleration = -GRAVITY, pitch_torque = 0, roll_torque = turn_moment + guard;
+    if (world->water.objects && boat->motion_state != BOAT_CAPSIZED) {
+        float recovery = Clamp((boat_pose_up(boat) + .2f) / .7f, 0, 1);
+        if (wet == 0) {
+            // Steering is also the air-roll command. At neutral, brake the spin and recover
+            // toward the nearest upright turn; held steering permits complete barrel rolls.
+            float command = boat->wheel * fabsf(boat->wheel);
+            roll_torque += ROLL_INERTIA
+                * (ARCADE_AIR_ROLL_RESPONSE
+                        * (ARCADE_AIR_ROLL_SPEED * command - boat->roll_velocity)
+                    - ARCADE_AIR_ROLL_RECOVERY * recovery * (1 - fabsf(command)) * sinf(bank));
+            pitch_torque
+                += PITCH_INERTIA * (-5 * recovery * sinf(boat->pitch) - 3 * boat->pitch_velocity);
+        } else {
+            // Recover further into a sideways landing, but leave an inverted hull capsizable.
+            float upset = Clamp((fabsf(bank) - 15 * DEG2RAD) / (15 * DEG2RAD), 0, 1);
+            roll_torque += ROLL_INERTIA * recovery
+                * (-ARCADE_WET_ROLL_RECOVERY * upset * sinf(bank)
+                    - ARCADE_WET_ROLL_DAMPING * boat->roll_velocity);
+        }
+    }
     float sp = sinf(boat->pitch), cp = cosf(boat->pitch);
     float sr = sinf(boat->roll), cr = cosf(boat->roll);
     Vector3 wave_force = { 0 };
@@ -551,8 +578,8 @@ void boat_step(Boat *boat, BoatWorld *world, double now, BoatInput input)
     float turn_moment = BUOYANCY_STIFFNESS * .65f * .65f * equivalent * wet
         * (boat->motion_state != BOAT_CAPSIZED) * Clamp((boat_pose_up(boat) - .5f) / .25f, 0, 1);
     torque -= 0.45f * boat->yaw_velocity * wet;
-    // Deliberate modest yaw-only air control, .3 rad/s² at full wheel. No air thrust,
-    // hydrodynamic grip, drag, skeg resistance or automatic banking/righting.
+    // Modest air yaw, .3 rad/s² at full wheel, without air thrust or hydrodynamic forces.
+    // Object-wake flight also has the separate attitude controller in buoyancy_step().
     if (boat->motion_state != BOAT_CAPSIZED)
         torque += YAW_INERTIA * .3f * boat->wheel * (1 - wet);
     boat->velocity = Vector2Add(boat->velocity, Vector2Scale(force, BOAT_STEP));

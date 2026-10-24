@@ -85,6 +85,7 @@ int main(int argc, char **argv)
     boat_session_init(
         &session, boat_location(BOAT_LOCATION_BASIN), boat_water_test(false, false, false));
     const Boat *const boat = &session.boat;
+    // Retain the established 1.8 m stress workload; gameplay defaults are tuned separately.
     object_study_reset(&objects, &session, false, BOAT_OBJECT_LIFE_TICKS, 1.8f);
     session.presentation_enabled = presentation;
     unsigned tick = 0;
@@ -149,6 +150,7 @@ int main(int argc, char **argv)
     if (json) {
         if (fprintf(json,
                 "{\n  \"schema_revision\":1,\"scenario\":\"wake-loop\",\"scenario_revision\":1,\n"
+                "  \"physics_revision\":%u,\n"
                 "  \"fixture\":\"finite scripted wake-return; powered turns end at tick 1440\",\n"
                 "  "
                 "\"mode\":\"simulation\",\"renderer\":\"none\",\"presentation\":\"%s\",\n"
@@ -161,10 +163,10 @@ int main(int argc, char **argv)
                 "  \"state_hash\":\"%016" PRIx64 "\",\"hash_revision\":1,\n"
                 "  \"simulation_ms\":{\"p50\":%.9f,\"p95\":%.9f,\"p99\":%.9f,\"max\":%.9f},\n"
                 "  \"render_cpu_ms\":null,\"gpu_ms\":null\n}\n",
-                presentation ? "on" : "off", BOAT_BENCH_BUILD, BOAT_BENCH_PLATFORM, warmup, frames,
-                warmup * 2, frames * 2, tick, objects.wakes.life_ticks,
-                (double)objects.wakes.crest_height, objects.wakes.emitted, objects.wakes.peak_live,
-                boat->landings, hash, sorted[(frames - 1) * 50 / 100],
+                BOAT_PHYSICS_REVISION, presentation ? "on" : "off", BOAT_BENCH_BUILD,
+                BOAT_BENCH_PLATFORM, warmup, frames, warmup * 2, frames * 2, tick,
+                objects.wakes.life_ticks, (double)objects.wakes.crest_height, objects.wakes.emitted,
+                objects.wakes.peak_live, boat->landings, hash, sorted[(frames - 1) * 50 / 100],
                 sorted[(frames - 1) * 95 / 100], sorted[(frames - 1) * 99 / 100],
                 sorted[frames - 1])
             < 0)

@@ -44,6 +44,9 @@ no numeric readouts or units:
   Solo pause retains the target; multiplayer inactivity neutralizes it. R/new life resets
   the target to centre. Keyboard mode retains spring return. Demo/replay release capture and
   retain their existing controls. The scene-pixel label shows `MOUSE / ESC: RELEASE`.
+  In object-wake flight the same wheel also commands roll, progressively up to a barrel
+  roll at full steering. Centre it to brake and assist an upright landing; stopping the
+  mouse holds the roll command. The [stability study](ARCADE_STABILITY.md) owns the first tuning.
 
 
 The 166x44 panel has one layout at every window size and sits flush against the scene's

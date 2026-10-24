@@ -45,6 +45,7 @@ static void usage(void)
         "reverse); hold to step every 0.5 s\n"
         "Scroll down/up: more/less thrust (also Up/Down or W/S)\n"
         "M: capture/release mouse steering (move to turn; stop to hold) | --mouse-steering\n"
+        "Arcade jumps: steering rolls in the air; centre the wheel to stabilize for landing\n"
         "Keyboard wheel springs to centre; mouse wheel and thrust hold. R: reset | Esc: release "
         "mouse, then leave\n"
         "+/-: closer/farther | PageUp/PageDown: raise/lower camera | C: reset view\n"
@@ -52,7 +53,7 @@ static void usage(void)
         "--wake-objects: bounded arcade jump wakes (default in free boating)\n"
         "--wake-objects-crossing: a scripted second fleet boat sharing wakes and contacts "
         "(basin only)\n"
-        "--wake-life-ticks 240..1920 (default 1920) | --wake-height 0.1..3 (default 1.8 m)\n"
+        "--wake-life-ticks 240..1920 (default 1920) | --wake-height 0.1..3 (default 1.2 m)\n"
         "--player-wake: legacy D3 trail | --no-player-wake: visual-only player trail\n"
         "--current / --crossing-wake: opt-in authored tests in all locations; R restarts passage\n"
         "--skin sweden|finland|denmark|norway: cosmetic speedboat livery (default sweden)\n"
@@ -95,6 +96,7 @@ static void draw_help(bool course, bool mapped, bool deathmatch)
         "Left/Right or A/D: steer (keyboard mode)",
         "M: toggle mouse / keyboard steering",
         "Mouse: move to turn; stop to hold wheel",
+        "In air: steer to roll; centre to stabilize",
         "Esc: release mouse / return to keyboard",
         "W/S or scroll down/up: step thrust",
         "Release keyboard steering: centre wheel",
@@ -205,7 +207,7 @@ static int study(int argc, char **argv)
     bool player_wake_set = false, wake_field = false;
     bool wake_objects = false, object_crossing = false, object_tuning = false;
     unsigned object_life = BOAT_OBJECT_LIFE_TICKS;
-    float object_height = 1.8f;
+    float object_height = BOAT_OBJECT_DEFAULT_HEIGHT;
     bool gpu_enabled = true, gpu_aa = false;
     bool profiler_visible = false;
     int frame_limit = 0;

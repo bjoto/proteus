@@ -33,6 +33,17 @@ checks use the opt-in [Playwright command](WEB_BUILD.md#mouse-and-scroll-qualifi
 
 ## Routine checks
 
+The [arcade stability candidate](ARCADE_STABILITY.md) extends `wake_objects_contracts_jumps`
+with mirrored steering air rolls, neutral recovery/braking, dry-flight momentum and inverted
+capsize checks. Its encounter envelope covers both the earlier 1.8 m stress setting and
+the new 1.2 m default; the old 1.8 m geometry/derivative fixtures remain explicit stress tests.
+`boat_clock` retains per-tick equality across start times, with emission/landing/expiry
+milestones rather than a physical-recipe-specific birth count. `boat_net` reports smooth
+and contact-adjacent remote errors separately: below 5 cm in smooth motion, 15 cm within
+four ticks of a recorded pair impact, and below 5 mm mean. Snapshot interpolation cannot
+reproduce the precise tick of an impulse; [candidate evidence](ARCADE_STABILITY.md) records
+the observed outliers. This does not change remote rendering or protocol bytes.
+
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
 cmake --build build -j

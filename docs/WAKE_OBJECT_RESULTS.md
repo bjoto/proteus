@@ -1,5 +1,8 @@
 # Bounded arcade wake objects
 
+Current tuning, 2026-10-24: [stability/air-roll study](ARCADE_STABILITY.md), with a 1.2 m
+default crest scale. Measurements below describe the earlier 1.8 m implementation.
+
 2026-10-22. Owner: [wake plan](WAKE_REWRITE_PLAN.md). Originally implemented as the third
 alternative, `--wake-objects`, and now the free-boating default. The user redirected this work toward tall, fun launch
 waves, bounded per-boat objects and tick lifetimes. The earlier physical-field and
@@ -35,7 +38,7 @@ and sample the same combined wake surface. The review craft shares water interac
 At this initial checkpoint it did not add hard hull-to-hull collision with the player;
 [the later arcade pass](WAKE_ARCADE_IMPLEMENTATION.md) adds mutual impacts and capsize recovery.
 
-- `--wake-height`: .1–3 m, default **1.8 m**, the full-speed single-piece crest scale.
+- `--wake-height`: .1–3 m, default **1.2 m**, the full-speed single-piece crest scale.
   Speed, stern wetness, longitudinal blending and age modify actual local height.
   Overlapping pieces add directly, so a crossing can exceed this setting.
 - `--wake-life-ticks`: 240–1920, default **1920 ticks / 16 s** at 120 Hz.
