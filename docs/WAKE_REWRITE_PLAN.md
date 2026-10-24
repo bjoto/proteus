@@ -1,5 +1,14 @@
 # Coherent, crossable wakes
 
+Presentation, 2026-10-24: removed the blue `WAKE OBJECTS` live-count/height/lifetime
+label from the boating window at the user's request. Wake simulation and exit statistics
+are unchanged. The GPU+AA river demo completed and a live-window capture was inspected
+(`build/wake-label-removed.png`); the label is absent and marine instruments remain visible.
+Debug configure/build and all 110 active CTests passed on macOS (15 retired cases disabled),
+with desktop/socket access after sandbox restrictions blocked the initial run. Log:
+`/private/tmp/proteus-label-ctest-desktop.log`. This is agent-run visual verification,
+not manual steering or user acceptance. Next: the existing tuning play feedback.
+
 Current tuning, 2026-10-24: [stability and steering-roll study](ARCADE_STABILITY.md) lowers
 the default crest scale to 1.2 m, adds passive recovery and lets steering command air roll.
 The user requests fewer accidental capsizes; the first candidate needs play feedback.

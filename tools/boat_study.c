@@ -1055,10 +1055,6 @@ static int study(int argc, char **argv)
         if (wake)
             DrawText(TextFormat("WAKE FIELD / REVIEW %d", BOAT_WAKE_SOURCE_REVISION), 12,
                 (int)destination.y + (HEIGHT - 48) * scale - 16, 12, SKYBLUE);
-        if (objects)
-            DrawText(TextFormat("WAKE OBJECTS / %u LIVE / %.1f m / %u TICKS",
-                         object_study_wakes(objects)->live, object_height, object_life),
-                12, (int)destination.y + (HEIGHT - 48) * scale - 16, 12, SKYBLUE);
         if (course)
             course_runs_hud(&session.runs, view, ghost_view, GetScreenWidth());
         if (networked) {

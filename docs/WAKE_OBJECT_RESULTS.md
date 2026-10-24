@@ -30,8 +30,8 @@ cmake --build build/review --target boat_study wake_objects_review -j
 ```
 
 Normal steering/thrust controls apply. `R` resets the boat, the shared object world,
-and the optional crossing craft. `--demo` uses the existing own-trail loop. The window
-identifies `WAKE OBJECTS`, live count, configured crest height and lifetime. The
+and the optional crossing craft. `--demo` uses the existing own-trail loop. The blue
+`WAKE OBJECTS` diagnostic label was removed on 2026-10-24; exit statistics remain available. The
 crossing option enables object mode and adds an opaque scripted craft following a
 four-waypoint loop in the basin. Both boats emit from their actual transformed stern
 and sample the same combined wake surface. The review craft shares water interaction.
