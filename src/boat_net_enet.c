@@ -3,6 +3,12 @@
 #endif
 #include "boat_net_enet.h"
 
+#ifdef _WIN32
+// ENet includes windows.h after raylib; exclude the GDI/user names raylib also declares.
+#define WIN32_LEAN_AND_MEAN
+#define NOGDI
+#define NOUSER
+#endif
 #include <enet/enet.h>
 
 #include <stdio.h>

@@ -4,8 +4,21 @@ Multiplayer M3 (2026-10-23): `boat_study` now links the pinned ENet library (win
 `ws2_32`/`winmm`) for the diagnostic `--connect` mode, and the package step copies
 `enet-LICENSE.txt`. **The Windows build of ENet and `src/boat_net_enet.c` has not been compiled**;
 the next workflow run is its first MSVC build. [M6](MULTIPLAYER_PLAN.md) still owns MSVC
-qualification, codec/loopback CI on Windows and firewall/Host documentation. The existing
-Windows verification limits below remain unresolved.
+qualification and firewall/Host documentation. The existing Windows verification limits below
+remain unresolved.
+
+Packaged LAN server (2026-10-24): the workflow also builds `boat_server`, `boat_bot` and
+`validate_boat_net`, runs `boat_server_scripted`, `boat_net` and the ENet `boat_net_loopback`
+test, and packages `boat_server.exe` with `host.bat` (a room on `--bind 0.0.0.0`). The relocated
+check runs `boat_server.exe --scripted --ticks 240`. Not yet run on GitHub.
+
+2026-10-24: the first MSVC build of the M3+ code,
+[run 40082682785](https://github.com/doomdavve/proteus/actions/runs/40082682785/job/120839290770),
+failed compiling `src/boat_net_enet.c`: ENet's headers include `windows.h` after raylib, so
+`Rectangle`, `CloseWindow` and `ShowCursor` were redeclared (C2365/C2371), the same clash
+`profiler.c` hit on 2026-10-20. `boat_net_enet.c` now defines `WIN32_LEAN_AND_MEAN`, `NOGDI` and
+`NOUSER` before `enet/enet.h`; its clock and sleep use only kernel32. MSVC is unavailable here,
+so the fix is not compiled on Windows; later MSVC errors may follow once this one clears.
 
 The Windows boat study GitHub Actions workflow builds a Release x64 executable
 on windows-2022 with Visual Studio 2022. It runs on pushes and can also be
