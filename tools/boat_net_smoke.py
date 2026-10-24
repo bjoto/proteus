@@ -3,7 +3,8 @@
 real ENet/UDP on 127.0.0.1.
 
 Two bots join and drive for a few seconds; a third presents the wrong room token and must be
-refused; a second server on the same port must fail with a clear message. Checks exit codes,
+refused; a second server on the same port must fail with a clear message; a LAN search
+(boat_bot --discover, on a private discovery port) must find the room. Checks exit codes,
 summaries, message/datagram/MTU bounds and that every process stops within a bounded time.
 
 With --deathmatch (protocol v2): a deathmatch room with a 10 s round and two hunting bots that
@@ -118,11 +119,13 @@ def main():
     if args.deathmatch:
         return deathmatch(args)
     port = free_port()
+    lan_port = free_port()
     endpoint = f"127.0.0.1:{port}"
     server_seconds = args.seconds + 5
     started = time.monotonic()
     server = subprocess.Popen(
-        [args.server, "--port", str(port), "--token", "smoke", "--seconds", str(server_seconds)],
+        [args.server, "--port", str(port), "--lan-port", str(lan_port), "--token", "smoke",
+         "--seconds", str(server_seconds)],
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     problems = []
     try:
@@ -136,6 +139,15 @@ def main():
             problems.append(f"second server on the same port: {clash.returncode} {clash.stderr}")
         else:
             print("port clash:", clash.stderr.strip())
+        search = subprocess.run([args.bot, "--discover", "--lan-port", str(lan_port), "--seconds",
+            "1"], capture_output=True, text=True, timeout=10)
+        found = f"lan room {endpoint} "
+        rooms = [l for l in search.stdout.splitlines() if l.startswith(found)]
+        if search.returncode != 0 or len(rooms) != 1 or not all(
+                f in rooms[0] for f in ("mode=free", "players=0/4", "token=yes", "compatible=yes")):
+            problems.append(f"LAN search: {search.returncode} {search.stdout}{search.stderr}")
+        else:
+            print(rooms[0])
         bots = [subprocess.Popen([args.bot, "--connect", endpoint, "--token", "smoke",
                     "--name", name, "--seconds", str(args.seconds)],
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)

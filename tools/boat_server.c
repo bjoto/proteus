@@ -21,6 +21,7 @@ static void usage(FILE *out)
         "usage: boat_server [--bind IPV4] [--port N] [--token TEXT] [--players 1-4] [--waves]\n"
         "                   [--location basin] [--ticks N | --seconds S] [--report-every N]\n"
         "                   [--mode free|deathmatch] [--round-seconds S]\n"
+        "                   [--lan-port N | --no-lan]\n"
         "       boat_server --scripted [--ticks N] [--boats 1-4] [--location basin]\n"
         "                   [--report-every N] [--mode free|deathmatch] [--round-seconds S]\n"
         "Room (default): listen on --bind (default 127.0.0.1; use a LAN address to accept other\n"
@@ -28,12 +29,15 @@ static void usage(FILE *out)
         "clients. Runs the 120 Hz basin authority until --ticks/--seconds or Ctrl+C. Clients\n"
         "must present the same --token (default empty). A diagnostic: no internet reachability,\n"
         "encryption or authentication.\n"
+        "The room answers LAN searches (the title's MULTIPLAYER panel, boat_bot --discover) on\n"
+        "UDP --lan-port (default %d): from this machine only with a loopback --bind, otherwise\n"
+        "from the local network. --no-lan stays silent.\n"
         "--scripted: bots drive N ticks (default 7200, one minute at 120 Hz) as fast as\n"
         "possible, then print the fleet hash and per-tick cost; no socket.\n"
         "--mode deathmatch: timed rounds (--round-seconds, default 300) scoring +1 for capsizing\n"
         "another boat and -1 for capsizing yourself; capsized boats respawn after 3 s. The\n"
         "default free mode is shared free boating.\n",
-        BOAT_NET_PORT);
+        BOAT_NET_PORT, BOAT_NET_DISCOVERY_PORT);
 }
 
 static bool parse_count(const char *text, unsigned long low, unsigned long high, unsigned long *out)
@@ -207,7 +211,7 @@ static void request_stop(int signal_number)
 
 typedef struct {
     const char *bind, *token;
-    uint16_t port;
+    uint16_t port, lan_port; // LAN discovery off when zero.
     bool waves;
     unsigned long players, ticks, report;
     const BoatMatchRules *rules; // Deathmatch rules, or NULL for free play.
@@ -237,7 +241,8 @@ static int room(const RoomOptions *options)
         boat_net_enet_cleanup();
         return 1;
     }
-    uint32_t epoch = (uint32_t)time(NULL) ^ (uint32_t)(boat_net_clock() * 1e6);
+    // Through u64: a double above 2^32 saturates (on arm64) when converted to u32 directly.
+    uint32_t epoch = (uint32_t)time(NULL) ^ (uint32_t)(uint64_t)(boat_net_clock() * 1e6);
     BoatNetServerConfig config = { .token = options->token,
         .waves = options->waves,
         .epoch = epoch ? epoch : 1,
@@ -252,13 +257,34 @@ static int room(const RoomOptions *options)
         return 1;
     }
     server.tick_limit = options->ticks; // --ticks/--seconds run exactly that many ticks.
+    BoatNetLan *lan = NULL;
+    char lan_note[64] = "LAN discovery off";
+    if (options->lan_port) {
+        lan = boat_net_lan_listen(options->bind, options->lan_port, error, sizeof(error));
+        if (lan)
+            snprintf(lan_note, sizeof(lan_note), "LAN discovery on UDP port %u",
+                (unsigned)options->lan_port);
+        else
+            fprintf(stderr, "boat_server: not answering LAN searches: %s\n", error);
+    }
+    BoatNetLanRoom advert = { .version = BOAT_NET_VERSION,
+        .physics_revision = BOAT_PHYSICS_REVISION,
+        .content_digest = server.content_digest,
+        .epoch = config.epoch,
+        .port = options->port,
+        .mode = options->rules ? BOAT_NET_MODE_DEATHMATCH : BOAT_NET_MODE_FREE,
+        .max_players = (uint8_t)options->players,
+        .token = options->token[0] != 0 };
+    // Answers name a specific bind address; 0.0.0.0 leaves it to the sender's address.
+    boat_net_parse_ipv4(options->bind, &advert.address);
+    boat_net_host_name(advert.name);
     signal(SIGINT, request_stop);
     signal(SIGTERM, request_stop);
     printf("boat_server listening on %s:%u (basin, %s water, %s, protocol %d, handling %d, "
-           "epoch %08" PRIx32 ", up to %lu players)\n",
+           "epoch %08" PRIx32 ", up to %lu players, %s)\n",
         options->bind, (unsigned)options->port, options->waves ? "wave" : "calm",
         options->rules ? "deathmatch" : "free play", BOAT_NET_VERSION, BOAT_PHYSICS_REVISION,
-        config.epoch, options->players);
+        config.epoch, options->players, lan_note);
     fflush(stdout);
     unsigned players = 0;
     unsigned max_mtu = 0;
@@ -276,6 +302,10 @@ static int room(const RoomOptions *options)
             break;
         }
         boat_net_enet_flush(enet);
+        if (lan) {
+            advert.players = (uint8_t)boat_net_server_players(&server);
+            boat_net_lan_answer(lan, &advert);
+        }
         busy += boat_net_clock() - now;
         for (unsigned i = 0; i < BOAT_FLEET_SLOTS; ++i) {
             int peer = server.slot_peer[i];
@@ -300,6 +330,7 @@ static int room(const RoomOptions *options)
     boat_net_enet_flush(enet);
     BoatNetTransportStats net = boat_net_enet_transport(enet).stats(enet);
     boat_net_enet_close(enet, 1);
+    boat_net_lan_close(lan);
     boat_net_enet_cleanup();
     const BoatNetServerStats *s = &server.stats;
     double elapsed = boat_net_clock() - started;
@@ -343,8 +374,11 @@ int main(int argc, char **argv)
     unsigned long ticks = 0, boats = BOAT_FLEET_SLOTS, report = 0, seconds = 0, round = 0;
     bool deathmatch = false;
     bool scripted_mode = false, room_option = false;
-    RoomOptions room_options
-        = { .bind = "127.0.0.1", .token = "", .port = BOAT_NET_PORT, .players = BOAT_FLEET_SLOTS };
+    RoomOptions room_options = { .bind = "127.0.0.1",
+        .token = "",
+        .port = BOAT_NET_PORT,
+        .lan_port = BOAT_NET_DISCOVERY_PORT,
+        .players = BOAT_FLEET_SLOTS };
     for (int i = 1; i < argc; ++i) {
         const char *value = i + 1 < argc ? argv[i + 1] : NULL;
         if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
@@ -375,6 +409,17 @@ int main(int argc, char **argv)
             }
             room_option = true;
             ++i;
+        } else if (strcmp(argv[i], "--lan-port") == 0 && value) {
+            if (!boat_net_parse_port(value, &room_options.lan_port)) {
+                fprintf(
+                    stderr, "boat_server: --lan-port needs a UDP port 1-65535, not '%s'.\n", value);
+                return 2;
+            }
+            room_option = true;
+            ++i;
+        } else if (strcmp(argv[i], "--no-lan") == 0) {
+            room_options.lan_port = 0;
+            room_option = true;
         } else if (strcmp(argv[i], "--token") == 0 && value) {
             if (strlen(value) > BOAT_NET_TOKEN_BYTES) {
                 fprintf(stderr, "boat_server: --token is at most %d characters.\n",
@@ -421,7 +466,8 @@ int main(int argc, char **argv)
         if (room_option || seconds) {
             fprintf(stderr,
                 "boat_server: --scripted runs without a socket; room options "
-                "(--bind, --port, --token, --players, --waves, --seconds) do not "
+                "(--bind, --port, --lan-port, --no-lan, --token, --players, --waves, "
+                "--seconds) do not "
                 "apply.\n");
             return 2;
         }

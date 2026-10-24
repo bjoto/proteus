@@ -147,9 +147,12 @@ is calm and clear of both boats. See the
 opens the **Wake Velocity** title: SINGLE PLAYER, MULTIPLAYER, NAME, BOAT and EXIT. Up/Down or
 W/S select, Enter/Space or a click activates, Left/Right change BOAT, and Enter on NAME starts
 typing (Enter keeps, Esc cancels). SINGLE PLAYER starts the river with current, crossing wake
-and waves in the chosen livery. MULTIPLAYER asks for a `HOST:PORT` address and joins that
-`boat_server` room under NAME; rooms colour boats by slot, so BOAT applies to single player
-only. Esc in a session returns to the title, and a failed or lost connection shows why there.
+and waves in the chosen livery. MULTIPLAYER searches the local network for `boat_server`
+rooms. Its LAN row names the first one found (host machine and players) and selects it. With
+several rooms it shows LAN 1/2 and so on; Left/Right switch rooms, and Enter joins under NAME.
+The hint below the menu gives the room's mode and address, and says when a room needs a token or
+runs another game version. ADDRESS and CONNECT still join any `HOST:PORT` directly. Rooms colour
+boats by slot, so BOAT applies to single player only. Esc in a session returns to the title, and a failed or lost connection shows why there.
 NAME, BOAT and the address are remembered in `title.txt` in the personal-best data directory.
 Any explicit option skips the title; `--title --screenshot FILE` captures it.
 
@@ -167,8 +170,10 @@ native clients join over UDP:
 The server runs until Ctrl+C, `--seconds` or `--ticks`. `--waves` gives the room gentle waves,
 `--players 1-4` caps it, and `--token TEXT` requires the same `--token` from clients. To accept
 other machines, bind a LAN address (`--bind 192.168.1.20`) and allow the UDP port through the
-firewall (`--bind 0.0.0.0` accepts every interface). Internet hosting, NAT traversal,
-encryption and authentication are not provided. The room's players are listed at the top right.
+firewall (`--bind 0.0.0.0` accepts every interface). Such rooms also answer LAN searches on
+UDP port 24681 (`--lan-port N` moves it, `--no-lan` turns it off). A loopback room answers only
+searches from its own machine. `./build/boat_bot --discover` lists the rooms it finds. Internet
+hosting, NAT traversal, encryption and authentication are not provided. The room's players are listed at the top right.
 
 `--mode deathmatch` (2026-10-24) runs timed capsize rounds once two players are
 in: capsizing another boat with your wake or a hit within the last 5 s scores +1, capsizing
@@ -208,8 +213,10 @@ through, and allow it through Windows Firewall. On a Mac, run it from Terminal:
 "/Applications/Proteus Boating.app/Contents/MacOS/boat_server" --bind 0.0.0.0
 ```
 
-Friends choose MULTIPLAYER on the title and enter the host's LAN address with port 24680. The
-title has no token field, so leave `--token` off rooms meant for it. Internet play needs UDP port
+Friends on the same network choose MULTIPLAYER on the title. The room appears in its LAN row,
+named after the host machine; Enter joins. If it does not appear (a firewall, a separate guest
+network or a VPN), enter the host's LAN address with port 24680 under ADDRESS. The title has no
+token field, so leave `--token` off rooms meant for it. Internet play needs UDP port
 forwarding or a VPN; [M6](docs/MULTIPLAYER_PLAN.md#m6--friends-over-the-internet-and-native-packaging)
 owns that guidance, a Host button and a standalone Linux server.
 

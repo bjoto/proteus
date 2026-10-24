@@ -43,7 +43,9 @@ done. The Mac and Windows packages now carry `boat_server` for LAN rooms (Window
 see the [packaged server handoff](#packaged-lan-server-handoff--2026-10-24)). On 2026-10-24 the
 user played across two machines: a Mac hosted `boat_server` and one client, and a Windows machine
 joined over the LAN ("Multiplayer architecture works great!"); profile F and the contact-gap
-measurement were not part of that session. Next: the rest of the M4 manual acceptance session (two humans, LAN and profile F) and the contact-gap
+measurement were not part of that session. LAN discovery (2026-10-24) lets the title find
+rooms on the local network; it is checked on one Mac only. See the
+[LAN discovery handoff](#lan-discovery-handoff--2026-10-24). Next: the rest of the M4 manual acceptance session (two humans, LAN and profile F) and the contact-gap
 measurement it calls for; M5–M8 are pending. The [capsize deathmatch](DEATHMATCH_PLAN.md)
 proceeds in parallel (D1 match core and D2 protocol v2 with the in-game HUD implemented
 2026-10-24; next: D2 play, then D3). The live protocol is now [v2](MULTIPLAYER_PROTOCOL.md).
@@ -1500,6 +1502,38 @@ unverified. No LAN session between two machines has been played from packages.
 The first Windows run of the M3+ code (run 40082682785, before these package changes) failed on
 the `windows.h`/raylib name clash in `boat_net_enet.c`; the fix and its limits are in the
 [Windows guide](WINDOWS_BUILD.md).
+
+## LAN discovery handoff — 2026-10-24
+
+User request: make LAN games easier to join by detecting running servers with broadcast. This
+is a convenience pulled ahead of M6; no game protocol or simulation changed (still v2).
+
+- [Protocol](MULTIPLAYER_PROTOCOL.md#lan-discovery): a 52-byte query and answer on UDP port 24681
+  outside ENet, with their own format number. Answers carry protocol version, handling revision
+  and content digest, so the title can flag rooms it cannot join. The codec and search list are in
+  `boat_net_protocol.[ch]`; the sockets are in `boat_net_enet.c`, through ENet's portable socket
+  calls plus `getifaddrs` (POSIX) or `SIO_GET_INTERFACE_LIST` (Windows) for subnet broadcasts.
+- `boat_server` answers by default (`--lan-port N`, `--no-lan`). A loopback bind answers only
+  this machine. The answer names the host machine, mode, players, capacity and token flag, and
+  the startup line says whether discovery is on. The room epoch now converts through u64: on
+  arm64 the old direct u32 conversion saturated, so the epoch only varied once a second.
+- Title: MULTIPLAYER opens LAN / ADDRESS / CONNECT / BACK and searches about once a second
+  while the panel is open. See the [title plan](TITLE_SCREEN_PLAN.md) for the row behaviour.
+- `boat_bot --discover [--lan-port N] [--seconds S]` prints the rooms it finds;
+  `boat_net_loopback` now checks that it finds the smoke room.
+
+Verification, M1 Max/macOS 26.6.2, Debug: build warning-free and all 110 active CTests pass.
+The title compiles warning-free without `PROTEUS_BOAT_NET` (as in the web build). By hand:
+`boat_bot --discover` found a default loopback room, and two `--bind 0.0.0.0` rooms at once
+(one free, one deathmatch with a token; one answered over loopback, the other through the
+192.168.1.255 broadcast). It found nothing on an unused discovery port. The LAN row was
+captured with two fake rooms and with none, using a temporary screenshot patch that has been
+reverted.
+
+Not verified: discovery between two machines; Windows (the `SIO_GET_INTERFACE_LIST` path has
+not been compiled; Windows Firewall must allow `boat_server.exe` inbound and admit the unicast
+answer to `boat_study.exe`'s broadcast); Linux; interactive use of the LAN row; networks that
+drop broadcasts (guest Wi-Fi, client isolation, VPNs), where typing an address is still the way.
 
 ## Exact first implementation task
 

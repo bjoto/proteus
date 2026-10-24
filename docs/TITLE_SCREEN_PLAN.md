@@ -93,7 +93,12 @@ the menu table above remains a later proposal.
 
 - `tools/boat_title.[ch]` owns the title: the prototype's bowed logo, footer and
   `assets/title/river-backdrop.png`, drawn at 320x200 and integer-scaled. Rows: SINGLE
-  PLAYER, MULTIPLAYER, NAME, BOAT, EXIT. MULTIPLAYER opens ADDRESS / CONNECT / BACK.
+  PLAYER, MULTIPLAYER, NAME, BOAT, EXIT. MULTIPLAYER opens LAN / ADDRESS / CONNECT / BACK.
+  LAN (added 2026-10-24) lists rooms found by
+  [LAN discovery](MULTIPLAYER_PROTOCOL.md#lan-discovery). The search runs while the panel is
+  open; Left/Right pick among several rooms and Enter joins one, copying its address into
+  ADDRESS. Selection moves from CONNECT to LAN when the first room appears, unless the player
+  has already moved it.
   Enter on a text row starts typing (printable ASCII; Enter keeps, Esc cancels, empty
   restores). Mouse hover/click works. Settings persist as `title.txt` in the
   personal-best data directory (`name=`, `address=`, `skin=`). The default address is

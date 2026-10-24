@@ -4,6 +4,9 @@
 #include "boat_replay.h"
 #include "boat_skin.h"
 #include "raylib.h"
+#ifdef PROTEUS_BOAT_NET
+#include "boat_net_enet.h"
+#endif
 
 #include <ctype.h>
 #include <math.h>
@@ -13,7 +16,7 @@
 enum { WIDTH = 320, HEIGHT = 200, ROW_HEIGHT = 16 };
 
 typedef enum { ROW_SINGLE, ROW_MULTI, ROW_NAME, ROW_BOAT, ROW_EXIT, MAIN_ROWS } MainRow;
-typedef enum { ROW_ADDRESS, ROW_CONNECT, ROW_BACK, JOIN_ROWS } JoinRow;
+typedef enum { ROW_LAN, ROW_ADDRESS, ROW_CONNECT, ROW_BACK, JOIN_ROWS } JoinRow;
 
 typedef struct {
     Texture2D backdrop;
@@ -23,7 +26,68 @@ typedef struct {
     char *editing; // The text field being typed into, if any.
     char before[64]; // Its value when editing started, restored by Escape.
     double time;
+    // LAN search while the multiplayer panel is open (native builds).
+#ifdef PROTEUS_BOAT_NET
+    BoatNetLan *lan;
+#endif
+    bool searching, moved; // MOVED: the player has picked a row since opening the panel.
+    BoatNetLanList found;
+    unsigned shown; // The found room the LAN row offers.
+    double queried;
 } Title;
+
+static void stop_search(Title *t)
+{
+#ifdef PROTEUS_BOAT_NET
+    if (t->searching) {
+        boat_net_lan_close(t->lan);
+        boat_net_enet_cleanup();
+    }
+    t->lan = NULL;
+#endif
+    t->searching = false;
+    t->found.count = 0;
+}
+
+static void start_search(Title *t)
+{
+    t->found.count = t->shown = 0;
+    t->moved = false;
+    t->queried = -1;
+#ifdef PROTEUS_BOAT_NET
+    char error[160];
+    if (!t->searching && boat_net_enet_startup()) {
+        t->lan = boat_net_lan_search(error, sizeof(error));
+        t->searching = t->lan != NULL;
+        if (!t->searching)
+            boat_net_enet_cleanup();
+    }
+#endif
+}
+
+// Query about once a second and forget rooms silent for three.
+static void search(Title *t)
+{
+#ifdef PROTEUS_BOAT_NET
+    if (!t->searching)
+        return;
+    if (t->queried < 0 || t->time - t->queried >= 1) {
+        boat_net_lan_query(t->lan, BOAT_NET_DISCOVERY_PORT);
+        t->queried = t->time;
+    }
+    bool none = t->found.count == 0;
+    BoatNetLanRoom room;
+    while (boat_net_lan_receive(t->lan, &room))
+        boat_net_lan_list_note(&t->found, &room, t->time);
+    boat_net_lan_list_expire(&t->found, t->time, 3.5);
+    if (t->shown >= t->found.count)
+        t->shown = 0;
+    if (none && t->found.count && !t->moved && t->selected == ROW_CONNECT)
+        t->selected = ROW_LAN; // The first room found is the likely choice.
+#else
+    (void)t;
+#endif
+}
 
 static Color rgb(unsigned char r, unsigned char g, unsigned char b)
 {
@@ -102,10 +166,35 @@ static void row_text(const Title *t, const BoatTitleSettings *s, int row, const 
     *label = "";
     value[0] = 0;
     if (t->join) {
-        static const char *labels[JOIN_ROWS] = { "ADDRESS", "CONNECT", "BACK" };
+        static const char *labels[JOIN_ROWS] = { "LAN", "ADDRESS", "CONNECT", "BACK" };
         *label = labels[row];
         if (row == ROW_ADDRESS)
             snprintf(value, size, "%s", s->address);
+        if (row != ROW_LAN)
+            return;
+        if (!t->searching) {
+            snprintf(value, size, "UNAVAILABLE");
+        } else if (!t->found.count) {
+            int dots = (int)fmod(t->time * 2, 4);
+            snprintf(value, size, "SEARCHING%.*s", dots, "...");
+        }
+#ifdef PROTEUS_BOAT_NET
+        else {
+            const BoatNetLanRoom *room = &t->found.rooms[t->shown];
+            char host[32];
+            boat_net_lan_endpoint(room, host, sizeof(host));
+            if (room->name[0])
+                snprintf(host, sizeof(host), "%s", room->name);
+            char upper_host[32];
+            upper(upper_host, sizeof(upper_host), host);
+            snprintf(value, size, "%s %u/%u", upper_host, room->players, room->max_players);
+            if (t->found.count > 1) {
+                static char counted[16];
+                snprintf(counted, sizeof(counted), "LAN %u/%u", t->shown + 1, t->found.count);
+                *label = counted;
+            }
+        }
+#endif
         return;
     }
     static const char *labels[MAIN_ROWS]
@@ -118,6 +207,31 @@ static void row_text(const Title *t, const BoatTitleSettings *s, int row, const 
         upper(country, sizeof(country), boat_skin_name(s->skin));
         snprintf(value, size, "< %s >", country);
     }
+}
+
+// What the LAN row's room is, or how to make one appear.
+static const char *lan_hint(const Title *t, char *out, size_t size)
+{
+    if (!t->searching)
+        return "NO LAN SEARCH: TYPE AN ADDRESS BELOW";
+    if (!t->found.count)
+        return "NO ROOMS FOUND ON THIS NETWORK YET";
+#ifndef PROTEUS_BOAT_NET
+    (void)out;
+    (void)size;
+    return NULL;
+#else
+    const BoatNetLanRoom *room = &t->found.rooms[t->shown];
+    char endpoint[32];
+    boat_net_lan_endpoint(room, endpoint, sizeof(endpoint));
+    const char *what = room->mode == BOAT_NET_MODE_DEATHMATCH ? "DEATHMATCH" : "FREE BOATING";
+    if (!boat_net_lan_room_compatible(room))
+        what = "OTHER GAME VERSION";
+    else if (room->token)
+        what = "NEEDS A TOKEN";
+    snprintf(out, size, "%s AT %s%s", what, endpoint, t->found.count > 1 ? "  < >" : "");
+    return out;
+#endif
 }
 
 static void draw_menu(const Title *t, const BoatTitleSettings *s, const char *status)
@@ -155,6 +269,9 @@ static void draw_menu(const Title *t, const BoatTitleSettings *s, const char *st
         hint = "TYPE, THEN ENTER / ESC: CANCEL";
     if (!hint && !t->join && t->selected == ROW_BOAT)
         hint = "SINGLE PLAYER; ROOMS COLOUR BOATS BY SLOT";
+    char lan[96];
+    if (!hint && t->join && t->selected == ROW_LAN)
+        hint = lan_hint(t, lan, sizeof(lan));
     if (hint) {
         const char *shown = fit(hint, WIDTH - 12);
         int x = (WIDTH - MeasureText(shown, 10)) / 2, y = top + height + 3;
@@ -220,6 +337,7 @@ static bool open_title(Title *t)
 
 static void close_title(Title *t)
 {
+    stop_search(t);
     if (IsRenderTextureValid(t->target))
         UnloadRenderTexture(t->target);
     if (IsTextureValid(t->backdrop))
@@ -310,7 +428,15 @@ BoatTitleChoice boat_title_run(BoatTitleSettings *s)
         }
         if (step) {
             t.selected = (t.selected + step + row_count(&t)) % row_count(&t);
+            t.moved = true;
             s->message[0] = 0;
+        }
+        if (t.join && !t.editing)
+            search(&t);
+        if (t.join && t.selected == ROW_LAN && !t.editing && t.found.count > 1) {
+            int turn = (IsKeyPressed(KEY_RIGHT) || IsKeyPressed(KEY_D))
+                - (IsKeyPressed(KEY_LEFT) || IsKeyPressed(KEY_A));
+            t.shown = (unsigned)((int)(t.shown + t.found.count) + turn) % t.found.count;
         }
         if (!t.join && t.selected == ROW_BOAT && !t.editing) {
             int turn = (IsKeyPressed(KEY_RIGHT) || IsKeyPressed(KEY_D) || activate)
@@ -321,7 +447,16 @@ BoatTitleChoice boat_title_run(BoatTitleSettings *s)
         if (activate) {
             s->message[0] = 0;
             if (t.join) {
-                if (t.selected == ROW_ADDRESS)
+                if (t.selected == ROW_LAN) {
+#ifdef PROTEUS_BOAT_NET
+                    if (t.found.count) {
+                        boat_net_lan_endpoint(
+                            &t.found.rooms[t.shown], s->address, sizeof(s->address));
+                        choice = BOAT_TITLE_JOIN;
+                        chosen = true;
+                    }
+#endif
+                } else if (t.selected == ROW_ADDRESS)
                     begin_edit(&t, s->address);
                 else if (t.selected == ROW_CONNECT) {
                     choice = BOAT_TITLE_JOIN;
@@ -334,12 +469,14 @@ BoatTitleChoice boat_title_run(BoatTitleSettings *s)
             } else if (t.selected == ROW_MULTI) {
                 t.join = true;
                 t.selected = ROW_CONNECT;
+                start_search(&t);
             } else if (t.selected == ROW_NAME)
                 begin_edit(&t, s->name);
             else if (t.selected == ROW_EXIT)
                 chosen = true;
         }
         if (back && t.join) {
+            stop_search(&t);
             t.join = false;
             t.selected = ROW_MULTI;
         } else if (back)

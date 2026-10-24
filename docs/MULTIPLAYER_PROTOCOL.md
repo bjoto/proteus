@@ -246,6 +246,56 @@ either an attacker < 4 other than the victim with cause contact or wake, or atta
 self-capsize, −1) with cause none and no bailout flag. Round events carry 255 in both slots,
 cause none, no flags and life 0. Within a tick, events precede the MatchState that counts them.
 
+## LAN discovery
+
+Added 2026-10-24 so the title can list rooms on the local network. Discovery is plain UDP on
+its own port, **24681** (`BOAT_NET_DISCOVERY_PORT`, `boat_server --lan-port`), outside ENet and
+the header above. It has its own format number (1), so the game protocol version can change
+without breaking it, and every answer carries the room's protocol version, handling revision
+and content digest. A searcher can therefore tell a room it cannot join before it tries.
+
+A searcher sends a **query** to 127.0.0.1, 255.255.255.255 and the subnet broadcast address of
+every interface that is up and supports broadcast, about once a second. A room answers each
+valid query with one **answer**, sent directly to the query's source address and port. Both are
+exactly 52 bytes, so an answer is never larger than the query that caused it. Rooms answer at
+most four queries per service. Rooms bound to a loopback address listen for queries on that
+address only. Other rooms listen on every interface and share the port (`SO_REUSEADDR`, plus
+`SO_REUSEPORT` outside Linux), so several rooms on one machine all answer broadcasts.
+
+Query (52 bytes):
+
+| Offset | Type | Field | Rule |
+| ---: | --- | --- | --- |
+| 0 | u32 | magic | `0x50424c51` ("PBLQ") |
+| 4 | u16 | format | 1 |
+| 6 | u16 | version | The searcher's protocol version; informative, any value |
+| 8 | 44 bytes | reserved | 0 |
+
+Answer (52 bytes):
+
+| Offset | Type | Field | Rule |
+| ---: | --- | --- | --- |
+| 0 | u32 | magic | `0x50424c52` ("PBLR") |
+| 4 | u16 | format | 1 |
+| 6 | u16 | version | The room's protocol version, any value |
+| 8 | u32 | physics revision | The room's `BOAT_PHYSICS_REVISION` |
+| 12 | u64 | content digest | As in Hello |
+| 20 | u32 | epoch | Room session epoch; with port and name, identifies one room |
+| 24 | u32 | address | IPv4 `a.b.c.d` as `a << 24 \| b << 16 \| c << 8 \| d`; 0 means "the sender's address" (a room bound to 0.0.0.0) |
+| 28 | u16 | port | Game port, 1–65535 |
+| 30 | u8 | mode | Room mode as in Accept; not validated, since other versions may add modes |
+| 31 | u8 | players | Connected players, at most max players |
+| 32 | u8 | max players | `--players`, at least 1 |
+| 33 | u8 | flags | Bit 0: the room needs a token; other bits 0 |
+| 34 | u8 + 16 bytes | name | The host's name (the first label of its host name), as a Roster name |
+| 51 | u8 | reserved | 0 |
+
+Receivers drop datagrams of any other size, magic or format, and answers that fail a rule.
+A searcher keeps the first address it heard for a room: on the host machine a room answers both
+the loopback query and the broadcast. It forgets rooms that have been silent for 3.5 s. There
+is no authentication. Any machine on the network can answer, and a room's name and counts are
+only as trustworthy as that machine.
+
 ## Authority rules carried by the protocol
 
 - **No client state.** Clients never send positions, impacts, launches, landings, capsizes or
@@ -297,6 +347,9 @@ must not exceed their capacities, and expired ≤ emitted.
   MatchEvent consistency rules;
 - a deathmatch room on the in-memory transport whose clients, including a mid-round joiner,
   hold the authority's MatchState through capsizes, a round end and a leaver;
+- LAN discovery: the query's first 8 bytes, the answer's magic and bytes 20–51, every
+  truncation, a query offered as an answer, invalid player counts and port, an answer from
+  another version that decodes but is incompatible, and the search list's merge and expiry;
 - checkpoints of busy four-boat fleets (calm and waves) that decode to the same fleet hash,
   re-encode byte for byte and resume 600 ticks bit-identically.
 

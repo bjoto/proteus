@@ -2,7 +2,8 @@
  * boat with the boat_fleet_bots route (or, with --hunt, at the nearest other boat) from the
  * authoritative mirror, and checks the mirror's wake reconstruction against each snapshot's
  * digest. In deathmatch rooms it prints each finished round's scoreboard as received.
- * Headless; for process smoke tests. */
+ * --discover lists the rooms that answer a LAN search instead. Headless; for process smoke tests.
+ */
 #include "boat_fleet_bots.h"
 #include "boat_net_client.h"
 #include "boat_net_enet.h"
@@ -17,18 +18,65 @@ static void usage(FILE *out)
     fprintf(out,
         "usage: boat_bot --connect HOST:PORT [--name TEXT] [--token TEXT] [--seconds S]\n"
         "                [--hunt] [--expect-reject]\n"
+        "       boat_bot --discover [--lan-port N] [--seconds S]\n"
         "Join a boat_server room, drive one boat by script for S seconds (default 5), then\n"
         "leave and print a summary. --hunt drives at the nearest other boat to ram it or cross\n"
         "it with its wake (for deathmatch rooms). --expect-reject succeeds only when the room\n"
         "refuses it.\n"
-        "Exit status: 0 success, 1 connection failure, 2 usage, 3 rejected.\n");
+        "--discover: search the local network (and this machine) for rooms for S seconds\n"
+        "(default 2) on UDP --lan-port (default %d) and print one line per room; exit 1 if\n"
+        "none answered.\n"
+        "Exit status: 0 success, 1 connection failure, 2 usage, 3 rejected.\n",
+        BOAT_NET_DISCOVERY_PORT);
+}
+
+static int discover(uint16_t lan_port, unsigned long seconds)
+{
+    char error[160];
+    if (!boat_net_enet_startup()) {
+        fprintf(stderr, "boat_bot: cannot initialize networking.\n");
+        return 1;
+    }
+    BoatNetLan *lan = boat_net_lan_search(error, sizeof(error));
+    if (!lan) {
+        fprintf(stderr, "boat_bot: %s\n", error);
+        boat_net_enet_cleanup();
+        return 1;
+    }
+    static const char *const modes[] = { "free", "deathmatch" };
+    BoatNetLanList list = { 0 };
+    double start = boat_net_clock(), queried = -1;
+    for (double now = start; now - start < (double)seconds; now = boat_net_clock()) {
+        if (queried < 0 || now - queried >= .5) {
+            boat_net_lan_query(lan, lan_port);
+            queried = now;
+        }
+        BoatNetLanRoom room;
+        while (boat_net_lan_receive(lan, &room))
+            boat_net_lan_list_note(&list, &room, now);
+        boat_net_sleep(.02);
+    }
+    boat_net_lan_close(lan);
+    boat_net_enet_cleanup();
+    for (unsigned i = 0; i < list.count; ++i) {
+        const BoatNetLanRoom *r = &list.rooms[i];
+        char endpoint[32];
+        boat_net_lan_endpoint(r, endpoint, sizeof(endpoint));
+        printf("lan room %s name=%s mode=%s players=%u/%u token=%s protocol=%u compatible=%s\n",
+            endpoint, r->name[0] ? r->name : "-",
+            r->mode < BOAT_NET_MODE_LIMIT ? modes[r->mode] : "unknown", r->players, r->max_players,
+            r->token ? "yes" : "no", r->version, boat_net_lan_room_compatible(r) ? "yes" : "no");
+    }
+    printf("boat_bot discover: rooms=%u\n", list.count);
+    return list.count ? 0 : 1;
 }
 
 int main(int argc, char **argv)
 {
     const char *endpoint = NULL, *name = "bot", *token = "";
     unsigned long seconds = 5;
-    bool expect_reject = false, hunt = false;
+    bool expect_reject = false, hunt = false, search = false, timed = false;
+    uint16_t lan_port = BOAT_NET_DISCOVERY_PORT;
     for (int i = 1; i < argc; ++i) {
         const char *value = i + 1 < argc ? argv[i + 1] : NULL;
         if (strcmp(argv[i], "--help") == 0) {
@@ -49,6 +97,12 @@ int main(int argc, char **argv)
                 usage(stderr);
                 return 2;
             }
+            timed = true;
+            ++i;
+        } else if (strcmp(argv[i], "--discover") == 0) {
+            search = true;
+        } else if (strcmp(argv[i], "--lan-port") == 0 && value
+            && boat_net_parse_port(value, &lan_port)) {
             ++i;
         } else if (strcmp(argv[i], "--hunt") == 0) {
             hunt = true;
@@ -59,6 +113,13 @@ int main(int argc, char **argv)
             usage(stderr);
             return 2;
         }
+    }
+    if (search) {
+        if (endpoint || hunt || expect_reject) {
+            fprintf(stderr, "boat_bot: --discover does not join a room.\n");
+            return 2;
+        }
+        return discover(lan_port, timed ? seconds : 2);
     }
     char host[256], error[160];
     uint16_t port;

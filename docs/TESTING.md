@@ -60,9 +60,9 @@ captures and checksums) or `gpu` (graphics context). Skin geometry carries both 
   `boat_server_scripted_deathmatch` runs a scripted 10 s round through its intermission.
 - `boat_net`, `boat_net_loopback` and `boat_net_deathmatch` are the
   [network checks](#network-checks).
-- Eight argument checks expect a failure: `boat_server --scripted` with a room option, an invalid
+- Nine argument checks expect a failure: `boat_server --scripted` with a room option, an invalid
   `--port` and an invalid `--bind`, `--round-seconds` without `--mode deathmatch`, `boat_bot`
-  without a port, `boat_study --connect` combined with `--waves` or `--skin`, and `--name`
+  without a port, `boat_bot --discover` with `--connect`, `boat_study --connect` combined with `--waves` or `--skin`, and `--name`
   without `--connect`.
 Select a group with `-L`, for example `ctest --test-dir build -L core`; CTest adds fixture
 setup tests that a selected test requires, whatever their label.
@@ -110,13 +110,17 @@ about two seconds. It covers:
   corrections, early births by identity, and gated wake-change counts in the predicting rooms;
 - remote view: interpolation, life and teleport rules, extrapolation limits and proximity
   hysteresis, plus the drawn delay and position error against the authority in the rooms;
+- LAN discovery: query and answer bytes, truncations and invalid answers, and the search
+  list's merge and expiry;
 - a deathmatch room (protocol v2): every client, including a mid-round joiner, holds the
   authority's scoreboard through capsizes, a round end and a leaver, and names both boats of a
   credited capsize in its kill feed.
 
 `boat_net_loopback` runs `tools/boat_net_smoke.py`, which starts real `boat_server` and
 `boat_bot` processes on a free 127.0.0.1 UDP port for about 10 s. Two bots drive and a
-wrong-token bot is refused. A second server on the same port must fail, and the message,
+wrong-token bot is refused. `boat_bot --discover` on a second free port (the room's
+`--lan-port`) must find the room once, with its token flag and player count. A second server on
+the same port must fail, and the message,
 datagram and MTU bounds plus a bounded exit are checked. Each bot must send commands for over
 half of its ticks, and the server must use more than 85% of that share (`received_ratio` against
 command coverage). Busy CI runners deschedule processes for 50-200 ms, and commands for ticks the

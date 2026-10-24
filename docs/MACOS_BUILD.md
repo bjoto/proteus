@@ -41,8 +41,8 @@ checkout had uncommitted changes when packaged.
 Double-clicking the app opens the Wake Velocity title (2026-10-24), as does `boat_study`
 without options. Its SINGLE PLAYER starts the preferred river setup: current, crossing
 wake, gentle waves, GPU antialiasing, camera distance 12, and camera height 6, in the
-chosen BOAT livery. MULTIPLAYER joins a `boat_server` room by HOST:PORT with the chosen
-NAME. The single-player setup is equivalent to:
+chosen BOAT livery. MULTIPLAYER lists `boat_server` rooms found on the local network and
+joins one, or a typed HOST:PORT, with the chosen NAME. The single-player setup is equivalent to:
 
 ```sh
 ./build/boat_study --current --crossing-wake --location river --waves --gpu-aa --camera-distance 12 --camera-height 6

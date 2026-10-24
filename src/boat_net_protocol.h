@@ -299,4 +299,46 @@ size_t boat_net_checkpoint_encode(const BoatFleetState *state,
 BoatNetError boat_net_checkpoint_decode(const uint8_t *data, size_t size, BoatFleetState *state,
     BoatNetSlotInput inputs[BOAT_FLEET_SLOTS]);
 
+// LAN discovery (docs/MULTIPLAYER_PROTOCOL.md#lan-discovery): plain UDP datagrams outside ENet
+// on their own port. A client broadcasts a query; every room that hears it answers the sender
+// directly. Query and answer have the same size, so an answer never amplifies its query.
+#define BOAT_NET_DISCOVERY_PORT 24681
+#define BOAT_NET_DISCOVERY_BYTES 52
+#define BOAT_NET_DISCOVERY_FORMAT 1
+#define BOAT_NET_LAN_ROOMS 8 // Rooms a search list keeps.
+
+typedef struct {
+    uint16_t version; // The room's protocol version, which may differ from this build's.
+    uint32_t physics_revision;
+    uint64_t content_digest;
+    uint32_t epoch; // Tells one room's answers (over loopback and the LAN) from another's.
+    uint32_t address; // IPv4 a.b.c.d as a << 24 | ...; zero means the answer's sender.
+    uint16_t port; // The room's game port.
+    uint8_t mode; // BoatNetRoomMode for this version; not validated across versions.
+    uint8_t players, max_players;
+    bool token; // Joining needs a room token.
+    char name[BOAT_NET_NAME_BYTES + 1]; // The host machine's name; may be empty.
+} BoatNetLanRoom;
+
+typedef struct {
+    unsigned count;
+    BoatNetLanRoom rooms[BOAT_NET_LAN_ROOMS]; // In the order first heard.
+    double seen[BOAT_NET_LAN_ROOMS];
+} BoatNetLanList;
+
+size_t boat_net_lan_query_encode(uint8_t out[BOAT_NET_DISCOVERY_BYTES]);
+bool boat_net_lan_query_decode(const uint8_t *data, size_t size);
+// Zero for a room the decoder would refuse.
+size_t boat_net_lan_room_encode(const BoatNetLanRoom *room, uint8_t out[BOAT_NET_DISCOVERY_BYTES]);
+bool boat_net_lan_room_decode(const uint8_t *data, size_t size, BoatNetLanRoom *room);
+// Whether this build's handshake would pass the room's version, handling and content checks.
+bool boat_net_lan_room_compatible(const BoatNetLanRoom *room);
+// "a.b.c.d:port" of a room whose address is known.
+void boat_net_lan_endpoint(const BoatNetLanRoom *room, char *out, size_t size);
+// Add or refresh ROOM, heard at NOW. A room already listed (same epoch, port and name) keeps its
+// position and first address. A full list ignores new rooms.
+void boat_net_lan_list_note(BoatNetLanList *list, const BoatNetLanRoom *room, double now);
+// Forget rooms not heard from for more than AGE seconds; the rest keep their order.
+void boat_net_lan_list_expire(BoatNetLanList *list, double now, double age);
+
 #endif

@@ -684,6 +684,74 @@ static uint8_t raw_hello(Room *room, const uint8_t *bytes, size_t size, BoatNetM
 }
 
 // A late service catches up several ticks at once; it must still stop exactly at the limit.
+static int lan_discovery(void)
+{
+    uint8_t query[BOAT_NET_DISCOVERY_BYTES], bytes[BOAT_NET_DISCOVERY_BYTES];
+    CHECK(boat_net_lan_query_encode(query) == BOAT_NET_DISCOVERY_BYTES);
+    CHECK(same_bytes(query, 8, "50424c5100010002"));
+    CHECK(boat_net_lan_query_decode(query, sizeof(query)));
+    CHECK(!boat_net_lan_query_decode(query, sizeof(query) - 1));
+    query[51] = 1;
+    CHECK(!boat_net_lan_query_decode(query, sizeof(query)));
+
+    BoatNetLanRoom room = { .version = BOAT_NET_VERSION,
+        .physics_revision = BOAT_PHYSICS_REVISION,
+        .content_digest = boat_net_content_digest(basin()),
+        .epoch = 0x01020304u,
+        .address = 0xc0a80114u,
+        .port = BOAT_NET_PORT,
+        .mode = BOAT_NET_MODE_DEATHMATCH,
+        .players = 2,
+        .max_players = 4,
+        .token = true,
+        .name = "ferry" };
+    CHECK(boat_net_lan_room_encode(&room, bytes) == BOAT_NET_DISCOVERY_BYTES);
+    CHECK(same_bytes(bytes, 4, "50424c52"));
+    CHECK(same_bytes(bytes + 20, 32,
+        "01020304c0a801146068010204010566657272790000000000000000"
+        "00000000"));
+    BoatNetLanRoom back;
+    CHECK(boat_net_lan_room_decode(bytes, sizeof(bytes), &back));
+    CHECK(back.epoch == room.epoch && back.address == room.address && back.port == room.port);
+    CHECK(back.mode == room.mode && back.players == 2 && back.max_players == 4 && back.token);
+    CHECK(!strcmp(back.name, "ferry") && boat_net_lan_room_compatible(&back));
+    char endpoint[32];
+    boat_net_lan_endpoint(&back, endpoint, sizeof(endpoint));
+    CHECK(!strcmp(endpoint, "192.168.1.20:24680"));
+    for (size_t size = 0; size < sizeof(bytes); ++size)
+        CHECK(!boat_net_lan_room_decode(bytes, size, &back));
+    CHECK(!boat_net_lan_room_decode(query, sizeof(query), &back)); // A query is not an answer.
+    BoatNetLanRoom bad = room;
+    bad.players = 5;
+    CHECK(!boat_net_lan_room_encode(&bad, bytes));
+    bad = room;
+    bad.port = 0;
+    CHECK(!boat_net_lan_room_encode(&bad, bytes));
+    bad = room;
+    bad.version = BOAT_NET_VERSION + 1; // Other versions still decode, to say why not to join.
+    CHECK(boat_net_lan_room_encode(&bad, bytes) && boat_net_lan_room_decode(bytes, 52, &back));
+    CHECK(!boat_net_lan_room_compatible(&back));
+
+    // The same room heard over loopback then the LAN keeps its first address and position.
+    BoatNetLanList list = { 0 };
+    BoatNetLanRoom local = room, other = room;
+    local.address = 0x7f000001u;
+    other.epoch = 9;
+    boat_net_lan_list_note(&list, &local, 0);
+    boat_net_lan_list_note(&list, &other, 0.5);
+    room.players = 3;
+    boat_net_lan_list_note(&list, &room, 1);
+    CHECK(list.count == 2 && list.rooms[0].address == 0x7f000001u && list.rooms[0].players == 3);
+    boat_net_lan_list_expire(&list, 4.2, 3.5);
+    CHECK(list.count == 1 && list.rooms[0].epoch == 0x01020304u);
+    for (uint32_t i = 0; i < 2 * BOAT_NET_LAN_ROOMS; ++i) {
+        other.epoch = 100 + i;
+        boat_net_lan_list_note(&list, &other, 5);
+    }
+    CHECK(list.count == BOAT_NET_LAN_ROOMS);
+    return 0;
+}
+
 static int tick_limit(void)
 {
     static Room room;
@@ -1520,6 +1588,7 @@ int main(void)
     RUN(checkpoints());
     RUN(lossless());
     RUN(deathmatch());
+    RUN(lan_discovery());
     RUN(tick_limit());
     RUN(rejections());
     RUN(authority_rules());

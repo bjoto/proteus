@@ -1099,3 +1099,150 @@ bool boat_net_match_state_equal(const BoatNetMatchState *a, const BoatNetMatchSt
     }
     return true;
 }
+
+enum {
+    LAN_QUERY_MAGIC = 0x50424c51u, // "PBLQ"
+    LAN_ROOM_MAGIC = 0x50424c52u, // "PBLR"
+    LAN_TOKEN = 1u,
+};
+
+size_t boat_net_lan_query_encode(uint8_t out[BOAT_NET_DISCOVERY_BYTES])
+{
+    Writer w = { out, 0, BOAT_NET_DISCOVERY_BYTES, false };
+    put32(&w, LAN_QUERY_MAGIC);
+    put16(&w, BOAT_NET_DISCOVERY_FORMAT);
+    put16(&w, BOAT_NET_VERSION);
+    while (w.size < BOAT_NET_DISCOVERY_BYTES)
+        put8(&w, 0); // Padding to the answer's size.
+    return w.size;
+}
+
+bool boat_net_lan_query_decode(const uint8_t *data, size_t size)
+{
+    if (size != BOAT_NET_DISCOVERY_BYTES)
+        return false;
+    Reader r = { data, size, 0, BOAT_NET_OK };
+    expect(&r, get32(&r) == LAN_QUERY_MAGIC);
+    expect(&r, get16(&r) == BOAT_NET_DISCOVERY_FORMAT);
+    get16(&r); // The searcher's protocol version: any version may learn about this room.
+    reserved(&r, BOAT_NET_DISCOVERY_BYTES - 8);
+    return r.error == BOAT_NET_OK;
+}
+
+size_t boat_net_lan_room_encode(const BoatNetLanRoom *room, uint8_t out[BOAT_NET_DISCOVERY_BYTES])
+{
+    uint8_t bytes[BOAT_NET_DISCOVERY_BYTES];
+    Writer w = { bytes, 0, sizeof(bytes), false };
+    put32(&w, LAN_ROOM_MAGIC);
+    put16(&w, BOAT_NET_DISCOVERY_FORMAT);
+    put16(&w, room->version);
+    put32(&w, room->physics_revision);
+    put64(&w, room->content_digest);
+    put32(&w, room->epoch);
+    put32(&w, room->address);
+    put16(&w, room->port);
+    put8(&w, room->mode);
+    put8(&w, room->players);
+    put8(&w, room->max_players);
+    put8(&w, room->token ? LAN_TOKEN : 0);
+    put_name(&w, room->name);
+    put8(&w, 0);
+    BoatNetLanRoom check;
+    if (w.overflow || w.size != sizeof(bytes) || !boat_net_lan_room_decode(bytes, w.size, &check))
+        return 0;
+    memcpy(out, bytes, sizeof(bytes));
+    return w.size;
+}
+
+bool boat_net_lan_room_decode(const uint8_t *data, size_t size, BoatNetLanRoom *room)
+{
+    if (size != BOAT_NET_DISCOVERY_BYTES)
+        return false;
+    Reader r = { data, size, 0, BOAT_NET_OK };
+    BoatNetLanRoom decoded = { 0 };
+    expect(&r, get32(&r) == LAN_ROOM_MAGIC);
+    expect(&r, get16(&r) == BOAT_NET_DISCOVERY_FORMAT);
+    decoded.version = get16(&r);
+    decoded.physics_revision = get32(&r);
+    decoded.content_digest = get64(&r);
+    decoded.epoch = get32(&r);
+    decoded.address = get32(&r);
+    decoded.port = get16(&r);
+    expect(&r, decoded.port != 0);
+    decoded.mode = get8(&r);
+    decoded.players = get8(&r);
+    decoded.max_players = get8(&r);
+    expect(&r, decoded.max_players > 0 && decoded.players <= decoded.max_players);
+    uint8_t flags = get8(&r);
+    expect(&r, (flags & ~LAN_TOKEN) == 0);
+    decoded.token = flags & LAN_TOKEN;
+    get_name(&r, decoded.name);
+    reserved(&r, 1);
+    if (r.error)
+        return false;
+    *room = decoded;
+    return true;
+}
+
+bool boat_net_lan_room_compatible(const BoatNetLanRoom *room)
+{
+    return room->version == BOAT_NET_VERSION && room->physics_revision == BOAT_PHYSICS_REVISION
+        && room->content_digest == boat_net_content_digest(boat_location(BOAT_LOCATION_BASIN));
+}
+
+// Decimal digits of VALUE at TEXT; returns the end.
+static char *put_decimal(char *text, unsigned value)
+{
+    char digits[5];
+    int count = 0;
+    do
+        digits[count++] = (char)('0' + value % 10);
+    while ((value /= 10) != 0);
+    while (count)
+        *text++ = digits[--count];
+    return text;
+}
+
+void boat_net_lan_endpoint(const BoatNetLanRoom *room, char *out, size_t size)
+{
+    char text[24], *end = text; // "255.255.255.255:65535"; no stdio in this library.
+    for (int shift = 24; shift >= 0; shift -= 8) {
+        end = put_decimal(end, room->address >> shift & 255);
+        *end++ = shift ? '.' : ':';
+    }
+    end = put_decimal(end, room->port);
+    size_t length = (size_t)(end - text);
+    if (!size)
+        return;
+    length = length < size - 1 ? length : size - 1;
+    memcpy(out, text, length);
+    out[length] = 0;
+}
+
+void boat_net_lan_list_note(BoatNetLanList *list, const BoatNetLanRoom *room, double now)
+{
+    unsigned i = 0;
+    while (i < list->count
+        && (list->rooms[i].epoch != room->epoch || list->rooms[i].port != room->port
+            || strcmp(list->rooms[i].name, room->name) != 0))
+        ++i;
+    if (i == BOAT_NET_LAN_ROOMS)
+        return;
+    uint32_t address = i < list->count ? list->rooms[i].address : room->address;
+    list->rooms[i] = *room;
+    list->rooms[i].address = address;
+    list->seen[i] = now;
+    if (i == list->count)
+        ++list->count;
+}
+
+void boat_net_lan_list_expire(BoatNetLanList *list, double now, double age)
+{
+    unsigned kept = 0;
+    for (unsigned i = 0; i < list->count; ++i)
+        if (now - list->seen[i] <= age) {
+            list->rooms[kept] = list->rooms[i];
+            list->seen[kept++] = list->seen[i];
+        }
+    list->count = kept;
+}

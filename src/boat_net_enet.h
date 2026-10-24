@@ -35,5 +35,26 @@ void boat_net_sleep(double seconds);
 // Parse "HOST:PORT" (PORT 1..65535). HOST is copied into HOST_OUT.
 bool boat_net_parse_endpoint(const char *text, char *host_out, size_t host_size, uint16_t *port);
 bool boat_net_parse_port(const char *text, uint16_t *port);
+// Dotted-quad IPv4 TEXT as a << 24 | b << 16 | c << 8 | d.
+bool boat_net_parse_ipv4(const char *text, uint32_t *address);
+
+// LAN discovery sockets (plain UDP, protocol in boat_net_protocol.h). A room's answering socket
+// listens on PORT: loopback only when BIND is a loopback address, otherwise every interface,
+// shared with other rooms on this machine where the system allows it. NULL with ERROR set.
+typedef struct BoatNetLan BoatNetLan;
+BoatNetLan *boat_net_lan_listen(const char *bind, uint16_t port, char *error, size_t size);
+// Answer the queries waiting (a few per call) with ROOM; returns how many were answered.
+unsigned boat_net_lan_answer(BoatNetLan *lan, const BoatNetLanRoom *room);
+// A searching socket on an ephemeral port.
+BoatNetLan *boat_net_lan_search(char *error, size_t size);
+// Send one query to PORT on loopback, the limited broadcast address and every broadcast-capable
+// interface's subnet broadcast address.
+void boat_net_lan_query(BoatNetLan *lan, uint16_t port);
+// The next answer without blocking. A room advertising no address gets its sender's.
+bool boat_net_lan_receive(BoatNetLan *lan, BoatNetLanRoom *room);
+void boat_net_lan_close(BoatNetLan *lan);
+// This machine's name for answers: its first label in printable ASCII, at most
+// BOAT_NET_NAME_BYTES; empty when unknown.
+void boat_net_host_name(char out[BOAT_NET_NAME_BYTES + 1]);
 
 #endif

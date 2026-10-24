@@ -447,12 +447,15 @@ add_test(NAME boat_server_scripted_room_option_rejected
 add_test(NAME boat_server_port_rejected COMMAND boat_server --port 0)
 add_test(NAME boat_server_bind_rejected COMMAND boat_server --bind not-an-address --ticks 1)
 add_test(NAME boat_bot_endpoint_rejected COMMAND boat_bot --connect 127.0.0.1)
+add_test(NAME boat_bot_discover_join_rejected
+  COMMAND boat_bot --discover --connect 127.0.0.1:24680)
 add_test(NAME boat_net_study_mode_rejected COMMAND boat_study --connect 127.0.0.1:24680 --waves)
 add_test(NAME boat_net_study_name_rejected COMMAND boat_study --name lonely)
 add_test(NAME boat_net_study_skin_rejected
   COMMAND boat_study --connect 127.0.0.1:24680 --skin norway)
 set_tests_properties(boat_server_scripted_room_option_rejected boat_server_port_rejected
-  boat_server_bind_rejected boat_server_round_without_deathmatch_rejected boat_bot_endpoint_rejected boat_net_study_mode_rejected
+  boat_server_bind_rejected boat_server_round_without_deathmatch_rejected boat_bot_endpoint_rejected
+  boat_bot_discover_join_rejected boat_net_study_mode_rejected
   boat_net_study_name_rejected boat_net_study_skin_rejected PROPERTIES WILL_FAIL TRUE)
 add_test(NAME boat_net COMMAND validate_boat_net)
 set_tests_properties(boat_net PROPERTIES PASS_REGULAR_EXPRESSION "boat_net=ok")

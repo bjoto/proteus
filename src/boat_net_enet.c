@@ -1,6 +1,10 @@
 #if !defined(_WIN32) && !defined(_POSIX_C_SOURCE)
 #define _POSIX_C_SOURCE 200809L // clock_gettime and nanosleep under strict C17.
 #endif
+#ifndef _WIN32
+#define _DEFAULT_SOURCE // getifaddrs, interface flags and SO_REUSEPORT.
+#define _DARWIN_C_SOURCE
+#endif
 #include "boat_net_enet.h"
 
 #ifdef _WIN32
@@ -10,6 +14,15 @@
 #define NOUSER
 #endif
 #include <enet/enet.h>
+#ifdef _WIN32
+#include <ws2tcpip.h> // INTERFACE_INFO and SIO_GET_INTERFACE_LIST.
+#else
+#include <ifaddrs.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,6 +30,7 @@
 #ifndef _WIN32
 #include <time.h>
 #endif
+#include <ctype.h>
 
 struct BoatNetEnet {
     ENetHost *host;
@@ -277,6 +291,28 @@ bool boat_net_parse_port(const char *text, uint16_t *port)
     return true;
 }
 
+bool boat_net_parse_ipv4(const char *text, uint32_t *address)
+{
+    uint32_t value = 0;
+    for (int part = 0; part < 4; ++part) {
+        if (part && *text++ != '.')
+            return false;
+        if (!isdigit((unsigned char)*text))
+            return false;
+        unsigned number = 0;
+        for (int digits = 0; isdigit((unsigned char)*text); ++digits, ++text) {
+            number = number * 10 + (unsigned)(*text - '0');
+            if (digits == 3 || number > 255)
+                return false;
+        }
+        value = value << 8 | number;
+    }
+    if (*text)
+        return false;
+    *address = value;
+    return true;
+}
+
 bool boat_net_parse_endpoint(const char *text, char *host_out, size_t host_size, uint16_t *port)
 {
     const char *colon = strrchr(text, ':');
@@ -286,4 +322,174 @@ bool boat_net_parse_endpoint(const char *text, char *host_out, size_t host_size,
     memcpy(host_out, text, (size_t)(colon - text));
     host_out[colon - text] = 0;
     return strchr(host_out, ':') == NULL; // IPv4 or a name; no IPv6 literals in v1.
+}
+
+struct BoatNetLan {
+    ENetSocket socket;
+};
+
+static BoatNetLan *lan_open(ENetAddress address, bool shared, char *error, size_t size)
+{
+    BoatNetLan *lan = malloc(sizeof(*lan));
+    if (!lan) {
+        snprintf(error, size, "out of memory");
+        return NULL;
+    }
+    lan->socket = enet_socket_create(ENET_SOCKET_TYPE_DATAGRAM);
+    if (lan->socket == ENET_SOCKET_NULL) {
+        snprintf(error, size, "cannot create a UDP socket");
+        free(lan);
+        return NULL;
+    }
+    enet_socket_set_option(lan->socket, ENET_SOCKOPT_NONBLOCK, 1);
+    enet_socket_set_option(lan->socket, ENET_SOCKOPT_BROADCAST, 1);
+    if (shared) {
+        // Every room on this machine then receives broadcast queries.
+        enet_socket_set_option(lan->socket, ENET_SOCKOPT_REUSEADDR, 1);
+#if defined(SO_REUSEPORT) && !defined(__linux__)
+        int on = 1;
+        setsockopt(lan->socket, SOL_SOCKET, SO_REUSEPORT, &on, sizeof(on));
+#endif
+    }
+    if (enet_socket_bind(lan->socket, &address) != 0) {
+        snprintf(error, size, "UDP port %u is not available", (unsigned)address.port);
+        enet_socket_destroy(lan->socket);
+        free(lan);
+        return NULL;
+    }
+    return lan;
+}
+
+BoatNetLan *boat_net_lan_listen(const char *bind, uint16_t port, char *error, size_t size)
+{
+    ENetAddress address = { .port = port };
+    if (enet_address_set_host_ip(&address, bind) != 0) {
+        snprintf(error, size, "invalid IPv4 bind address '%s'", bind);
+        return NULL;
+    }
+    // Broadcasts only reach sockets bound to every interface; a loopback room stays local.
+    if (ENET_NET_TO_HOST_32(address.host) >> 24 != 127)
+        address.host = ENET_HOST_ANY;
+    return lan_open(address, true, error, size);
+}
+
+unsigned boat_net_lan_answer(BoatNetLan *lan, const BoatNetLanRoom *room)
+{
+    uint8_t answer[BOAT_NET_DISCOVERY_BYTES];
+    if (!boat_net_lan_room_encode(room, answer))
+        return 0;
+    unsigned answered = 0;
+    for (int i = 0; i < 4; ++i) { // Bounded work per room service.
+        uint8_t query[BOAT_NET_DISCOVERY_BYTES + 1];
+        ENetBuffer in = { .data = query, .dataLength = sizeof(query) };
+        ENetAddress from;
+        int received = enet_socket_receive(lan->socket, &from, &in, 1);
+        if (received <= 0)
+            break;
+        if (!boat_net_lan_query_decode(query, (size_t)received))
+            continue;
+        ENetBuffer out = { .data = answer, .dataLength = sizeof(answer) };
+        answered += enet_socket_send(lan->socket, &from, &out, 1) > 0;
+    }
+    return answered;
+}
+
+BoatNetLan *boat_net_lan_search(char *error, size_t size)
+{
+    return lan_open((ENetAddress) { .host = ENET_HOST_ANY, .port = 0 }, false, error, size);
+}
+
+// Subnet broadcast addresses (network order) of the interfaces that support broadcast.
+static unsigned subnet_broadcasts(BoatNetLan *lan, uint32_t *out, unsigned capacity)
+{
+    unsigned count = 0;
+#ifdef _WIN32
+    INTERFACE_INFO list[32];
+    DWORD bytes = 0;
+    if (WSAIoctl(lan->socket, SIO_GET_INTERFACE_LIST, NULL, 0, list, (DWORD)sizeof(list), &bytes,
+            NULL, NULL)
+        != 0)
+        return 0;
+    for (DWORD i = 0; i < bytes / sizeof(*list) && count < capacity; ++i) {
+        u_long flags = list[i].iiFlags;
+        if ((flags & IFF_UP) && (flags & IFF_BROADCAST) && !(flags & IFF_LOOPBACK))
+            out[count++] = (uint32_t)(list[i].iiAddress.AddressIn.sin_addr.s_addr
+                | ~list[i].iiNetmask.AddressIn.sin_addr.s_addr);
+    }
+#else
+    (void)lan;
+    struct ifaddrs *list;
+    if (getifaddrs(&list) != 0)
+        return 0;
+    for (struct ifaddrs *p = list; p && count < capacity; p = p->ifa_next) {
+        if (!p->ifa_addr || !p->ifa_netmask || p->ifa_addr->sa_family != AF_INET
+            || !(p->ifa_flags & IFF_UP) || !(p->ifa_flags & IFF_BROADCAST)
+            || (p->ifa_flags & IFF_LOOPBACK))
+            continue;
+        struct sockaddr_in address, mask;
+        memcpy(&address, p->ifa_addr, sizeof(address));
+        memcpy(&mask, p->ifa_netmask, sizeof(mask));
+        out[count++] = (uint32_t)(address.sin_addr.s_addr | ~mask.sin_addr.s_addr);
+    }
+    freeifaddrs(list);
+#endif
+    return count;
+}
+
+void boat_net_lan_query(BoatNetLan *lan, uint16_t port)
+{
+    uint32_t targets[18] = { ENET_HOST_TO_NET_32(0x7f000001u), ENET_HOST_BROADCAST };
+    unsigned count = 2 + subnet_broadcasts(lan, targets + 2, 16);
+    uint8_t query[BOAT_NET_DISCOVERY_BYTES];
+    boat_net_lan_query_encode(query);
+    for (unsigned i = 0; i < count; ++i) {
+        bool repeated = false;
+        for (unsigned j = 0; j < i; ++j)
+            repeated |= targets[j] == targets[i];
+        if (repeated)
+            continue;
+        ENetAddress to = { .host = targets[i], .port = port };
+        ENetBuffer out = { .data = query, .dataLength = sizeof(query) };
+        enet_socket_send(lan->socket, &to, &out, 1); // Unreachable subnets just fail.
+    }
+}
+
+bool boat_net_lan_receive(BoatNetLan *lan, BoatNetLanRoom *room)
+{
+    for (;;) {
+        uint8_t answer[BOAT_NET_DISCOVERY_BYTES + 1];
+        ENetBuffer in = { .data = answer, .dataLength = sizeof(answer) };
+        ENetAddress from;
+        int received = enet_socket_receive(lan->socket, &from, &in, 1);
+        if (received == -2)
+            continue; // A truncated (oversized) datagram is not an answer.
+        if (received <= 0)
+            return false;
+        if (!boat_net_lan_room_decode(answer, (size_t)received, room))
+            continue;
+        if (!room->address)
+            room->address = ENET_NET_TO_HOST_32(from.host);
+        return true;
+    }
+}
+
+void boat_net_lan_close(BoatNetLan *lan)
+{
+    if (!lan)
+        return;
+    enet_socket_destroy(lan->socket);
+    free(lan);
+}
+
+void boat_net_host_name(char out[BOAT_NET_NAME_BYTES + 1])
+{
+    char name[256] = { 0 };
+    out[0] = 0;
+    if (gethostname(name, sizeof(name) - 1) != 0)
+        return;
+    name[strcspn(name, ".")] = 0; // The first label: "ferry.local" or "ferry.lan" is "ferry".
+    size_t length = 0;
+    for (; name[length] && length < BOAT_NET_NAME_BYTES; ++length)
+        out[length] = isprint((unsigned char)name[length]) ? name[length] : '?';
+    out[length] = 0;
 }
