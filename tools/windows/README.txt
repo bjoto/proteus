@@ -1,7 +1,7 @@
 Proteus boat study - Windows x64
 
 Extract the entire ZIP, then double-click launch.bat (or boat_study.exe) to open
-the Wake Velocity title. Pick NAME and BOAT, then SINGLE PLAYER for the river, or
+the Wake Velocity title. Pick NAME, BOAT and STEERING under SETTINGS, then SINGLE PLAYER for the river, or
 MULTIPLAYER to type a room's HOST:PORT address and connect. Esc in a session
 returns to the title. Keep assets beside boat_study.exe.
 
@@ -17,7 +17,8 @@ Requires a GPU/driver supporting OpenGL 3.3. The build uses static raylib
 and the static MSVC runtime.
 
 A/D or Left/Right: steer (the wheel springs back to centre when released)
-W/S, Up/Down or the scroll wheel: step thrust (4 forward / neutral / 2 reverse)
+W/S, Up/Down or the scroll wheel (down: more): step thrust (4 forward / neutral / 2 reverse);
+hold W/S to step every half second
 M: capture the mouse for steering (move to turn, stop to hold); M or Esc releases
 R: reset boat
 +/-: camera distance

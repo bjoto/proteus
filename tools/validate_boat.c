@@ -1206,6 +1206,26 @@ static int validate_throttle_detents(void)
     for (int i = 0; i < 10; ++i)
         step = boat_throttle_step(step, -1);
     CHECK(step == 0);
+    float waited = 0;
+    step = boat_throttle_hold(BOAT_THROTTLE_NEUTRAL, 1, 1, .1f, &waited);
+    CHECK(step == 3 && waited == 0); // A press steps at once.
+    for (int frame = 0; frame < 4; ++frame)
+        step = boat_throttle_hold(step, 0, 1, .1f, &waited);
+    CHECK(step == 3); // 0.4 s held: still waiting.
+    step = boat_throttle_hold(step, 0, 1, .1f, &waited);
+    CHECK(step == 4); // 0.5 s held: the next detent.
+    step = boat_throttle_hold(step, 1, 1, .1f, &waited);
+    CHECK(step == 5 && waited == 0); // A quick re-press steps without waiting.
+    step = boat_throttle_hold(step, 0, 0, .1f, &waited);
+    CHECK(step == 5 && waited == 0); // Release holds the detent.
+    step = boat_throttle_hold(step, -1, -1, .1f, &waited);
+    for (int frame = 0; frame < 10; ++frame)
+        step = boat_throttle_hold(step, 0, -1, .1f, &waited);
+    CHECK(step == 2); // One press plus two half-second repeats in reverse.
+    for (int frame = 0; frame < 100; ++frame)
+        step = boat_throttle_hold(step, 0, -1, .1f, &waited);
+    CHECK(step == 0);
+    CHECK(boat_throttle_hold(step, 0, 1, NAN, &waited) == 0 && waited == 0);
     float remainder = 0;
     step = boat_throttle_scroll(2, .25f, &remainder);
     CHECK(step == 2 && remainder == .25f);

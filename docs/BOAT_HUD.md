@@ -17,8 +17,9 @@ no numeric readouts or units:
 
 - **Thrust:** a vertical telegraph. Forward is above neutral; reverse is below.
   The handle shows `Boat.throttle`, not delayed engine response. Thrust still holds when
-  released. Tap Up/W or Down/S once per step; held keys do not repeat. Scroll up/down also
-  changes thrust, in either steering mode: one scroll unit per step, with fractional trackpad
+  released. Tap Up/W or Down/S once per step; a held key steps again every 0.5 s, and each new
+  press steps at once, so quick taps are faster than holding. Scroll down/up adds/removes
+  thrust (down opens the throttle since 2026-10-24), in either steering mode: one scroll unit per step, with fractional trackpad
   motion accumulated and larger scrolls allowed to cross several steps. No scrolling holds
   the selected thrust. Overscrolling at either limit does not delay the next reverse scroll.
   Forward steps are
@@ -32,7 +33,8 @@ no numeric readouts or units:
   displaying units or numbers. This is not signed forward speed or speed through water.
 - **Steering:** the spring-centred wheel setting, with port/starboard endpoints and a needle.
   This shows `Boat.wheel`, not heading, turn rate or engine deflection. Press M to toggle
-  keyboard/mouse steering, or use `--mouse-steering`. Mouse mode captures/hides the cursor
+  keyboard/mouse steering, or use `--mouse-steering`; the title's SETTINGS > STEERING row
+  remembers which mode sessions start in. Mouse mode captures/hides the cursor
   and accumulates horizontal movement into a held wheel target (300 mouse pixels from centre
   to lock, independent of window size/frame time). Stopping movement holds the target;
   opposite movement unwinds it. Clamp the stored target at lock so excess movement does not
@@ -100,6 +102,21 @@ not access sockets/graphics; the final suite ran with that access.
 
 Manual keyboard play, connected native sessions and user acceptance remain pending; the
 5%/20% docking power needs user review. Next: play-test the steps, then integrate this branch.
+
+## Held thrust, scroll direction and steering setting, 2026-10-24
+
+Completed task (user request): holding Up/W or Down/S repeats one thrust detent every 0.5 s
+(`boat_throttle_hold` in `src/boat_throttle.h`), with each new press stepping at once and
+restarting the wait. Scroll direction is flipped in `tools/boat_study.c` for native and browser
+input alike: scrolling down opens the throttle. The title's new SETTINGS panel (NAME, BOAT,
+STEERING, BACK) holds a persistent `mouse_steering=on|off` in `title.txt`; title sessions pass
+`--mouse-steering` when it is on. NAME and BOAT moved from the main menu into that panel.
+
+Verification, macOS, Debug: warning-free build and all 110 active CTests passed; `boat_handling`
+checks press, hold, re-press, release and limits of the repeat. Title captures of the main menu
+and (through a temporary, reverted capture tweak) the settings panel were inspected. Not yet
+hand-played: held-key feel, physical scroll direction, the settings row with keyboard/mouse, and
+mouse steering at session start from the title. User acceptance pending.
 
 ## Superseded absolute mouse prototype, 2026-10-24
 

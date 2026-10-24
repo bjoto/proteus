@@ -144,16 +144,18 @@ is calm and clear of both boats. See the
 ### Title screen
 
 `./build/boat_study` without options (and the packaged macOS app and Windows `launch.bat`)
-opens the **Wake Velocity** title: SINGLE PLAYER, MULTIPLAYER, NAME, BOAT and EXIT. Up/Down or
-W/S select, Enter/Space or a click activates, Left/Right change BOAT, and Enter on NAME starts
-typing (Enter keeps, Esc cancels). SINGLE PLAYER starts the river with current, crossing wake
+opens the **Wake Velocity** title: SINGLE PLAYER, MULTIPLAYER, SETTINGS and EXIT. Up/Down or
+W/S select and Enter/Space or a click activates. SETTINGS holds NAME, BOAT and STEERING: Enter on
+NAME starts typing (Enter keeps, Esc cancels), Left/Right change BOAT, and Left/Right or Enter
+switch STEERING between KEYBOARD and MOUSE (how each session starts; M still switches in game). SINGLE PLAYER starts the river with current, crossing wake
 and waves in the chosen livery. MULTIPLAYER searches the local network for `boat_server`
 rooms. Its LAN row names the first one found (host machine and players) and selects it. With
 several rooms it shows LAN 1/2 and so on; Left/Right switch rooms, and Enter joins under NAME.
 The hint below the menu gives the room's mode and address, and says when a room needs a token or
 runs another game version. ADDRESS and CONNECT still join any `HOST:PORT` directly. Rooms colour
 boats by slot, so BOAT applies to single player only. Esc in a session returns to the title, and a failed or lost connection shows why there.
-NAME, BOAT and the address are remembered in `title.txt` in the personal-best data directory.
+NAME, BOAT, STEERING and the address are remembered in `title.txt` in the personal-best data
+directory.
 Any explicit option skips the title; `--title --screenshot FILE` captures it.
 
 ### Multiplayer diagnostic room
@@ -364,7 +366,7 @@ stronger farther from centre, reaching within 1% of centre from full lock in abo
 One second of held input moves it from centre to either limit. Opposite input unwinds full lock
 in about a third of a second, then builds the new turn at the normal rate. This makes catching a
 turn quicker while retaining progressive steering and hull inertia. Tap up/W or down/S to move
-one thrust step; holding a key does not repeat. Forward has ultra-slow (5%, for docking), slow
+one thrust step; holding a key steps again every half second, and quick taps step faster. Forward has ultra-slow (5%, for docking), slow
 (20%), medium (50%) and max (100%); reverse has ultra-slow (5%) and slow (20%). Neutral sits
 between the directions. Releasing keys holds the selected setting, with smooth command travel
 and engine response. R resets to neutral thrust and centres the wheel. Esc closes the window.
@@ -379,7 +381,7 @@ Help and focus loss release capture. Desktop builds resume capture on return; br
 need a canvas click or M to capture again. Browsers that deny or lack capture show a keyboard
 fallback message. Mouse mode is inactive during scripted demos and replay playback.
 
-Scroll up/down to increase/decrease thrust one step per scroll unit, in either steering mode.
+Scroll down/up to increase/decrease thrust one step per scroll unit, in either steering mode.
 Fractional trackpad scrolling accumulates until a full step; larger scrolls can move several
 steps. The selected thrust holds when scrolling stops. Up/W and Down/S remain available.
 
@@ -810,8 +812,8 @@ nearest-neighbour scaling in multiples of the 320x200 scene, with a 320x200 mini
 Press **PLAY** to start with sound. The compact **Settings** toggle holds location, waves,
 smooth edges, and fullscreen; smooth edges and fullscreen default to on. The launcher disappears during play; the game fills
 the browser using integer scaling. Press `?` for the built-in controls; Escape closes help
-or releases the mouse/leaves fullscreen. M enables captured mouse steering; scroll up/down
-changes thrust steps. After help, click the canvas to recapture. If capture is unavailable,
+or releases the mouse/leaves fullscreen. M enables captured mouse steering; scroll down/up
+adds/removes thrust steps. After help, click the canvas to recapture. If capture is unavailable,
 keyboard steering stays available. Reload the page to choose another location. Browser throttling
 can affect animation/audio in background tabs. Bests are local to this browser and site,
 can be lost when storage is cleared or unavailable, and do not sync with native saves.

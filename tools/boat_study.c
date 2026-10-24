@@ -38,11 +38,12 @@ static void usage(void)
 {
     puts(
         "Usage: boat_study [--demo] [--frames COUNT] [--screenshot FILE [--time SECONDS]]\n"
-        "No options (or --title): Wake Velocity title with name, boat and multiplayer address;\n"
+        "No options (or --title): Wake Velocity title with multiplayer and settings (name, boat,\n"
+        "  mouse steering)\n"
         "  Esc in a session returns to it | --title --screenshot FILE: capture the title\n"
         "Left/Right or A/D: adjust wheel | Up/Down or W/S: step thrust (4 forward / neutral / 2 "
-        "reverse)\n"
-        "Scroll up/down: step thrust (also Up/Down or W/S)\n"
+        "reverse); hold to step every 0.5 s\n"
+        "Scroll down/up: more/less thrust (also Up/Down or W/S)\n"
         "M: capture/release mouse steering (move to turn; stop to hold) | --mouse-steering\n"
         "Keyboard wheel springs to centre; mouse wheel and thrust hold. R: reset | Esc: release "
         "mouse, then leave\n"
@@ -95,10 +96,10 @@ static void draw_help(bool course, bool mapped, bool deathmatch)
         "M: toggle mouse / keyboard steering",
         "Mouse: move to turn; stop to hold wheel",
         "Esc: release mouse / return to keyboard",
-        "Scroll up/down or W/S: step thrust",
+        "W/S or scroll down/up: step thrust",
         "Release keyboard steering: centre wheel",
         "Thrust: 4 forward / neutral / 2 reverse",
-        "Tap thrust: one step; release holds",
+        "Tap: one step | hold: step each 0.5 s",
         "R: reset boat / restart demo",
         deathmatch ? "Hold Tab: deathmatch scoreboard" : "",
         "+/-: zoom | PgUp/PgDn: height",
@@ -456,7 +457,7 @@ static int study(int argc, char **argv)
     Music music = { 0 };
     bool music_ready = false;
     int thrust_step = BOAT_THROTTLE_NEUTRAL;
-    float throttle_scroll = 0;
+    float throttle_scroll = 0, throttle_held = 0;
     BoatSession session;
     boat_session_init(
         &session, location, study_water(location, waves, current, crossing_wake, player_wake));
@@ -752,12 +753,16 @@ static int study(int argc, char **argv)
                 camera_settings = camera_default;
         }
         if (active && !demo && !session.runs.playing) {
-            int direction = (IsKeyPressed(KEY_UP) || IsKeyPressed(KEY_W))
+            int pressed = (IsKeyPressed(KEY_UP) || IsKeyPressed(KEY_W))
                 - (IsKeyPressed(KEY_DOWN) || IsKeyPressed(KEY_S));
-            thrust_step = boat_throttle_step(thrust_step, direction);
-            thrust_step = boat_throttle_scroll(thrust_step, scroll_delta, &throttle_scroll);
+            int held = (IsKeyDown(KEY_UP) || IsKeyDown(KEY_W))
+                - (IsKeyDown(KEY_DOWN) || IsKeyDown(KEY_S));
+            thrust_step = boat_throttle_hold(
+                thrust_step, pressed, held, fminf(GetFrameTime(), 0.1f), &throttle_held);
+            // Scrolling down (toward the player) opens the throttle.
+            thrust_step = boat_throttle_scroll(thrust_step, -scroll_delta, &throttle_scroll);
         } else {
-            throttle_scroll = 0;
+            throttle_scroll = throttle_held = 0;
         }
         bool replay_adjusted = false;
         if (!active)
@@ -1151,17 +1156,20 @@ static int title_single(const BoatTitleSettings *settings)
 {
     char *arguments[] = { "boat_study", "--current", "--crossing-wake", "--location", "river",
         "--waves", "--gpu-aa", "--camera-distance", "12", "--camera-height", "6", "--skin",
-        (char *)boat_skin_name(settings->skin), NULL };
-    return study((int)(sizeof(arguments) / sizeof(arguments[0])) - 1, arguments);
+        (char *)boat_skin_name(settings->skin),
+        settings->mouse_steering ? "--mouse-steering" : NULL, NULL };
+    int count = (int)(sizeof(arguments) / sizeof(arguments[0])) - 1 - !settings->mouse_steering;
+    return study(count, arguments);
 }
 
 #ifdef PROTEUS_BOAT_NET
 static int title_join(BoatTitleSettings *settings)
 {
-    char *arguments[]
-        = { "boat_study", "--connect", settings->address, "--name", settings->name, NULL };
+    char *arguments[] = { "boat_study", "--connect", settings->address, "--name", settings->name,
+        settings->mouse_steering ? "--mouse-steering" : NULL, NULL };
+    int count = (int)(sizeof(arguments) / sizeof(arguments[0])) - 1 - !settings->mouse_steering;
     net_study.failure[0] = 0;
-    int result = study((int)(sizeof(arguments) / sizeof(arguments[0])) - 1, arguments);
+    int result = study(count, arguments);
     if (net_study.failure[0])
         snprintf(settings->message, sizeof(settings->message), "%s", net_study.failure);
     else if (result)
@@ -1209,6 +1217,7 @@ int main(int argc, char **argv)
         if (WindowShouldClose())
             break;
     }
+    boat_title_save(&settings); // Also keep settings changed just before Exit.
     CloseWindow();
     return 0;
 #endif

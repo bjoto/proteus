@@ -54,7 +54,7 @@ function installBoatMouseControls(module, canvas, document, window) {
     if (event.ctrlKey || !Number.isFinite(event.deltaY)) return; // Pinch zoom isn't thrust.
     const units = event.deltaMode === 1 ? event.deltaY / 3
       : event.deltaMode === 2 ? event.deltaY : event.deltaY / 100;
-    scroll -= units; // Browser down-positive becomes boat forward-positive.
+    scroll -= units; // Browser down-positive becomes raylib's up-positive wheel.
   }, { passive: false });
   window.addEventListener('blur', () => {
     movement = scroll = 0;

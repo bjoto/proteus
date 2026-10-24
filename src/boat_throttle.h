@@ -3,6 +3,7 @@
 
 #include "boat.h"
 #include <math.h>
+#include <stdbool.h>
 
 // Two reverse detents, neutral, and four forward detents. Index 2 is neutral.
 #define BOAT_THROTTLE_NEUTRAL 2
@@ -17,6 +18,23 @@ static inline int boat_throttle_step(int step, int direction)
 {
     step += (direction > 0) - (direction < 0);
     return step < 0 ? 0 : step >= BOAT_THROTTLE_COUNT ? BOAT_THROTTLE_COUNT - 1 : step;
+}
+
+// A held key moves one detent per BOAT_THROTTLE_REPEAT seconds after its first step. Each new
+// press steps at once and restarts the wait, so quick taps change detents faster than holding.
+// PRESSED and HELD are signed directions (+1 forward): newly pressed, and currently down.
+#define BOAT_THROTTLE_REPEAT .5f
+static inline int boat_throttle_hold(int step, int pressed, int held, float dt, float *waited)
+{
+    if (pressed || !held || !isfinite(dt)) {
+        *waited = 0;
+        return boat_throttle_step(step, pressed);
+    }
+    *waited += fmaxf(0, dt);
+    if (*waited < BOAT_THROTTLE_REPEAT)
+        return step;
+    *waited = fminf(*waited - BOAT_THROTTLE_REPEAT, BOAT_THROTTLE_REPEAT);
+    return boat_throttle_step(step, held);
 }
 
 // One scroll unit per detent; accumulate fractional trackpad motion. Bound stored

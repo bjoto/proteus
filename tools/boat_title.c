@@ -15,13 +15,15 @@
 
 enum { WIDTH = 320, HEIGHT = 200, ROW_HEIGHT = 16 };
 
-typedef enum { ROW_SINGLE, ROW_MULTI, ROW_NAME, ROW_BOAT, ROW_EXIT, MAIN_ROWS } MainRow;
+typedef enum { ROW_SINGLE, ROW_MULTI, ROW_SETTINGS, ROW_EXIT, MAIN_ROWS } MainRow;
 typedef enum { ROW_LAN, ROW_ADDRESS, ROW_CONNECT, ROW_BACK, JOIN_ROWS } JoinRow;
+typedef enum { ROW_NAME, ROW_BOAT, ROW_MOUSE, ROW_DONE, SETTINGS_ROWS } SettingsRow;
+typedef enum { PANEL_MAIN, PANEL_JOIN, PANEL_SETTINGS } Panel;
 
 typedef struct {
     Texture2D backdrop;
     RenderTexture2D target;
-    bool join; // The multiplayer panel replaces the main rows.
+    Panel panel; // The multiplayer or settings panel replaces the main rows.
     int selected;
     char *editing; // The text field being typed into, if any.
     char before[64]; // Its value when editing started, restored by Escape.
@@ -136,11 +138,16 @@ static void draw_logo(double time)
     DrawText(credit, (WIDTH - MeasureText(credit, 10)) / 2, 63, 10, rgb(255, 248, 216));
 }
 
-static int row_count(const Title *t) { return t->join ? JOIN_ROWS : MAIN_ROWS; }
+static int row_count(const Title *t)
+{
+    return t->panel == PANEL_JOIN    ? JOIN_ROWS
+        : t->panel == PANEL_SETTINGS ? SETTINGS_ROWS
+                                     : MAIN_ROWS;
+}
 
 static Rectangle row_bounds(const Title *t, int row)
 {
-    int top = 92 + (MAIN_ROWS - row_count(t)) * ROW_HEIGHT / 2;
+    int top = 92 + (5 - row_count(t)) * ROW_HEIGHT / 2; // Centred on five rows' space.
     return (Rectangle) { 45, (float)(top + row * ROW_HEIGHT), 230, ROW_HEIGHT - 2 };
 }
 
@@ -165,7 +172,20 @@ static void row_text(const Title *t, const BoatTitleSettings *s, int row, const 
 {
     *label = "";
     value[0] = 0;
-    if (t->join) {
+    if (t->panel == PANEL_SETTINGS) {
+        static const char *labels[SETTINGS_ROWS] = { "NAME", "BOAT", "STEERING", "BACK" };
+        *label = labels[row];
+        if (row == ROW_NAME)
+            snprintf(value, size, "%s", s->name);
+        else if (row == ROW_BOAT) {
+            char country[32];
+            upper(country, sizeof(country), boat_skin_name(s->skin));
+            snprintf(value, size, "< %s >", country);
+        } else if (row == ROW_MOUSE)
+            snprintf(value, size, "< %s >", s->mouse_steering ? "MOUSE" : "KEYBOARD");
+        return;
+    }
+    if (t->panel == PANEL_JOIN) {
         static const char *labels[JOIN_ROWS] = { "LAN", "ADDRESS", "CONNECT", "BACK" };
         *label = labels[row];
         if (row == ROW_ADDRESS)
@@ -197,16 +217,8 @@ static void row_text(const Title *t, const BoatTitleSettings *s, int row, const 
 #endif
         return;
     }
-    static const char *labels[MAIN_ROWS]
-        = { "SINGLE PLAYER", "MULTIPLAYER", "NAME", "BOAT", "EXIT" };
+    static const char *labels[MAIN_ROWS] = { "SINGLE PLAYER", "MULTIPLAYER", "SETTINGS", "EXIT" };
     *label = labels[row];
-    if (row == ROW_NAME)
-        snprintf(value, size, "%s", s->name);
-    else if (row == ROW_BOAT) {
-        char country[32];
-        upper(country, sizeof(country), boat_skin_name(s->skin));
-        snprintf(value, size, "< %s >", country);
-    }
 }
 
 // What the LAN row's room is, or how to make one appear.
@@ -267,10 +279,12 @@ static void draw_menu(const Title *t, const BoatTitleSettings *s, const char *st
         hint = s->message;
     if (!hint && t->editing)
         hint = "TYPE, THEN ENTER / ESC: CANCEL";
-    if (!hint && !t->join && t->selected == ROW_BOAT)
+    if (!hint && t->panel == PANEL_SETTINGS && t->selected == ROW_BOAT)
         hint = "SINGLE PLAYER; ROOMS COLOUR BOATS BY SLOT";
+    if (!hint && t->panel == PANEL_SETTINGS && t->selected == ROW_MOUSE)
+        hint = "HOW SESSIONS START; M SWITCHES IN GAME";
     char lan[96];
-    if (!hint && t->join && t->selected == ROW_LAN)
+    if (!hint && t->panel == PANEL_JOIN && t->selected == ROW_LAN)
         hint = lan_hint(t, lan, sizeof(lan));
     if (hint) {
         const char *shown = fit(hint, WIDTH - 12);
@@ -401,7 +415,7 @@ BoatTitleChoice boat_title_run(BoatTitleSettings *s)
             bool name = t.editing == s->name;
             edit(&t, name ? sizeof(s->name) : sizeof(s->address), name);
             if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER) || back) {
-                if (finish_edit(&t, !back) && t.join)
+                if (finish_edit(&t, !back) && t.panel == PANEL_JOIN)
                     t.selected = ROW_CONNECT;
                 back = false;
             }
@@ -431,22 +445,31 @@ BoatTitleChoice boat_title_run(BoatTitleSettings *s)
             t.moved = true;
             s->message[0] = 0;
         }
-        if (t.join && !t.editing)
+        if (t.panel == PANEL_JOIN && !t.editing)
             search(&t);
-        if (t.join && t.selected == ROW_LAN && !t.editing && t.found.count > 1) {
+        if (t.panel == PANEL_JOIN && t.selected == ROW_LAN && !t.editing && t.found.count > 1) {
             int turn = (IsKeyPressed(KEY_RIGHT) || IsKeyPressed(KEY_D))
                 - (IsKeyPressed(KEY_LEFT) || IsKeyPressed(KEY_A));
             t.shown = (unsigned)((int)(t.shown + t.found.count) + turn) % t.found.count;
         }
-        if (!t.join && t.selected == ROW_BOAT && !t.editing) {
+        bool settings = t.panel == PANEL_SETTINGS && !t.editing;
+        if (settings && (t.selected == ROW_BOAT || t.selected == ROW_MOUSE)) {
             int turn = (IsKeyPressed(KEY_RIGHT) || IsKeyPressed(KEY_D) || activate)
                 - (IsKeyPressed(KEY_LEFT) || IsKeyPressed(KEY_A));
-            s->skin = (s->skin + BOAT_SKIN_COUNT + turn) % BOAT_SKIN_COUNT;
+            if (t.selected == ROW_BOAT)
+                s->skin = (s->skin + BOAT_SKIN_COUNT + turn) % BOAT_SKIN_COUNT;
+            else if (turn)
+                s->mouse_steering = !s->mouse_steering;
             activate = false;
         }
         if (activate) {
             s->message[0] = 0;
-            if (t.join) {
+            if (t.panel == PANEL_SETTINGS) {
+                if (t.selected == ROW_NAME)
+                    begin_edit(&t, s->name);
+                else
+                    back = true;
+            } else if (t.panel == PANEL_JOIN) {
                 if (t.selected == ROW_LAN) {
 #ifdef PROTEUS_BOAT_NET
                     if (t.found.count) {
@@ -467,18 +490,23 @@ BoatTitleChoice boat_title_run(BoatTitleSettings *s)
                 choice = BOAT_TITLE_SINGLE;
                 chosen = true;
             } else if (t.selected == ROW_MULTI) {
-                t.join = true;
+                t.panel = PANEL_JOIN;
                 t.selected = ROW_CONNECT;
                 start_search(&t);
-            } else if (t.selected == ROW_NAME)
-                begin_edit(&t, s->name);
-            else if (t.selected == ROW_EXIT)
+            } else if (t.selected == ROW_SETTINGS) {
+                t.panel = PANEL_SETTINGS;
+                t.selected = ROW_MOUSE;
+            } else if (t.selected == ROW_EXIT)
                 chosen = true;
         }
-        if (back && t.join) {
+        if (back && t.panel == PANEL_JOIN) {
             stop_search(&t);
-            t.join = false;
+            t.panel = PANEL_MAIN;
             t.selected = ROW_MULTI;
+        } else if (back && t.panel == PANEL_SETTINGS) {
+            boat_title_save(s);
+            t.panel = PANEL_MAIN;
+            t.selected = ROW_SETTINGS;
         } else if (back)
             chosen = true;
         char status[128];
@@ -536,6 +564,8 @@ void boat_title_load(BoatTitleSettings *s)
             snprintf(s->address, sizeof(s->address), "%s", value);
         else if (!strcmp(line, "skin"))
             boat_skin_parse(value, &s->skin);
+        else if (!strcmp(line, "mouse_steering"))
+            s->mouse_steering = !strcmp(value, "on");
     }
     fclose(file);
 }
@@ -549,6 +579,7 @@ void boat_title_save(const BoatTitleSettings *s)
     FILE *file = fopen(path, "w");
     if (!file)
         return;
-    fprintf(file, "name=%s\naddress=%s\nskin=%s\n", s->name, s->address, boat_skin_name(s->skin));
+    fprintf(file, "name=%s\naddress=%s\nskin=%s\nmouse_steering=%s\n", s->name, s->address,
+        boat_skin_name(s->skin), s->mouse_steering ? "on" : "off");
     fclose(file);
 }

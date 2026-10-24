@@ -25,7 +25,8 @@ through the real integrator in `boat_handling`, and forward/reverse target settl
 the authority and predicted client in `boat_net`. Mouse steering adds 49 wheel transitions
 with both float and quantized rates, sustained target holding and virtual network target
 checks. Relative mouse mapping covers accumulated movement and lock reversal; scroll thrust
-covers fractional/multiple-step input, neutral crossing and overscroll reversal. See [the HUD guide](BOAT_HUD.md) for power
+covers fractional/multiple-step input, neutral crossing and overscroll reversal; held-key thrust
+covers the 0.5 s repeat, re-press and limits. See [the HUD guide](BOAT_HUD.md) for power
 settings, visual fixtures and the remaining manual checks. When Node.js is installed,
 `web_mouse_controls` runs the browser event-contract tests without a browser. Real Wasm
 checks use the opt-in [Playwright command](WEB_BUILD.md#mouse-and-scroll-qualification-2026-10-24).
